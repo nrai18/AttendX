@@ -1,0 +1,471 @@
+// AttendX — Prisma Schema
+// PostgreSQL 15 | Prisma 5
+// Version: 1.0 | 2026-07-28
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────────────────────
+
+enum UserRole {
+  student
+  cr
+  admin
+  superadmin
+}
+
+enum Theme {
+  light
+  dark
+  system
+}
+
+enum SlotType {
+  lecture
+  practical
+  tutorial
+}
+
+enum OverrideType {
+  holiday
+  extra_class
+  cancelled
+  rescheduled
+}
+
+enum AttendanceStatus {
+  present
+  absent
+  off
+  cancelled
+  medical
+  od
+}
+
+enum EventType {
+  ct
+  midsem
+  endsem
+  holiday
+  vacation
+  fest
+  institute
+  other
+}
+
+enum AnnouncementCategory {
+  academic
+  placement
+  hackathon
+  club
+  sports
+  mess
+  hostel
+  department
+}
+
+enum AssignmentPriority {
+  low
+  medium
+  high
+  critical
+}
+
+enum NoteType {
+  pdf
+  image
+  drive_link
+  markdown
+}
+
+enum ExportType {
+  csv_subject
+  csv_semester
+  csv_overall
+  pdf_report
+}
+
+enum ExportStatus {
+  pending
+  processing
+  done
+  failed
+}
+
+enum ClassroomMemberRole {
+  member
+  cr
+  admin
+}
+
+// ─────────────────────────────────────────────────────────
+// USERS
+// ─────────────────────────────────────────────────────────
+
+model User {
+  id               String    @id @default(uuid())
+  email            String    @unique
+  passwordHash     String?
+  name             String
+  rollNumber       String?
+  avatarUrl        String?
+  role             UserRole  @default(student)
+  department       String?
+  batch            String?   // e.g. "2022-2026"
+  targetAttendance Int       @default(75)
+  theme            Theme     @default(system)
+  fcmToken         String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  deletedAt        DateTime?
+
+  // Relations
+  semesters               Semester[]
+  subjects                Subject[]
+  attendance              Attendance[]
+  createdClassrooms       Classroom[]          @relation("ClassroomCreator")
+  classroomMemberships    ClassroomMember[]
+  events                  Event[]
+  announcements           Announcement[]
+  assignments             Assignment[]
+  assignmentCompletions   AssignmentCompletion[]
+  notes                   Note[]
+  exports                 Export[]
+  refreshTokens           RefreshToken[]
+  notificationPreferences NotificationPreferences?
+
+  @@map("users")
+}
+
+// ─────────────────────────────────────────────────────────
+// AUTH
+// ─────────────────────────────────────────────────────────
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  userId    String
+  token     String   @unique  // stored as hashed value
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("refresh_tokens")
+}
+
+// ─────────────────────────────────────────────────────────
+// ACADEMIC STRUCTURE
+// ─────────────────────────────────────────────────────────
+
+model Semester {
+  id        String   @id @default(uuid())
+  userId    String
+  name      String   // e.g. "Semester 5"
+  startDate DateTime @db.Date
+  endDate   DateTime @db.Date
+  isActive  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user             User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subjects         Subject[]
+  timetableSlots   TimetableSlot[]
+  overrides        TimetableOverride[]
+  classrooms       Classroom[]
+  exports          Export[]
+
+  @@map("semesters")
+}
+
+model Subject {
+  id               String   @id @default(uuid())
+  semesterId       String
+  userId           String
+  name             String   // e.g. "Digital Electronics"
+  code             String?  // e.g. "ECSE303"
+  credits          Int?
+  faculty          String?
+  colorHex         String?  // UI color token
+  targetAttendance Int?     // override global target
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  semester        Semester        @relation(fields: [semesterId], references: [id], onDelete: Cascade)
+  user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  timetableSlots  TimetableSlot[]
+  overrides       TimetableOverride[]
+  attendance      Attendance[]
+  assignments     Assignment[]
+  notes           Note[]
+  exports         Export[]
+
+  @@map("subjects")
+}
+
+// ─────────────────────────────────────────────────────────
+// TIMETABLE
+// ─────────────────────────────────────────────────────────
+
+model TimetableSlot {
+  id         String   @id @default(uuid())
+  semesterId String
+  subjectId  String
+  dayOfWeek  Int      // 0=Monday … 6=Sunday
+  startTime  String   // "09:00"
+  endTime    String   // "10:00"
+  room       String?
+  slotType   SlotType @default(lecture)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  semester   Semester            @relation(fields: [semesterId], references: [id], onDelete: Cascade)
+  subject    Subject             @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  overrides  TimetableOverride[] @relation("OriginalSlot")
+  attendance Attendance[]
+
+  @@map("timetable_slots")
+}
+
+model TimetableOverride {
+  id             String       @id @default(uuid())
+  semesterId     String
+  date           DateTime     @db.Date
+  overrideType   OverrideType
+  originalSlotId String?      // for rescheduled type
+  subjectId      String?      // for extra_class type
+  startTime      String?
+  endTime        String?
+  reason         String?
+  createdAt      DateTime     @default(now())
+
+  semester     Semester       @relation(fields: [semesterId], references: [id], onDelete: Cascade)
+  originalSlot TimetableSlot? @relation("OriginalSlot", fields: [originalSlotId], references: [id])
+  subject      Subject?       @relation(fields: [subjectId], references: [id])
+  attendance   Attendance[]
+
+  @@map("timetable_overrides")
+}
+
+// ─────────────────────────────────────────────────────────
+// ATTENDANCE
+// ─────────────────────────────────────────────────────────
+
+model Attendance {
+  id               String           @id @default(uuid())
+  userId           String
+  subjectId        String
+  timetableSlotId  String?          // null for overridden/extra classes
+  overrideId       String?
+  date             DateTime         @db.Date
+  status           AttendanceStatus
+  remarks          String?
+  markedAt         DateTime         @default(now())
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  user            User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subject         Subject            @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  timetableSlot   TimetableSlot?     @relation(fields: [timetableSlotId], references: [id])
+  override        TimetableOverride? @relation(fields: [overrideId], references: [id])
+
+  @@unique([userId, subjectId, date, timetableSlotId])
+  @@map("attendance")
+}
+
+// ─────────────────────────────────────────────────────────
+// CLASSROOMS
+// ─────────────────────────────────────────────────────────
+
+model Classroom {
+  id           String   @id @default(uuid())
+  name         String   // e.g. "ECE5A"
+  section      String?
+  department   String?
+  batch        String?
+  joinCode     String   @unique  // 6-char alphanumeric
+  qrCodeUrl    String?
+  createdById  String
+  semesterId   String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  createdBy     User              @relation("ClassroomCreator", fields: [createdById], references: [id])
+  semester      Semester?         @relation(fields: [semesterId], references: [id])
+  members       ClassroomMember[]
+  announcements Announcement[]
+  events        Event[]
+  assignments   Assignment[]
+  notes         Note[]
+
+  @@map("classrooms")
+}
+
+model ClassroomMember {
+  id          String              @id @default(uuid())
+  classroomId String
+  userId      String
+  role        ClassroomMemberRole @default(member)
+  joinedAt    DateTime            @default(now())
+
+  classroom Classroom @relation(fields: [classroomId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([classroomId, userId])
+  @@map("classroom_members")
+}
+
+// ─────────────────────────────────────────────────────────
+// EVENTS
+// ─────────────────────────────────────────────────────────
+
+model Event {
+  id          String    @id @default(uuid())
+  classroomId String?   // null = personal event
+  userId      String?
+  title       String
+  description String?
+  date        DateTime  @db.Date
+  endDate     DateTime? @db.Date
+  eventType   EventType @default(other)
+  allDay      Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  classroom Classroom? @relation(fields: [classroomId], references: [id], onDelete: Cascade)
+  user      User?      @relation(fields: [userId], references: [id])
+
+  @@map("events")
+}
+
+// ─────────────────────────────────────────────────────────
+// ANNOUNCEMENTS
+// ─────────────────────────────────────────────────────────
+
+model Announcement {
+  id             String               @id @default(uuid())
+  classroomId    String
+  createdById    String
+  title          String
+  body           String               @db.Text
+  category       AnnouncementCategory
+  isPinned       Boolean              @default(false)
+  attachmentUrls String[]             @default([])
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  classroom Classroom @relation(fields: [classroomId], references: [id], onDelete: Cascade)
+  createdBy User      @relation(fields: [createdById], references: [id])
+
+  @@map("announcements")
+}
+
+// ─────────────────────────────────────────────────────────
+// ASSIGNMENTS
+// ─────────────────────────────────────────────────────────
+
+model Assignment {
+  id          String             @id @default(uuid())
+  userId      String
+  classroomId String?
+  subjectId   String?
+  title       String
+  description String?
+  deadline    DateTime
+  priority    AssignmentPriority @default(medium)
+  isShared    Boolean            @default(false)
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  user        User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  classroom   Classroom?             @relation(fields: [classroomId], references: [id])
+  subject     Subject?               @relation(fields: [subjectId], references: [id])
+  completions AssignmentCompletion[]
+
+  @@map("assignments")
+}
+
+model AssignmentCompletion {
+  id           String   @id @default(uuid())
+  assignmentId String
+  userId       String
+  completedAt  DateTime @default(now())
+
+  assignment Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([assignmentId, userId])
+  @@map("assignment_completions")
+}
+
+// ─────────────────────────────────────────────────────────
+// NOTES
+// ─────────────────────────────────────────────────────────
+
+model Note {
+  id          String   @id @default(uuid())
+  userId      String
+  subjectId   String?
+  classroomId String?
+  title       String
+  noteType    NoteType
+  content     String?  @db.Text    // for markdown type
+  fileUrl     String?              // for pdf/image (Cloudinary)
+  driveUrl    String?
+  isShared    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subject   Subject?   @relation(fields: [subjectId], references: [id])
+  classroom Classroom? @relation(fields: [classroomId], references: [id])
+
+  @@map("notes")
+}
+
+// ─────────────────────────────────────────────────────────
+// EXPORTS
+// ─────────────────────────────────────────────────────────
+
+model Export {
+  id         String       @id @default(uuid())
+  userId     String
+  exportType ExportType
+  semesterId String?
+  subjectId  String?
+  fileUrl    String?      // Cloudinary URL when done
+  status     ExportStatus @default(pending)
+  createdAt  DateTime     @default(now())
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  semester  Semester? @relation(fields: [semesterId], references: [id])
+  subject   Subject?  @relation(fields: [subjectId], references: [id])
+
+  @@map("exports")
+}
+
+// ─────────────────────────────────────────────────────────
+// NOTIFICATION PREFERENCES
+// ─────────────────────────────────────────────────────────
+
+model NotificationPreferences {
+  id                   String  @id @default(uuid())
+  userId               String  @unique
+  morningClasses       Boolean @default(true)
+  preLecture           Boolean @default(true)
+  nightPending         Boolean @default(true)
+  assignmentReminders  Boolean @default(true)
+  announcements        Boolean @default(true)
+  eventReminders       Boolean @default(true)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notification_preferences")
+}
