@@ -18,6 +18,7 @@ import classroomRoutes from "./routes/classroom.routes";
 import passport from "./config/passport";
 
 const app = express();
+app.set("trust proxy", 1); // Trust Render's reverse proxy for correct https redirects
 
 // Security & Utility Middleware
 app.use(passport.initialize());
