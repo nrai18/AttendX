@@ -5,6 +5,8 @@ import { useAuthStore } from "./stores/authStore";
 import { AppShell } from "./components/layout/AppShell";
 import { LoginPage } from "./pages/auth/LoginPage";
 import { SignupPage } from "./pages/auth/SignupPage";
+import { SubjectsPage } from "./pages/subjects/SubjectsPage";
+import { TimetablePage } from "./pages/timetable/TimetablePage";
 import { Loader2 } from "lucide-react";
 
 // Protected Route Guard Component
@@ -36,24 +38,10 @@ const TodayPlaceholder = () => (
   </div>
 );
 
-const TimetablePlaceholder = () => (
-  <div className="p-4 rounded-2xl bg-[#0c0d12] border border-white/10">
-    <h2 className="text-lg font-bold text-white mb-1">Weekly Timetable</h2>
-    <p className="text-sm text-muted-foreground">IIIT Una Slot Matrix (Phase 3 engine ready)</p>
-  </div>
-);
-
 const CalendarPlaceholder = () => (
   <div className="p-4 rounded-2xl bg-[#0c0d12] border border-white/10">
     <h2 className="text-lg font-bold text-white mb-1">Dot-Matrix Calendar</h2>
     <p className="text-sm text-muted-foreground">Monthly view with default weekend off marking</p>
-  </div>
-);
-
-const SubjectsPlaceholder = () => (
-  <div className="p-4 rounded-2xl bg-[#0c0d12] border border-white/10">
-    <h2 className="text-lg font-bold text-white mb-1">Subjects Overview</h2>
-    <p className="text-sm text-muted-foreground">Subject stats & predictive leave metrics</p>
   </div>
 );
 
@@ -83,9 +71,9 @@ export function App() {
           }
         >
           <Route path="/today" element={<TodayPlaceholder />} />
-          <Route path="/timetable" element={<TimetablePlaceholder />} />
+          <Route path="/timetable" element={<TimetablePage />} />
           <Route path="/calendar" element={<CalendarPlaceholder />} />
-          <Route path="/subjects" element={<SubjectsPlaceholder />} />
+          <Route path="/subjects" element={<SubjectsPage />} />
           <Route path="/settings" element={<SettingsPlaceholder />} />
         </Route>
 

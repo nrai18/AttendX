@@ -5,9 +5,13 @@ import morgan from "morgan";
 import cookieParser from "cookie-parser";
 import "express-async-errors";
 import rateLimit from "express-rate-limit";
+import path from "path";
 
 import authRoutes from "./routes/auth.routes";
 import userRoutes from "./routes/user.routes";
+import semesterRoutes from "./routes/semester.routes";
+import subjectRoutes from "./routes/subject.routes";
+import timetableRoutes from "./routes/timetable.routes";
 
 const app = express();
 
@@ -23,9 +27,9 @@ app.use(express.json());
 app.use(cookieParser());
 app.use(morgan("dev"));
 
-// Rate Limiting (Basic)
+// Rate Limiting
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
+  windowMs: 15 * 60 * 1000,
   max: 100,
   standardHeaders: true,
   legacyHeaders: false,
@@ -35,11 +39,24 @@ app.use("/api", limiter);
 // Registered Routes
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
+app.use("/api/semesters", semesterRoutes);
+app.use("/api/subjects", subjectRoutes);
+app.use("/api/timetable", timetableRoutes);
 
 // Health check endpoint
 app.get("/api/health", (req, res) => {
   res.status(200).json({ status: "ok", message: "AttendX API is running" });
 });
+
+// Serve frontend in production
+if (process.env.NODE_ENV === "production") {
+  const clientBuildPath = path.join(__dirname, "../../client/dist");
+  app.use(express.static(clientBuildPath));
+
+  app.get("*", (req, res) => {
+    res.sendFile(path.join(clientBuildPath, "index.html"));
+  });
+}
 
 // Error Handling Middleware
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
