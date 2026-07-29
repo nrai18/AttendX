@@ -6,7 +6,7 @@ import {
   CalendarDays, 
   Bell, 
   Users, 
-  Github, 
+  Code2, 
   Mail, 
   Phone,
   CheckCircle2,
@@ -181,7 +181,7 @@ export const LandingPage: React.FC = () => {
                     </p>
                     <div className="flex justify-center gap-3">
                       <a href="https://github.com/nrai18" target="_blank" rel="noreferrer" className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center hover:bg-white/10 transition-colors text-white">
-                        <Github className="w-5 h-5" />
+                        <Code2 className="w-5 h-5" />
                       </a>
                       <a href="mailto:rai18naman@gmail.com" className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center hover:bg-white/10 transition-colors text-white">
                         <Mail className="w-5 h-5" />
@@ -237,7 +237,7 @@ export const LandingPage: React.FC = () => {
 
                   <div className="flex items-start gap-4">
                     <div className="w-12 h-12 rounded-xl bg-white/10 flex items-center justify-center shrink-0">
-                      <Github className="w-6 h-6 text-white" />
+                      <Code2 className="w-6 h-6 text-white" />
                     </div>
                     <div>
                       <p className="text-sm text-white/50 font-medium mb-1">GitHub Repository</p>
