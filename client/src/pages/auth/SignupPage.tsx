@@ -5,7 +5,7 @@ import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "../../components/ui/card";
-import { api } from "../../lib/api";
+import { api, API_BASE_URL } from "../../lib/api";
 import { useAuthStore } from "../../stores/authStore";
 
 export const SignupPage: React.FC = () => {
@@ -147,7 +147,7 @@ export const SignupPage: React.FC = () => {
                 type="button"
                 variant="outline"
                 className="w-full h-11 rounded-xl border-white/10 hover:bg-white/5 font-semibold text-white bg-transparent"
-                onClick={() => window.location.href = "http://localhost:3000/api/auth/google"}
+                onClick={() => window.location.href = `${API_BASE_URL}/auth/google`}
               >
                 <svg viewBox="0 0 24 24" className="w-5 h-5 mr-2">
                   <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
