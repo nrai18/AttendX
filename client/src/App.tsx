@@ -9,6 +9,8 @@ import { SubjectsPage } from "./pages/subjects/SubjectsPage";
 import { SubjectsOverviewPage } from "./pages/subjects/SubjectsOverviewPage";
 import { TimetablePage } from "./pages/timetable/TimetablePage";
 import { TodayPage } from "./pages/attendance/TodayPage";
+import { ClassroomsPage } from "./pages/social/ClassroomsPage";
+import { ClassroomFeedPage } from "./pages/social/ClassroomFeedPage";
 import { Loader2 } from "lucide-react";
 
 // Protected Route Guard Component
@@ -67,6 +69,8 @@ export function App() {
           <Route path="/calendar" element={<CalendarPlaceholder />} />
           <Route path="/subjects" element={<SubjectsOverviewPage />} />
           <Route path="/subjects/manage" element={<SubjectsPage />} />
+          <Route path="/classrooms" element={<ClassroomsPage />} />
+          <Route path="/classrooms/:id" element={<ClassroomFeedPage />} />
           <Route path="/settings" element={<SettingsPlaceholder />} />
         </Route>
 
