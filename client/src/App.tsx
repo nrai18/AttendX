@@ -6,7 +6,9 @@ import { AppShell } from "./components/layout/AppShell";
 import { LoginPage } from "./pages/auth/LoginPage";
 import { SignupPage } from "./pages/auth/SignupPage";
 import { SubjectsPage } from "./pages/subjects/SubjectsPage";
+import { SubjectsOverviewPage } from "./pages/subjects/SubjectsOverviewPage";
 import { TimetablePage } from "./pages/timetable/TimetablePage";
+import { TodayPage } from "./pages/attendance/TodayPage";
 import { Loader2 } from "lucide-react";
 
 // Protected Route Guard Component
@@ -27,16 +29,6 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
 
   return <>{children}</>;
 };
-
-// Placeholder pages for Phase 1 router
-const TodayPlaceholder = () => (
-  <div className="space-y-4">
-    <div className="p-4 rounded-2xl bg-[#0c0d12] border border-white/10">
-      <h2 className="text-lg font-bold text-white mb-1">Today's Classes</h2>
-      <p className="text-sm text-muted-foreground">Action-driven daily attendance list (Phase 4 engine ready)</p>
-    </div>
-  </div>
-);
 
 const CalendarPlaceholder = () => (
   <div className="p-4 rounded-2xl bg-[#0c0d12] border border-white/10">
@@ -70,10 +62,11 @@ export function App() {
             </ProtectedRoute>
           }
         >
-          <Route path="/today" element={<TodayPlaceholder />} />
+          <Route path="/today" element={<TodayPage />} />
           <Route path="/timetable" element={<TimetablePage />} />
           <Route path="/calendar" element={<CalendarPlaceholder />} />
-          <Route path="/subjects" element={<SubjectsPage />} />
+          <Route path="/subjects" element={<SubjectsOverviewPage />} />
+          <Route path="/subjects/manage" element={<SubjectsPage />} />
           <Route path="/settings" element={<SettingsPlaceholder />} />
         </Route>
 

@@ -12,6 +12,7 @@ import userRoutes from "./routes/user.routes";
 import semesterRoutes from "./routes/semester.routes";
 import subjectRoutes from "./routes/subject.routes";
 import timetableRoutes from "./routes/timetable.routes";
+import attendanceRoutes from "./routes/attendance.routes";
 
 const app = express();
 
@@ -42,6 +43,7 @@ app.use("/api/users", userRoutes);
 app.use("/api/semesters", semesterRoutes);
 app.use("/api/subjects", subjectRoutes);
 app.use("/api/timetable", timetableRoutes);
+app.use("/api/attendance", attendanceRoutes);
 
 // Health check endpoint
 app.get("/api/health", (req, res) => {
