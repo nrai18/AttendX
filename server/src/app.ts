@@ -55,15 +55,10 @@ app.get("/api/health", (req, res) => {
   res.status(200).json({ status: "ok", message: "AttendX API is running" });
 });
 
-// Serve frontend in production
-if (process.env.NODE_ENV === "production") {
-  const clientBuildPath = path.join(__dirname, "../../client/dist");
-  app.use(express.static(clientBuildPath));
-
-  app.get("*", (req, res) => {
-    res.sendFile(path.join(clientBuildPath, "index.html"));
-  });
-}
+// Root endpoint for Render health checks and browser testing
+app.get("/", (req, res) => {
+  res.status(200).json({ message: "AttendX API is running smoothly!" });
+});
 
 // Error Handling Middleware
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {

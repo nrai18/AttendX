@@ -32,6 +32,10 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
   return <>{children}</>;
 };
 
+import { LandingPage } from "./pages/marketing/LandingPage";
+
+// ... [Keep existing placeholders] ...
+
 const CalendarPlaceholder = () => (
   <div className="p-4 rounded-2xl bg-[#0c0d12] border border-white/10">
     <h2 className="text-lg font-bold text-white mb-1">Dot-Matrix Calendar</h2>
@@ -46,12 +50,21 @@ const SettingsPlaceholder = () => (
   </div>
 );
 
+const RootRoute: React.FC = () => {
+  const { isAuthenticated, isLoading } = useAuthStore();
+  if (isLoading) return null;
+  return isAuthenticated ? <Navigate to="/today" replace /> : <LandingPage />;
+};
+
 export function App() {
   useSilentRefresh();
 
   return (
     <BrowserRouter>
       <Routes>
+        {/* Public Landing Page */}
+        <Route path="/" element={<RootRoute />} />
+
         {/* Auth Routes */}
         <Route path="/login" element={<LoginPage />} />
         <Route path="/signup" element={<SignupPage />} />
@@ -75,7 +88,7 @@ export function App() {
         </Route>
 
         {/* Default Redirect */}
-        <Route path="*" element={<Navigate to="/today" replace />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
   );
