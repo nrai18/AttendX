@@ -43,6 +43,10 @@ export class AuthService {
     const isValid = await bcrypt.compare(data.password, user.passwordHash);
     if (!isValid) throw new Error("Invalid credentials");
 
+    return this.generateTokensForOAuth(user);
+  }
+
+  static async generateTokensForOAuth(user: any) {
     const accessToken = generateAccessToken(user.id, user.role);
     const refreshToken = generateRefreshToken(user.id);
     const hashedRefresh = await this.hashToken(refreshToken);

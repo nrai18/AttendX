@@ -15,9 +15,12 @@ import timetableRoutes from "./routes/timetable.routes";
 import attendanceRoutes from "./routes/attendance.routes";
 import classroomRoutes from "./routes/classroom.routes";
 
+import passport from "./config/passport";
+
 const app = express();
 
 // Security & Utility Middleware
+app.use(passport.initialize());
 app.use(helmet());
 app.use(
   cors({
