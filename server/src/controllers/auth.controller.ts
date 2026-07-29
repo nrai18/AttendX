@@ -5,6 +5,9 @@ import { setRefreshCookie, clearRefreshCookie } from "../utils/cookie";
 export class AuthController {
   static async register(req: Request, res: Response) {
     try {
+      if (!req.body.email || !req.body.email.endsWith("@iiitu.ac.in")) {
+        return res.status(400).json({ message: "Only @iiitu.ac.in emails are allowed." });
+      }
       const { user, accessToken, refreshToken } = await AuthService.register(req.body);
       setRefreshCookie(res, refreshToken);
       res.status(201).json({ user, accessToken });
@@ -15,6 +18,9 @@ export class AuthController {
 
   static async login(req: Request, res: Response) {
     try {
+      if (!req.body.email || !req.body.email.endsWith("@iiitu.ac.in")) {
+        return res.status(401).json({ message: "Only @iiitu.ac.in emails are allowed." });
+      }
       const { user, accessToken, refreshToken } = await AuthService.login(req.body);
       setRefreshCookie(res, refreshToken);
       res.status(200).json({ user, accessToken });

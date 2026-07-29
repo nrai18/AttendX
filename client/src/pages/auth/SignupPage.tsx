@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { GraduationCap, Mail, Lock, User as UserIcon, Loader2, ArrowRight } from "lucide-react";
+import { GraduationCap, Mail, Lock, User as UserIcon, Loader2, ArrowRight, Check, X } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
@@ -69,7 +69,7 @@ export const SignupPage: React.FC = () => {
                   <Input
                     id="name"
                     type="text"
-                    placeholder="Ajack Sharma"
+                    placeholder="Raina"
                     value={name}
                     onChange={(e: React.ChangeEvent<HTMLInputElement>) => setName(e.target.value)}
                     required
@@ -85,7 +85,7 @@ export const SignupPage: React.FC = () => {
                   <Input
                     id="email"
                     type="email"
-                    placeholder="student@iiitu.ac.in"
+                    placeholder="rollnumber@iiitu.ac.in"
                     value={email}
                     onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEmail(e.target.value)}
                     required
@@ -101,7 +101,7 @@ export const SignupPage: React.FC = () => {
                   <Input
                     id="password"
                     type="password"
-                    placeholder="Minimum 6 characters"
+                    placeholder="Create a strong password"
                     value={password}
                     onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPassword(e.target.value)}
                     required
@@ -109,10 +109,27 @@ export const SignupPage: React.FC = () => {
                     className="pl-9 bg-white/5 border-white/10 focus:border-primary text-white"
                   />
                 </div>
+                
+                {password.length > 0 && (
+                  <div className="pt-3 pb-2 pl-1 space-y-2 text-xs">
+                    <div className={`flex items-center gap-2 ${password.length >= 6 ? 'text-emerald-400' : 'text-muted-foreground'}`}>
+                      {password.length >= 6 ? <Check className="w-4 h-4" /> : <X className="w-4 h-4" />}
+                      <span>At least 6 characters</span>
+                    </div>
+                    <div className={`flex items-center gap-2 ${/[A-Z]/.test(password) ? 'text-emerald-400' : 'text-muted-foreground'}`}>
+                      {/[A-Z]/.test(password) ? <Check className="w-4 h-4" /> : <X className="w-4 h-4" />}
+                      <span>At least 1 uppercase letter</span>
+                    </div>
+                    <div className={`flex items-center gap-2 ${/[0-9]/.test(password) ? 'text-emerald-400' : 'text-muted-foreground'}`}>
+                      {/[0-9]/.test(password) ? <Check className="w-4 h-4" /> : <X className="w-4 h-4" />}
+                      <span>At least 1 number</span>
+                    </div>
+                  </div>
+                )}
               </div>
             </CardContent>
 
-            <CardFooter className="flex flex-col space-y-4">
+            <CardFooter className="flex flex-col space-y-4 pt-4">
               <Button type="submit" disabled={loading} className="w-full bg-primary hover:bg-primary/90 font-semibold h-11 rounded-xl">
                 {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <>Get Started <ArrowRight className="w-4 h-4 ml-2" /></>}
               </Button>

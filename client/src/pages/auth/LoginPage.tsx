@@ -68,7 +68,7 @@ export const LoginPage: React.FC = () => {
                   <Input
                     id="email"
                     type="email"
-                    placeholder="student@iiitu.ac.in"
+                    placeholder="rollnumber@iiitu.ac.in"
                     value={email}
                     onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEmail(e.target.value)}
                     required
@@ -87,7 +87,7 @@ export const LoginPage: React.FC = () => {
                   <Input
                     id="password"
                     type="password"
-                    placeholder="••••••••"
+                    placeholder="Enter your password"
                     value={password}
                     onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPassword(e.target.value)}
                     required
@@ -97,7 +97,7 @@ export const LoginPage: React.FC = () => {
               </div>
             </CardContent>
 
-            <CardFooter className="flex flex-col space-y-4">
+            <CardFooter className="flex flex-col space-y-4 pt-4">
               <Button type="submit" disabled={loading} className="w-full bg-primary hover:bg-primary/90 font-semibold h-11 rounded-xl">
                 {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <>Sign In <ArrowRight className="w-4 h-4 ml-2" /></>}
               </Button>
