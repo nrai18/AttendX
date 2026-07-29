@@ -56,20 +56,4 @@ export class AuthController {
     }
   }
 
-  static async googleCallback(req: Request, res: Response) {
-    try {
-      if (!req.user) {
-        return res.redirect(`${process.env.FRONTEND_URL || "http://localhost:5173"}/login?error=oauth_failed`);
-      }
-
-      const { accessToken, refreshToken } = await AuthService.generateTokensForOAuth(req.user);
-      setRefreshCookie(res, refreshToken);
-      
-      // Redirect to frontend. The frontend will call /refresh to get the token or we can pass it in hash.
-      // But actually, we just set the refresh cookie, so frontend can just call /refresh on mount.
-      res.redirect(`${process.env.FRONTEND_URL || "http://localhost:5173"}/?oauth=success`);
-    } catch (error: any) {
-      res.redirect(`${process.env.FRONTEND_URL || "http://localhost:5173"}/login?error=${encodeURIComponent(error.message)}`);
-    }
-  }
 }
