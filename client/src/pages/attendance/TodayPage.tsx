@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Loader2, CheckCircle2, XCircle, AlertCircle, PartyPopper, BookOpen, Palmtree, Timer } from "lucide-react";
+import { Loader2, CheckCircle2, XCircle, AlertCircle, PartyPopper, BookOpen, Palmtree, Timer, CalendarPlus } from "lucide-react";
 import { api } from "../../lib/api";
 
 import { useSearchParams } from "react-router-dom";
@@ -30,6 +30,15 @@ export const TodayPage = () => {
   const [agenda, setAgenda] = useState<AgendaItem[]>([]);
   const [todayStatus, setTodayStatus] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
+  
+  const [subjects, setSubjects] = useState<any[]>([]);
+  const [activeSemester, setActiveSemester] = useState<any>(null);
+  
+  // Extra Class Form State
+  const [isAddingExtra, setIsAddingExtra] = useState(false);
+  const [extraSubjectId, setExtraSubjectId] = useState("");
+  const [extraStartTime, setExtraStartTime] = useState("17:30");
+  const [extraEndTime, setExtraEndTime] = useState("18:20");
 
   const fetchStats = useAttendanceStore((state) => state.fetchStats);
 
@@ -39,14 +48,22 @@ export const TodayPage = () => {
       // Fetch active semester first
       const semRes = await api.get("/semesters/active");
       if (semRes.data) {
+        setActiveSemester(semRes.data);
         const semesterId = semRes.data.id;
         // Fetch today status based on active semester
         const statusRes = await api.get(`/events/today-status?semesterId=${semesterId}&date=${targetDateStr}`);
         setTodayStatus(statusRes.data);
       }
 
-      const res = await api.get(`/attendance/today?date=${targetDateStr}`);
+      const [res, subjRes] = await Promise.all([
+        api.get(`/attendance/today?date=${targetDateStr}`),
+        api.get("/subjects")
+      ]);
       setAgenda(res.data);
+      
+      if (semRes.data) {
+        setSubjects(subjRes.data.filter((s: any) => s.semesterId === semRes.data.id));
+      }
     } catch (error) {
       console.error("Failed to fetch today data:", error);
     } finally {
@@ -57,6 +74,26 @@ export const TodayPage = () => {
   useEffect(() => {
     fetchData();
   }, [targetDateStr]);
+
+  const handleAddExtraClass = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!extraSubjectId || !activeSemester) return alert("Please select a subject.");
+    try {
+      await api.post("/timetable/extra-class", {
+        semesterId: activeSemester.id,
+        subjectId: extraSubjectId,
+        date: targetDateStr,
+        startTime: extraStartTime, 
+        endTime: extraEndTime,
+        reason: "Ad-hoc extra class"
+      });
+      setIsAddingExtra(false);
+      alert("Extra class added successfully!");
+      fetchData(); // refresh the agenda
+    } catch (error) {
+      console.error("Failed to add extra class:", error);
+    }
+  };
 
   const markAttendance = async (item: AgendaItem, status: string) => {
     const updatedAgenda = agenda.map(a => 
@@ -129,20 +166,74 @@ export const TodayPage = () => {
         </div>
       )}
 
-      <div className="flex justify-between items-end">
+      <div className="flex justify-between items-start md:items-end flex-col md:flex-row gap-4">
         <div>
           <h1 className="text-2xl font-bold text-white">{dateParam ? "Classes on" : "Today's Classes"}</h1>
           <p className="text-sm text-muted-foreground mt-1">
             {adjustedDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
           </p>
         </div>
-        {!isGlobalEventActive && (
-          <div className="text-right">
-            <p className="text-2xl font-bold text-white">{pendingCount}</p>
-            <p className="text-xs text-muted-foreground uppercase tracking-wide">Pending</p>
-          </div>
-        )}
+        
+        <div className="flex items-center gap-4">
+          <button
+            onClick={() => setIsAddingExtra(!isAddingExtra)}
+            className="flex items-center gap-2 bg-white/5 hover:bg-white/10 border border-white/10 text-white px-3 py-2 rounded-xl text-sm font-medium transition-colors"
+          >
+            <CalendarPlus className="w-4 h-4" />
+            <span className="hidden sm:inline">Extra Class</span>
+          </button>
+          {!isGlobalEventActive && (
+            <div className="text-right">
+              <p className="text-2xl font-bold text-white leading-none">{pendingCount}</p>
+              <p className="text-xs text-muted-foreground uppercase tracking-wide mt-1">Pending</p>
+            </div>
+          )}
+        </div>
       </div>
+
+      {isAddingExtra && (
+        <form onSubmit={handleAddExtraClass} className="bg-[#1a1b23] border border-white/10 rounded-2xl p-5 space-y-4 animate-in slide-in-from-top-4 duration-300">
+          <h2 className="text-lg font-semibold text-white flex items-center gap-2"><CalendarPlus className="w-5 h-5 text-indigo-400" /> Schedule Extra Class</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Subject</label>
+              <select
+                required
+                value={extraSubjectId}
+                onChange={(e) => setExtraSubjectId(e.target.value)}
+                className="w-full bg-[#13151a] border border-white/5 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-shadow appearance-none"
+              >
+                <option value="">Select a subject...</option>
+                {subjects.map(sub => <option key={sub.id} value={sub.id}>{sub.name}</option>)}
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Start Time</label>
+              <input
+                type="time"
+                required
+                value={extraStartTime}
+                onChange={(e) => setExtraStartTime(e.target.value)}
+                className="w-full bg-[#13151a] border border-white/5 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-shadow"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">End Time</label>
+              <input
+                type="time"
+                required
+                value={extraEndTime}
+                onChange={(e) => setExtraEndTime(e.target.value)}
+                className="w-full bg-[#13151a] border border-white/5 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-shadow"
+              />
+            </div>
+          </div>
+          <div className="flex justify-end gap-3 pt-2">
+            <button type="button" onClick={() => setIsAddingExtra(false)} className="px-4 py-2 rounded-lg text-sm font-medium text-muted-foreground hover:text-white transition-colors">Cancel</button>
+            <button type="submit" className="px-5 py-2 rounded-lg text-sm font-bold bg-indigo-500 text-white hover:bg-indigo-600 transition-colors shadow-lg shadow-indigo-500/20">Schedule</button>
+          </div>
+        </form>
+      )}
 
       {isGlobalEventActive ? (
         <div className={`text-center py-16 border rounded-3xl shadow-2xl ${getEventStateConfig(activeEvent.eventType).color}`}>
