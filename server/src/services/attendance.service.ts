@@ -163,21 +163,38 @@ export class AttendanceService {
     });
 
     return subjects.map(sub => {
-      const records = sub.attendance.filter(a => a.status === "present" || a.status === "absent" || a.status === "medical" || a.status === "od");
-      const attended = records.filter(a => a.status === "present" || a.status === "medical" || a.status === "od").length;
-      const total = records.length;
-      
+      const allRecords = sub.attendance;
+      const countableRecords = allRecords.filter(a => a.status === "present" || a.status === "absent" || a.status === "medical" || a.status === "od");
+      const attended = countableRecords.filter(a => a.status === "present" || a.status === "medical" || a.status === "od").length;
+      const missed = countableRecords.filter(a => a.status === "absent").length;
+      const off = allRecords.filter(a => a.status === "off" || a.status === "cancelled").length;
+      const total = countableRecords.length;
+
       let percentage = total > 0 ? (attended / total) * 100 : 0;
-      
+      const target = sub.targetAttendance || 75;
+
+      // How many classes can still be missed while staying above target
+      // attended / (total + x) >= target/100  => x = (attended - target*total/100) / (target/100)
+      const canMiss = total > 0 ? Math.floor((attended - (target / 100) * total) / (target / 100)) : 0;
+      // How many classes need to be attended to reach target
+      // (attended + x) / (total + x) >= target/100 => x = (target*total - 100*attended) / (100 - target)
+      const needAttend = percentage < target && target < 100
+        ? Math.ceil(((target / 100) * total - attended) / (1 - target / 100))
+        : 0;
+
       return {
         id: sub.id,
         name: sub.name,
         code: sub.code,
         colorHex: sub.colorHex,
-        target: sub.targetAttendance || 75,
+        target,
         attended,
+        missed,
+        off,
         total,
         percentage,
+        canMiss: canMiss > 0 ? canMiss : 0,
+        needAttend: needAttend > 0 ? needAttend : 0,
       };
     });
   }

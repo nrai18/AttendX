@@ -1,4 +1,0 @@
-# Commit Message Guidelines
-- ALWAYS write commit messages in the past tense (e.g. "Updated layouts", "Added new pages").
-- Write commit messages in a natural, human-readable format.
-- DO NOT use conventional commit prefixes like `feat:`, `chore:`, or `fix:`.

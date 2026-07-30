@@ -8,6 +8,7 @@ import {
   Settings,
   LogOut,
   GraduationCap,
+  LayoutDashboard,
 } from "lucide-react";
 import { useAuthStore } from "../../stores/authStore";
 import { cn } from "../../lib/utils";
@@ -15,8 +16,9 @@ import { cn } from "../../lib/utils";
 const navItems = [
   { label: "Today", path: "/today", icon: CalendarDays },
   { label: "Timetable", path: "/timetable", icon: Table },
-  { label: "Semester", path: "/semester", icon: Calendar },
+  { label: "Calendar", path: "/calendar", icon: Calendar },
   { label: "Subjects", path: "/subjects", icon: BookOpen },
+  { label: "Academic Hub", path: "/semester", icon: LayoutDashboard },
   { label: "Settings", path: "/settings", icon: Settings },
 ];
 

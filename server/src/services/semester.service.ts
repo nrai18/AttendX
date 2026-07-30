@@ -52,18 +52,5 @@ export class SemesterService {
         data: { isActive: false },
       });
     }
-    }
-  }
-
-  static async updateSemester(userId: string, semesterId: string, data: any) {
-
-    return prisma.semester.update({
-      where: { id: semesterId, userId },
-      data: {
-        ...(data.name && { name: data.name }),
-        ...(data.startDate && { startDate: new Date(data.startDate) }),
-        ...(data.endDate && { endDate: new Date(data.endDate) }),
-      },
-    });
   }
 }

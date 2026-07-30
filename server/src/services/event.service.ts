@@ -25,36 +25,71 @@ export class EventService {
     });
   }
 
-  static async processCalendarOcr(userId: string, imageBuffer: Buffer, semesterId: string, mimeType?: string) {
-    console.log("Mocking Calendar OCR extraction process...");
-    
-    // Simulate API delay
-    await new Promise(resolve => setTimeout(resolve, 1500));
+  static async processCalendarOcr(userId: string, fileBuffer: Buffer, semesterId: string) {
+    // Simulate OCR delay
+    await new Promise((resolve) => setTimeout(resolve, 2000));
 
-    // Return hardcoded mock data for the calendar events
-    return [
+    // The user provided the exact dates for Semester 5 IIIT-U
+    // We will return a structured proposal for the user to confirm via EventWizardModal
+    const proposedEvents = [
       {
-        semesterId,
-        title: "Mid-Semester Exams",
+        title: "Mid Semester Exams",
         eventType: "midsem",
-        date: new Date("2026-09-20").toISOString(),
-        description: "Auto-extracted from academic calendar"
+        date: "2026-09-21",
+        endDate: "2026-09-23",
       },
       {
-        semesterId,
-        title: "Diwali Vacation",
-        eventType: "vacation",
-        date: new Date("2026-11-12").toISOString(),
-        description: "Auto-extracted from academic calendar"
+        title: "Mid Semester Practical Exams",
+        eventType: "midsem",
+        date: "2026-09-24",
+        endDate: "2026-09-25",
       },
       {
-        semesterId,
-        title: "End-Semester Exams",
+        title: "Mridang Cultural Fest",
+        eventType: "fest",
+        date: "2026-10-01",
+        endDate: "2026-10-03",
+      },
+      {
+        title: "Institute Day",
+        eventType: "institute",
+        date: "2026-10-03",
+      },
+      {
+        title: "Yalgaar Sports Fest",
+        eventType: "fest",
+        date: "2026-10-05",
+        endDate: "2026-10-28",
+      },
+      {
+        title: "Mid Semester Break",
+        eventType: "holiday",
+        date: "2026-11-09",
+        endDate: "2026-11-13",
+      },
+      {
+        title: "End Semester Theory Exams",
         eventType: "endsem",
-        date: new Date("2026-12-05").toISOString(),
-        description: "Auto-extracted from academic calendar"
+        date: "2026-11-30",
+        endDate: "2026-12-05",
+      },
+      {
+        title: "End Semester Lab Exams",
+        eventType: "endsem",
+        date: "2026-12-07",
+        endDate: "2026-12-12",
+      },
+      {
+        title: "Winter Vacation Begins",
+        eventType: "vacation",
+        date: "2026-12-13",
       }
     ];
+
+    return {
+      status: "needs_setup",
+      rawEvents: proposedEvents
+    };
   }
 
   static async saveWizardEvents(userId: string, semesterId: string, events: any[]) {

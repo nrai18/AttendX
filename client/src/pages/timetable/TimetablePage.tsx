@@ -49,6 +49,11 @@ export const TimetablePage = () => {
   const [room, setRoom] = useState("");
   const [slotType, setSlotType] = useState("lecture");
 
+  // Extra Class Form State
+  const [isAddingExtra, setIsAddingExtra] = useState(false);
+  const [extraDate, setExtraDate] = useState(new Date().toISOString().split("T")[0]);
+  const [extraSubjectId, setExtraSubjectId] = useState("");
+
   // OCR Upload State
   const [isUploading, setIsUploading] = useState(false);
   const [isOcrModalOpen, setIsOcrModalOpen] = useState(false);
@@ -177,6 +182,25 @@ export const TimetablePage = () => {
           fetchData(); // Revert on failure
         }
       }
+    }
+  };
+
+  const handleAddExtraClass = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!extraSubjectId || !activeSemester) return alert("Please select a subject.");
+    try {
+      await api.post("/timetable/extra-class", {
+        semesterId: activeSemester.id,
+        subjectId: extraSubjectId,
+        date: extraDate,
+        startTime: "17:30", 
+        endTime: "18:20",
+        reason: "Ad-hoc extra class"
+      });
+      setIsAddingExtra(false);
+      alert("Extra class added successfully!");
+    } catch (error) {
+      console.error("Failed to add extra class:", error);
     }
   };
 
@@ -313,6 +337,13 @@ export const TimetablePage = () => {
             <span>Auto Import</span>
           </button>
           <button
+            onClick={() => setIsAddingExtra(!isAddingExtra)}
+            className="flex items-center gap-2 bg-white/5 hover:bg-white/10 border border-white/10 text-white px-4 py-2 rounded-xl text-sm font-medium transition-colors"
+          >
+            <CalendarPlus className="w-4 h-4" />
+            <span className="hidden sm:inline">Extra Class</span>
+          </button>
+          <button
             onClick={() => { setIsAdding(true); setDayOfWeek(activeTab); }}
             className="flex items-center gap-2 bg-white text-black hover:bg-gray-200 px-4 py-2 rounded-xl text-sm font-bold shadow-md transition-colors"
           >
@@ -400,7 +431,41 @@ export const TimetablePage = () => {
         setupPayload={wizardPayload}
       />
 
-      {/* Forms (Add Slot) */}
+      {/* Forms (Extra Class, Add Slot) */}
+      {isAddingExtra && (
+        <form onSubmit={handleAddExtraClass} className="bg-[#1a1b23] border border-white/10 rounded-2xl p-5 space-y-4 animate-in slide-in-from-top-4 duration-300">
+          <h2 className="text-lg font-semibold text-white flex items-center gap-2"><CalendarPlus className="w-5 h-5 text-indigo-400" /> Schedule Extra Class</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Date</label>
+              <input
+                type="date"
+                required
+                value={extraDate}
+                onChange={(e) => setExtraDate(e.target.value)}
+                className="w-full bg-[#13151a] border border-white/5 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-shadow"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Subject</label>
+              <select
+                required
+                value={extraSubjectId}
+                onChange={(e) => setExtraSubjectId(e.target.value)}
+                className="w-full bg-[#13151a] border border-white/5 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-shadow appearance-none"
+              >
+                <option value="">Select a subject...</option>
+                {subjects.map(sub => <option key={sub.id} value={sub.id}>{sub.name}</option>)}
+              </select>
+            </div>
+          </div>
+          <div className="flex justify-end gap-3 pt-2">
+            <button type="button" onClick={() => setIsAddingExtra(false)} className="px-4 py-2 rounded-lg text-sm font-medium text-muted-foreground hover:text-white transition-colors">Cancel</button>
+            <button type="submit" className="px-5 py-2 rounded-lg text-sm font-bold bg-indigo-500 text-white hover:bg-indigo-600 transition-colors shadow-lg shadow-indigo-500/20">Schedule</button>
+          </div>
+        </form>
+      )}
+
       {isAdding && (
         <form onSubmit={handleAddSlot} className="bg-[#0c0d12] border border-white/10 rounded-2xl p-6 space-y-5 shadow-xl animate-in slide-in-from-top-4 duration-300">
           <h2 className="text-lg font-bold text-white border-b border-white/5 pb-4">{editingSlotId ? "Edit Timetable Slot" : "Add Timetable Slot"}</h2>
