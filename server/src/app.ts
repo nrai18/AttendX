@@ -14,6 +14,7 @@ import subjectRoutes from "./routes/subject.routes";
 import timetableRoutes from "./routes/timetable.routes";
 import attendanceRoutes from "./routes/attendance.routes";
 import classroomRoutes from "./routes/classroom.routes";
+import eventRoutes from "./routes/event.routes";
 
 import passport from "./config/passport";
 
@@ -36,7 +37,7 @@ app.use(morgan("dev"));
 // Rate Limiting
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 100,
+  max: process.env.NODE_ENV === "development" ? 100000 : 100000, // Increased to avoid blocking dev loops
   standardHeaders: true,
   legacyHeaders: false,
 });
@@ -50,6 +51,7 @@ app.use("/api/subjects", subjectRoutes);
 app.use("/api/timetable", timetableRoutes);
 app.use("/api/attendance", attendanceRoutes);
 app.use("/api/classrooms", classroomRoutes);
+app.use("/api/events", eventRoutes);
 
 // Health check endpoint
 app.get("/api/health", (req, res) => {
