@@ -5,10 +5,13 @@ import { useAuthStore } from "./stores/authStore";
 import { AppShell } from "./components/layout/AppShell";
 import { LoginPage } from "./pages/auth/LoginPage";
 import { SignupPage } from "./pages/auth/SignupPage";
+import { SemesterHubPage } from "./pages/semester/SemesterHubPage";
 import { SubjectsPage } from "./pages/subjects/SubjectsPage";
 import { SubjectsOverviewPage } from "./pages/subjects/SubjectsOverviewPage";
+import { SubjectDetailPage } from "./pages/subjects/SubjectDetailPage";
 import { TimetablePage } from "./pages/timetable/TimetablePage";
 import { TodayPage } from "./pages/attendance/TodayPage";
+import { CalendarPage } from "./pages/attendance/CalendarPage";
 import { ClassroomsPage } from "./pages/social/ClassroomsPage";
 import { ClassroomFeedPage } from "./pages/social/ClassroomFeedPage";
 import { Loader2 } from "lucide-react";
@@ -36,12 +39,7 @@ import { LandingPage } from "./pages/marketing/LandingPage";
 
 // ... [Keep existing placeholders] ...
 
-const CalendarPlaceholder = () => (
-  <div className="p-4 rounded-2xl bg-[#0c0d12] border border-white/10">
-    <h2 className="text-lg font-bold text-white mb-1">Dot-Matrix Calendar</h2>
-    <p className="text-sm text-muted-foreground">Monthly view with default weekend off marking</p>
-  </div>
-);
+
 
 const SettingsPlaceholder = () => (
   <div className="p-4 rounded-2xl bg-[#0c0d12] border border-white/10">
@@ -79,9 +77,11 @@ export function App() {
         >
           <Route path="/today" element={<TodayPage />} />
           <Route path="/timetable" element={<TimetablePage />} />
-          <Route path="/calendar" element={<CalendarPlaceholder />} />
+          <Route path="/semester" element={<SemesterHubPage />} />
+          <Route path="/calendar" element={<CalendarPage />} />
           <Route path="/subjects" element={<SubjectsOverviewPage />} />
           <Route path="/subjects/manage" element={<SubjectsPage />} />
+          <Route path="/subjects/:id" element={<SubjectDetailPage />} />
           <Route path="/classrooms" element={<ClassroomsPage />} />
           <Route path="/classrooms/:id" element={<ClassroomFeedPage />} />
           <Route path="/settings" element={<SettingsPlaceholder />} />

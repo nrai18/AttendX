@@ -15,7 +15,7 @@ import { cn } from "../../lib/utils";
 const navItems = [
   { label: "Today", path: "/today", icon: CalendarDays },
   { label: "Timetable", path: "/timetable", icon: Table },
-  { label: "Calendar", path: "/calendar", icon: Calendar },
+  { label: "Semester", path: "/semester", icon: Calendar },
   { label: "Subjects", path: "/subjects", icon: BookOpen },
   { label: "Settings", path: "/settings", icon: Settings },
 ];

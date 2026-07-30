@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from "react";
-import { Loader2, CheckCircle2, XCircle, AlertCircle } from "lucide-react";
+import { Loader2, CheckCircle2, XCircle, AlertCircle, PartyPopper, BookOpen, Palmtree, Timer } from "lucide-react";
 import { api } from "../../lib/api";
+
+import { useSearchParams } from "react-router-dom";
+import { useAttendanceStore } from "../../stores/attendanceStore";
 
 interface AgendaItem {
   id: string;
@@ -20,47 +23,59 @@ interface AgendaItem {
 }
 
 export const TodayPage = () => {
+  const [searchParams] = useSearchParams();
+  const dateParam = searchParams.get("date");
+  const targetDateStr = dateParam || new Date().toISOString().split("T")[0];
+  
   const [agenda, setAgenda] = useState<AgendaItem[]>([]);
+  const [todayStatus, setTodayStatus] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  const fetchTodayAgenda = async () => {
+  const fetchStats = useAttendanceStore((state) => state.fetchStats);
+
+  const fetchData = async () => {
     try {
       setIsLoading(true);
-      const dateStr = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
-      const res = await api.get(`/attendance/today?date=${dateStr}`);
+      // Fetch active semester first
+      const semRes = await api.get("/semesters/active");
+      if (semRes.data) {
+        const semesterId = semRes.data.id;
+        // Fetch today status based on active semester
+        const statusRes = await api.get(`/events/today-status?semesterId=${semesterId}&date=${targetDateStr}`);
+        setTodayStatus(statusRes.data);
+      }
+
+      const res = await api.get(`/attendance/today?date=${targetDateStr}`);
       setAgenda(res.data);
     } catch (error) {
-      console.error("Failed to fetch today's agenda:", error);
+      console.error("Failed to fetch today data:", error);
     } finally {
       setIsLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchTodayAgenda();
-  }, []);
+    fetchData();
+  }, [targetDateStr]);
 
   const markAttendance = async (item: AgendaItem, status: string) => {
-    // Optimistic update
     const updatedAgenda = agenda.map(a => 
       a.id === item.id ? { ...a, status: status as any } : a
     );
     setAgenda(updatedAgenda);
 
     try {
-      const dateStr = new Date().toISOString().split("T")[0];
       await api.post("/attendance/mark", {
         subjectId: item.subject.id,
-        date: dateStr,
+        date: targetDateStr,
         status,
         timetableSlotId: item.type === "slot" ? item.id : undefined,
         overrideId: item.type === "override" ? item.id : undefined,
       });
-      // Optionally refetch or let optimistic update stand
+      fetchStats();
     } catch (error) {
       console.error("Failed to mark attendance:", error);
-      // Revert optimistic update
-      fetchTodayAgenda();
+      fetchData();
     }
   };
 
@@ -74,22 +89,70 @@ export const TodayPage = () => {
     );
   }
 
+  // Determine if we should show the holiday/exam state instead of classes
+  const activeEvent = todayStatus?.activeEvent;
+  const isGlobalEventActive = activeEvent && ["holiday", "vacation", "fest", "midsem", "endsem", "institute"].includes(activeEvent.eventType);
+
+  const getEventStateConfig = (type: string) => {
+    switch(type) {
+      case "midsem":
+      case "endsem":
+        return { icon: <BookOpen className="w-16 h-16 text-rose-500 mb-4 mx-auto" />, color: "border-rose-500/20 bg-rose-500/5", title: "Exam Mode", msg: "Focus on your exams. No regular classes today." };
+      case "fest":
+      case "institute":
+        return { icon: <PartyPopper className="w-16 h-16 text-purple-500 mb-4 mx-auto" />, color: "border-purple-500/20 bg-purple-500/5", title: "Festivities", msg: "Enjoy the celebrations! Classes are suspended." };
+      case "vacation":
+        return { icon: <Palmtree className="w-16 h-16 text-emerald-500 mb-4 mx-auto" />, color: "border-emerald-500/20 bg-emerald-500/5", title: "Vacation", msg: "You're officially on vacation. Recharge and relax!" };
+      case "holiday":
+      default:
+        return { icon: <Palmtree className="w-16 h-16 text-emerald-500 mb-4 mx-auto" />, color: "border-emerald-500/20 bg-emerald-500/5", title: "Holiday", msg: "Enjoy your day off!" };
+    }
+  };
+
+  const displayDate = new Date(targetDateStr);
+  // Fix timezone issue when displaying date created from YYYY-MM-DD
+  const userTimezoneOffset = displayDate.getTimezoneOffset() * 60000;
+  const adjustedDate = new Date(displayDate.getTime() + userTimezoneOffset);
+
   return (
     <div className="p-4 md:p-8 space-y-6 max-w-4xl mx-auto w-full pb-24 md:pb-8">
+      
+      {todayStatus?.nextEvent && !activeEvent && (
+        <div className="bg-primary/10 border border-primary/20 rounded-2xl p-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Timer className="w-5 h-5 text-primary" />
+            <span className="text-sm font-medium text-white">Upcoming: <span className="font-bold">{todayStatus.nextEvent.title}</span></span>
+          </div>
+          <span className="text-xs font-bold bg-primary/20 text-primary px-3 py-1 rounded-full uppercase tracking-wider">
+            {new Date(todayStatus.nextEvent.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+          </span>
+        </div>
+      )}
+
       <div className="flex justify-between items-end">
         <div>
-          <h1 className="text-2xl font-bold text-white">Today's Classes</h1>
+          <h1 className="text-2xl font-bold text-white">{dateParam ? "Classes on" : "Today's Classes"}</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+            {adjustedDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
           </p>
         </div>
-        <div className="text-right">
-          <p className="text-2xl font-bold text-white">{pendingCount}</p>
-          <p className="text-xs text-muted-foreground uppercase tracking-wide">Pending</p>
-        </div>
+        {!isGlobalEventActive && (
+          <div className="text-right">
+            <p className="text-2xl font-bold text-white">{pendingCount}</p>
+            <p className="text-xs text-muted-foreground uppercase tracking-wide">Pending</p>
+          </div>
+        )}
       </div>
 
-      {agenda.length === 0 ? (
+      {isGlobalEventActive ? (
+        <div className={`text-center py-16 border rounded-3xl shadow-2xl ${getEventStateConfig(activeEvent.eventType).color}`}>
+          {getEventStateConfig(activeEvent.eventType).icon}
+          <h2 className="text-2xl font-bold text-white mb-2">{activeEvent.title}</h2>
+          <p className="text-muted-foreground max-w-sm mx-auto">
+            {getEventStateConfig(activeEvent.eventType).msg}
+          </p>
+        </div>
+      ) : agenda.length === 0 ? (
         <div className="text-center py-12 bg-[#0c0d12] border border-white/5 rounded-2xl">
           <CheckCircle2 className="w-12 h-12 text-emerald-500 mx-auto mb-4 opacity-50" />
           <h3 className="text-lg font-medium text-white mb-2">No classes today!</h3>

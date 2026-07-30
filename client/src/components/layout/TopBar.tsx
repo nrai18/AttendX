@@ -3,21 +3,20 @@ import { useAuthStore } from "../../stores/authStore";
 import { Plus, SlidersHorizontal, LogOut } from "lucide-react";
 import { Button } from "../ui/button";
 
+import { useAttendanceStore } from "../../stores/attendanceStore";
+
 interface TopBarProps {
   title?: string;
-  overallPercentage?: number;
-  targetPercentage?: number;
   onAddClick?: () => void;
 }
 
 export const TopBar: React.FC<TopBarProps> = ({
   title,
-  overallPercentage = 87.1,
-  targetPercentage = 75,
   onAddClick,
 }) => {
   const user = useAuthStore((state) => state.user);
   const logout = useAuthStore((state) => state.logout);
+  const { overallPercentage, targetPercentage } = useAttendanceStore();
 
   return (
     <header className="sticky top-0 z-40 bg-[#050508]/80 backdrop-blur-md border-b border-white/5 px-4 py-3 pt-[calc(0.75rem+env(safe-area-inset-top))]">

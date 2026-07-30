@@ -101,46 +101,48 @@ export const SubjectsOverviewPage = () => {
         {stats.map(stat => {
           const prediction = getPredictiveText(stat);
           return (
-            <div key={stat.id} className="bg-[#0c0d12] border border-white/5 rounded-2xl p-5 hover:border-white/10 transition-colors relative overflow-hidden">
-              <div className="absolute top-0 left-0 w-1 h-full" style={{ backgroundColor: stat.colorHex || "#8b5cf6" }} />
-              
-              <div className="flex justify-between items-start pl-2 mb-4">
-                <div>
-                  <h3 className="text-lg font-semibold text-white leading-tight">{stat.name}</h3>
-                  {stat.code && <p className="text-xs text-muted-foreground mt-1">{stat.code}</p>}
-                </div>
-                <div className="text-right">
-                  <p className={`text-2xl font-bold ${getStatusColor(stat.percentage, stat.target)}`}>
-                    {stat.total > 0 ? stat.percentage.toFixed(1) : "100"}%
-                  </p>
-                  <p className="text-[10px] text-muted-foreground uppercase tracking-wider mt-0.5">
-                    {stat.attended} / {stat.total} Attended
-                  </p>
-                </div>
-              </div>
-
-              <div className="pl-2 space-y-3">
-                {/* Progress Bar */}
-                <div className="h-2 w-full bg-white/5 rounded-full overflow-hidden">
-                  <div 
-                    className="h-full rounded-full transition-all duration-500 ease-out"
-                    style={{ 
-                      width: `${stat.total > 0 ? stat.percentage : 100}%`,
-                      backgroundColor: stat.colorHex || "#8b5cf6" 
-                    }}
-                  />
-                </div>
+            <Link to={`/subjects/${stat.id}`} key={stat.id} className="block group">
+              <div className="bg-[#0c0d12] border border-white/5 rounded-2xl p-5 group-hover:border-white/10 group-hover:bg-[#111218] transition-all relative overflow-hidden h-full">
+                <div className="absolute top-0 left-0 w-1 h-full" style={{ backgroundColor: stat.colorHex || "#8b5cf6" }} />
                 
-                {/* Prediction Text */}
-                <div className="flex items-center gap-2 bg-[#13151a] px-3 py-2 rounded-lg text-xs font-medium text-white/80">
-                  {prediction.icon}
-                  {prediction.text}
-                  <span className="ml-auto text-[10px] text-muted-foreground border border-white/10 px-1.5 py-0.5 rounded">
-                    Target: {stat.target}%
-                  </span>
+                <div className="flex justify-between items-start pl-2 mb-4">
+                  <div>
+                    <h3 className="text-lg font-semibold text-white leading-tight">{stat.name}</h3>
+                    {stat.code && <p className="text-xs text-muted-foreground mt-1">{stat.code}</p>}
+                  </div>
+                  <div className="text-right">
+                    <p className={`text-2xl font-bold ${getStatusColor(stat.percentage, stat.target)}`}>
+                      {stat.total > 0 ? stat.percentage.toFixed(1) : "0"}%
+                    </p>
+                    <p className="text-[10px] text-muted-foreground uppercase tracking-wider mt-0.5">
+                      {stat.attended} / {stat.total} Attended
+                    </p>
+                  </div>
+                </div>
+
+                <div className="pl-2 space-y-3">
+                  {/* Progress Bar */}
+                  <div className="h-2 w-full bg-white/5 rounded-full overflow-hidden">
+                    <div 
+                      className="h-full rounded-full transition-all duration-500 ease-out"
+                      style={{ 
+                        width: `${stat.total > 0 ? stat.percentage : 0}%`,
+                        backgroundColor: stat.colorHex || "#8b5cf6" 
+                      }}
+                    />
+                  </div>
+                  
+                  {/* Prediction Text */}
+                  <div className="flex items-center gap-2 bg-[#13151a] px-3 py-2 rounded-lg text-xs font-medium text-white/80 group-hover:bg-[#1a1c23] transition-colors">
+                    {prediction.icon}
+                    {prediction.text}
+                    <span className="ml-auto text-[10px] text-muted-foreground border border-white/10 px-1.5 py-0.5 rounded">
+                      Target: {stat.target}%
+                    </span>
+                  </div>
                 </div>
               </div>
-            </div>
+            </Link>
           );
         })}
       </div>

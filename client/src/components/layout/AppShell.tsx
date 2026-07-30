@@ -1,8 +1,9 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { Outlet } from "react-router-dom";
 import { BottomNav } from "./BottomNav";
 import { Sidebar } from "./Sidebar";
 import { TopBar } from "./TopBar";
+import { useAttendanceStore } from "../../stores/attendanceStore";
 
 interface AppShellProps {
   title?: string;
@@ -10,6 +11,12 @@ interface AppShellProps {
 }
 
 export const AppShell: React.FC<AppShellProps> = ({ title, onAddClick }) => {
+  const fetchStats = useAttendanceStore((state) => state.fetchStats);
+
+  useEffect(() => {
+    fetchStats();
+  }, [fetchStats]);
+
   return (
     <div className="min-h-screen bg-[#050508] text-foreground flex flex-col md:flex-row antialiased selection:bg-primary selection:text-white">
       {/* Sidebar for Desktop */}
