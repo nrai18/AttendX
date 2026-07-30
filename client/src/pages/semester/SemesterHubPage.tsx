@@ -163,15 +163,17 @@ export const SemesterHubPage = () => {
   let progress = 0;
   let daysCompleted = 0;
   let daysRemaining = 0;
+  let totalDays = 0;
 
   if (activeSemester) {
-    const semStart = new Date(activeSemester.startDate);
-    const semEnd = new Date(activeSemester.endDate);
-    const totalDays = differenceInDays(semEnd, semStart);
-    daysCompleted = differenceInDays(today, semStart);
-    if (daysCompleted < 0) daysCompleted = 0;
-    if (daysCompleted > totalDays) daysCompleted = totalDays;
-    daysRemaining = totalDays - daysCompleted;
+    const semStart = startOfDay(new Date(activeSemester.startDate));
+    const semEnd = startOfDay(new Date(activeSemester.endDate));
+    // +1 to make both start and end dates inclusive
+    totalDays = differenceInDays(semEnd, semStart) + 1;
+    // Days completed = today - start + 1 (inclusive of today)
+    const rawCompleted = differenceInDays(today, semStart) + 1;
+    daysCompleted = Math.max(0, Math.min(rawCompleted, totalDays));
+    daysRemaining = Math.max(0, totalDays - daysCompleted);
     progress = totalDays > 0 ? Math.round((daysCompleted / totalDays) * 100) : 0;
   }
 
@@ -225,7 +227,7 @@ export const SemesterHubPage = () => {
               <div className="h-full bg-primary rounded-full transition-all duration-1000" style={{ width: `${progress}%` }} />
             </div>
             <div className="flex justify-between mt-2 text-xs text-muted-foreground font-medium">
-              <span>{daysCompleted} days completed</span>
+              <span>{daysCompleted} of {totalDays} days done</span>
               <span>{daysRemaining} days remaining</span>
             </div>
           </div>
