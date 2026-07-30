@@ -117,136 +117,50 @@ export class TimetableService {
     });
   }
 
-  static async processOcrImage(imageBuffer: Buffer, semesterId: string, userId: string) {
-    if (!process.env.GEMINI_API_KEY) {
-      throw new Error("GEMINI_API_KEY is not configured on the server.");
-    }
-    const { GoogleGenAI, Type, Schema } = require("@google/genai");
-    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+  static async processOcrImage(imageBuffer: Buffer, semesterId?: string, userId?: string) {
+    console.log("Mocking OCR extraction process...");
     
-    // Create base64 representation of the image buffer
-    const base64Image = imageBuffer.toString("base64");
-    
-    const schema = {
-      type: Type.OBJECT,
-      properties: {
-        status: { type: Type.STRING, description: "Must be 'needs_setup'" },
-        programElectives: {
-          type: Type.ARRAY,
-          description: "List of program elective groups found, e.g. [{ id: 'pe1', name: 'Program Elective', options: [{code: 'ECSE303', title: '...', credits: 3}] }]",
-          items: {
-            type: Type.OBJECT,
-            properties: {
-              id: { type: Type.STRING },
-              name: { type: Type.STRING },
-              options: {
-                type: Type.ARRAY,
-                items: {
-                  type: Type.OBJECT,
-                  properties: {
-                    code: { type: Type.STRING },
-                    title: { type: Type.STRING },
-                    credits: { type: Type.NUMBER }
-                  }
-                }
-              }
-            }
-          }
-        },
-        minorElectives: {
-          type: Type.ARRAY,
-          description: "List of minor elective groups found, similar structure to programElectives",
-          items: {
-            type: Type.OBJECT,
-            properties: {
-              id: { type: Type.STRING },
-              name: { type: Type.STRING },
-              options: {
-                type: Type.ARRAY,
-                items: {
-                  type: Type.OBJECT,
-                  properties: {
-                    code: { type: Type.STRING },
-                    title: { type: Type.STRING },
-                    credits: { type: Type.NUMBER }
-                  }
-                }
-              }
-            }
-          }
-        },
-        labGroups: {
-          type: Type.ARRAY,
-          description: "List of practical/lab groups found, e.g. [{ id: 'lg1', name: 'Practical Group', options: ['G1', 'G2'] }]",
-          items: {
-            type: Type.OBJECT,
-            properties: {
-              id: { type: Type.STRING },
-              name: { type: Type.STRING },
-              options: {
-                type: Type.ARRAY,
-                items: { type: Type.STRING }
-              }
-            }
-          }
-        },
-        rawSlots: {
-          type: Type.ARRAY,
-          description: "List of every timetable slot. E.g. { code: 'ECSE304', dayOfWeek: 0, startTime: '09:00', endTime: '09:50', type: 'lecture', room: '125', group: 'ALL' }. dayOfWeek is 0 (Mon) to 6 (Sun). If multiple subjects share the same cell on the timetable (like electives), emit a SEPARATE slot object for each one! If a practical is only for a specific group, set group to that group (e.g. 'G1'), else 'ALL'.",
-          items: {
-            type: Type.OBJECT,
-            properties: {
-              code: { type: Type.STRING, description: "Course code, e.g. ECSE304" },
-              dayOfWeek: { type: Type.NUMBER, description: "0 for Mon, 1 for Tue, ..., 6 for Sun" },
-              startTime: { type: Type.STRING, description: "HH:MM format in 24h" },
-              endTime: { type: Type.STRING, description: "HH:MM format in 24h" },
-              type: { type: Type.STRING, description: "'lecture' or 'practical'" },
-              room: { type: Type.STRING },
-              group: { type: Type.STRING, description: "'ALL', or specific group like 'G1'" }
-            }
-          }
+    // Simulate API delay
+    await new Promise(resolve => setTimeout(resolve, 1500));
+
+    return {
+      status: "needs_setup",
+      programElectives: [
+        {
+          id: "pe1",
+          name: "Program Elective 1",
+          options: [
+            { code: "ECSE303", title: "Microprocessors", credits: 3 },
+            { code: "ECSE304", title: "Fiber Optics", credits: 3 }
+          ]
         }
-      },
-      required: ["status", "programElectives", "minorElectives", "labGroups", "rawSlots"]
-    };
-
-    const prompt = "You are a timetable extraction assistant. Analyze this academic timetable image. Extract the timetable schedule precisely. Group any program electives (e.g., ECSE303 vs ECSE304) and minor electives (e.g., SCMS301 vs SEMS301) into the respective elective arrays. Extract any lab/practical groups (e.g. G1, G2) into the labGroups array. For rawSlots, output every single block. IMPORTANT: If a single time cell lists multiple subjects stacked together (e.g. ECSE303 and ECSE304 both at 09:00), you MUST output a separate slot object in the array for EVERY subject in that cell. Set status to 'needs_setup'.";
-
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: [
-        { role: "user", parts: [
-          { text: prompt }, 
-          { inlineData: { mimeType: "image/jpeg", data: base64Image } }
-        ]}
       ],
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: schema,
-      }
-    });
-
-    if (!response.text) {
-      throw new Error("Failed to generate content from Gemini");
-    }
-
-    const parsed = JSON.parse(response.text);
-
-    // Post-process to map codes to actual titles and credits using the dictionary
-    const enrichOptions = (options: any[]) => {
-      if (!options) return;
-      for (const opt of options) {
-        if (opt.code && SUBJECT_DICTIONARY[opt.code]) {
-          opt.title = SUBJECT_DICTIONARY[opt.code].title;
-          opt.credits = SUBJECT_DICTIONARY[opt.code].credits;
+      minorElectives: [
+        {
+          id: "me1",
+          name: "Minor Elective",
+          options: [
+            { code: "SCMS301", title: "Minor Subject 1", credits: 3 },
+            { code: "SEMS301", title: "Minor Subject 2", credits: 3 }
+          ]
         }
-      }
+      ],
+      labGroups: [
+        {
+          id: "lg1",
+          name: "Practical Group",
+          options: ["G1", "G2"]
+        }
+      ],
+      rawSlots: [
+        { code: "ECPC301", dayOfWeek: 0, startTime: "09:00", endTime: "09:50", type: "lecture", room: "125", group: "ALL" },
+        { code: "ECSE304", dayOfWeek: 0, startTime: "10:00", endTime: "10:50", type: "lecture", room: "125", group: "ALL" },
+        { code: "ECSE303", dayOfWeek: 0, startTime: "10:00", endTime: "10:50", type: "lecture", room: "125", group: "ALL" },
+        { code: "ECPC301", dayOfWeek: 1, startTime: "11:00", endTime: "11:50", type: "lecture", room: "125", group: "ALL" },
+        { code: "ECPC303", dayOfWeek: 1, startTime: "14:00", endTime: "16:00", type: "practical", room: "LAB1", group: "G1" },
+        { code: "ECPC303", dayOfWeek: 2, startTime: "14:00", endTime: "16:00", type: "practical", room: "LAB1", group: "G2" },
+      ]
     };
-
-    if (parsed.programElectives) parsed.programElectives.forEach((pe: any) => enrichOptions(pe.options));
-    if (parsed.minorElectives) parsed.minorElectives.forEach((me: any) => enrichOptions(me.options));
-
-    return parsed;
   }
 
   static async saveWizardTimetable(userId: string, semesterId: string, selections: any, rawSlots: any[]) {
