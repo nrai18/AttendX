@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Plus, Pencil, Trash2, Loader2, AlertCircle, TrendingUp, TrendingDown, CheckCircle2, XCircle } from "lucide-react";
+import { Plus, Pencil, Trash2, Loader2, AlertCircle, TrendingUp, TrendingDown, CheckCircle2, XCircle, Shield } from "lucide-react";
 import { api } from "../../lib/api";
 import { useAuthStore } from "../../stores/authStore";
 import { useNavigate } from "react-router-dom";
@@ -370,52 +370,122 @@ export const SubjectsPage = () => {
         </div>
       ) : (
         <div className="space-y-3">
-          {/* Overall Card */}
-          {mergedStats.length > 0 && (
-            <div className="bg-[#0c0d12] border border-white/10 rounded-2xl p-4 relative overflow-hidden">
-              <div
-                className="absolute top-0 left-0 w-1 h-full rounded-l-2xl"
-                style={{ backgroundColor: overallStat.colorHex }}
-              />
-              <div className="pl-3 space-y-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex-1">
-                    <h3 className="text-base font-bold text-white">Overall</h3>
-                    <p className={`text-xs mt-0.5 ${getStatusMessage(overallStat).color}`}>
-                      {getStatusMessage(overallStat).text}
-                    </p>
+          {/* Overall Hero Card */}
+          {mergedStats.length > 0 && (() => {
+            const pct = Math.min(overallPct, 100);
+            const radius = 54;
+            const circumference = 2 * Math.PI * radius;
+            const strokeDash = (pct / 100) * circumference;
+            const isGood = overallPct >= overallTarget;
+            const ringColor = isGood ? "#10b981" : "#ef4444";
+            const bgGlow = isGood ? "from-emerald-500/10" : "from-rose-500/10";
+
+            return (
+              <div className={`relative rounded-3xl border border-white/10 overflow-hidden bg-gradient-to-br ${bgGlow} to-transparent p-6`}>
+                {/* Subtle background glow */}
+                <div
+                  className="absolute -top-16 -right-16 w-64 h-64 rounded-full blur-3xl opacity-20"
+                  style={{ backgroundColor: ringColor }}
+                />
+
+                <div className="relative z-10 flex flex-col md:flex-row items-center gap-6">
+                  {/* Circular Ring */}
+                  <div className="relative flex-shrink-0">
+                    <svg width="140" height="140" className="-rotate-90">
+                      {/* Track */}
+                      <circle
+                        cx="70" cy="70" r={radius}
+                        fill="none"
+                        stroke="rgba(255,255,255,0.05)"
+                        strokeWidth="10"
+                      />
+                      {/* Progress */}
+                      <circle
+                        cx="70" cy="70" r={radius}
+                        fill="none"
+                        stroke={ringColor}
+                        strokeWidth="10"
+                        strokeLinecap="round"
+                        strokeDasharray={`${strokeDash} ${circumference}`}
+                        style={{ transition: "stroke-dasharray 0.8s ease" }}
+                      />
+                      {/* Target marker */}
+                      <circle
+                        cx="70" cy="70" r={radius}
+                        fill="none"
+                        stroke="rgba(255,255,255,0.25)"
+                        strokeWidth="2"
+                        strokeDasharray={`2 ${circumference - 2}`}
+                        strokeDashoffset={-((overallTarget / 100) * circumference)}
+                      />
+                    </svg>
+                    {/* Centre text */}
+                    <div className="absolute inset-0 flex flex-col items-center justify-center">
+                      <span className="text-3xl font-black text-white leading-none">
+                        {overallPct.toFixed(1)}
+                      </span>
+                      <span className="text-xs text-white/40 font-medium mt-0.5">%</span>
+                    </div>
                   </div>
-                  <StatBadge stat={overallStat} />
-                </div>
-                <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
-                  <div
-                    className="h-full rounded-full transition-all duration-500"
-                    style={{
-                      width: `${Math.min(overallPct, 100)}%`,
-                      backgroundColor: overallStat.colorHex,
-                    }}
-                  />
-                </div>
-                <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                  <span className="flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block" />
-                    Att: <span className="text-white font-medium">{overallAttended}</span>
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-red-400 inline-block" />
-                    Miss: <span className="text-white font-medium">{overallMissed}</span>
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-yellow-400 inline-block" />
-                    Off: <span className="text-white font-medium">{overallOff}</span>
-                  </span>
-                  <span className="text-muted-foreground">
-                    Tot: <span className="text-white font-medium">{overallTotal}</span>
-                  </span>
+
+                  {/* Right content */}
+                  <div className="flex-1 space-y-4 text-center md:text-left">
+                    <div>
+                      <div className="flex items-center justify-center md:justify-start gap-2 mb-1">
+                        <Shield className="w-4 h-4" style={{ color: ringColor }} />
+                        <h2 className="text-lg font-bold text-white">Overall Attendance</h2>
+                      </div>
+                      <p className={`text-sm font-medium`} style={{ color: ringColor }}>
+                        {getStatusMessage(overallStat).text}
+                      </p>
+                      <p className="text-xs text-white/40 mt-1">
+                        Target: <span className="text-white/60 font-semibold">{overallTarget}%</span>
+                        {isGood
+                          ? <span className="text-emerald-400 ml-2">+{(overallPct - overallTarget).toFixed(1)}% buffer</span>
+                          : <span className="text-rose-400 ml-2">{(overallTarget - overallPct).toFixed(1)}% short</span>
+                        }
+                      </p>
+                    </div>
+
+                    {/* Stats grid */}
+                    <div className="grid grid-cols-4 gap-2">
+                      {[
+                        { label: "Attended", value: overallAttended, color: "text-emerald-400", bg: "bg-emerald-500/10" },
+                        { label: "Missed", value: overallMissed, color: "text-rose-400", bg: "bg-rose-500/10" },
+                        { label: "Off", value: overallOff, color: "text-yellow-400", bg: "bg-yellow-500/10" },
+                        { label: "Total", value: overallTotal, color: "text-white", bg: "bg-white/5" },
+                      ].map(({ label, value, color, bg }) => (
+                        <div key={label} className={`${bg} rounded-xl p-2.5 text-center`}>
+                          <p className={`text-lg font-bold ${color}`}>{value}</p>
+                          <p className="text-[10px] text-white/40 mt-0.5 uppercase tracking-wide">{label}</p>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Linear progress bar */}
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-[10px] text-white/30">
+                        <span>0%</span>
+                        <span className="text-white/50">Target {overallTarget}%</span>
+                        <span>100%</span>
+                      </div>
+                      <div className="h-2 bg-white/5 rounded-full overflow-hidden relative">
+                        {/* Target line */}
+                        <div
+                          className="absolute top-0 bottom-0 w-0.5 bg-white/30 z-10"
+                          style={{ left: `${overallTarget}%` }}
+                        />
+                        <div
+                          className="h-full rounded-full transition-all duration-700"
+                          style={{ width: `${Math.min(overallPct, 100)}%`, backgroundColor: ringColor }}
+                        />
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           {/* Per-subject cards */}
           {mergedStats.map((stat) => {

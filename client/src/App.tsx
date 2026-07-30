@@ -7,7 +7,6 @@ import { LoginPage } from "./pages/auth/LoginPage";
 import { SignupPage } from "./pages/auth/SignupPage";
 import { SemesterHubPage } from "./pages/semester/SemesterHubPage";
 import { SubjectsPage } from "./pages/subjects/SubjectsPage";
-import { SubjectsOverviewPage } from "./pages/subjects/SubjectsOverviewPage";
 import { SubjectDetailPage } from "./pages/subjects/SubjectDetailPage";
 import { TimetablePage } from "./pages/timetable/TimetablePage";
 import { TodayPage } from "./pages/attendance/TodayPage";
@@ -79,7 +78,7 @@ export function App() {
           <Route path="/timetable" element={<TimetablePage />} />
           <Route path="/semester" element={<SemesterHubPage />} />
           <Route path="/calendar" element={<CalendarPage />} />
-          <Route path="/subjects" element={<SubjectsOverviewPage />} />
+          <Route path="/subjects" element={<SubjectsPage />} />
           <Route path="/subjects/manage" element={<SubjectsPage />} />
           <Route path="/subjects/:id" element={<SubjectDetailPage />} />
           <Route path="/classrooms" element={<ClassroomsPage />} />
