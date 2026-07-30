@@ -36,4 +36,33 @@ export class AttendanceController {
     const stats = await AttendanceService.getSubjectStats(req.user!.userId, semesterId as string | undefined);
     res.json(stats);
   }
+
+  static async getSingleSubjectStats(req: AuthenticatedRequest, res: Response) {
+    const { subjectId } = req.params;
+    try {
+      const stats = await AttendanceService.getSingleSubjectStats(req.user!.userId, subjectId);
+      res.json(stats);
+    } catch (error: any) {
+      if (error.message === "Subject not found") {
+        return res.status(404).json({ message: "Subject not found" });
+      }
+      console.error(error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  }
+
+  static async getMonthlyCalendar(req: AuthenticatedRequest, res: Response) {
+    const { month } = req.query; // YYYY-MM
+    if (!month || typeof month !== "string") {
+      return res.status(400).json({ message: "month is required (YYYY-MM)" });
+    }
+
+    try {
+      const calendar = await AttendanceService.getMonthlyCalendar(req.user!.userId, month);
+      res.json(calendar);
+    } catch (error: any) {
+      console.error("Calendar Error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  }
 }

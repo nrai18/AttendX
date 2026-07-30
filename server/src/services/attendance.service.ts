@@ -167,7 +167,7 @@ export class AttendanceService {
       const attended = records.filter(a => a.status === "present" || a.status === "medical" || a.status === "od").length;
       const total = records.length;
       
-      let percentage = total > 0 ? (attended / total) * 100 : 100;
+      let percentage = total > 0 ? (attended / total) * 100 : 0;
       
       return {
         id: sub.id,
@@ -180,5 +180,199 @@ export class AttendanceService {
         percentage,
       };
     });
+  }
+
+  static async getSingleSubjectStats(userId: string, subjectId: string) {
+    const subject = await prisma.subject.findFirst({
+      where: { id: subjectId, userId },
+      include: {
+        semester: true,
+        timetableSlots: true,
+        attendance: true,
+      }
+    });
+
+    if (!subject) throw new Error("Subject not found");
+
+    const records = subject.attendance.filter(a => a.status === "present" || a.status === "absent" || a.status === "medical" || a.status === "od");
+    const attended = records.filter(a => a.status === "present" || a.status === "medical" || a.status === "od").length;
+    const total = records.length;
+    let percentage = total > 0 ? (attended / total) * 100 : 0;
+
+    // Calculate remaining classes in the semester
+    let remainingClasses = 0;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    // Only calculate if semester is active/future
+    if (subject.semester && subject.semester.endDate >= today) {
+      const startProjection = today > subject.semester.startDate ? today : subject.semester.startDate;
+      const endDate = subject.semester.endDate;
+      
+      const slots = subject.timetableSlots;
+      
+      // Basic projection: count occurrences of each dayOfWeek from tomorrow to endDate
+      // To avoid double counting today, we project from tomorrow.
+      const tomorrow = new Date(startProjection);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+
+      if (tomorrow <= endDate) {
+        for (let d = new Date(tomorrow); d <= endDate; d.setDate(d.getDate() + 1)) {
+          // our DB uses 0=Mon, 6=Sun
+          let dbDayOfWeek = d.getDay() === 0 ? 6 : d.getDay() - 1;
+          const slotsOnDay = slots.filter(s => s.dayOfWeek === dbDayOfWeek).length;
+          remainingClasses += slotsOnDay;
+        }
+      }
+    }
+
+    return {
+      id: subject.id,
+      name: subject.name,
+      code: subject.code,
+      colorHex: subject.colorHex,
+      target: subject.targetAttendance || 75,
+      attended,
+      total,
+      percentage,
+      remainingClasses
+    };
+  }
+
+  static async getMonthlyCalendar(userId: string, monthStr: string) {
+    const [year, m] = monthStr.split("-").map(Number);
+    const startDate = new Date(year, m - 1, 1);
+    const endDate = new Date(year, m, 0); 
+    endDate.setHours(23, 59, 59, 999);
+
+    const activeSemester = await prisma.semester.findFirst({
+      where: { userId, isActive: true },
+    });
+
+    if (!activeSemester) {
+      return { days: {}, stats: { days: {}, lectures: {} } };
+    }
+
+    const regularSlots = await prisma.timetableSlot.findMany({
+      where: { semesterId: activeSemester.id },
+    });
+
+    const overrides = await prisma.timetableOverride.findMany({
+      where: {
+        semesterId: activeSemester.id,
+        date: { gte: startDate, lte: endDate },
+      },
+    });
+
+    const attendances = await prisma.attendance.findMany({
+      where: {
+        userId,
+        date: { gte: startDate, lte: endDate },
+      },
+    });
+
+    const globalEvents = await prisma.event.findMany({
+      where: {
+        OR: [
+          { semesterId: activeSemester.id },
+          { userId },
+          { classroomId: null }
+        ],
+        date: { lte: endDate }
+      }
+    });
+
+    const daysObj: Record<string, string> = {};
+    const dayStats = { not_marked: 0, off: 0, missed: 0, attended: 0, mixed: 0 };
+    const lectureStats = { off: 0, missed: 0, attended: 0, total: 0, percentage: 0 };
+
+    for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+      const dateKey = d.toISOString().split("T")[0]; // YYYY-MM-DD
+      const jsDayOfWeek = d.getDay();
+      const dbDayOfWeek = jsDayOfWeek === 0 ? 6 : jsDayOfWeek - 1; // 0=Mon, 6=Sun
+
+      const activeEvent = globalEvents.find(e => {
+        const start = new Date(e.date).setHours(0,0,0,0);
+        const end = e.endDate ? new Date(e.endDate).setHours(23,59,59,999) : new Date(e.date).setHours(23,59,59,999);
+        return d.getTime() >= start && d.getTime() <= end;
+      });
+      const isGlobalOff = activeEvent && ["holiday", "vacation", "fest", "institute", "midsem", "endsem"].includes(activeEvent.eventType);
+      
+      const daySlots = regularSlots.filter(s => s.dayOfWeek === dbDayOfWeek);
+      const dayOverrides = overrides.filter(o => o.date.getTime() === d.getTime());
+      
+      let expectedClasses = 0;
+
+      for (const slot of daySlots) {
+        const over = dayOverrides.find(o => o.originalSlotId === slot.id);
+        if (over && (over.overrideType === "holiday" || over.overrideType === "cancelled")) {
+          // skip
+        } else {
+          if (!isGlobalOff) expectedClasses++;
+        }
+      }
+      
+      const extras = dayOverrides.filter(o => o.overrideType === "extra_class");
+      expectedClasses += extras.length;
+
+      const dayAtts = attendances.filter(a => a.date.getTime() === d.getTime());
+
+      let status = "off";
+
+      if (expectedClasses === 0) {
+        status = "off";
+      } else if (dayAtts.length < expectedClasses) {
+        status = "not_marked";
+      } else {
+        let presentCount = 0;
+        let absentCount = 0;
+        let offCount = 0;
+
+        for (const a of dayAtts) {
+          if (a.status === "present" || a.status === "medical" || a.status === "od") presentCount++;
+          else if (a.status === "absent") absentCount++;
+          else if (a.status === "off" || a.status === "cancelled") offCount++;
+        }
+
+        if (presentCount > 0 && absentCount === 0) status = "attended";
+        else if (absentCount > 0 && presentCount === 0) status = "missed";
+        else if (presentCount > 0 && absentCount > 0) status = "mixed";
+        else status = "off";
+      }
+
+      const today = new Date();
+      today.setHours(0,0,0,0);
+      
+      if (d > today) {
+        if (status === "not_marked") status = "future";
+      }
+
+      daysObj[dateKey] = status;
+
+      if (d <= today) {
+        if (status === "not_marked") dayStats.not_marked++;
+        else if (status === "off") dayStats.off++;
+        else if (status === "missed") dayStats.missed++;
+        else if (status === "attended") dayStats.attended++;
+        else if (status === "mixed") dayStats.mixed++;
+
+        for (const a of dayAtts) {
+          if (a.status === "present" || a.status === "medical" || a.status === "od") lectureStats.attended++;
+          else if (a.status === "absent") lectureStats.missed++;
+          else if (a.status === "off" || a.status === "cancelled") lectureStats.off++;
+        }
+      }
+    }
+
+    lectureStats.total = lectureStats.attended + lectureStats.missed;
+    lectureStats.percentage = lectureStats.total > 0 ? (lectureStats.attended / lectureStats.total) * 100 : 0;
+
+    return {
+      days: daysObj,
+      stats: {
+        days: dayStats,
+        lectures: lectureStats
+      }
+    };
   }
 }

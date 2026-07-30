@@ -9,5 +9,7 @@ router.use(authenticate);
 router.get("/today", AttendanceController.getTodayAgenda);
 router.post("/mark", AttendanceController.markAttendance);
 router.get("/stats", AttendanceController.getSubjectStats);
+router.get("/stats/:subjectId", AttendanceController.getSingleSubjectStats);
+router.get("/calendar", AttendanceController.getMonthlyCalendar);
 
 export default router;

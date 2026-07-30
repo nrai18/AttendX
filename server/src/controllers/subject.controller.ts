@@ -10,8 +10,12 @@ export class SubjectController {
   }
 
   static async create(req: AuthenticatedRequest, res: Response) {
-    const subject = await SubjectService.createSubject(req.user!.userId, req.body);
-    res.status(201).json(subject);
+    try {
+      const subject = await SubjectService.createSubject(req.user!.userId, req.body);
+      res.status(201).json(subject);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
   }
 
   static async update(req: AuthenticatedRequest, res: Response) {

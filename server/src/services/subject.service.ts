@@ -16,10 +16,36 @@ export class SubjectService {
   }
 
   static async createSubject(userId: string, data: any) {
+    let semesterId = data.semesterId;
+
+    if (!semesterId) {
+      let activeSemester = await prisma.semester.findFirst({
+        where: { userId, isActive: true }
+      });
+      
+      if (!activeSemester) {
+        // Auto-create a default semester for the dev user
+        const startDate = new Date();
+        const endDate = new Date();
+        endDate.setMonth(endDate.getMonth() + 6); // 6 months from now
+        
+        activeSemester = await prisma.semester.create({
+          data: {
+            userId,
+            name: "Current Semester",
+            startDate,
+            endDate,
+            isActive: true,
+          }
+        });
+      }
+      semesterId = activeSemester.id;
+    }
+
     return prisma.subject.create({
       data: {
         userId,
-        semesterId: data.semesterId,
+        semesterId,
         name: data.name,
         code: data.code,
         credits: data.credits ? Number(data.credits) : undefined,
