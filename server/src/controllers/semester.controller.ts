@@ -18,6 +18,16 @@ export class SemesterController {
     res.status(201).json(semester);
   }
 
+  static async update(req: AuthenticatedRequest, res: Response) {
+    try {
+      const semester = await SemesterService.updateSemester(req.user!.userId, req.params.id, req.body);
+      res.json(semester);
+    } catch (error) {
+      console.error("Update semester error:", error);
+      res.status(500).json({ error: "Failed to update semester" });
+    }
+  }
+
   static async remove(req: AuthenticatedRequest, res: Response) {
     const wipe = req.query.wipe === "true";
     await SemesterService.deleteSemester(req.user!.userId, req.params.id, wipe);

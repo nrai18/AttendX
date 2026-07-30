@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { format, addMonths, subMonths, startOfMonth, endOfMonth, startOfWeek, endOfWeek, isSameMonth, isSameDay, addDays, isAfter, startOfDay, differenceInDays } from "date-fns";
-import { ChevronLeft, ChevronRight, Upload, Calendar as CalendarIcon, Loader2, Sparkles, AlertTriangle, ListFilter, AlignLeft, CalendarDays, Timer } from "lucide-react";
+import { ChevronLeft, ChevronRight, Upload, Calendar as CalendarIcon, Loader2, Sparkles, AlertTriangle, ListFilter, AlignLeft, CalendarDays, Timer, Pencil, Check, X } from "lucide-react";
 import { api } from "../../lib/api";
 import { EventWizardModal } from "./EventWizardModal";
 import { Link } from "react-router-dom";
@@ -37,12 +37,19 @@ export const SemesterHubPage = () => {
   const [isWizardOpen, setIsWizardOpen] = useState(false);
   const [wizardPayload, setWizardPayload] = useState<any>(null);
 
+  // Edit semester dates state
+  const [isEditingDates, setIsEditingDates] = useState(false);
+  const [editStartDate, setEditStartDate] = useState("");
+  const [editEndDate, setEditEndDate] = useState("");
+
   const fetchData = async () => {
     try {
       setIsLoading(true);
       const semRes = await api.get("/semesters/active");
       if (semRes.data) {
         setActiveSemester(semRes.data);
+        setEditStartDate(semRes.data.startDate?.split("T")[0] ?? "");
+        setEditEndDate(semRes.data.endDate?.split("T")[0] ?? "");
       }
 
       const eventsRes = await api.get("/events");
@@ -113,6 +120,21 @@ export const SemesterHubPage = () => {
     } catch (error) {
       console.error("Failed to save events:", error);
       alert("Failed to save events.");
+    }
+  };
+
+  const handleSaveDates = async () => {
+    if (!activeSemester || !editStartDate || !editEndDate) return;
+    try {
+      await api.patch(`/semesters/${activeSemester.id}`, {
+        startDate: editStartDate,
+        endDate: editEndDate,
+      });
+      setIsEditingDates(false);
+      fetchData();
+    } catch (error) {
+      console.error("Failed to update semester dates:", error);
+      alert("Failed to update dates.");
     }
   };
 
@@ -219,17 +241,59 @@ export const SemesterHubPage = () => {
       {activeSemester && (
         <div className="bg-[#0c0d12] border border-white/10 rounded-2xl p-6 flex flex-col md:flex-row md:items-center gap-6 shadow-xl">
           <div className="flex-1">
-            <div className="flex justify-between items-end mb-2">
+            <div className="flex justify-between items-center mb-2">
               <span className="text-sm font-medium text-white">Semester Progress</span>
-              <span className="text-2xl font-bold text-primary">{progress}%</span>
+              <div className="flex items-center gap-2">
+                <span className="text-2xl font-bold text-primary">{progress}%</span>
+                {!isEditingDates ? (
+                  <button
+                    onClick={() => setIsEditingDates(true)}
+                    title="Edit semester dates"
+                    className="p-1 rounded-lg text-muted-foreground hover:text-white hover:bg-white/10 transition-colors"
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                  </button>
+                ) : (
+                  <div className="flex gap-1">
+                    <button onClick={handleSaveDates} className="p-1 rounded-lg text-emerald-400 hover:bg-white/10 transition-colors"><Check className="w-3.5 h-3.5" /></button>
+                    <button onClick={() => setIsEditingDates(false)} className="p-1 rounded-lg text-rose-400 hover:bg-white/10 transition-colors"><X className="w-3.5 h-3.5" /></button>
+                  </div>
+                )}
+              </div>
             </div>
-            <div className="w-full h-3 bg-white/5 rounded-full overflow-hidden">
-              <div className="h-full bg-primary rounded-full transition-all duration-1000" style={{ width: `${progress}%` }} />
-            </div>
-            <div className="flex justify-between mt-2 text-xs text-muted-foreground font-medium">
-              <span>{daysCompleted} of {totalDays} days done</span>
-              <span>{daysRemaining} days remaining</span>
-            </div>
+
+            {isEditingDates ? (
+              <div className="grid grid-cols-2 gap-3 mb-3">
+                <div className="space-y-1">
+                  <label className="text-xs text-muted-foreground uppercase tracking-wider">Class Commencement</label>
+                  <input
+                    type="date"
+                    value={editStartDate}
+                    onChange={e => setEditStartDate(e.target.value)}
+                    className="w-full bg-[#13151a] border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs text-muted-foreground uppercase tracking-wider">End-Sem Lab Exam Last Day</label>
+                  <input
+                    type="date"
+                    value={editEndDate}
+                    onChange={e => setEditEndDate(e.target.value)}
+                    className="w-full bg-[#13151a] border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+                  />
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="w-full h-3 bg-white/5 rounded-full overflow-hidden">
+                  <div className="h-full bg-primary rounded-full transition-all duration-1000" style={{ width: `${progress}%` }} />
+                </div>
+                <div className="flex justify-between mt-2 text-xs text-muted-foreground font-medium">
+                  <span>{daysCompleted} of {totalDays} days done</span>
+                  <span>{daysRemaining} days remaining</span>
+                </div>
+              </>
+            )}
           </div>
           <div className="hidden md:block w-px h-16 bg-white/10" />
           <div className="flex-1">
