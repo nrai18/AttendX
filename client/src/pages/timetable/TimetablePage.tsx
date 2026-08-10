@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Plus, Trash2, Loader2, CalendarPlus, Upload, Image as ImageIcon, X, Edit2 } from "lucide-react";
+import { Plus, Trash2, Loader2, CalendarPlus, Upload, Image as ImageIcon, X, Edit2, FileText } from "lucide-react";
 import { api } from "../../lib/api";
 import { TimetableWizardModal } from "./TimetableWizardModal";
 import { SortableSlot } from "./SortableSlot";
@@ -233,11 +233,15 @@ export const TimetablePage = () => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
       setSelectedImage(file);
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setImagePreview(reader.result as string);
-      };
-      reader.readAsDataURL(file);
+      if (file.type === "application/pdf") {
+        setImagePreview("pdf");
+      } else {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          setImagePreview(reader.result as string);
+        };
+        reader.readAsDataURL(file);
+      }
     }
   };
 
@@ -367,9 +371,9 @@ export const TimetablePage = () => {
               </button>
             </div>
             
-            <div className="p-6 space-y-6">
+             <div className="p-6 space-y-6">
               <div className="text-sm text-muted-foreground text-center">
-                Upload a clear image of your weekly schedule. We'll automatically parse subjects, days, and times!
+                Upload a clear image or PDF of your weekly schedule. We'll automatically parse subjects, days, and times!
               </div>
               
               <div 
@@ -380,7 +384,7 @@ export const TimetablePage = () => {
               >
                 <input 
                   type="file" 
-                  accept="image/*" 
+                  accept="image/*,application/pdf" 
                   className="hidden" 
                   ref={fileInputRef}
                   onChange={handleImageSelect}
@@ -388,8 +392,18 @@ export const TimetablePage = () => {
                 
                 {imagePreview ? (
                   <div className="space-y-4">
-                    <img src={imagePreview} alt="Preview" className="max-h-48 mx-auto rounded-lg object-contain" />
-                    <p className="text-sm font-medium text-blue-400">Click to change image</p>
+                    {imagePreview === "pdf" ? (
+                      <div className="flex flex-col items-center justify-center p-6 bg-white/5 rounded-xl border border-white/10">
+                        <FileText className="w-12 h-12 text-rose-400 mb-2" />
+                        <p className="text-sm font-medium text-white max-w-[200px] truncate">{selectedImage?.name}</p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {selectedImage ? (selectedImage.size / 1024 / 1024).toFixed(2) : "0.00"} MB • PDF
+                        </p>
+                      </div>
+                    ) : (
+                      <img src={imagePreview} alt="Preview" className="max-h-48 mx-auto rounded-lg object-contain" />
+                    )}
+                    <p className="text-sm font-medium text-blue-400">Click to change file</p>
                   </div>
                 ) : (
                   <div className="space-y-3 flex flex-col items-center">
@@ -398,7 +412,7 @@ export const TimetablePage = () => {
                     </div>
                     <div>
                       <p className="text-sm font-medium text-white">Click to browse files</p>
-                      <p className="text-xs text-muted-foreground mt-1">PNG, JPG, JPEG up to 5MB</p>
+                      <p className="text-xs text-muted-foreground mt-1">PNG, JPG, PDF up to 5MB</p>
                     </div>
                   </div>
                 )}
@@ -412,7 +426,7 @@ export const TimetablePage = () => {
                 {isUploading ? (
                   <>
                     <Loader2 className="w-5 h-5 animate-spin" />
-                    Analyzing Image...
+                    Analyzing File...
                   </>
                 ) : (
                   "Extract Schedule"

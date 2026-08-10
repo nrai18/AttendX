@@ -118,7 +118,7 @@ export class TimetableService {
     });
   }
 
-  static async processOcrImage(imageBuffer: Buffer, semesterId: string, userId: string) {
+  static async processOcrImage(imageBuffer: Buffer, mimeType: string, semesterId: string, userId: string) {
     // If GEMINI_API_KEY is not defined, fallback to structured mock timetable
     if (!process.env.GEMINI_API_KEY) {
       console.log("GEMINI_API_KEY is not defined. Falling back to mock structured timetable.");
@@ -230,7 +230,7 @@ Rules:
             role: "user",
             parts: [
               { text: prompt },
-              { inlineData: { mimeType: "image/jpeg", data: base64Image } }
+              { inlineData: { mimeType: mimeType, data: base64Image } }
             ]
           }
         ],

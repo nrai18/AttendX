@@ -51,7 +51,7 @@ export class TimetableController {
 
     try {
       // Mocking OCR processing to return setup payload
-      const ocrResult = await TimetableService.processOcrImage(req.file.buffer, semesterId, userId);
+      const ocrResult = await TimetableService.processOcrImage(req.file.buffer, req.file.mimetype, semesterId, userId);
       res.status(200).json(ocrResult);
     } catch (error: any) {
       console.error("OCR Import Error:", error);
