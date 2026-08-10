@@ -53,7 +53,8 @@ export const TodayPage = () => {
       }
 
       const res = await api.get(`/attendance/today?date=${targetDateStr}`);
-      setAgenda(res.data);
+      // Normalise to array — guard against null/object responses
+      setAgenda(Array.isArray(res.data) ? res.data : []);
     } catch (error) {
       console.error("Failed to fetch today data:", error);
     } finally {
