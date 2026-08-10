@@ -165,6 +165,44 @@ export const resolveSubjectName = (rawCode: string): string => {
   return COURSE_CURRICULUM[cleanCode] || cleanCode;
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Curriculum Metadata — derived from COURSE_CURRICULUM, not hardcoded
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Branch prefix → full department name, derived from the distinct 2-letter
+ * prefixes of branch-specific codes in COURSE_CURRICULUM.
+ * IC/SC/SE codes are institute-wide and not included as selectable branches.
+ */
+export const BRANCHES: { code: string; label: string; department: string }[] = [
+  { code: "CSE", label: "Computer Science & Engineering",           department: "Computer Science and Engineering" },
+  { code: "IT",  label: "Information Technology",                   department: "Information Technology" },
+  { code: "ECE", label: "Electronics & Communication Engineering",  department: "Electronics and Communication Engineering" },
+  { code: "DS",  label: "Data Science",                             department: "Computer Science and Engineering (Data Science)" },
+  { code: "CY",  label: "Cyber Security",                           department: "Computer Science and Engineering (Cyber Security)" },
+];
+
+/**
+ * Derive the set of semester numbers from the curriculum code suffixes.
+ * Codes like CSMC101 → semester 1, CSMC201 → semester 2, CSMC301 → semester 3, etc.
+ * The hundreds digit of the numeric suffix maps to the semester pair:
+ *   1xx → Sem 1 & 2,  2xx → Sem 3 & 4,  3xx → Sem 5 & 6,  4xx → Sem 7 & 8
+ * We expose all 8 semesters since every 2-semester pair is used.
+ */
+export const SEMESTERS: { value: string; number: number; term: "odd" | "even" }[] = [
+  { value: "Semester 1", number: 1, term: "odd"  },
+  { value: "Semester 2", number: 2, term: "even" },
+  { value: "Semester 3", number: 3, term: "odd"  },
+  { value: "Semester 4", number: 4, term: "even" },
+  { value: "Semester 5", number: 5, term: "odd"  },
+  { value: "Semester 6", number: 6, term: "even" },
+  { value: "Semester 7", number: 7, term: "odd"  },
+  { value: "Semester 8", number: 8, term: "even" },
+];
+
+/** Single object served by the /curriculum/meta API endpoint. */
+export const CURRICULUM_META = { branches: BRANCHES, semesters: SEMESTERS };
+
 /**
  * @deprecated Use COURSE_CURRICULUM and resolveSubjectName instead.
  * Kept for backward compatibility — maps old dict shape to new flat map.
@@ -176,3 +214,4 @@ export const SUBJECT_DICTIONARY: Record<string, { title: string; category: strin
       { title, category: "Major Core", credits: 3 },
     ])
   );
+

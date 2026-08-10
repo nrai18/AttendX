@@ -212,12 +212,18 @@ export class TimetableService {
                 endTime: { type: Type.STRING, description: "24h HH:MM format" },
                 type: { type: Type.STRING, description: "'lecture', 'practical', or 'tutorial'" },
                 room: { type: Type.STRING },
-                group: { type: Type.STRING, description: "'ALL' or specific group like 'G1', 'G2'" }
+                group: { type: Type.STRING, description: "'ALL' or specific group like 'G1', 'G2'" },
+                section: { type: Type.STRING, description: "Section label e.g. 'A', 'B'. Use 'ALL' if applies to all sections." }
               }
             }
+          },
+          sections: {
+            type: Type.ARRAY,
+            description: "List of distinct section labels found on this timetable page (e.g. ['A','B']). Return [] if no separate sections exist.",
+            items: { type: Type.STRING }
           }
         },
-        required: ["status", "programElectives", "minorElectives", "labGroups", "rawSlots"]
+        required: ["status", "programElectives", "minorElectives", "labGroups", "rawSlots", "sections"]
       };
 
       const prompt = `You are an expert academic timetable extraction assistant.
@@ -226,7 +232,7 @@ First, identify the correct page or section that matches the following student c
 - Semester/Year: Look for a page/header matching "${semesterName}" (e.g., Semester 3, Semester 5, Semester 7).
 - Branch/Department: Look for a page/header matching "${userDepartment}" (e.g. "Computer Science and Engineering", "Electronics and Communication Engineering", or "Information Technology").
 
-Once you have identified the single page matching these criteria, carefully extract every single class slot from THAT SPECIFIC PAGE ONLY. Ignore all other pages.
+Once you have identified the page matching these criteria, scan for ALL sections (e.g., Section A, Section B) on that page.
 
 Rules:
 1. Extract ALL lecture, practical/lab, and tutorial slots.
@@ -234,7 +240,9 @@ Rules:
 3. For practicals, identify which group (G1, G2, etc.) they belong to. If it applies to all, use 'ALL'.
 4. Convert times to 24-hour HH:MM format.
 5. Days: Mon=0, Tue=1, Wed=2, Thu=3, Fri=4, Sat=5, Sun=6.
-6. Set status to 'needs_setup'.`;
+6. Set status to 'needs_setup'.
+7. In the 'sections' field, list every distinct section label found on this page (e.g. ["A","B"]). If the page has no section split, return [].
+8. In each rawSlot, set the 'section' field to the section label it belongs to (e.g. 'A'), or 'ALL' if it applies to all sections.`;`;
 
       const response = await ai.models.generateContent({
         model: "gemini-3.6-flash",
@@ -362,26 +370,60 @@ Rules:
     const semesterNumber = match ? parseInt(match[1], 10) : 5; // Default to 5
 
     // 2. Filter slots based on user selections and mapping rules
-    const { programElectiveCode, minorElectiveCode, labGroup } = selections;
-    
-    const colors = ["#ef4444", "#f97316", "#f59e0b", "#84cc16", "#22c55e", "#06b6d4", "#3b82f6", "#6366f1", "#a855f7", "#ec4899"];
-    let colorIndex = 0;
+    const {
+      programElectiveCode,
+      minorElectiveCode,
+      labGroup,
+      section,
+      // The full elective option lists from the OCR payload (so we know ALL codes in each group)
+      programElectiveCodes = [] as string[],
+      minorElectiveCodes   = [] as string[],
+    } = selections;
 
-    const filteredSlots = rawSlots.filter(slot => {
-      // General lab group filter (applies to all practicals with lab group sub-divisions)
-      if (slot.group && slot.group !== "ALL" && slot.group !== labGroup) return false;
+    const normalizedLabGroup = (labGroup || "").trim().toUpperCase();
 
-      // Semester 5 elective resolution
-      if (semesterNumber === 5) {
-        // Resolve Program Electives (ECSE303 vs ECSE304)
-        if ((slot.code === "ECSE303" || slot.code === "ECSE304") && slot.code !== programElectiveCode) return false;
-        // Resolve Minor Electives (SCMS301 vs SEMS301)
-        if ((slot.code === "SCMS301" || slot.code === "SEMS301") && slot.code !== minorElectiveCode) return false;
+    const filteredSlots = rawSlots.filter((slot: any) => {
+      // ── 1. Lab group filter ──────────────────────────────────────────────
+      // Drop this slot if it belongs to a specific group that isn't the user's
+      const slotGroup = (slot.group || "ALL").trim().toUpperCase();
+      if (slotGroup !== "ALL" && slotGroup !== normalizedLabGroup) {
+        console.log(`  [SKIP] ${slot.code} day=${slot.dayOfWeek} — group ${slotGroup} ≠ ${normalizedLabGroup}`);
+        return false;
       }
 
-      // Semester 3 and 7 have no electives configured in this phase, so they bypass PE filtering
+      // ── 2. Section filter (post-OCR, optional) ───────────────────────────
+      if (section) {
+        const slotSection = (slot.section || "ALL").trim().toUpperCase();
+        const userSection = section.trim().toUpperCase();
+        if (slotSection !== "ALL" && slotSection !== userSection) {
+          console.log(`  [SKIP] ${slot.code} day=${slot.dayOfWeek} — section ${slotSection} ≠ ${userSection}`);
+          return false;
+        }
+      }
+
+      // ── 3. Elective filtering (any semester that has elective selections) ─
+      // Program elective: if this slot's code is one of the PE options,
+      // keep it only if it matches the user's chosen code
+      if (programElectiveCodes.length > 0 && programElectiveCodes.includes(slot.code)) {
+        if (slot.code !== programElectiveCode) {
+          console.log(`  [SKIP] ${slot.code} — PE not chosen (user picked ${programElectiveCode})`);
+          return false;
+        }
+      }
+
+      // Minor elective: same logic
+      if (minorElectiveCodes.length > 0 && minorElectiveCodes.includes(slot.code)) {
+        if (slot.code !== minorElectiveCode) {
+          console.log(`  [SKIP] ${slot.code} — ME not chosen (user picked ${minorElectiveCode})`);
+          return false;
+        }
+      }
+
+      console.log(`  [KEEP] ${slot.code} day=${slot.dayOfWeek} ${slot.startTime}-${slot.endTime} group=${slotGroup}`);
       return true;
     });
+
+    console.log(`saveWizardTimetable: ${rawSlots.length} raw → ${filteredSlots.length} after filtering (labGroup=${normalizedLabGroup}, section=${section || "any"})`);
 
     const createdSlots = [];
     const subjectsMap = new Map(); // code -> subjectId

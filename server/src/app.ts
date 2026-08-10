@@ -15,6 +15,7 @@ import timetableRoutes from "./routes/timetable.routes";
 import attendanceRoutes from "./routes/attendance.routes";
 import classroomRoutes from "./routes/classroom.routes";
 import eventRoutes from "./routes/event.routes";
+import { CURRICULUM_META } from "./utils/subjectDictionary";
 
 import passport from "./config/passport";
 
@@ -53,8 +54,14 @@ app.use("/api/attendance", attendanceRoutes);
 app.use("/api/classrooms", classroomRoutes);
 app.use("/api/events", eventRoutes);
 
+// Public: curriculum metadata — branches & semesters derived from actual curriculum
+// No auth required; used by the timetable import wizard on the client
+app.get("/api/curriculum/meta", (_req, res) => {
+  res.status(200).json(CURRICULUM_META);
+});
+
 // Health check endpoint
-app.get("/api/health", (req, res) => {
+app.get("/api/health", (_req, res) => {
   res.status(200).json({ status: "ok", message: "AttendX API is running" });
 });
 
