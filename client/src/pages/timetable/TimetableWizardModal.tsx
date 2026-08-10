@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { Loader2, Wand2, BookOpen, FlaskConical, Sparkles, X } from "lucide-react";
+import { getSemesterFilterInfo } from "../../utils/scheduleFilter";
 
 interface Option {
   code: string;
@@ -23,9 +24,10 @@ interface WizardProps {
     labGroups: Group[];
     rawSlots: any[];
   } | null;
+  semesterName?: string;
 }
 
-export const TimetableWizardModal: React.FC<WizardProps> = ({ isOpen, onClose, onGenerate, setupPayload }) => {
+export const TimetableWizardModal: React.FC<WizardProps> = ({ isOpen, onClose, onGenerate, setupPayload, semesterName = "" }) => {
   const [programElective, setProgramElective] = useState<string>("");
   const [minorElective, setMinorElective] = useState<string>("");
   const [labGroup, setLabGroup] = useState<string>("");
@@ -33,17 +35,22 @@ export const TimetableWizardModal: React.FC<WizardProps> = ({ isOpen, onClose, o
 
   if (!isOpen || !setupPayload) return null;
 
+  const filterInfo = getSemesterFilterInfo(semesterName);
+  const showElectives = filterInfo.hasElectives;
+
   const handleSubmit = async () => {
     setIsGenerating(true);
     await onGenerate({
-      programElectiveCode: programElective,
-      minorElectiveCode: minorElective,
+      programElectiveCode: showElectives ? programElective : undefined,
+      minorElectiveCode: showElectives ? minorElective : undefined,
       labGroup: labGroup
     });
     setIsGenerating(false);
   };
 
-  const isReady = programElective !== "" && minorElective !== "" && labGroup !== "";
+  const isReady = showElectives 
+    ? (programElective !== "" && minorElective !== "" && labGroup !== "")
+    : (labGroup !== "");
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -79,7 +86,7 @@ export const TimetableWizardModal: React.FC<WizardProps> = ({ isOpen, onClose, o
           <div className="space-y-8 pl-12">
             
             {/* Program Electives */}
-            {setupPayload.programElectives.map(group => (
+            {showElectives && setupPayload.programElectives.map(group => (
               <div key={group.id} className="space-y-4">
                 <h3 className="text-sm font-semibold text-white/80 uppercase tracking-wider flex items-center gap-2">
                   <BookOpen className="w-4 h-4 text-primary" />
@@ -119,7 +126,7 @@ export const TimetableWizardModal: React.FC<WizardProps> = ({ isOpen, onClose, o
             ))}
 
             {/* Minor Electives */}
-            {setupPayload.minorElectives.map(group => (
+            {showElectives && setupPayload.minorElectives.map(group => (
               <div key={group.id} className="space-y-4">
                 <h3 className="text-sm font-semibold text-white/80 uppercase tracking-wider flex items-center gap-2">
                   <BookOpen className="w-4 h-4 text-blue-400" />

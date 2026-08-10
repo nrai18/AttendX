@@ -429,6 +429,7 @@ export const TimetablePage = () => {
         onClose={() => setIsWizardOpen(false)}
         onGenerate={handleGenerateTimetable}
         setupPayload={wizardPayload}
+        semesterName={activeSemester?.name || ""}
       />
 
       {/* Forms (Extra Class, Add Slot) */}
