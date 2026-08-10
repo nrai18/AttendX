@@ -1,5 +1,5 @@
 import { prisma } from "../lib/prisma";
-import { SUBJECT_DICTIONARY } from "../utils/subjectDictionary";
+import { COURSE_CURRICULUM, resolveSubjectName } from "../utils/subjectDictionary";
 import { GoogleGenAI, Type } from "@google/genai";
 
 export class TimetableService {
@@ -259,13 +259,12 @@ Rules:
 
       const parsed = JSON.parse(response.text);
 
-      // Enrich elective options with titles and credits from dictionary
+      // Enrich elective options with titles from curriculum dictionary
       const enrichOptions = (options: any[]) => {
         if (!options) return;
         for (const opt of options) {
-          if (opt.code && SUBJECT_DICTIONARY[opt.code]) {
-            opt.title = SUBJECT_DICTIONARY[opt.code].title;
-            opt.credits = SUBJECT_DICTIONARY[opt.code].credits;
+          if (opt.code && COURSE_CURRICULUM[opt.code]) {
+            opt.title = COURSE_CURRICULUM[opt.code];
           }
         }
       };
@@ -292,8 +291,8 @@ Rules:
           id: "pe1",
           name: "Program Elective",
           options: [
-            { code: "ECSE303", title: SUBJECT_DICTIONARY["ECSE303"].title, credits: SUBJECT_DICTIONARY["ECSE303"].credits },
-            { code: "ECSE304", title: SUBJECT_DICTIONARY["ECSE304"].title, credits: SUBJECT_DICTIONARY["ECSE304"].credits }
+            { code: "ECSE303", title: COURSE_CURRICULUM["ECSE303"] },
+            { code: "ECSE304", title: COURSE_CURRICULUM["ECSE304"] }
           ]
         }
       ],
@@ -302,8 +301,8 @@ Rules:
           id: "me1",
           name: "Minor Elective",
           options: [
-            { code: "SCMS301", title: SUBJECT_DICTIONARY["SCMS301"].title, credits: SUBJECT_DICTIONARY["SCMS301"].credits },
-            { code: "SEMS301", title: SUBJECT_DICTIONARY["SEMS301"].title, credits: SUBJECT_DICTIONARY["SEMS301"].credits }
+            { code: "SCMS301", title: COURSE_CURRICULUM["SCMS301"] },
+            { code: "SEMS301", title: COURSE_CURRICULUM["SEMS301"] }
           ]
         }
       ],
@@ -389,14 +388,13 @@ Rules:
 
     for (const slot of filteredSlots) {
       const isLab = slot.type === "practical";
-      const dictInfo = SUBJECT_DICTIONARY[slot.code] || { title: slot.code, credits: 3 };
-      
+      const baseTitle = resolveSubjectName(slot.code);
+
       const actualCode = isLab ? `${slot.code}_LAB` : slot.code;
-      const baseTitle = dictInfo.title;
-      const actualTitle = isLab && !baseTitle.toLowerCase().includes("lab") 
-        ? `${baseTitle} Lab` 
+      const actualTitle = isLab && !baseTitle.toLowerCase().includes("lab")
+        ? `${baseTitle} Lab`
         : baseTitle;
-      const actualCredits = dictInfo.credits || 3;
+      const actualCredits = 3; // Default; update when credits data is available
 
       let subjectId = subjectsMap.get(actualCode);
 
