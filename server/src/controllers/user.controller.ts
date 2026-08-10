@@ -22,4 +22,14 @@ export class UserController {
       res.status(400).json({ message: error.message });
     }
   }
+
+  static async resetData(req: AuthenticatedRequest, res: Response) {
+    try {
+      const userId = req.user!.userId;
+      const result = await UserService.resetData(userId);
+      res.status(200).json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message || "Failed to reset app data" });
+    }
+  }
 }

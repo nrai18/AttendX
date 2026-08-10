@@ -40,12 +40,7 @@ import { LandingPage } from "./pages/marketing/LandingPage";
 
 
 
-const SettingsPlaceholder = () => (
-  <div className="p-4 rounded-2xl bg-[#0c0d12] border border-white/10">
-    <h2 className="text-lg font-bold text-white mb-1">Settings & Preferences</h2>
-    <p className="text-sm text-muted-foreground">Set 75% criteria, theme, backup, and notification preferences</p>
-  </div>
-);
+import { SettingsPage } from "./pages/settings/SettingsPage";
 
 const RootRoute: React.FC = () => {
   const { isAuthenticated, isLoading } = useAuthStore();
@@ -83,7 +78,7 @@ export function App() {
           <Route path="/subjects/:id" element={<SubjectDetailPage />} />
           <Route path="/classrooms" element={<ClassroomsPage />} />
           <Route path="/classrooms/:id" element={<ClassroomFeedPage />} />
-          <Route path="/settings" element={<SettingsPlaceholder />} />
+          <Route path="/settings" element={<SettingsPage />} />
         </Route>
 
         {/* Default Redirect */}

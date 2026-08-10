@@ -112,7 +112,7 @@ export const SubjectsOverviewPage = () => {
                   </div>
                   <div className="text-right">
                     <p className={`text-2xl font-bold ${getStatusColor(stat.percentage, stat.target)}`}>
-                      {stat.total > 0 ? stat.percentage.toFixed(1) : "0"}%
+                      {stat.total > 0 ? (stat.percentage ?? 0).toFixed(1) : "0"}%
                     </p>
                     <p className="text-[10px] text-muted-foreground uppercase tracking-wider mt-0.5">
                       {stat.attended} / {stat.total} Attended

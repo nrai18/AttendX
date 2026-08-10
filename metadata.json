@@ -1,0 +1,8 @@
+{
+  "name": "AttendX",
+  "description": "Smart Attendance & Academic Management Platform for College Students",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

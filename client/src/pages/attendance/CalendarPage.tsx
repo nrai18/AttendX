@@ -65,8 +65,9 @@ export const CalendarPage = () => {
       case "missed": return "bg-rose-500";
       case "mixed": return "bg-purple-500";
       case "off": return "bg-yellow-500";
-      case "not_marked": return "bg-orange-500";
-      default: return "bg-transparent"; // future or unknown
+      case "not_marked":
+      case "future": return "bg-zinc-500";
+      default: return "bg-zinc-500/50"; // greyed out
     }
   };
 
@@ -145,7 +146,7 @@ export const CalendarPage = () => {
             <div>
               <div className="text-lg font-bold text-white mb-0.5">{stats.days.not_marked}</div>
               <div className="flex items-center justify-center gap-1.5">
-                <div className="w-1.5 h-1.5 rounded-full bg-orange-500" />
+                <div className="w-1.5 h-1.5 rounded-full bg-zinc-500" />
                 <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider hidden sm:inline">Not marked</span>
                 <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider sm:hidden">None</span>
               </div>
@@ -204,7 +205,7 @@ export const CalendarPage = () => {
               <div className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Total</div>
             </div>
             <div>
-              <div className="text-lg font-bold text-white mb-0.5">{stats.lectures.percentage.toFixed(2)}%</div>
+              <div className="text-lg font-bold text-white mb-0.5">{(stats?.lectures?.percentage ?? 0).toFixed(2)}%</div>
               <div className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Percent</div>
             </div>
           </div>

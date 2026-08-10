@@ -23,10 +23,10 @@ app.set("trust proxy", 1); // Trust Render's reverse proxy for correct https red
 
 // Security & Utility Middleware
 app.use(passport.initialize());
-app.use(helmet());
+app.use(helmet({ contentSecurityPolicy: false }));
 app.use(
   cors({
-    origin: process.env.FRONTEND_URL || "http://localhost:5173",
+    origin: true,
     credentials: true,
   })
 );
@@ -58,18 +58,45 @@ app.get("/api/health", (req, res) => {
   res.status(200).json({ status: "ok", message: "AttendX API is running" });
 });
 
-// Root endpoint for Render health checks and browser testing
-app.get("/", (req, res) => {
-  res.status(200).json({ message: "AttendX API is running smoothly!" });
-});
-
-// Error Handling Middleware
+// Error Handling Middleware for API
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
   console.error(err.stack);
-  res.status(err.status || 500).json({
-    message: err.message || "Internal Server Error",
-    ...(process.env.NODE_ENV === "development" && { stack: err.stack }),
-  });
+  if (req.path.startsWith("/api")) {
+    return res.status(err.status || 500).json({
+      message: err.message || "Internal Server Error",
+      ...(process.env.NODE_ENV === "development" && { stack: err.stack }),
+    });
+  }
+  next(err);
 });
+
+export async function startServer() {
+  const PORT = 3000;
+
+  if (process.env.NODE_ENV !== "production") {
+    try {
+      const { createServer: createViteServer } = await import("vite");
+      const vite = await createViteServer({
+        root: path.resolve(process.cwd(), "client"),
+        server: { middlewareMode: true },
+        appType: "spa",
+      });
+      app.use(vite.middlewares);
+    } catch (e) {
+      console.error("Vite middleware startup error:", e);
+    }
+  } else {
+    const distPath = path.resolve(process.cwd(), "client/dist");
+    app.use(express.static(distPath));
+    app.get("*", (req, res, next) => {
+      if (req.path.startsWith("/api")) return next();
+      res.sendFile(path.join(distPath, "index.html"));
+    });
+  }
+
+  app.listen(Number(PORT), "0.0.0.0", () => {
+    console.log(`🚀 Server ready at: http://0.0.0.0:${PORT}`);
+  });
+}
 
 export default app;
