@@ -79,54 +79,69 @@ AttendX/
 ## 🚀 Getting Started Locally
 
 ### Prerequisites
-- Node.js (v20 or higher)
-- PostgreSQL (v15 or higher)
+- **Node.js**: v20.x or higher
+- **PostgreSQL**: v15.x or higher (installed locally or hosted)
 
 ### Setup Instructions
 
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/nrai18/AttendX.git
-   cd AttendX
-   ```
+Follow these steps to spin up the local development environment:
 
-2. **Configure Backend Environment**
-   Navigate to `server/` and create `.env`:
-   ```env
-   DATABASE_URL="postgresql://postgres:postgres@localhost:5432/attendx?schema=public"
-   PORT=3000
-   JWT_SECRET="your_jwt_access_secret"
-   JWT_REFRESH_SECRET="your_jwt_refresh_secret"
-   FRONTEND_URL="http://localhost:5173"
-   ```
+#### 1. Clone the Repository
+```bash
+git clone https://github.com/nrai18/AttendX.git
+cd AttendX
+```
 
-3. **Install Dependencies**
-   ```bash
-   # Install server packages
-   cd server
-   npm install
+#### 2. Install Project Dependencies
+You need to install packages in both the backend and frontend directories:
+```bash
+# Install backend dependencies
+cd server
+npm install
 
-   # Install client packages
-   cd ../client
-   npm install
-   ```
+# Install frontend dependencies
+cd ../client
+npm install
+```
 
-4. **Run Database Migrations**
-   ```bash
-   cd ../server
-   npx prisma db push
-   ```
+#### 3. Environment Variables Configuration
+Create a `.env` file inside the `server/` directory:
+```env
+DATABASE_URL="postgresql://postgres:postgres@localhost:5432/attendx?schema=public"
+PORT=3000
+JWT_SECRET="your_jwt_access_secret"
+JWT_REFRESH_SECRET="your_jwt_refresh_secret"
+FRONTEND_URL="http://localhost:5173"
+```
+*(Make sure to replace database credentials and secrets with your local values).*
 
-5. **Start Development Servers**
-   ```bash
-   # In terminal 1 (Server)
-   cd server
-   npm run dev
+#### 4. Prepare Database Schemas & Seed
+Push the Prisma schemas to your active PostgreSQL instance:
+```bash
+cd ../server
+npx prisma db push
+```
+To run database viewing tools, you can spin up Prisma Studio:
+```bash
+npx prisma studio
+```
 
-   # In terminal 2 (Client)
-   cd client
-   npm run dev
-   ```
+#### 5. Start Development Servers
+Both the client and server must run concurrently for full functionality:
+
+* **Backend API Server (Starts on Port 3000):**
+  ```bash
+  cd server
+  npm run dev
+  ```
+
+* **Frontend Client (Starts on Port 5173):**
+  ```bash
+  cd client
+  npm run dev
+  ```
+
+Access the application in your browser at `http://localhost:5173`. Authentication is mapped strictly to `@iiitu.ac.in` domains. For local testing, you can use the register flow or seed mock databases.
 
 ---
 
