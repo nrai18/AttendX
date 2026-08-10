@@ -39,7 +39,7 @@ export const TopBar: React.FC<TopBarProps> = ({
                   : "text-rose-400"
               }
             >
-              {overallPercentage.toFixed(2)}
+              {(overallPercentage ?? 0).toFixed(2)}
             </span>
             <span className="text-white/30">|</span>
             <span className="text-white/70">{targetPercentage}</span>

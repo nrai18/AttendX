@@ -1,7 +1,7 @@
 import axios from "axios";
 import { useAuthStore } from "../stores/authStore";
 
-export const API_BASE_URL = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? "https://attendx-backend-fh6k.onrender.com/api" : "http://localhost:3000/api");
+export const API_BASE_URL = import.meta.env.VITE_API_URL || "/api";
 
 export const api = axios.create({
   baseURL: API_BASE_URL,

@@ -24,9 +24,10 @@ export const LoginPage: React.FC = () => {
       id: "dev-user-id",
       email: email,
       name: "Developer Admin",
-      role: "admin",
+      role: "admin" as const,
       department: "CSE",
       targetAttendance: 75,
+      theme: "dark" as const,
     };
     
     setTimeout(() => {

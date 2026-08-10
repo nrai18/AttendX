@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
-import { Loader2, CheckCircle2, XCircle, AlertCircle, PartyPopper, BookOpen, Palmtree, Timer, TrendingUp, TrendingDown } from "lucide-react";
+import { Loader2, CheckCircle2, XCircle, AlertCircle, PartyPopper, BookOpen, Palmtree, Timer, TrendingUp, TrendingDown, Plus } from "lucide-react";
 import { api } from "../../lib/api";
+import { CreateSemesterModal } from "../../components/semester/CreateSemesterModal";
 
 import { useSearchParams } from "react-router-dom";
 import { useAttendanceStore } from "../../stores/attendanceStore";
@@ -29,7 +30,9 @@ export const TodayPage = () => {
   
   const [agenda, setAgenda] = useState<AgendaItem[]>([]);
   const [todayStatus, setTodayStatus] = useState<any>(null);
+  const [activeSemester, setActiveSemester] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isCreateSemesterOpen, setIsCreateSemesterOpen] = useState(false);
 
   const fetchStats = useAttendanceStore((state) => state.fetchStats);
   const { overallPercentage, targetPercentage } = useAttendanceStore();
@@ -40,10 +43,13 @@ export const TodayPage = () => {
       // Fetch active semester first
       const semRes = await api.get("/semesters/active");
       if (semRes.data) {
+        setActiveSemester(semRes.data);
         const semesterId = semRes.data.id;
         // Fetch today status based on active semester
         const statusRes = await api.get(`/events/today-status?semesterId=${semesterId}&date=${targetDateStr}`);
         setTodayStatus(statusRes.data);
+      } else {
+        setActiveSemester(null);
       }
 
       const res = await api.get(`/attendance/today?date=${targetDateStr}`);
@@ -150,8 +156,8 @@ export const TodayPage = () => {
               overallPercentage >= targetPercentage ? "text-emerald-400" : "text-rose-400"
             }`}>
               {overallPercentage >= targetPercentage
-                ? `${(overallPercentage - targetPercentage).toFixed(1)}% above target`
-                : `${(targetPercentage - overallPercentage).toFixed(1)}% below target`}
+                ? `${((overallPercentage ?? 0) - (targetPercentage ?? 75)).toFixed(1)}% above target`
+                : `${((targetPercentage ?? 75) - (overallPercentage ?? 0)).toFixed(1)}% below target`}
             </p>
           </div>
         </div>
@@ -160,7 +166,7 @@ export const TodayPage = () => {
             ? "bg-emerald-500/10 text-emerald-400"
             : "bg-rose-500/10 text-rose-400"
         }`}>
-          <span>{overallPercentage.toFixed(2)}</span>
+          <span>{(overallPercentage ?? 0).toFixed(2)}</span>
           <span className="text-white/30 font-light">|</span>
           <span className="text-white/60 font-semibold">{targetPercentage}</span>
         </div>
@@ -181,7 +187,22 @@ export const TodayPage = () => {
         )}
       </div>
 
-      {isGlobalEventActive ? (
+      {!activeSemester ? (
+        <div className="text-center py-12 bg-indigo-950/20 border border-indigo-500/30 rounded-2xl p-6 space-y-4">
+          <BookOpen className="w-12 h-12 text-indigo-400 mx-auto opacity-70" />
+          <h3 className="text-lg font-bold text-white">No Active Semester</h3>
+          <p className="text-xs text-muted-foreground max-w-sm mx-auto">
+            Please create and activate a semester to manage your timetable, subjects, and daily class attendance.
+          </p>
+          <button
+            onClick={() => setIsCreateSemesterOpen(true)}
+            className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white px-5 py-2.5 rounded-xl text-xs font-bold transition-all shadow-lg shadow-indigo-600/30 cursor-pointer"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Create Active Semester</span>
+          </button>
+        </div>
+      ) : isGlobalEventActive ? (
         <div className={`text-center py-16 border rounded-3xl shadow-2xl ${getEventStateConfig(activeEvent.eventType).color}`}>
           {getEventStateConfig(activeEvent.eventType).icon}
           <h2 className="text-2xl font-bold text-white mb-2">{activeEvent.title}</h2>
@@ -262,6 +283,11 @@ export const TodayPage = () => {
           ))}
         </div>
       )}
+      <CreateSemesterModal
+        isOpen={isCreateSemesterOpen}
+        onClose={() => setIsCreateSemesterOpen(false)}
+        onSuccess={fetchData}
+      />
     </div>
   );
 };

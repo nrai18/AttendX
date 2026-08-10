@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Plus, Pencil, Trash2, Loader2, AlertCircle, TrendingUp, TrendingDown, CheckCircle2, XCircle, Shield } from "lucide-react";
 import { api } from "../../lib/api";
+import { CreateSemesterModal } from "../../components/semester/CreateSemesterModal";
 import { useAuthStore } from "../../stores/authStore";
 import { useNavigate } from "react-router-dom";
 
@@ -141,6 +142,7 @@ export const SubjectsPage = () => {
   const [isAdding, setIsAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [activeSemesterId, setActiveSemesterId] = useState<string | null>(null);
+  const [isCreateSemesterOpen, setIsCreateSemesterOpen] = useState(false);
 
   // Form State
   const [name, setName] = useState("");
@@ -285,6 +287,24 @@ export const SubjectsPage = () => {
         </button>
       </div>
 
+      {!activeSemesterId && (
+        <div className="bg-indigo-950/20 border border-indigo-500/30 rounded-2xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h3 className="text-base font-bold text-white">No Active Semester</h3>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Create an active semester to enable attendance percentage calculations and safe buffer metrics.
+            </p>
+          </div>
+          <button
+            onClick={() => setIsCreateSemesterOpen(true)}
+            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-lg shadow-indigo-600/30 shrink-0 cursor-pointer"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Create Semester</span>
+          </button>
+        </div>
+      )}
+
       {(isAdding || editingId) && (
         <form onSubmit={handleSubmit} className="bg-[#0c0d12] border border-white/10 rounded-2xl p-5 space-y-4">
           <h2 className="text-lg font-semibold text-white">{editingId ? "Edit Subject" : "New Subject"}</h2>
@@ -422,7 +442,7 @@ export const SubjectsPage = () => {
                     {/* Centre text */}
                     <div className="absolute inset-0 flex flex-col items-center justify-center">
                       <span className="text-3xl font-black text-white leading-none">
-                        {overallPct.toFixed(1)}
+                        {(overallPct ?? 0).toFixed(1)}
                       </span>
                       <span className="text-xs text-white/40 font-medium mt-0.5">%</span>
                     </div>
@@ -441,8 +461,8 @@ export const SubjectsPage = () => {
                       <p className="text-xs text-white/40 mt-1">
                         Target: <span className="text-white/60 font-semibold">{overallTarget}%</span>
                         {isGood
-                          ? <span className="text-emerald-400 ml-2">+{(overallPct - overallTarget).toFixed(1)}% buffer</span>
-                          : <span className="text-rose-400 ml-2">{(overallTarget - overallPct).toFixed(1)}% short</span>
+                          ? <span className="text-emerald-400 ml-2">+{((overallPct ?? 0) - (overallTarget ?? 75)).toFixed(1)}% buffer</span>
+                          : <span className="text-rose-400 ml-2">{((overallTarget ?? 75) - (overallPct ?? 0)).toFixed(1)}% short</span>
                         }
                       </p>
                     </div>
@@ -487,7 +507,7 @@ export const SubjectsPage = () => {
             );
           })()}
 
-          {/* Per-subject cards */}
+      {/* Per-subject cards */}
           {mergedStats.map((stat) => {
             const sub = subjects.find(s => s.id === stat.id);
             return (
@@ -501,6 +521,12 @@ export const SubjectsPage = () => {
           })}
         </div>
       )}
+
+      <CreateSemesterModal
+        isOpen={isCreateSemesterOpen}
+        onClose={() => setIsCreateSemesterOpen(false)}
+        onSuccess={fetchData}
+      />
     </div>
   );
 };

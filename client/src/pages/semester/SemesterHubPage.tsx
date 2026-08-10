@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from "react";
 import { format, addMonths, subMonths, startOfMonth, endOfMonth, startOfWeek, endOfWeek, isSameMonth, isSameDay, addDays, isAfter, startOfDay, differenceInDays } from "date-fns";
-import { ChevronLeft, ChevronRight, Upload, Calendar as CalendarIcon, Loader2, Sparkles, AlertTriangle, ListFilter, AlignLeft, CalendarDays, Timer } from "lucide-react";
+import { ChevronLeft, ChevronRight, Upload, Calendar as CalendarIcon, Loader2, Sparkles, AlertTriangle, ListFilter, AlignLeft, CalendarDays, Timer, CheckCircle2, Plus } from "lucide-react";
 import { api } from "../../lib/api";
 import { EventWizardModal } from "./EventWizardModal";
+import { CreateSemesterModal } from "../../components/semester/CreateSemesterModal";
 import { Link } from "react-router-dom";
 
 interface AppEvent {
@@ -36,6 +37,7 @@ export const SemesterHubPage = () => {
   const [isUploading, setIsUploading] = useState(false);
   const [isWizardOpen, setIsWizardOpen] = useState(false);
   const [wizardPayload, setWizardPayload] = useState<any>(null);
+  const [isCreateSemesterOpen, setIsCreateSemesterOpen] = useState(false);
 
   const fetchData = async () => {
     try {
@@ -135,8 +137,9 @@ export const SemesterHubPage = () => {
       case "missed": return "bg-rose-500";
       case "mixed": return "bg-purple-500";
       case "off": return "bg-yellow-500";
-      case "not_marked": return "bg-orange-500";
-      default: return "bg-transparent";
+      case "not_marked":
+      case "future": return "bg-zinc-500";
+      default: return "bg-zinc-500/50";
     }
   };
 
@@ -214,7 +217,7 @@ export const SemesterHubPage = () => {
         </div>
       </div>
 
-      {activeSemester && (
+      {activeSemester ? (
         <div className="bg-[#0c0d12] border border-white/10 rounded-2xl p-6 flex flex-col md:flex-row md:items-center gap-6 shadow-xl">
           <div className="flex-1">
             <div className="flex justify-between items-end mb-2">
@@ -248,6 +251,22 @@ export const SemesterHubPage = () => {
               <p className="text-sm text-muted-foreground">No upcoming milestones.</p>
             )}
           </div>
+        </div>
+      ) : (
+        <div className="bg-indigo-950/20 border border-indigo-500/30 rounded-2xl p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h3 className="text-base font-bold text-white">No Active Semester</h3>
+            <p className="text-xs text-muted-foreground mt-1">
+              Set up your semester start and end dates to activate academic tracking and calendar view.
+            </p>
+          </div>
+          <button
+            onClick={() => setIsCreateSemesterOpen(true)}
+            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white px-5 py-2.5 rounded-xl text-xs font-bold transition-all shadow-lg shadow-indigo-600/30 shrink-0 cursor-pointer"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Create Semester</span>
+          </button>
         </div>
       )}
 
@@ -335,7 +354,7 @@ export const SemesterHubPage = () => {
                     <div>
                       <div className="text-lg font-bold text-white mb-0.5">{calendarData.stats.days.not_marked}</div>
                       <div className="flex items-center justify-center gap-1.5">
-                        <div className="w-1.5 h-1.5 rounded-full bg-orange-500" />
+                        <div className="w-1.5 h-1.5 rounded-full bg-zinc-500" />
                         <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider hidden sm:inline">None</span>
                         <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider sm:hidden">No</span>
                       </div>
@@ -393,7 +412,7 @@ export const SemesterHubPage = () => {
                       <div className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Total</div>
                     </div>
                     <div>
-                      <div className="text-lg font-bold text-white mb-0.5">{calendarData.stats.lectures.percentage.toFixed(0)}%</div>
+                      <div className="text-lg font-bold text-white mb-0.5">{(calendarData?.stats?.lectures?.percentage ?? 0).toFixed(0)}%</div>
                       <div className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Percent</div>
                     </div>
                   </div>
@@ -478,6 +497,12 @@ export const SemesterHubPage = () => {
         onClose={() => setIsWizardOpen(false)}
         onSave={handleSaveEvents}
         eventsPayload={wizardPayload}
+      />
+
+      <CreateSemesterModal
+        isOpen={isCreateSemesterOpen}
+        onClose={() => setIsCreateSemesterOpen(false)}
+        onSuccess={fetchData}
       />
     </div>
   );

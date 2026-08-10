@@ -36,6 +36,17 @@ export class SemesterService {
     });
   }
 
+  static async activateSemester(userId: string, semesterId: string) {
+    await prisma.semester.updateMany({
+      where: { userId, isActive: true },
+      data: { isActive: false },
+    });
+    return prisma.semester.update({
+      where: { id: semesterId, userId },
+      data: { isActive: true },
+    });
+  }
+
   static async deleteSemester(userId: string, semesterId: string, wipeAttendance = false) {
     if (wipeAttendance) {
       // Wipes all associated attendance

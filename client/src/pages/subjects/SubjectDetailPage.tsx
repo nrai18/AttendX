@@ -97,7 +97,7 @@ export const SubjectDetailPage = () => {
         <div className="bg-[#0c0d12] border border-white/5 rounded-2xl p-5">
           <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Current %</p>
           <p className={`text-3xl font-bold ${getStatusColor(stats.percentage, stats.target)}`}>
-            {stats.total > 0 ? stats.percentage.toFixed(1) : "0"}%
+            {stats.total > 0 ? (stats.percentage ?? 0).toFixed(1) : "0"}%
           </p>
         </div>
         <div className="bg-[#0c0d12] border border-white/5 rounded-2xl p-5">
@@ -224,7 +224,7 @@ export const SubjectDetailPage = () => {
               </svg>
               <div className="absolute flex flex-col items-center justify-center text-center">
                 <span className={`text-4xl font-bold tracking-tighter ${getStatusColor(projectedPercentage, stats.target)}`}>
-                  {projectedPercentage.toFixed(1)}%
+                  {(projectedPercentage ?? 0).toFixed(1)}%
                 </span>
                 <span className="text-xs text-muted-foreground mt-1 font-medium">Target: {stats.target}%</span>
               </div>

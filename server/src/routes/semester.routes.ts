@@ -9,6 +9,7 @@ router.use(authenticate);
 router.get("/", SemesterController.list);
 router.get("/active", SemesterController.getActive);
 router.post("/", SemesterController.create);
+router.patch("/:id/activate", SemesterController.activate);
 router.delete("/:id", SemesterController.remove);
 
 export default router;

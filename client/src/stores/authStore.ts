@@ -10,7 +10,7 @@ export interface User {
   department?: string;
   batch?: string;
   targetAttendance: number;
-  theme: "light" | "dark" | "system";
+  theme?: "light" | "dark" | "system";
 }
 
 interface AuthState {

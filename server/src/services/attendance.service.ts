@@ -267,7 +267,13 @@ export class AttendanceService {
     });
 
     if (!activeSemester) {
-      return { days: {}, stats: { days: {}, lectures: {} } };
+      return {
+        days: {},
+        stats: {
+          days: { not_marked: 0, off: 0, missed: 0, attended: 0, mixed: 0 },
+          lectures: { off: 0, missed: 0, attended: 0, total: 0, percentage: 0 },
+        },
+      };
     }
 
     const regularSlots = await prisma.timetableSlot.findMany({
