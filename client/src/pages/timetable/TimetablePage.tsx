@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Plus, Trash2, Loader2, CalendarPlus, Upload, Edit2 } from "lucide-react";
 import { api } from "../../lib/api";
 import { TimetableWizardModal, OcrSetupPayload } from "./TimetableWizardModal";
+import { CreateSemesterModal } from "../../components/semester/CreateSemesterModal";
 import { SortableSlot } from "./SortableSlot";
 import { DndContext, closestCenter, DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
@@ -56,6 +57,7 @@ export const TimetablePage = () => {
 
   // Wizard State
   const [isWizardOpen, setIsWizardOpen] = useState(false);
+  const [isCreateSemesterOpen, setIsCreateSemesterOpen] = useState(false);
 
   const fetchData = async () => {
     try {
@@ -78,11 +80,12 @@ export const TimetablePage = () => {
         api.get(`/timetable/${semester.id}`)
       ]);
       
-      // Filter subjects for the active semester just in case
-      const activeSubjects = subjRes.data.filter((s: any) => s.semesterId === semester.id);
+      // Normalize to array — guard against wrapped or error responses
+      const rawSubjects = Array.isArray(subjRes.data) ? subjRes.data : [];
+      const activeSubjects = rawSubjects.filter((s: any) => s.semesterId === semester.id);
       
       setSubjects(activeSubjects);
-      setSlots(slotsRes.data);
+      setSlots(Array.isArray(slotsRes.data) ? slotsRes.data : []);
 
     } catch (error) {
       console.error("Failed to fetch timetable data:", error);
@@ -274,10 +277,29 @@ export const TimetablePage = () => {
   
   if (!activeSemester) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center p-8 text-center space-y-4">
-        <h2 className="text-2xl font-bold text-white">No Active Semester</h2>
-        <p className="text-muted-foreground">Please create and activate a semester first to manage your timetable.</p>
-      </div>
+      <>
+        <div className="flex-1 flex flex-col items-center justify-center p-8 text-center space-y-6">
+          <div className="w-20 h-20 rounded-2xl bg-white/5 flex items-center justify-center">
+            <CalendarPlus className="w-10 h-10 text-muted-foreground" />
+          </div>
+          <div className="space-y-2">
+            <h2 className="text-2xl font-bold text-white">No Active Semester</h2>
+            <p className="text-muted-foreground max-w-xs">Create and activate a semester first to manage your timetable.</p>
+          </div>
+          <button
+            onClick={() => setIsCreateSemesterOpen(true)}
+            className="flex items-center gap-2 px-6 py-3 bg-primary text-primary-foreground font-semibold rounded-xl hover:bg-primary/90 transition-all shadow-lg"
+          >
+            <Plus className="w-5 h-5" />
+            Create Active Semester
+          </button>
+        </div>
+        <CreateSemesterModal
+          isOpen={isCreateSemesterOpen}
+          onClose={() => setIsCreateSemesterOpen(false)}
+          onSuccess={() => { setIsCreateSemesterOpen(false); fetchData(); }}
+        />
+      </>
     );
   }
 

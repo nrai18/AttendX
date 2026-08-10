@@ -157,13 +157,15 @@ export const SubjectsPage = () => {
         api.get("/subjects"),
         api.get("/semesters/active"),
       ]);
-      setSubjects(subjectsRes.data);
+      setSubjects(Array.isArray(subjectsRes.data) ? subjectsRes.data : []);
 
       const semester = semesterRes.data;
       if (semester) {
         setActiveSemesterId(semester.id);
         const statsRes = await api.get(`/attendance/stats?semesterId=${semester.id}`);
-        setSubjectStats(statsRes.data);
+        // Normalize — API may return object/null instead of array
+        const stats = Array.isArray(statsRes.data) ? statsRes.data : [];
+        setSubjectStats(stats);
       }
     } catch (error) {
       console.error("Failed to fetch subjects:", error);

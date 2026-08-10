@@ -79,12 +79,11 @@ export const CalendarPage = () => {
     );
   }
 
-  const { stats, days } = data || { 
-    days: {}, 
-    stats: { 
-      days: { not_marked: 0, off: 0, missed: 0, attended: 0, mixed: 0 }, 
-      lectures: { off: 0, missed: 0, attended: 0, total: 0, percentage: 0 } 
-    } 
+  // Safe fallback so calendar renders gracefully before data loads
+  const days: Record<string, string> = data?.days ?? {};
+  const stats = data?.stats ?? {
+    days: { not_marked: 0, off: 0, missed: 0, attended: 0, mixed: 0 },
+    lectures: { off: 0, missed: 0, attended: 0, total: 0, percentage: 0 },
   };
 
   return (
