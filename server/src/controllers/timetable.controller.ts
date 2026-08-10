@@ -50,23 +50,40 @@ export class TimetableController {
     }
 
     try {
-      const user = await prisma.user.findUnique({
-        where: { id: userId },
-        select: { department: true }
-      });
+      // Prefer wizard-supplied fields (user explicitly confirmed these in the UI)
+      // Fall back to DB profile values only if not provided
+      let semesterName: string = req.body.semesterName || "";
+      let branchCode: string   = req.body.branch       || "";
+      const section: string    = req.body.section      || "";
 
-      const semester = await prisma.semester.findUnique({
-        where: { id: semesterId },
-        select: { name: true }
-      });
+      if (!semesterName || !branchCode) {
+        // DB fallback
+        const user = await prisma.user.findUnique({
+          where: { id: userId },
+          select: { department: true, branch: true }
+        });
+        const semester = await prisma.semester.findUnique({
+          where: { id: semesterId },
+          select: { name: true }
+        });
+        if (!semesterName) semesterName = semester?.name || "Semester 5";
+        if (!branchCode)   branchCode   = user?.branch  || "ECE";
+      }
 
-      const userDepartment = user?.department || "Electronics & Communication Engineering";
-      const semesterName = semester?.name || "Semester 5";
+      // Map short branch code → full department name for the Gemini prompt
+      const BRANCH_DEPT_MAP: Record<string, string> = {
+        "CSE": "Computer Science and Engineering",
+        "IT":  "Information Technology",
+        "ECE": "Electronics and Communication Engineering",
+        "DS":  "Data Science",
+        "CY":  "Cyber Security",
+      };
+      const userDepartment = BRANCH_DEPT_MAP[branchCode] || branchCode;
 
       const ocrResult = await TimetableService.processOcrImage(
-        req.file.buffer, 
-        req.file.mimetype, 
-        semesterId, 
+        req.file.buffer,
+        req.file.mimetype,
+        semesterId,
         userId,
         semesterName,
         userDepartment
