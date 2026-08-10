@@ -43,15 +43,34 @@ export class TimetableController {
       return res.status(400).json({ error: "No image file provided" });
     }
     const semesterId = req.body.semesterId;
-    const userId = req.user?.userId; // Assuming AuthenticatedRequest attaches user
+    const userId = req.user?.userId;
 
     if (!semesterId || !userId) {
       return res.status(400).json({ error: "Missing semesterId or user context" });
     }
 
     try {
-      // Mocking OCR processing to return setup payload
-      const ocrResult = await TimetableService.processOcrImage(req.file.buffer, req.file.mimetype, semesterId, userId);
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { department: true }
+      });
+
+      const semester = await prisma.semester.findUnique({
+        where: { id: semesterId },
+        select: { name: true }
+      });
+
+      const userDepartment = user?.department || "Electronics & Communication Engineering";
+      const semesterName = semester?.name || "Semester 5";
+
+      const ocrResult = await TimetableService.processOcrImage(
+        req.file.buffer, 
+        req.file.mimetype, 
+        semesterId, 
+        userId,
+        semesterName,
+        userDepartment
+      );
       res.status(200).json(ocrResult);
     } catch (error: any) {
       console.error("OCR Import Error:", error);

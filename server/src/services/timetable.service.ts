@@ -118,7 +118,14 @@ export class TimetableService {
     });
   }
 
-  static async processOcrImage(imageBuffer: Buffer, mimeType: string, semesterId: string, userId: string) {
+  static async processOcrImage(
+    imageBuffer: Buffer, 
+    mimeType: string, 
+    semesterId: string, 
+    userId: string,
+    semesterName: string = "Semester 5",
+    userDepartment: string = "Electronics & Communication Engineering"
+  ) {
     // If GEMINI_API_KEY is not defined, fallback to structured mock timetable
     if (!process.env.GEMINI_API_KEY) {
       console.log("GEMINI_API_KEY is not defined. Falling back to mock structured timetable.");
@@ -213,7 +220,13 @@ export class TimetableService {
         required: ["status", "programElectives", "minorElectives", "labGroups", "rawSlots"]
       };
 
-      const prompt = `You are an expert academic timetable extraction assistant. Carefully analyze this timetable image and extract every single class slot.
+      const prompt = `You are an expert academic timetable extraction assistant.
+You are given a multi-page academic timetable PDF or timetable image.
+First, identify the correct page or section that matches the following student configuration:
+- Semester/Year: Look for a page/header matching "${semesterName}" (e.g., Semester 3, Semester 5, Semester 7).
+- Branch/Department: Look for a page/header matching "${userDepartment}" (e.g. "Computer Science and Engineering", "Electronics and Communication Engineering", or "Information Technology").
+
+Once you have identified the single page matching these criteria, carefully extract every single class slot from THAT SPECIFIC PAGE ONLY. Ignore all other pages.
 
 Rules:
 1. Extract ALL lecture, practical/lab, and tutorial slots.
