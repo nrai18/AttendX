@@ -144,4 +144,10 @@ export class EventService {
       nextEvent: nextEvents.length > 0 ? nextEvents[0] : null
     };
   }
+
+  static async clearAllEvents(userId: string) {
+    return prisma.event.deleteMany({
+      where: { userId }
+    });
+  }
 }

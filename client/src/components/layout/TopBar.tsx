@@ -1,9 +1,9 @@
 import React from "react";
 import { useAuthStore } from "../../stores/authStore";
-import { Plus, SlidersHorizontal, LogOut } from "lucide-react";
+import { Plus, SlidersHorizontal, LogOut, Sun, Moon } from "lucide-react";
 import { Button } from "../ui/button";
-
 import { useAttendanceStore } from "../../stores/attendanceStore";
+import { useThemeStore } from "../../stores/themeStore";
 
 interface TopBarProps {
   title?: string;
@@ -17,13 +17,14 @@ export const TopBar: React.FC<TopBarProps> = ({
   const user = useAuthStore((state) => state.user);
   const logout = useAuthStore((state) => state.logout);
   const { overallPercentage, targetPercentage } = useAttendanceStore();
+  const { theme, toggleTheme } = useThemeStore();
 
   return (
-    <header className="sticky top-0 z-40 bg-[#050508]/80 backdrop-blur-md border-b border-white/5 px-4 py-3 pt-[calc(0.75rem+env(safe-area-inset-top))]">
+    <header className="sticky top-0 z-40 bg-background/80 backdrop-blur-md border-b border-border px-4 py-3 pt-[calc(0.75rem+env(safe-area-inset-top))] transition-colors">
       <div className="flex items-center justify-between max-w-5xl mx-auto">
         {/* Title / User Greeting */}
         <div>
-          <h1 className="text-xl font-bold tracking-tight text-white">
+          <h1 className="text-xl font-bold tracking-tight text-foreground">
             {title || user?.name || "AttendX"}
           </h1>
         </div>
@@ -31,19 +32,34 @@ export const TopBar: React.FC<TopBarProps> = ({
         {/* Right Side Controls */}
         <div className="flex items-center gap-2">
           {/* Attendance Percentage Badge (e.g. 87.10 | 75) */}
-          <div className="flex items-center gap-1.5 bg-white/5 border border-white/10 rounded-xl px-3 py-1.5 text-xs font-mono font-semibold">
+          <div className="flex items-center gap-1.5 bg-muted/60 border border-border rounded-xl px-3 py-1.5 text-xs font-mono font-semibold">
             <span
               className={
                 overallPercentage >= targetPercentage
-                  ? "text-emerald-400"
-                  : "text-rose-400"
+                  ? "text-emerald-500 dark:text-emerald-400 font-bold"
+                  : "text-rose-500 dark:text-rose-400 font-bold"
               }
             >
-              {(overallPercentage ?? 0).toFixed(2)}
+              {(overallPercentage ?? 0).toFixed(2)}%
             </span>
-            <span className="text-white/30">|</span>
-            <span className="text-white/70">{targetPercentage}</span>
+            <span className="text-muted-foreground/40">|</span>
+            <span className="text-muted-foreground">{targetPercentage}%</span>
           </div>
+
+          {/* Theme Toggle Button */}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={toggleTheme}
+            className="w-9 h-9 rounded-xl text-muted-foreground hover:text-foreground hover:bg-muted/80 cursor-pointer transition-transform active:scale-95"
+            title={`Current: ${theme} theme. Click to toggle.`}
+          >
+            {theme === "light" ? (
+              <Sun className="w-4 h-4 text-amber-500" />
+            ) : (
+              <Moon className="w-4 h-4 text-indigo-400" />
+            )}
+          </Button>
 
           {/* Quick Action Button */}
           {onAddClick && (
@@ -51,7 +67,7 @@ export const TopBar: React.FC<TopBarProps> = ({
               variant="ghost"
               size="icon"
               onClick={onAddClick}
-              className="w-9 h-9 rounded-xl text-white/70 hover:text-white hover:bg-white/10"
+              className="w-9 h-9 rounded-xl text-muted-foreground hover:text-foreground hover:bg-muted/80 cursor-pointer"
             >
               <Plus className="w-5 h-5" />
             </Button>
@@ -62,7 +78,7 @@ export const TopBar: React.FC<TopBarProps> = ({
             variant="ghost"
             size="icon"
             onClick={logout}
-            className="w-9 h-9 rounded-xl text-white/40 hover:text-rose-400 hover:bg-rose-500/10"
+            className="w-9 h-9 rounded-xl text-muted-foreground hover:text-rose-500 hover:bg-rose-500/10 cursor-pointer"
             title="Log Out"
           >
             <LogOut className="w-4 h-4" />
@@ -72,3 +88,4 @@ export const TopBar: React.FC<TopBarProps> = ({
     </header>
   );
 };
+

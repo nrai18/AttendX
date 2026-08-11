@@ -106,15 +106,15 @@ export const ClassroomsPage = () => {
       </div>
 
       {classrooms.length === 0 ? (
-        <div className="text-center py-16 bg-[#0c0d12] border border-white/5 rounded-2xl">
+        <div className="text-center py-16 bg-card border border-border rounded-2xl">
           <Users className="w-12 h-12 text-muted-foreground mx-auto mb-4 opacity-50" />
-          <h3 className="text-lg font-medium text-white mb-2">No classrooms yet</h3>
+          <h3 className="text-lg font-medium text-foreground mb-2">No classrooms yet</h3>
           <p className="text-muted-foreground max-w-sm mx-auto mb-6">
             Join your class group to get synced timetables, announcements, and shared assignments.
           </p>
           <button 
             onClick={() => setShowJoinModal(true)}
-            className="bg-primary hover:bg-primary/90 text-white px-6 py-2 rounded-lg transition-colors font-medium"
+            className="bg-primary hover:bg-primary/90 text-primary-foreground px-6 py-2 rounded-lg transition-colors font-medium"
           >
             Join a Classroom
           </button>
@@ -125,11 +125,11 @@ export const ClassroomsPage = () => {
             <Link 
               key={cls.id}
               to={`/classrooms/${cls.id}`}
-              className="group p-5 rounded-2xl bg-[#0c0d12] border border-white/5 hover:border-primary/30 transition-all duration-300 block"
+              className="group p-5 rounded-2xl bg-card border border-border hover:border-primary/30 transition-all duration-300 block shadow-sm"
             >
               <div className="flex justify-between items-start mb-4">
                 <div>
-                  <h3 className="text-lg font-semibold text-white group-hover:text-primary transition-colors">
+                  <h3 className="text-lg font-semibold text-foreground group-hover:text-primary transition-colors">
                     {cls.name}
                   </h3>
                   {cls.section && <p className="text-sm text-muted-foreground">Section {cls.section}</p>}
@@ -161,8 +161,8 @@ export const ClassroomsPage = () => {
       {/* Join Modal */}
       {showJoinModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div className="bg-[#13151a] border border-white/10 rounded-2xl p-6 w-full max-w-sm">
-            <h3 className="text-lg font-bold text-white mb-4">Join Classroom</h3>
+          <div className="bg-card border border-border rounded-2xl p-6 w-full max-w-sm shadow-xl">
+            <h3 className="text-lg font-bold text-foreground mb-4">Join Classroom</h3>
             <form onSubmit={handleJoin}>
               <div className="mb-4">
                 <label className="block text-sm text-muted-foreground mb-2">Enter 6-digit Join Code</label>
@@ -171,14 +171,14 @@ export const ClassroomsPage = () => {
                   value={joinCodeInput}
                   onChange={(e) => setJoinCodeInput(e.target.value.toUpperCase())}
                   maxLength={6}
-                  className="w-full bg-black/50 border border-white/10 rounded-xl p-3 text-white font-mono text-center tracking-widest text-xl focus:border-primary outline-none transition-colors uppercase"
+                  className="w-full bg-background border border-border rounded-xl p-3 text-foreground font-mono text-center tracking-widest text-xl focus:border-primary outline-none transition-colors uppercase"
                   placeholder="ABC123"
                   required
                 />
               </div>
               <div className="flex justify-end gap-3">
-                <button type="button" onClick={() => setShowJoinModal(false)} className="px-4 py-2 text-sm text-muted-foreground hover:text-white transition-colors">Cancel</button>
-                <button type="submit" disabled={isSubmitting} className="px-4 py-2 bg-primary hover:bg-primary/90 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50">Join</button>
+                <button type="button" onClick={() => setShowJoinModal(false)} className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors">Cancel</button>
+                <button type="submit" disabled={isSubmitting} className="px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg text-sm font-medium transition-colors disabled:opacity-50">Join</button>
               </div>
             </form>
           </div>
@@ -188,8 +188,8 @@ export const ClassroomsPage = () => {
       {/* Create Modal */}
       {showCreateModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div className="bg-[#13151a] border border-white/10 rounded-2xl p-6 w-full max-w-sm">
-            <h3 className="text-lg font-bold text-white mb-4">Create Classroom</h3>
+          <div className="bg-card border border-border rounded-2xl p-6 w-full max-w-sm shadow-xl">
+            <h3 className="text-lg font-bold text-foreground mb-4">Create Classroom</h3>
             <form onSubmit={handleCreate}>
               <div className="mb-4">
                 <label className="block text-sm text-muted-foreground mb-2">Classroom Name</label>
@@ -197,14 +197,14 @@ export const ClassroomsPage = () => {
                   type="text" 
                   value={newClassName}
                   onChange={(e) => setNewClassName(e.target.value)}
-                  className="w-full bg-black/50 border border-white/10 rounded-xl p-3 text-white focus:border-primary outline-none transition-colors"
+                  className="w-full bg-background border border-border rounded-xl p-3 text-foreground focus:border-primary outline-none transition-colors"
                   placeholder="e.g. ECE-5A"
                   required
                 />
               </div>
               <div className="flex justify-end gap-3">
-                <button type="button" onClick={() => setShowCreateModal(false)} className="px-4 py-2 text-sm text-muted-foreground hover:text-white transition-colors">Cancel</button>
-                <button type="submit" disabled={isSubmitting} className="px-4 py-2 bg-primary hover:bg-primary/90 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50">Create</button>
+                <button type="button" onClick={() => setShowCreateModal(false)} className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors">Cancel</button>
+                <button type="submit" disabled={isSubmitting} className="px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg text-sm font-medium transition-colors disabled:opacity-50">Create</button>
               </div>
             </form>
           </div>

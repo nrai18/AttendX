@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { format, addMonths, subMonths, startOfMonth, endOfMonth, startOfWeek, endOfWeek, isSameMonth, isSameDay, addDays, isAfter, startOfDay, differenceInDays } from "date-fns";
-import { ChevronLeft, ChevronRight, Upload, Calendar as CalendarIcon, Loader2, Sparkles, AlertTriangle, ListFilter, AlignLeft, CalendarDays, Timer, CheckCircle2, Plus } from "lucide-react";
+import { ChevronLeft, ChevronRight, Upload, Calendar as CalendarIcon, Loader2, Sparkles, AlertTriangle, ListFilter, AlignLeft, CalendarDays, Timer, CheckCircle2, Plus, Trash2 } from "lucide-react";
 import { api } from "../../lib/api";
 import { EventWizardModal } from "./EventWizardModal";
 import { CreateSemesterModal } from "../../components/semester/CreateSemesterModal";
@@ -112,9 +112,23 @@ export const SemesterHubPage = () => {
       });
       setIsWizardOpen(false);
       fetchData();
+      window.dispatchEvent(new Event("attendance-updated"));
     } catch (error) {
       console.error("Failed to save events:", error);
       alert("Failed to save events.");
+    }
+  };
+
+  const handleClearEvents = async () => {
+    if (!confirm("Are you sure you want to remove all academic calendar events? The calendar will render cleanly without event indicators.")) return;
+    try {
+      await api.post("/events/clear");
+      setEvents([]);
+      fetchCalendar();
+      window.dispatchEvent(new Event("attendance-updated"));
+    } catch (error) {
+      console.error("Failed to clear events:", error);
+      alert("Failed to clear events.");
     }
   };
 
@@ -168,14 +182,28 @@ export const SemesterHubPage = () => {
   let daysRemaining = 0;
 
   if (activeSemester) {
-    const semStart = new Date(activeSemester.startDate);
-    const semEnd = new Date(activeSemester.endDate);
-    const totalDays = differenceInDays(semEnd, semStart);
-    daysCompleted = differenceInDays(today, semStart);
-    if (daysCompleted < 0) daysCompleted = 0;
-    if (daysCompleted > totalDays) daysCompleted = totalDays;
-    daysRemaining = totalDays - daysCompleted;
-    progress = totalDays > 0 ? Math.round((daysCompleted / totalDays) * 100) : 0;
+    const now = Date.now();
+    const semStartMs = new Date(activeSemester.startDate).getTime();
+    const semEndMs = new Date(activeSemester.endDate).getTime();
+    const totalMs = semEndMs - semStartMs;
+
+    if (totalMs > 0) {
+      const totalDays = Math.ceil(totalMs / (1000 * 60 * 60 * 24));
+      if (now < semStartMs) {
+        progress = 0;
+        daysCompleted = 0;
+        daysRemaining = totalDays;
+      } else if (now >= semEndMs) {
+        progress = 100;
+        daysCompleted = totalDays;
+        daysRemaining = 0;
+      } else {
+        const elapsedMs = now - semStartMs;
+        progress = Math.min(100, Math.max(0, Math.round((elapsedMs / totalMs) * 100)));
+        daysCompleted = Math.floor(elapsedMs / (1000 * 60 * 60 * 24));
+        daysRemaining = Math.max(0, totalDays - daysCompleted);
+      }
+    }
   }
 
   if (isLoading) {
@@ -199,6 +227,16 @@ export const SemesterHubPage = () => {
         </div>
         
         <div className="flex items-center gap-3 w-full md:w-auto">
+          {events.length > 0 && (
+            <button
+              onClick={handleClearEvents}
+              className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold bg-rose-500/10 text-rose-500 hover:bg-rose-500/20 border border-rose-500/20 transition-all cursor-pointer"
+              title="Remove academic events & calendar items"
+            >
+              <Trash2 className="w-4 h-4" />
+              <span className="hidden sm:inline">Remove Calendar</span>
+            </button>
+          )}
           <input 
             type="file" 
             ref={fileInputRef} 
@@ -218,13 +256,13 @@ export const SemesterHubPage = () => {
       </div>
 
       {activeSemester ? (
-        <div className="bg-[#0c0d12] border border-white/10 rounded-2xl p-6 flex flex-col md:flex-row md:items-center gap-6 shadow-xl">
+        <div className="bg-card border border-border rounded-2xl p-6 flex flex-col md:flex-row md:items-center gap-6 shadow-xl">
           <div className="flex-1">
             <div className="flex justify-between items-end mb-2">
-              <span className="text-sm font-medium text-white">Semester Progress</span>
+              <span className="text-sm font-medium text-foreground">Semester Progress</span>
               <span className="text-2xl font-bold text-primary">{progress}%</span>
             </div>
-            <div className="w-full h-3 bg-white/5 rounded-full overflow-hidden">
+            <div className="w-full h-3 bg-muted rounded-full overflow-hidden">
               <div className="h-full bg-primary rounded-full transition-all duration-1000" style={{ width: `${progress}%` }} />
             </div>
             <div className="flex justify-between mt-2 text-xs text-muted-foreground font-medium">
@@ -232,13 +270,13 @@ export const SemesterHubPage = () => {
               <span>{daysRemaining} days remaining</span>
             </div>
           </div>
-          <div className="hidden md:block w-px h-16 bg-white/10" />
+          <div className="hidden md:block w-px h-16 bg-border" />
           <div className="flex-1">
-            <span className="text-sm font-medium text-white mb-2 block">Next Milestone</span>
+            <span className="text-sm font-medium text-foreground mb-2 block">Next Milestone</span>
             {upcomingEvents.length > 0 ? (
               <div className="flex items-center justify-between">
                 <div>
-                  <h4 className="text-lg font-bold text-white leading-tight">{upcomingEvents[0].title}</h4>
+                  <h4 className="text-lg font-bold text-foreground leading-tight">{upcomingEvents[0].title}</h4>
                   <p className="text-sm text-primary font-medium mt-0.5">
                     {differenceInDays(new Date(upcomingEvents[0].date), today)} days left
                   </p>
@@ -253,9 +291,9 @@ export const SemesterHubPage = () => {
           </div>
         </div>
       ) : (
-        <div className="bg-indigo-950/20 border border-indigo-500/30 rounded-2xl p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="bg-indigo-500/10 border border-indigo-500/30 rounded-2xl p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <h3 className="text-base font-bold text-white">No Active Semester</h3>
+            <h3 className="text-base font-bold text-foreground">No Active Semester</h3>
             <p className="text-xs text-muted-foreground mt-1">
               Set up your semester start and end dates to activate academic tracking and calendar view.
             </p>
@@ -271,7 +309,7 @@ export const SemesterHubPage = () => {
       )}
 
       {/* Tabs */}
-      <div className="flex overflow-x-auto hide-scrollbar gap-2 pb-1 border-b border-white/10">
+      <div className="flex overflow-x-auto hide-scrollbar gap-2 pb-1 border-b border-border">
         <TabButton active={activeTab === "timeline"} onClick={() => setActiveTab("timeline")} icon={<AlignLeft className="w-4 h-4" />} label="Timeline" />
         <TabButton active={activeTab === "calendar"} onClick={() => setActiveTab("calendar")} icon={<CalendarDays className="w-4 h-4" />} label="Calendar" />
         <TabButton active={activeTab === "countdowns"} onClick={() => setActiveTab("countdowns")} icon={<Timer className="w-4 h-4" />} label="Countdowns" />
@@ -279,20 +317,20 @@ export const SemesterHubPage = () => {
       </div>
 
       {/* Tab Content */}
-      <div className="flex-1 bg-[#0c0d12] border border-white/5 rounded-3xl p-6 min-h-[500px]">
+      <div className="flex-1 bg-card border border-border rounded-3xl p-6 min-h-[500px]">
         
         {activeTab === "calendar" && (
           <div className="h-full flex flex-col">
             <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl font-bold text-white">{format(currentDate, "MMMM yyyy")}</h2>
+              <h2 className="text-xl font-bold text-foreground">{format(currentDate, "MMMM yyyy")}</h2>
               <div className="flex gap-2">
-                <button onClick={() => setCurrentDate(subMonths(currentDate, 1))} className="p-2 hover:bg-white/10 rounded-lg text-muted-foreground">
+                <button onClick={() => setCurrentDate(subMonths(currentDate, 1))} className="p-2 hover:bg-muted rounded-lg text-muted-foreground hover:text-foreground">
                   <ChevronLeft className="w-5 h-5" />
                 </button>
-                <button onClick={() => setCurrentDate(new Date())} className="px-3 py-1.5 hover:bg-white/10 rounded-lg text-sm font-medium text-white/80">
+                <button onClick={() => setCurrentDate(new Date())} className="px-3 py-1.5 hover:bg-muted rounded-lg text-sm font-medium text-foreground">
                   Today
                 </button>
-                <button onClick={() => setCurrentDate(addMonths(currentDate, 1))} className="p-2 hover:bg-white/10 rounded-lg text-muted-foreground">
+                <button onClick={() => setCurrentDate(addMonths(currentDate, 1))} className="p-2 hover:bg-muted rounded-lg text-muted-foreground hover:text-foreground">
                   <ChevronRight className="w-5 h-5" />
                 </button>
               </div>
@@ -349,10 +387,10 @@ export const SemesterHubPage = () => {
             {/* Calendar Stats */}
             {calendarData?.stats && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-auto">
-                <div className="bg-[#12141a] rounded-2xl overflow-hidden border border-white/5">
-                  <div className="grid grid-cols-5 p-4 text-center divide-x divide-white/5">
+                <div className="bg-card rounded-2xl overflow-hidden border border-border shadow-xs">
+                  <div className="grid grid-cols-5 p-4 text-center divide-x divide-border">
                     <div>
-                      <div className="text-lg font-bold text-white mb-0.5">{calendarData.stats.days.not_marked}</div>
+                      <div className="text-lg font-bold text-foreground mb-0.5">{calendarData.stats.days.not_marked}</div>
                       <div className="flex items-center justify-center gap-1.5">
                         <div className="w-1.5 h-1.5 rounded-full bg-zinc-500" />
                         <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider hidden sm:inline">None</span>
@@ -360,55 +398,55 @@ export const SemesterHubPage = () => {
                       </div>
                     </div>
                     <div>
-                      <div className="text-lg font-bold text-white mb-0.5">{calendarData.stats.days.off}</div>
+                      <div className="text-lg font-bold text-foreground mb-0.5">{calendarData.stats.days.off}</div>
                       <div className="flex items-center justify-center gap-1.5">
                         <div className="w-1.5 h-1.5 rounded-full bg-yellow-500" />
                         <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Off</span>
                       </div>
                     </div>
                     <div>
-                      <div className="text-lg font-bold text-white mb-0.5">{calendarData.stats.days.missed}</div>
+                      <div className="text-lg font-bold text-foreground mb-0.5">{calendarData.stats.days.missed}</div>
                       <div className="flex items-center justify-center gap-1.5">
                         <div className="w-1.5 h-1.5 rounded-full bg-rose-500" />
                         <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Missed</span>
                       </div>
                     </div>
                     <div>
-                      <div className="text-lg font-bold text-white mb-0.5">{calendarData.stats.days.attended}</div>
+                      <div className="text-lg font-bold text-foreground mb-0.5">{calendarData.stats.days.attended}</div>
                       <div className="flex items-center justify-center gap-1.5">
                         <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
                         <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Attended</span>
                       </div>
                     </div>
                     <div>
-                      <div className="text-lg font-bold text-white mb-0.5">{calendarData.stats.days.mixed}</div>
+                      <div className="text-lg font-bold text-foreground mb-0.5">{calendarData.stats.days.mixed}</div>
                       <div className="flex items-center justify-center gap-1.5">
                         <div className="w-1.5 h-1.5 rounded-full bg-purple-500" />
                         <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Mixed</span>
                       </div>
                     </div>
                   </div>
-                  <div className="bg-white/[0.03] text-center py-2 text-xs font-semibold text-white/50 uppercase tracking-widest border-t border-white/5">
+                  <div className="bg-muted/40 text-center py-2 text-xs font-semibold text-muted-foreground uppercase tracking-widest border-t border-border">
                     Days Summary
                   </div>
                 </div>
 
-                <div className="bg-[#12141a] rounded-2xl overflow-hidden border border-white/5">
-                  <div className="grid grid-cols-5 p-4 text-center divide-x divide-white/5">
+                <div className="bg-card rounded-2xl overflow-hidden border border-border shadow-xs">
+                  <div className="grid grid-cols-5 p-4 text-center divide-x divide-border">
                     <div>
-                      <div className="text-lg font-bold text-white mb-0.5">{calendarData.stats.lectures.off}</div>
+                      <div className="text-lg font-bold text-foreground mb-0.5">{calendarData.stats.lectures.off}</div>
                       <div className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Off</div>
                     </div>
                     <div>
-                      <div className="text-lg font-bold text-white mb-0.5">{calendarData.stats.lectures.missed}</div>
+                      <div className="text-lg font-bold text-foreground mb-0.5">{calendarData.stats.lectures.missed}</div>
                       <div className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Missed</div>
                     </div>
                     <div>
-                      <div className="text-lg font-bold text-white mb-0.5">{calendarData.stats.lectures.attended}</div>
+                      <div className="text-lg font-bold text-foreground mb-0.5">{calendarData.stats.lectures.attended}</div>
                       <div className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Attended</div>
                     </div>
                     <div>
-                      <div className="text-lg font-bold text-white mb-0.5">{calendarData.stats.lectures.total}</div>
+                      <div className="text-lg font-bold text-foreground mb-0.5">{calendarData.stats.lectures.total}</div>
                       <div className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Total</div>
                     </div>
                     <div>
@@ -512,8 +550,8 @@ const TabButton = ({ active, onClick, icon, label }: { active: boolean, onClick:
   <button 
     onClick={onClick}
     className={`flex items-center gap-2 px-5 py-2.5 rounded-t-xl text-sm font-bold transition-all ${
-      active ? "bg-[#0c0d12] text-white border-t border-l border-r border-white/10 border-b-transparent -mb-[1px]" 
-      : "text-muted-foreground hover:text-white hover:bg-white/5 border border-transparent"
+      active ? "bg-card text-foreground border-t border-l border-r border-border border-b-transparent -mb-[1px]" 
+      : "text-muted-foreground hover:text-foreground hover:bg-muted/50 border border-transparent"
     }`}
   >
     {icon}

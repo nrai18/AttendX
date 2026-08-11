@@ -1,6 +1,7 @@
 import React from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { useSilentRefresh } from "./hooks/useSilentRefresh";
+import { useTheme } from "./hooks/useTheme";
 import { useAuthStore } from "./stores/authStore";
 import { AppShell } from "./components/layout/AppShell";
 import { LoginPage } from "./pages/auth/LoginPage";
@@ -21,7 +22,7 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-[#050508] flex items-center justify-center text-white">
+      <div className="min-h-screen bg-background text-foreground flex items-center justify-center">
         <Loader2 className="w-8 h-8 animate-spin text-primary" />
       </div>
     );
@@ -41,6 +42,7 @@ import { LandingPage } from "./pages/marketing/LandingPage";
 
 
 import { SettingsPage } from "./pages/settings/SettingsPage";
+import { PredictiveAttendancePage } from "./pages/attendance/PredictiveAttendancePage";
 
 const RootRoute: React.FC = () => {
   const { isAuthenticated, isLoading } = useAuthStore();
@@ -50,6 +52,7 @@ const RootRoute: React.FC = () => {
 
 export function App() {
   useSilentRefresh();
+  useTheme();
 
   return (
     <BrowserRouter>
@@ -70,6 +73,7 @@ export function App() {
           }
         >
           <Route path="/today" element={<TodayPage />} />
+          <Route path="/predictive" element={<PredictiveAttendancePage />} />
           <Route path="/timetable" element={<TimetablePage />} />
           <Route path="/semester" element={<SemesterHubPage />} />
           <Route path="/calendar" element={<CalendarPage />} />

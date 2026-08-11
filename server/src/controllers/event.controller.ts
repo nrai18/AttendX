@@ -62,4 +62,14 @@ export class EventController {
       res.status(500).json({ error: "Failed to get today status" });
     }
   }
+
+  static async clearAllEvents(req: AuthenticatedRequest, res: Response) {
+    try {
+      await EventService.clearAllEvents(req.user!.userId);
+      res.json({ message: "All events removed successfully" });
+    } catch (error) {
+      console.error("Clear events failed:", error);
+      res.status(500).json({ error: "Failed to clear events" });
+    }
+  }
 }

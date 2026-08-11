@@ -60,11 +60,11 @@ const Stepper: React.FC<{ current: number; total: number; labels: string[] }> = 
             <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all
               ${done   ? "bg-primary text-primary-foreground" :
                 active ? "bg-primary/20 border-2 border-primary text-primary" :
-                         "bg-white/5 border border-white/10 text-white/30"}`}>
+                         "bg-white/5 border border-border text-foreground/30"}`}>
               {done ? "✓" : i + 1}
             </div>
             <span className={`text-[10px] font-medium hidden sm:block whitespace-nowrap
-              ${active ? "text-white" : "text-white/30"}`}>
+              ${active ? "text-foreground" : "text-foreground/30"}`}>
               {labels[i]}
             </span>
           </div>
@@ -263,7 +263,7 @@ export const TimetableWizardModal: React.FC<WizardProps> = ({
         <div className="flex items-center gap-3 mb-5">
           <div className="p-2.5 bg-primary/20 text-primary rounded-xl"><GraduationCap className="w-6 h-6"/></div>
           <div>
-            <h2 className="text-xl font-bold text-white">Which semester are you in?</h2>
+            <h2 className="text-xl font-bold text-foreground">Which semester are you in?</h2>
             <p className="text-sm text-muted-foreground">
               {currentTerm === "odd" ? "Jan – Jun term: odd semesters" : "Jul – Dec term: even semesters"}
             </p>
@@ -278,8 +278,8 @@ export const TimetableWizardModal: React.FC<WizardProps> = ({
                 className={`flex flex-col items-center justify-center p-5 rounded-2xl border transition-all
                   ${selectedSemester === sem.value
                     ? "bg-primary/15 border-primary shadow-[0_0_20px_rgba(99,102,241,0.15)]"
-                    : "bg-white/[0.02] border-white/5 hover:border-white/20 hover:bg-white/5"}`}>
-                <span className={`text-3xl font-black mb-1 ${selectedSemester === sem.value ? "text-primary" : "text-white"}`}>
+                    : "bg-white/[0.02] border-border hover:border-white/20 hover:bg-accent"}`}>
+                <span className={`text-3xl font-black mb-1 ${selectedSemester === sem.value ? "text-primary" : "text-foreground"}`}>
                   S{sem.number}
                 </span>
                 {selectedSemester === sem.value && (
@@ -298,7 +298,7 @@ export const TimetableWizardModal: React.FC<WizardProps> = ({
         <div className="flex items-center gap-3 mb-5">
           <div className="p-2.5 bg-blue-500/20 text-blue-400 rounded-xl"><Building2 className="w-6 h-6"/></div>
           <div>
-            <h2 className="text-xl font-bold text-white">Which branch are you in?</h2>
+            <h2 className="text-xl font-bold text-foreground">Which branch are you in?</h2>
             <p className="text-sm text-muted-foreground">{selectedSemester}</p>
           </div>
         </div>
@@ -308,13 +308,13 @@ export const TimetableWizardModal: React.FC<WizardProps> = ({
               className={`flex items-center gap-3 p-4 rounded-xl border text-left transition-all
                 ${selectedBranch === b.code
                   ? "bg-white/10 border-white/30"
-                  : "bg-white/[0.02] border-white/5 hover:border-white/15 hover:bg-white/5"}`}>
+                  : "bg-white/[0.02] border-border hover:border-white/15 hover:bg-accent"}`}>
               <span className={`w-11 h-11 rounded-lg flex items-center justify-center text-xs font-black shrink-0 transition-all
-                ${selectedBranch === b.code ? "bg-white text-black" : "bg-white/10 text-white"}`}>
+                ${selectedBranch === b.code ? "bg-white text-black" : "bg-white/10 text-foreground"}`}>
                 {b.code}
               </span>
-              <span className="text-sm font-medium text-white leading-tight">{b.label}</span>
-              {selectedBranch === b.code && <span className="ml-auto text-white shrink-0"><CheckCircle/></span>}
+              <span className="text-sm font-medium text-foreground leading-tight">{b.label}</span>
+              {selectedBranch === b.code && <span className="ml-auto text-foreground shrink-0"><CheckCircle/></span>}
             </button>
           ))}
         </div>
@@ -327,7 +327,7 @@ export const TimetableWizardModal: React.FC<WizardProps> = ({
         <div className="flex items-center gap-3 mb-5">
           <div className="p-2.5 bg-rose-500/20 text-rose-400 rounded-xl"><Upload className="w-6 h-6"/></div>
           <div>
-            <h2 className="text-xl font-bold text-white">Upload your timetable</h2>
+            <h2 className="text-xl font-bold text-foreground">Upload your timetable</h2>
             <p className="text-sm text-muted-foreground">
               {selectedBranch} · {selectedSemester} · Section will be detected automatically.
             </p>
@@ -344,7 +344,7 @@ export const TimetableWizardModal: React.FC<WizardProps> = ({
                   <div className="w-16 h-16 rounded-2xl bg-rose-500/10 flex items-center justify-center">
                     <FileText className="w-8 h-8 text-rose-400"/>
                   </div>
-                  <p className="text-sm font-semibold text-white">{file?.name}</p>
+                  <p className="text-sm font-semibold text-foreground">{file?.name}</p>
                   <p className="text-xs text-muted-foreground">{file ? (file.size/1024/1024).toFixed(2) : "0.00"} MB · PDF</p>
                 </>
               ) : (
@@ -358,7 +358,7 @@ export const TimetableWizardModal: React.FC<WizardProps> = ({
                 <Upload className="w-7 h-7 text-muted-foreground"/>
               </div>
               <div>
-                <p className="text-base font-semibold text-white">Drop your timetable here</p>
+                <p className="text-base font-semibold text-foreground">Drop your timetable here</p>
                 <p className="text-sm text-muted-foreground mt-1">PNG, JPG or PDF — up to 10 MB</p>
               </div>
             </div>
@@ -376,7 +376,7 @@ export const TimetableWizardModal: React.FC<WizardProps> = ({
         <div className="flex items-center gap-3 mb-5">
           <div className="p-2.5 bg-yellow-500/20 text-yellow-400 rounded-xl"><Users className="w-6 h-6"/></div>
           <div>
-            <h2 className="text-xl font-bold text-white">Which section are you in?</h2>
+            <h2 className="text-xl font-bold text-foreground">Which section are you in?</h2>
             <p className="text-sm text-muted-foreground">
               Your timetable has {ocrPayload!.sections.length} sections — pick yours.
             </p>
@@ -388,7 +388,7 @@ export const TimetableWizardModal: React.FC<WizardProps> = ({
               className={`w-24 h-24 rounded-2xl border text-2xl font-black transition-all
                 ${selectedSection === sec
                   ? "bg-yellow-500/15 border-yellow-500 text-yellow-400 shadow-[0_0_20px_rgba(234,179,8,0.2)]"
-                  : "bg-white/[0.02] border-white/10 text-white hover:border-white/30 hover:bg-white/5"}`}>
+                  : "bg-white/[0.02] border-border text-foreground hover:border-white/30 hover:bg-accent"}`}>
               {sec}
             </button>
           ))}
@@ -406,7 +406,7 @@ export const TimetableWizardModal: React.FC<WizardProps> = ({
           <div className="flex items-center gap-3 mb-5">
             <div className="p-2.5 bg-emerald-500/20 text-emerald-400 rounded-xl"><FlaskConical className="w-6 h-6"/></div>
             <div>
-              <h2 className="text-xl font-bold text-white">Which practical group are you in?</h2>
+              <h2 className="text-xl font-bold text-foreground">Which practical group are you in?</h2>
               <p className="text-sm text-muted-foreground">We'll filter out the other group's lab slots.</p>
             </div>
           </div>
@@ -416,7 +416,7 @@ export const TimetableWizardModal: React.FC<WizardProps> = ({
                 className={`w-24 h-24 rounded-2xl border text-2xl font-black transition-all
                   ${labGroup === opt
                     ? "bg-emerald-500/15 border-emerald-500 text-emerald-400 shadow-[0_0_20px_rgba(16,185,129,0.2)]"
-                    : "bg-white/[0.02] border-white/10 text-white hover:border-white/30 hover:bg-white/5"}`}>
+                    : "bg-white/[0.02] border-border text-foreground hover:border-white/30 hover:bg-accent"}`}>
                 {opt}
               </button>
             ))}
@@ -431,25 +431,25 @@ export const TimetableWizardModal: React.FC<WizardProps> = ({
         <div className="flex items-center gap-3 mb-5">
           <div className="p-2.5 bg-primary/20 text-primary rounded-xl"><BookOpen className="w-6 h-6"/></div>
           <div>
-            <h2 className="text-xl font-bold text-white">Select your Program Elective</h2>
+            <h2 className="text-xl font-bold text-foreground">Select your Program Elective</h2>
             <p className="text-sm text-muted-foreground">Only slots for your chosen elective will be added.</p>
           </div>
         </div>
         {ocrPayload!.programElectives.map(group => (
           <div key={group.id} className="space-y-3">
-            <p className="text-xs font-semibold text-white/60 uppercase tracking-wider">{group.name}</p>
+            <p className="text-xs font-semibold text-foreground/60 uppercase tracking-wider">{group.name}</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {group.options.map(opt => (
                 <label key={opt.code}
                   className={`relative flex flex-col p-4 cursor-pointer rounded-2xl border transition-all
                     ${programElective === opt.code
                       ? "bg-primary/10 border-primary shadow-[0_0_15px_rgba(99,102,241,0.2)]"
-                      : "bg-white/[0.02] border-white/5 hover:border-white/20"}`}>
+                      : "bg-white/[0.02] border-border hover:border-white/20"}`}>
                   <input type="radio" name="progElective" value={opt.code}
                     checked={programElective === opt.code}
                     onChange={e => setProgramElective(e.target.value)} className="sr-only"/>
                   <span className="text-xs font-mono text-primary mb-1">{opt.code}</span>
-                  <span className="text-sm font-semibold text-white leading-snug">{opt.title || opt.code}</span>
+                  <span className="text-sm font-semibold text-foreground leading-snug">{opt.title || opt.code}</span>
                   {programElective === opt.code && <div className="absolute top-4 right-4 text-primary"><CheckCircle/></div>}
                 </label>
               ))}
@@ -465,25 +465,25 @@ export const TimetableWizardModal: React.FC<WizardProps> = ({
         <div className="flex items-center gap-3 mb-5">
           <div className="p-2.5 bg-blue-500/20 text-blue-400 rounded-xl"><BookOpen className="w-6 h-6"/></div>
           <div>
-            <h2 className="text-xl font-bold text-white">Select your Minor / Open Elective</h2>
+            <h2 className="text-xl font-bold text-foreground">Select your Minor / Open Elective</h2>
             <p className="text-sm text-muted-foreground">Choose the open elective you registered for.</p>
           </div>
         </div>
         {ocrPayload!.minorElectives.map(group => (
           <div key={group.id} className="space-y-3">
-            <p className="text-xs font-semibold text-white/60 uppercase tracking-wider">{group.name}</p>
+            <p className="text-xs font-semibold text-foreground/60 uppercase tracking-wider">{group.name}</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {group.options.map(opt => (
                 <label key={opt.code}
                   className={`relative flex flex-col p-4 cursor-pointer rounded-2xl border transition-all
                     ${minorElective === opt.code
                       ? "bg-blue-500/10 border-blue-500 shadow-[0_0_15px_rgba(59,130,246,0.2)]"
-                      : "bg-white/[0.02] border-white/5 hover:border-white/20"}`}>
+                      : "bg-white/[0.02] border-border hover:border-white/20"}`}>
                   <input type="radio" name="minorElective" value={opt.code}
                     checked={minorElective === opt.code}
                     onChange={e => setMinorElective(e.target.value)} className="sr-only"/>
                   <span className="text-xs font-mono text-blue-400 mb-1">{opt.code}</span>
-                  <span className="text-sm font-semibold text-white leading-snug">{opt.title || opt.code}</span>
+                  <span className="text-sm font-semibold text-foreground leading-snug">{opt.title || opt.code}</span>
                   {minorElective === opt.code && <div className="absolute top-4 right-4 text-blue-400"><CheckCircle/></div>}
                 </label>
               ))}
@@ -501,22 +501,22 @@ export const TimetableWizardModal: React.FC<WizardProps> = ({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={handleClose}/>
 
-      <div className="relative w-full max-w-2xl bg-[#0c0d12] border border-white/10 rounded-3xl shadow-2xl flex flex-col max-h-[92vh] overflow-hidden">
+      <div className="relative w-full max-w-2xl bg-[#0c0d12] border border-border rounded-3xl shadow-2xl flex flex-col max-h-[92vh] overflow-hidden">
         <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-primary via-blue-500 to-purple-500"/>
 
         {/* Header */}
-        <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-white/5 shrink-0">
+        <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-border shrink-0">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-primary/20 text-primary rounded-xl"><Wand2 className="w-5 h-5"/></div>
             <div>
-              <h1 className="text-lg font-bold text-white">Timetable Import Wizard</h1>
+              <h1 className="text-lg font-bold text-foreground">Timetable Import Wizard</h1>
               <p className="text-xs text-muted-foreground">
                 Step {step} of {hasOcr ? totalSteps : `${totalSteps}+`}
               </p>
             </div>
           </div>
           <button onClick={handleClose} disabled={isProcessingOcr || isGenerating}
-            className="p-2 text-white/40 hover:text-white hover:bg-white/10 rounded-xl transition-colors">
+            className="p-2 text-foreground/40 hover:text-foreground hover:bg-white/10 rounded-xl transition-colors">
             <X className="w-5 h-5"/>
           </button>
         </div>
@@ -532,10 +532,10 @@ export const TimetableWizardModal: React.FC<WizardProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 border-t border-white/5 bg-black/20 flex justify-between gap-3 shrink-0">
+        <div className="px-6 py-4 border-t border-border bg-black/20 flex justify-between gap-3 shrink-0">
           <button onClick={() => step > 1 ? setStep(s => s - 1) : handleClose()}
             disabled={isProcessingOcr || isGenerating}
-            className="px-5 py-2.5 rounded-xl font-medium text-white/70 hover:text-white hover:bg-white/5 transition-colors text-sm">
+            className="px-5 py-2.5 rounded-xl font-medium text-foreground/70 hover:text-foreground hover:bg-accent transition-colors text-sm">
             {step === 1 ? "Cancel" : "← Back"}
           </button>
           <button onClick={handleNext} disabled={!canNext}

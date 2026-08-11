@@ -1,19 +1,19 @@
 import React from "react";
 import { NavLink } from "react-router-dom";
-import { CalendarDays, Table, Calendar, BookOpen, Settings } from "lucide-react";
+import { CalendarDays, Table, BookOpen, Settings, Sparkles } from "lucide-react";
 import { cn } from "../../lib/utils";
 
 const navItems = [
   { label: "Today", path: "/today", icon: CalendarDays },
+  { label: "Predict", path: "/predictive", icon: Sparkles },
   { label: "Timetable", path: "/timetable", icon: Table },
-  { label: "Calendar", path: "/calendar", icon: Calendar },
   { label: "Subjects", path: "/subjects", icon: BookOpen },
   { label: "Settings", path: "/settings", icon: Settings },
 ];
 
 export const BottomNav: React.FC = () => {
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 bg-[#0c0d12]/90 backdrop-blur-lg border-t border-white/10 pb-[env(safe-area-inset-bottom)] md:hidden">
+    <nav className="fixed bottom-0 left-0 right-0 z-50 bg-card/90 backdrop-blur-lg border-t border-border pb-[env(safe-area-inset-bottom)] md:hidden transition-colors">
       <div className="flex items-center justify-around h-16 px-2 max-w-md mx-auto">
         {navItems.map((item) => {
           const Icon = item.icon;

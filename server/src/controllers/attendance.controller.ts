@@ -65,4 +65,18 @@ export class AttendanceController {
       res.status(500).json({ message: "Internal server error" });
     }
   }
+
+  static async getAttendanceLogs(req: AuthenticatedRequest, res: Response) {
+    const { subjectId, semesterId } = req.query;
+    try {
+      const logsData = await AttendanceService.getAttendanceLogs(req.user!.userId, {
+        subjectId: subjectId as string | undefined,
+        semesterId: semesterId as string | undefined,
+      });
+      res.json(logsData);
+    } catch (error: any) {
+      console.error("Get logs error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  }
 }

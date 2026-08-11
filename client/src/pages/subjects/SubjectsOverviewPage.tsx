@@ -85,12 +85,12 @@ export const SubjectsOverviewPage = () => {
     <div className="p-4 md:p-8 space-y-6 max-w-4xl mx-auto w-full pb-24 md:pb-8">
       <div className="flex justify-between items-start">
         <div>
-          <h1 className="text-2xl font-bold text-white">Attendance Overview</h1>
+          <h1 className="text-2xl font-bold text-foreground">Attendance Overview</h1>
           <p className="text-sm text-muted-foreground mt-1">Real-time metrics and safe leave predictions.</p>
         </div>
         <Link 
           to="/subjects/manage" 
-          className="p-2 bg-white/5 hover:bg-white/10 text-muted-foreground hover:text-white rounded-lg transition-colors"
+          className="p-2 bg-muted/60 hover:bg-muted text-muted-foreground hover:text-foreground rounded-lg transition-colors"
           title="Manage Subjects"
         >
           <Settings2 className="w-5 h-5" />
@@ -102,12 +102,12 @@ export const SubjectsOverviewPage = () => {
           const prediction = getPredictiveText(stat);
           return (
             <Link to={`/subjects/${stat.id}`} key={stat.id} className="block group">
-              <div className="bg-[#0c0d12] border border-white/5 rounded-2xl p-5 group-hover:border-white/10 group-hover:bg-[#111218] transition-all relative overflow-hidden h-full">
+              <div className="bg-card border border-border rounded-2xl p-5 group-hover:border-primary/30 group-hover:bg-muted/30 transition-all relative overflow-hidden h-full">
                 <div className="absolute top-0 left-0 w-1 h-full" style={{ backgroundColor: stat.colorHex || "#8b5cf6" }} />
                 
                 <div className="flex justify-between items-start pl-2 mb-4">
                   <div>
-                    <h3 className="text-lg font-semibold text-white leading-tight">{stat.name}</h3>
+                    <h3 className="text-lg font-semibold text-foreground leading-tight">{stat.name}</h3>
                     {stat.code && <p className="text-xs text-muted-foreground mt-1">{stat.code}</p>}
                   </div>
                   <div className="text-right">
@@ -122,7 +122,7 @@ export const SubjectsOverviewPage = () => {
 
                 <div className="pl-2 space-y-3">
                   {/* Progress Bar */}
-                  <div className="h-2 w-full bg-white/5 rounded-full overflow-hidden">
+                  <div className="h-2 w-full bg-muted/80 rounded-full overflow-hidden">
                     <div 
                       className="h-full rounded-full transition-all duration-500 ease-out"
                       style={{ 
@@ -133,10 +133,10 @@ export const SubjectsOverviewPage = () => {
                   </div>
                   
                   {/* Prediction Text */}
-                  <div className="flex items-center gap-2 bg-[#13151a] px-3 py-2 rounded-lg text-xs font-medium text-white/80 group-hover:bg-[#1a1c23] transition-colors">
+                  <div className="flex items-center gap-2 bg-muted/50 px-3 py-2 rounded-lg text-xs font-medium text-foreground/80 group-hover:bg-muted transition-colors">
                     {prediction.icon}
                     {prediction.text}
-                    <span className="ml-auto text-[10px] text-muted-foreground border border-white/10 px-1.5 py-0.5 rounded">
+                    <span className="ml-auto text-[10px] text-muted-foreground border border-border px-1.5 py-0.5 rounded">
                       Target: {stat.target}%
                     </span>
                   </div>

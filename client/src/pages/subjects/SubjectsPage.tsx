@@ -64,24 +64,28 @@ const SubjectCard: React.FC<{
   onEdit: () => void;
   onDelete: () => void;
 }> = ({ stat, onEdit, onDelete }) => {
+  const navigate = useNavigate();
   const statusMsg = getStatusMessage(stat);
   const pct = stat.percentage;
 
   return (
-    <div className="bg-[#0c0d12] border border-white/5 rounded-2xl p-4 hover:border-white/10 transition-colors group relative overflow-hidden">
-      <div className="absolute top-0 left-0 w-1 h-full rounded-l-2xl" style={{ backgroundColor: stat.colorHex || "#8b5cf6" }} />
+    <div 
+      onClick={() => navigate(`/subjects/${stat.id}`)}
+      className="bg-card border border-border rounded-2xl p-4 hover:border-primary/30 transition-all group relative overflow-hidden cursor-pointer shadow-sm"
+    >
+      <div className="absolute top-0 left-0 w-1.5 h-full rounded-l-2xl" style={{ backgroundColor: stat.colorHex || "#8b5cf6" }} />
       <div className="pl-3 space-y-3">
         {/* Top row: name + badge */}
         <div className="flex items-start justify-between gap-3">
           <div className="flex-1 min-w-0">
-            <h3 className="text-base font-semibold text-white leading-tight truncate">{stat.name}</h3>
-            <p className={`text-xs mt-0.5 ${statusMsg.color}`}>{statusMsg.text}</p>
+            <h3 className="text-base font-bold text-foreground leading-tight truncate group-hover:text-primary transition-colors">{stat.name}</h3>
+            <p className={`text-xs mt-0.5 font-medium ${statusMsg.color}`}>{statusMsg.text}</p>
           </div>
           <StatBadge stat={stat} />
         </div>
 
         {/* Progress bar */}
-        <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
+        <div className="h-1.5 bg-muted rounded-full overflow-hidden">
           <div
             className="h-full rounded-full transition-all duration-500"
             style={{
@@ -95,33 +99,33 @@ const SubjectCard: React.FC<{
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3 text-xs text-muted-foreground">
             <span className="flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block" />
-              Att: <span className="text-white font-medium">{stat.attended}</span>
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
+              Att: <span className="text-foreground font-semibold">{stat.attended}</span>
             </span>
             <span className="flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-red-400 inline-block" />
-              Miss: <span className="text-white font-medium">{stat.missed}</span>
+              <span className="w-1.5 h-1.5 rounded-full bg-rose-500 inline-block" />
+              Miss: <span className="text-foreground font-semibold">{stat.missed}</span>
             </span>
             <span className="flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-yellow-400 inline-block" />
-              Off: <span className="text-white font-medium">{stat.off}</span>
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 inline-block" />
+              Off: <span className="text-foreground font-semibold">{stat.off}</span>
             </span>
             <span className="text-muted-foreground">
-              Tot: <span className="text-white font-medium">{stat.total}</span>
+              Tot: <span className="text-foreground font-semibold">{stat.total}</span>
             </span>
           </div>
           {/* Edit/Delete */}
           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
             <button
-              onClick={onEdit}
-              className="p-1.5 rounded-lg text-muted-foreground hover:text-white hover:bg-white/5 transition-colors"
+              onClick={(e) => { e.stopPropagation(); onEdit(); }}
+              className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
               title="Edit Subject"
             >
               <Pencil className="w-3.5 h-3.5" />
             </button>
             <button
-              onClick={onDelete}
-              className="p-1.5 rounded-lg text-muted-foreground hover:text-red-400 hover:bg-red-400/10 transition-colors"
+              onClick={(e) => { e.stopPropagation(); onDelete(); }}
+              className="p-1.5 rounded-lg text-muted-foreground hover:text-rose-500 hover:bg-rose-500/10 transition-colors"
               title="Remove Subject"
             >
               <Trash2 className="w-3.5 h-3.5" />
@@ -153,19 +157,16 @@ export const SubjectsPage = () => {
   const fetchData = async () => {
     try {
       setIsLoading(true);
-      const [subjectsRes, semesterRes] = await Promise.all([
-        api.get("/subjects"),
-        api.get("/semesters/active"),
-      ]);
-      setSubjects(Array.isArray(subjectsRes.data) ? subjectsRes.data : []);
-
+      const semesterRes = await api.get("/semesters/active");
       const semester = semesterRes.data;
       if (semester) {
         setActiveSemesterId(semester.id);
-        const statsRes = await api.get(`/attendance/stats?semesterId=${semester.id}`);
-        // Normalize — API may return object/null instead of array
-        const stats = Array.isArray(statsRes.data) ? statsRes.data : [];
-        setSubjectStats(stats);
+        const [statsRes, subsRes] = await Promise.all([
+          api.get(`/attendance/stats?semesterId=${semester.id}`),
+          api.get(`/subjects?semesterId=${semester.id}`)
+        ]);
+        setSubjectStats(Array.isArray(statsRes.data) ? statsRes.data : []);
+        setSubjects(Array.isArray(subsRes.data) ? subsRes.data : []);
       }
     } catch (error) {
       console.error("Failed to fetch subjects:", error);
@@ -176,6 +177,12 @@ export const SubjectsPage = () => {
 
   useEffect(() => {
     fetchData();
+
+    const handleUpdate = () => {
+      fetchData();
+    };
+    window.addEventListener("attendance-updated", handleUpdate);
+    return () => window.removeEventListener("attendance-updated", handleUpdate);
   }, []);
 
   const resetForm = () => {
@@ -277,7 +284,7 @@ export const SubjectsPage = () => {
     <div className="p-4 md:p-8 space-y-5 max-w-4xl mx-auto w-full pb-24 md:pb-8">
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-2xl font-bold text-white">Subjects</h1>
+          <h1 className="text-2xl font-bold text-foreground">Subjects</h1>
           <p className="text-sm text-muted-foreground">Your semester attendance overview.</p>
         </div>
         <button
@@ -308,8 +315,8 @@ export const SubjectsPage = () => {
       )}
 
       {(isAdding || editingId) && (
-        <form onSubmit={handleSubmit} className="bg-[#0c0d12] border border-white/10 rounded-2xl p-5 space-y-4">
-          <h2 className="text-lg font-semibold text-white">{editingId ? "Edit Subject" : "New Subject"}</h2>
+        <form onSubmit={handleSubmit} className="bg-card border border-border rounded-2xl p-5 space-y-4 shadow-md">
+          <h2 className="text-lg font-semibold text-foreground">{editingId ? "Edit Subject" : "New Subject"}</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-1">
               <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Subject Name *</label>
@@ -319,7 +326,7 @@ export const SubjectsPage = () => {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="e.g. Digital Design"
-                className="w-full bg-[#13151a] border border-white/5 rounded-lg px-4 py-2.5 text-white placeholder:text-white/20 focus:outline-none focus:ring-1 focus:ring-primary/50"
+                className="w-full bg-background border border-border rounded-lg px-4 py-2.5 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/50"
               />
             </div>
             <div className="space-y-1">
@@ -329,7 +336,7 @@ export const SubjectsPage = () => {
                 value={code}
                 onChange={(e) => setCode(e.target.value)}
                 placeholder="e.g. ECSE303"
-                className="w-full bg-[#13151a] border border-white/5 rounded-lg px-4 py-2.5 text-white placeholder:text-white/20 focus:outline-none focus:ring-1 focus:ring-primary/50"
+                className="w-full bg-background border border-border rounded-lg px-4 py-2.5 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/50"
               />
             </div>
             <div className="space-y-1">
@@ -339,7 +346,7 @@ export const SubjectsPage = () => {
                 value={faculty}
                 onChange={(e) => setFaculty(e.target.value)}
                 placeholder="e.g. SAK"
-                className="w-full bg-[#13151a] border border-white/5 rounded-lg px-4 py-2.5 text-white placeholder:text-white/20 focus:outline-none focus:ring-1 focus:ring-primary/50"
+                className="w-full bg-background border border-border rounded-lg px-4 py-2.5 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/50"
               />
             </div>
             <div className="space-y-1">
@@ -350,7 +357,7 @@ export const SubjectsPage = () => {
                     key={color}
                     type="button"
                     onClick={() => setColorHex(color)}
-                    className={`w-10 h-10 rounded-full transition-transform ${colorHex === color ? "scale-110 ring-2 ring-white ring-offset-2 ring-offset-[#13151a]" : "opacity-50 hover:opacity-100"}`}
+                    className={`w-10 h-10 rounded-full transition-transform ${colorHex === color ? "scale-110 ring-2 ring-primary ring-offset-2 ring-offset-background" : "opacity-80 hover:opacity-100"}`}
                     style={{ backgroundColor: color }}
                   />
                 ))}
@@ -361,13 +368,13 @@ export const SubjectsPage = () => {
             <button
               type="button"
               onClick={resetForm}
-              className="px-4 py-2 rounded-lg text-sm font-medium text-muted-foreground hover:text-white transition-colors"
+              className="px-4 py-2 rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="px-4 py-2 rounded-lg text-sm font-medium bg-white text-black hover:bg-gray-200 transition-colors"
+              className="px-4 py-2 rounded-lg text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
             >
               Save Subject
             </button>
@@ -376,9 +383,9 @@ export const SubjectsPage = () => {
       )}
 
       {mergedStats.length === 0 && !isLoading && !isAdding ? (
-        <div className="text-center py-12 bg-[#0c0d12] border border-white/5 rounded-2xl">
+        <div className="text-center py-12 bg-card border border-border rounded-2xl">
           <AlertCircle className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-white mb-2">No subjects yet</h3>
+          <h3 className="text-lg font-medium text-foreground mb-2">No subjects yet</h3>
           <p className="text-muted-foreground max-w-sm mx-auto mb-6">
             You haven't added any subjects to track. Start by adding the subjects you are studying this semester.
           </p>
@@ -403,10 +410,13 @@ export const SubjectsPage = () => {
             const bgGlow = isGood ? "from-emerald-500/10" : "from-rose-500/10";
 
             return (
-              <div className={`relative rounded-3xl border border-white/10 overflow-hidden bg-gradient-to-br ${bgGlow} to-transparent p-6`}>
+              <div 
+                onClick={() => navigate("/subjects/overall")}
+                className={`relative rounded-3xl border border-border overflow-hidden bg-card/80 backdrop-blur-sm p-6 shadow-sm hover:border-primary/40 cursor-pointer transition-all group`}
+              >
                 {/* Subtle background glow */}
                 <div
-                  className="absolute -top-16 -right-16 w-64 h-64 rounded-full blur-3xl opacity-20"
+                  className="absolute -top-16 -right-16 w-64 h-64 rounded-full blur-3xl opacity-15 pointer-events-none"
                   style={{ backgroundColor: ringColor }}
                 />
 
@@ -418,7 +428,8 @@ export const SubjectsPage = () => {
                       <circle
                         cx="70" cy="70" r={radius}
                         fill="none"
-                        stroke="rgba(255,255,255,0.05)"
+                        stroke="currentColor"
+                        className="text-muted/40"
                         strokeWidth="10"
                       />
                       {/* Progress */}
@@ -435,7 +446,8 @@ export const SubjectsPage = () => {
                       <circle
                         cx="70" cy="70" r={radius}
                         fill="none"
-                        stroke="rgba(255,255,255,0.25)"
+                        stroke="currentColor"
+                        className="text-muted-foreground/30"
                         strokeWidth="2"
                         strokeDasharray={`2 ${circumference - 2}`}
                         strokeDashoffset={-((overallTarget / 100) * circumference)}
@@ -443,10 +455,10 @@ export const SubjectsPage = () => {
                     </svg>
                     {/* Centre text */}
                     <div className="absolute inset-0 flex flex-col items-center justify-center">
-                      <span className="text-3xl font-black text-white leading-none">
+                      <span className="text-3xl font-black text-foreground leading-none">
                         {(overallPct ?? 0).toFixed(1)}
                       </span>
-                      <span className="text-xs text-white/40 font-medium mt-0.5">%</span>
+                      <span className="text-xs text-muted-foreground font-medium mt-0.5">%</span>
                     </div>
                   </div>
 
@@ -455,16 +467,16 @@ export const SubjectsPage = () => {
                     <div>
                       <div className="flex items-center justify-center md:justify-start gap-2 mb-1">
                         <Shield className="w-4 h-4" style={{ color: ringColor }} />
-                        <h2 className="text-lg font-bold text-white">Overall Attendance</h2>
+                        <h2 className="text-lg font-bold text-foreground">Overall Attendance</h2>
                       </div>
-                      <p className={`text-sm font-medium`} style={{ color: ringColor }}>
+                      <p className={`text-sm font-semibold`} style={{ color: ringColor }}>
                         {getStatusMessage(overallStat).text}
                       </p>
-                      <p className="text-xs text-white/40 mt-1">
-                        Target: <span className="text-white/60 font-semibold">{overallTarget}%</span>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Target: <span className="text-foreground font-semibold">{overallTarget}%</span>
                         {isGood
-                          ? <span className="text-emerald-400 ml-2">+{((overallPct ?? 0) - (overallTarget ?? 75)).toFixed(1)}% buffer</span>
-                          : <span className="text-rose-400 ml-2">{((overallTarget ?? 75) - (overallPct ?? 0)).toFixed(1)}% short</span>
+                          ? <span className="text-emerald-600 dark:text-emerald-400 font-semibold ml-2">+{((overallPct ?? 0) - (overallTarget ?? 75)).toFixed(1)}% buffer</span>
+                          : <span className="text-rose-600 dark:text-rose-400 font-semibold ml-2">{((overallTarget ?? 75) - (overallPct ?? 0)).toFixed(1)}% short</span>
                         }
                       </p>
                     </div>
@@ -472,29 +484,29 @@ export const SubjectsPage = () => {
                     {/* Stats grid */}
                     <div className="grid grid-cols-4 gap-2">
                       {[
-                        { label: "Attended", value: overallAttended, color: "text-emerald-400", bg: "bg-emerald-500/10" },
-                        { label: "Missed", value: overallMissed, color: "text-rose-400", bg: "bg-rose-500/10" },
-                        { label: "Off", value: overallOff, color: "text-yellow-400", bg: "bg-yellow-500/10" },
-                        { label: "Total", value: overallTotal, color: "text-white", bg: "bg-white/5" },
+                        { label: "Attended", value: overallAttended, color: "text-emerald-600 dark:text-emerald-400", bg: "bg-emerald-500/10" },
+                        { label: "Missed", value: overallMissed, color: "text-rose-600 dark:text-rose-400", bg: "bg-rose-500/10" },
+                        { label: "Off", value: overallOff, color: "text-amber-600 dark:text-amber-400", bg: "bg-amber-500/10" },
+                        { label: "Total", value: overallTotal, color: "text-foreground", bg: "bg-muted" },
                       ].map(({ label, value, color, bg }) => (
                         <div key={label} className={`${bg} rounded-xl p-2.5 text-center`}>
                           <p className={`text-lg font-bold ${color}`}>{value}</p>
-                          <p className="text-[10px] text-white/40 mt-0.5 uppercase tracking-wide">{label}</p>
+                          <p className="text-[10px] text-muted-foreground mt-0.5 uppercase tracking-wide font-medium">{label}</p>
                         </div>
                       ))}
                     </div>
 
                     {/* Linear progress bar */}
                     <div className="space-y-1">
-                      <div className="flex justify-between text-[10px] text-white/30">
+                      <div className="flex justify-between text-[10px] text-muted-foreground font-medium">
                         <span>0%</span>
-                        <span className="text-white/50">Target {overallTarget}%</span>
+                        <span>Target {overallTarget}%</span>
                         <span>100%</span>
                       </div>
-                      <div className="h-2 bg-white/5 rounded-full overflow-hidden relative">
+                      <div className="h-2 bg-muted rounded-full overflow-hidden relative">
                         {/* Target line */}
                         <div
-                          className="absolute top-0 bottom-0 w-0.5 bg-white/30 z-10"
+                          className="absolute top-0 bottom-0 w-0.5 bg-muted-foreground/40 z-10"
                           style={{ left: `${overallTarget}%` }}
                         />
                         <div

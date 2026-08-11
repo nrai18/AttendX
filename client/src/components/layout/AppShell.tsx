@@ -4,6 +4,7 @@ import { BottomNav } from "./BottomNav";
 import { Sidebar } from "./Sidebar";
 import { TopBar } from "./TopBar";
 import { useAttendanceStore } from "../../stores/attendanceStore";
+import { AttendanceAnimationPopup } from "../common/AttendanceAnimationPopup";
 
 interface AppShellProps {
   title?: string;
@@ -18,7 +19,7 @@ export const AppShell: React.FC<AppShellProps> = ({ title, onAddClick }) => {
   }, [fetchStats]);
 
   return (
-    <div className="min-h-screen bg-[#050508] text-foreground flex flex-col md:flex-row antialiased selection:bg-primary selection:text-white">
+    <div className="min-h-screen bg-background text-foreground flex flex-col md:flex-row antialiased selection:bg-primary selection:text-white transition-colors duration-200">
       {/* Sidebar for Desktop */}
       <Sidebar />
 
@@ -35,6 +36,9 @@ export const AppShell: React.FC<AppShellProps> = ({ title, onAddClick }) => {
 
       {/* Bottom Navigation for Mobile */}
       <BottomNav />
+
+      {/* 2-Second Popup Animation Overlay */}
+      <AttendanceAnimationPopup />
     </div>
   );
 };

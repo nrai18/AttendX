@@ -56,7 +56,7 @@ export const EventWizardModal: React.FC<WizardProps> = ({ isOpen, onClose, onSav
       />
       
       {/* Modal Content */}
-      <div className="relative w-full max-w-xl bg-[#0c0d12] border border-white/10 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
+      <div className="relative w-full max-w-xl bg-card border border-border rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
         
         <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500" />
         
@@ -64,10 +64,10 @@ export const EventWizardModal: React.FC<WizardProps> = ({ isOpen, onClose, onSav
           <div className="flex justify-between items-start mb-6">
             <div>
               <div className="flex items-center gap-3 mb-2">
-                <div className="p-2.5 bg-indigo-500/20 text-indigo-400 rounded-xl">
+                <div className="p-2.5 bg-indigo-500/20 text-indigo-500 rounded-xl">
                   <CalendarRange className="w-6 h-6" />
                 </div>
-                <h2 className="text-2xl font-bold text-white">Review Semester Plan</h2>
+                <h2 className="text-2xl font-bold text-foreground">Review Semester Plan</h2>
               </div>
               <p className="text-muted-foreground text-sm pl-12">
                 We've extracted {eventsPayload.length} academic events from your calendar.

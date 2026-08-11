@@ -11,5 +11,6 @@ router.post("/mark", AttendanceController.markAttendance);
 router.get("/stats", AttendanceController.getSubjectStats);
 router.get("/stats/:subjectId", AttendanceController.getSingleSubjectStats);
 router.get("/calendar", AttendanceController.getMonthlyCalendar);
+router.get("/logs", AttendanceController.getAttendanceLogs);
 
 export default router;
