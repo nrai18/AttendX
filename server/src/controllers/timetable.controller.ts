@@ -1,5 +1,7 @@
 import { Request, Response } from "express";
 import { TimetableService } from "../services/timetable.service";
+import prisma from "../lib/prisma";
+import { BRANCHES } from "../utils/subjectDictionary";
 
 export class TimetableController {
   static async getTimetable(req: Request, res: Response) {
@@ -71,14 +73,8 @@ export class TimetableController {
       }
 
       // Map short branch code → full department name for the Gemini prompt
-      const BRANCH_DEPT_MAP: Record<string, string> = {
-        "CSE": "Computer Science and Engineering",
-        "IT":  "Information Technology",
-        "ECE": "Electronics and Communication Engineering",
-        "DS":  "Data Science",
-        "CY":  "Cyber Security",
-      };
-      const userDepartment = BRANCH_DEPT_MAP[branchCode] || branchCode;
+      const branchMeta = BRANCHES.find(b => b.code === branchCode);
+      const userDepartment = branchMeta ? branchMeta.department : branchCode;
 
       const ocrResult = await TimetableService.processOcrImage(
         req.file.buffer,
