@@ -51,7 +51,7 @@ export const PredictiveAttendanceView: React.FC<PredictiveAttendanceViewProps> =
     try {
       setIsLoading(true);
       const res = await api.get("/attendance/stats");
-      const list: SubjectStat[] = res.data || [];
+      const list: SubjectStat[] = Array.isArray(res.data) ? res.data : [];
       setSubjects(list);
 
       // Default global target to average target or 75
