@@ -22,14 +22,14 @@ export const useAttendanceStore = create<AttendanceState>((set) => ({
       }
       
       const statsRes = await api.get(`/attendance/stats?semesterId=${activeSemRes.data.id}`);
-      const subjects = statsRes.data;
+      const subjects = Array.isArray(statsRes.data) ? statsRes.data : [];
       
       let totalAttended = 0;
       let totalClasses = 0;
       
       subjects.forEach((sub: any) => {
-        totalAttended += sub.attended;
-        totalClasses += sub.total;
+        totalAttended += (sub.attended || 0);
+        totalClasses += (sub.total || 0);
       });
       
       const overallPercentage = totalClasses > 0 ? (totalAttended / totalClasses) * 100 : 0;
