@@ -95,7 +95,9 @@ export async function startServer() {
       console.error("Vite middleware startup error:", e);
     }
   } else {
-    const distPath = path.resolve(process.cwd(), "client/dist");
+    // __dirname in production = /opt/render/project/src/server/dist/src
+    // Go up 3 levels to reach the repo root, then into client/dist
+    const distPath = path.resolve(__dirname, "../../../client/dist");
     app.use(express.static(distPath));
     app.get("*", (req, res, next) => {
       if (req.path.startsWith("/api")) return next();
