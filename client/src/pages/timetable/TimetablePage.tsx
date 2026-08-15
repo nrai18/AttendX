@@ -55,17 +55,8 @@ export const TimetablePage = () => {
   const [extraDate, setExtraDate] = useState(new Date().toISOString().split("T")[0]);
   const [extraSubjectId, setExtraSubjectId] = useState("");
 
-  // OCR Upload State
-  const [isUploading, setIsUploading] = useState(false);
-  const [isOcrModalOpen, setIsOcrModalOpen] = useState(false);
-  const [selectedImage, setSelectedImage] = useState<File | null>(null);
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const jsonImportRef = useRef<HTMLInputElement>(null);
-
   // Wizard State
   const [isWizardOpen, setIsWizardOpen] = useState(false);
-  const [wizardPayload, setWizardPayload] = useState<any>(null);
   const [isCreateSemesterOpen, setIsCreateSemesterOpen] = useState(false);
 
   const fetchData = async () => {
@@ -272,66 +263,30 @@ export const TimetablePage = () => {
     }
   };
 
-  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
-      setSelectedImage(file);
-      if (file.type.includes("pdf") || file.name.endsWith(".pdf")) {
-        setImagePreview("pdf_file");
-      } else {
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          setImagePreview(reader.result as string);
-        };
-        reader.readAsDataURL(file);
-      }
-    }
-  };
-
-  const handleOcrUpload = async () => {
-    if (!selectedImage || !activeSemester) return;
-    
-    setIsUploading(true);
+  const handleOcrProcess = async (file: File, semesterName: string, branch: string) => {
+    if (!activeSemester) throw new Error("No active semester");
     const formData = new FormData();
-    formData.append("file", selectedImage);
-    formData.append("image", selectedImage);
+    formData.append("image", file);
     formData.append("semesterId", activeSemester.id);
-    
-    try {
-      const res = await api.post("/timetable/ocr-import", formData, {
-        headers: { "Content-Type": "multipart/form-data" }
-      });
-      
-      if (res.data.status === "needs_setup") {
-        setWizardPayload(res.data);
-        setIsOcrModalOpen(false);
-        setIsWizardOpen(true);
-      } else {
-        alert("Timetable imported successfully!");
-        setIsOcrModalOpen(false);
-        fetchData();
-      }
-    } catch (error) {
-      console.error("OCR Import failed:", error);
-      alert("Failed to import timetable. Please try again.");
-    } finally {
-      setIsUploading(false);
-      setSelectedImage(null);
-      setImagePreview(null);
-    }
+    formData.append("semesterName", semesterName);
+    formData.append("branch", branch);
+
+    const res = await api.post("/timetable/ocr-import", formData, {
+      headers: { "Content-Type": "multipart/form-data" }
+    });
+    return res.data;
   };
 
   const handleGenerateTimetable = async (selections: any) => {
-    if (!activeSemester || !wizardPayload) return;
+    if (!activeSemester) return;
     try {
-      const slotsToSave = selections.rawSlots || wizardPayload.rawSlots || [];
+      const slotsToSave = selections.rawSlots || [];
       await api.post("/timetable/save-wizard", {
         semesterId: activeSemester.id,
         selections,
         rawSlots: slotsToSave
       });
       setIsWizardOpen(false);
-      setWizardPayload(null);
       fetchData();
     } catch (error) {
       console.error("Failed to generate timetable:", error);
@@ -396,7 +351,7 @@ export const TimetablePage = () => {
             <span className="hidden sm:inline">Clear Timetable</span>
           </button>
           <button
-            onClick={() => setIsOcrModalOpen(true)}
+            onClick={() => setIsWizardOpen(true)}
             className="flex items-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white px-3.5 py-2 rounded-xl text-xs font-semibold shadow-md transition-all cursor-pointer"
           >
             <Upload className="w-3.5 h-3.5" />
@@ -412,92 +367,12 @@ export const TimetablePage = () => {
         </div>
       </div>
       
-      {/* OCR Modal */}
-      {isOcrModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-card border border-border rounded-2xl w-full max-w-md overflow-hidden shadow-2xl">
-            <div className="p-4 border-b border-border flex justify-between items-center">
-              <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
-                <ImageIcon className="w-5 h-5 text-blue-500" />
-                Upload Timetable (PDF / Image)
-              </h2>
-              <button onClick={() => { setIsOcrModalOpen(false); setSelectedImage(null); setImagePreview(null); }} className="text-muted-foreground hover:text-foreground transition-colors">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            
-            <div className="p-6 space-y-6">
-              <div className="text-sm text-muted-foreground text-center">
-                Upload your timetable PDF or Image file. We will extract all branch and semester schedules automatically!
-              </div>
-              
-              <div 
-                onClick={() => fileInputRef.current?.click()}
-                className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-colors ${
-                  imagePreview ? 'border-blue-500/50 bg-blue-500/5' : 'border-border hover:border-primary/50 hover:bg-muted/50'
-                }`}
-              >
-                <input 
-                  type="file" 
-                  accept="image/*,.pdf,application/pdf" 
-                  className="hidden" 
-                  ref={fileInputRef}
-                  onChange={handleImageSelect}
-                />
-                
-                {imagePreview === "pdf_file" ? (
-                  <div className="space-y-3 flex flex-col items-center">
-                    <div className="w-14 h-14 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-500 flex items-center justify-center font-bold text-xs uppercase tracking-wider">
-                      PDF
-                    </div>
-                    <div className="text-sm font-bold text-foreground truncate max-w-[220px]">
-                      {selectedImage?.name}
-                    </div>
-                    <p className="text-xs font-medium text-blue-500">Click to select a different PDF or Image</p>
-                  </div>
-                ) : imagePreview ? (
-                  <div className="space-y-4">
-                    <img src={imagePreview} alt="Preview" className="max-h-48 mx-auto rounded-lg object-contain" />
-                    <p className="text-sm font-medium text-blue-500">Click to change file</p>
-                  </div>
-                ) : (
-                  <div className="space-y-3 flex flex-col items-center">
-                    <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center">
-                      <Upload className="w-6 h-6 text-muted-foreground" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-foreground">Click to browse timetable file</p>
-                      <p className="text-xs text-muted-foreground mt-1">PDF, PNG, JPG, JPEG up to 15MB</p>
-                    </div>
-                  </div>
-                )}
-              </div>
-              
-              <button 
-                onClick={handleOcrUpload}
-                disabled={!selectedImage || isUploading}
-                className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold transition-colors flex items-center justify-center gap-2 shadow-md shadow-blue-500/20 cursor-pointer"
-              >
-                {isUploading ? (
-                  <>
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                    Extracting Master Schedule...
-                  </>
-                ) : (
-                  "Extract Schedule"
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Timetable Setup Wizard Modal */}
       <TimetableWizardModal 
         isOpen={isWizardOpen}
         onClose={() => setIsWizardOpen(false)}
         onGenerate={handleGenerateTimetable}
-        setupPayload={wizardPayload}
+        onOcrProcess={handleOcrProcess}
       />
 
       {/* Forms (Add Slot) */}
