@@ -8,17 +8,22 @@ const upload = multer({ storage: multer.memoryStorage() });
 
 router.use(authenticate);
 
-router.get("/export/:semesterId", TimetableController.exportTimetable);
-router.post("/import/:semesterId", TimetableController.importTimetable);
 router.get("/:semesterId", TimetableController.getTimetable);
 router.post("/slots", TimetableController.createSlot);
 router.patch("/slots/:id", TimetableController.updateSlot);
 router.post("/slots/swap", TimetableController.swapSlots);
 router.delete("/slots/:id", TimetableController.deleteSlot);
+router.post("/slots/delete-batch", TimetableController.deleteSlotsBatch);
+router.delete("/semester/:semesterId/subject/:subjectId/slots", TimetableController.deleteSubjectSlots);
 router.post("/extra-class", TimetableController.addExtraClass);
 router.delete("/extra-class/:id", TimetableController.deleteExtraClass);
-router.post("/ocr-import", upload.single("image"), TimetableController.ocrImport);
+router.post("/ocr-import", upload.any(), TimetableController.ocrImport);
 router.post("/save-wizard", TimetableController.saveWizard);
+router.get("/export/:semesterId", TimetableController.exportTimetable);
+router.post("/import/:semesterId", TimetableController.importTimetable);
 router.delete("/semester/:semesterId/safe", TimetableController.safeDeleteTimetable);
+router.delete("/clear", TimetableController.safeDeleteTimetable);
+router.delete("/safe", TimetableController.safeDeleteTimetable);
+router.delete("/", TimetableController.safeDeleteTimetable);
 
 export default router;

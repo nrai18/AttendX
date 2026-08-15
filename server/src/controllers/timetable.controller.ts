@@ -1,12 +1,13 @@
 import { Request, Response } from "express";
 import { TimetableService } from "../services/timetable.service";
-import { prisma } from "../lib/prisma";
-import { BRANCHES, COURSE_CURRICULUM } from "../utils/subjectDictionary";
+import { SemesterService } from "../services/semester.service";
+import { UserService } from "../services/user.service";
 
 export class TimetableController {
   static async getTimetable(req: Request, res: Response) {
     const semesterId = String(req.params.semesterId);
-    const slots = await TimetableService.getTimetable(semesterId);
+    const group = (req.query.group as string) || undefined;
+    const slots = await TimetableService.getTimetable(semesterId, group);
     res.json(slots);
   }
 
@@ -16,10 +17,8 @@ export class TimetableController {
   }
 
   static async updateSlot(req: Request, res: Response) {
-    const slot = await TimetableService.updateSlot(
-      String(req.params.id),
-      req.body,
-    );
+    const slotId = String(req.params.id);
+    const slot = await TimetableService.updateSlot(slotId, req.body);
     res.json(slot);
   }
 
@@ -33,185 +32,66 @@ export class TimetableController {
   }
 
   static async deleteSlot(req: Request, res: Response) {
+    const slotId = String(req.params.id);
     const preserveHistory = req.query.preserveHistory !== "false";
-    await TimetableService.deleteSlot(String(req.params.id), preserveHistory);
+    await TimetableService.deleteSlot(slotId, preserveHistory);
     res.json({ message: "Slot deleted", preservedHistory: preserveHistory });
   }
 
+  static async deleteSlotsBatch(req: Request, res: Response) {
+    const { slotIds, preserveHistory = true } = req.body;
+    if (!Array.isArray(slotIds)) {
+      return res.status(400).json({ error: "slotIds array is required" });
+    }
+    const result = await TimetableService.deleteSlotsBatch(slotIds, preserveHistory);
+    res.json({ message: "Slots deleted", count: result.count, preservedHistory: preserveHistory });
+  }
+
+  static async deleteSubjectSlots(req: Request, res: Response) {
+    const semesterId = String(req.params.semesterId);
+    const subjectId = String(req.params.subjectId);
+    const preserveHistory = req.query.preserveHistory !== "false";
+    if (!semesterId || !subjectId) {
+      return res.status(400).json({ error: "semesterId and subjectId are required" });
+    }
+    const result = await TimetableService.deleteSubjectSlots(semesterId, subjectId, preserveHistory);
+    res.json({ message: "Subject slots deleted", count: result.count, preservedHistory: preserveHistory });
+  }
+
   static async addExtraClass(req: Request, res: Response) {
-    const extra = await TimetableService.addExtraClass({
-      ...req.body,
-      userId: (req as any).user?.userId,
-    });
+    const extra = await TimetableService.addExtraClass(req.body);
     res.status(201).json(extra);
   }
 
   static async deleteExtraClass(req: Request, res: Response) {
-    try {
-      await TimetableService.deleteExtraClass(String(req.params.id));
-      res.json({ message: "Extra class deleted" });
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
+    const id = String(req.params.id);
+    if (!id) {
+      return res.status(400).json({ error: "id is required" });
     }
-  }
-
-  static async exportTimetable(req: Request | any, res: Response) {
-    try {
-      const userId = req.user?.userId;
-      const semesterId = String(
-        req.params.semesterId || req.query.semesterId || "",
-      );
-      if (!userId) {
-        return res.status(401).json({ error: "Missing user context" });
-      }
-
-      const payload = await TimetableService.exportTimetable(
-        userId,
-        semesterId,
-      );
-      res.status(200).json(payload);
-    } catch (error: any) {
-      console.error("Export timetable error:", error);
-      res
-        .status(500)
-        .json({ error: error.message || "Failed to export timetable" });
-    }
-  }
-
-  static async importTimetable(req: Request | any, res: Response) {
-    try {
-      const userId = req.user?.userId;
-      const semesterId = String(req.params.semesterId);
-      if (!userId || !semesterId) {
-        return res
-          .status(400)
-          .json({ error: "Missing user or semester context" });
-      }
-
-      const payload = req.body;
-      const slots = await TimetableService.importTimetable(
-        userId,
-        semesterId,
-        payload,
-      );
-      res
-        .status(200)
-        .json({ message: "Timetable imported successfully", slots });
-    } catch (error: any) {
-      console.error("Import timetable error:", error);
-      res
-        .status(500)
-        .json({ error: error.message || "Failed to import timetable" });
-    }
+    await TimetableService.deleteExtraClass(id);
+    res.json({ message: "Extra class deleted" });
   }
 
   static async ocrImport(req: Request | any, res: Response) {
-    if (!req.file) {
-      return res.status(400).json({ error: "No image file provided" });
+    const file = req.file || (req.files && req.files[0]);
+    if (!file) {
+      return res.status(400).json({ error: "No timetable PDF or image file provided" });
     }
-
-    // STRICT IMAGE-ONLY VALIDATION
-    const validMimeTypes = ["image/jpeg", "image/jpg", "image/png"];
-    if (!validMimeTypes.includes(req.file.mimetype)) {
-      return res.status(400).json({
-        error: `Unsupported file type. Only JPG, JPEG, and PNG images are allowed to ensure accurate grid parsing.`,
-      });
-    }
-
     const semesterId = req.body.semesterId;
     const userId = req.user?.userId;
 
     if (!semesterId || !userId) {
-      return res
-        .status(400)
-        .json({ error: "Missing semesterId or user context" });
+      return res.status(400).json({ error: "Missing semesterId or user context" });
     }
 
     try {
-      let semesterName: string = req.body.semesterName || "";
-      let branchCode: string = req.body.branch || "";
-
-      if (!semesterName || !branchCode) {
-        const user = await prisma.user.findUnique({
-          where: { id: userId },
-          select: { department: true },
-        });
-        const semester = await prisma.semester.findUnique({
-          where: { id: semesterId },
-          select: { name: true },
-        });
-        if (!semesterName) semesterName = semester?.name || "Semester 5";
-        if (!branchCode) branchCode = user?.department || "ECE";
-      }
-
-      const branchMeta = BRANCHES.find((b) => b.code === branchCode);
-      const userDepartment = branchMeta ? branchMeta.department : branchCode;
-
-      const ocrResult = await TimetableService.processOcrImage(
-        req.file.buffer,
-        req.file.mimetype,
-        semesterId,
-        userId,
-        semesterName,
-        userDepartment,
-      );
-
-      // DICTIONARY VERIFICATION INTERCEPTOR
-      const uniqueRawCodes = new Set<string>();
-      for (const slot of ocrResult.rawSlots || []) {
-        // FIX: Looking for slot.code instead of slot.subject_code
-        const cleanCode = String(slot.code || "")
-          .replace(/\s*\([LPT]\)/gi, "")
-          .trim();
-        if (cleanCode) uniqueRawCodes.add(cleanCode);
-      }
-
-      const verifiedProgramElectives: { code: string; title: string }[] = [];
-      const verifiedMinorElectives: { code: string; title: string }[] = [];
-
-      uniqueRawCodes.forEach((code) => {
-        if (COURSE_CURRICULUM[code]) {
-          const title = COURSE_CURRICULUM[code];
-          if (code.includes("SE")) {
-            verifiedProgramElectives.push({ code, title });
-          } else if (code.includes("MS")) {
-            verifiedMinorElectives.push({ code, title });
-          }
-        }
-      });
-
-      // ENFORCE ELECTIVE SEMESTER CONSTRAINTS
-      // Only students in the 5th to 8th semesters should have electives
-      const semesterMatch = semesterName.match(/(?:semester|sem)\s*(\d+)/i) || semesterName.match(/(\d+)/);
-      const semesterNumber = semesterMatch ? parseInt(semesterMatch[1], 10) : 5;
-      const shouldHaveElectives = semesterNumber >= 5;
-
-      ocrResult.programElectives =
-        shouldHaveElectives && verifiedProgramElectives.length > 0
-          ? [
-              {
-                id: "verified_pe",
-                name: "Program Electives",
-                options: verifiedProgramElectives,
-              },
-            ]
-          : [];
-
-      ocrResult.minorElectives =
-        shouldHaveElectives && verifiedMinorElectives.length > 0
-          ? [
-              {
-                id: "verified_me",
-                name: "Minor / Open Electives",
-                options: verifiedMinorElectives,
-              },
-            ]
-          : [];
-
+      const mimeType = file.mimetype || "application/pdf";
+      const fileName = file.originalname || "timetable.pdf";
+      const ocrResult = await TimetableService.processOcrImage(file.buffer, mimeType, fileName, semesterId, userId);
       res.status(200).json(ocrResult);
     } catch (error: any) {
       console.error("OCR Import Error:", error);
-      res.status(500).json({ error: "Failed to process timetable image" });
+      res.status(500).json({ error: "Failed to process timetable file" });
     }
   }
 
@@ -224,16 +104,8 @@ export class TimetableController {
         return res.status(400).json({ error: "Missing required fields" });
       }
 
-      // Pass directly to the service (which now handles filtering and LAB renaming)
-      const slots = await TimetableService.saveWizardTimetable(
-        userId,
-        semesterId,
-        selections,
-        rawSlots,
-      );
-      res
-        .status(201)
-        .json({ message: "Timetable generated successfully", slots });
+      const slots = await TimetableService.saveWizardTimetable(userId, semesterId, selections, rawSlots);
+      res.status(201).json({ message: "Timetable generated successfully", slots });
     } catch (error: any) {
       console.error("Wizard Save Error:", error);
       res.status(500).json({ error: "Failed to save personalized timetable" });
@@ -242,20 +114,67 @@ export class TimetableController {
 
   static async safeDeleteTimetable(req: Request | any, res: Response) {
     try {
-      const { semesterId } = req.params;
+      let semesterId = req.params.semesterId ? String(req.params.semesterId) : undefined;
       const userId = req.user?.userId;
-
-      if (!semesterId || !userId) {
-        return res
-          .status(400)
-          .json({ error: "Missing semesterId or user context" });
+      
+      if (!userId) {
+        return res.status(401).json({ error: "Unauthorized" });
       }
 
-      await TimetableService.safeDeleteTimetable(userId, semesterId);
+      if (!semesterId || semesterId === "undefined" || semesterId === "null" || semesterId === "active") {
+        const activeSem = await SemesterService.getActiveSemester(userId);
+        if (activeSem) {
+          semesterId = activeSem.id;
+        }
+      }
+
+      if (semesterId && semesterId !== "undefined" && semesterId !== "null" && semesterId !== "active") {
+        await TimetableService.safeDeleteTimetable(userId, semesterId);
+      } else {
+        await UserService.resetTimetable(userId);
+      }
+
       res.status(200).json({ message: "Timetable cleared successfully" });
     } catch (error: any) {
       console.error("Safe Delete Error:", error);
-      res.status(500).json({ error: "Failed to clear timetable" });
+      res.status(500).json({ error: error.message || "Failed to clear timetable" });
+    }
+  }
+
+  static async exportTimetable(req: Request | any, res: Response) {
+    try {
+      const semesterId = String(req.params.semesterId);
+      const userId = req.user?.userId;
+
+      if (!semesterId || !userId) {
+        return res.status(400).json({ error: "Missing semesterId or user context" });
+      }
+
+      const exportData = await TimetableService.exportTimetable(userId, semesterId);
+      res.setHeader("Content-Type", "application/json");
+      res.setHeader("Content-Disposition", `attachment; filename=schedule_${semesterId}.json`);
+      res.status(200).json(exportData);
+    } catch (error: any) {
+      console.error("Export Error:", error);
+      res.status(500).json({ error: error.message || "Failed to export timetable" });
+    }
+  }
+
+  static async importTimetable(req: Request | any, res: Response) {
+    try {
+      const semesterId = String(req.params.semesterId);
+      const userId = req.user?.userId;
+      const payload = req.body;
+
+      if (!semesterId || !userId) {
+        return res.status(400).json({ error: "Missing semesterId or user context" });
+      }
+
+      const result = await TimetableService.importTimetable(userId, semesterId, payload);
+      res.status(200).json({ message: "Timetable imported successfully", result });
+    } catch (error: any) {
+      console.error("Import Error:", error);
+      res.status(400).json({ error: error.message || "Failed to import timetable" });
     }
   }
 }

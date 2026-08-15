@@ -1,17 +1,22 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Plus, Trash2, Loader2, CalendarPlus, Upload, Image as ImageIcon, X, Download, FileSpreadsheet } from "lucide-react";
+import { Plus, Trash2, Loader2, CalendarPlus, Upload, Image as ImageIcon, X, Download, FileSpreadsheet, Edit3, ArrowLeft, CheckSquare, Square, CheckCircle2 } from "lucide-react";
 import { api } from "../../lib/api";
 import { TimetableWizardModal } from "./TimetableWizardModal";
 import { CreateSemesterModal } from "../../components/semester/CreateSemesterModal";
 import { SortableSlot } from "./SortableSlot";
+import { DeleteSlotModal } from "./DeleteSlotModal";
+import { ClearTimetableModal } from "./ClearTimetableModal";
 import { DndContext, closestCenter, DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { normalizeTimeString } from "../../utils/timeUtils";
+import { useAttendanceStore } from "../../stores/attendanceStore";
 
 interface Subject {
   id: string;
   name: string;
   code?: string;
   colorHex?: string;
+  faculty?: string;
 }
 
 interface TimetableSlot {
@@ -21,6 +26,7 @@ interface TimetableSlot {
   startTime: string;
   endTime: string;
   room?: string;
+  group?: string;
   slotType: string;
   subject: Subject;
 }
@@ -33,12 +39,24 @@ interface Semester {
 
 const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
+
+
 export const TimetablePage = () => {
   const [slots, setSlots] = useState<TimetableSlot[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [activeSemester, setActiveSemester] = useState<Semester | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<number>(new Date().getDay() === 0 ? 6 : new Date().getDay() - 1);
+
+
+  // Selection & Delete Modal State
+  const [isSelectMode, setIsSelectMode] = useState(false);
+  const [selectedSlotIds, setSelectedSlotIds] = useState<string[]>([]);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [slotsPendingDelete, setSlotsPendingDelete] = useState<TimetableSlot[]>([]);
+
+  // Attendance stats for header badge
+  const { overallPercentage, targetPercentage, fetchStats } = useAttendanceStore();
 
   // Form State
   const [isAdding, setIsAdding] = useState(false);
@@ -55,9 +73,22 @@ export const TimetablePage = () => {
   const [extraDate, setExtraDate] = useState(new Date().toISOString().split("T")[0]);
   const [extraSubjectId, setExtraSubjectId] = useState("");
 
-  // Wizard State
+  // OCR Upload State
+  const [isUploading, setIsUploading] = useState(false);
+  const [isOcrModalOpen, setIsOcrModalOpen] = useState(false);
+  const [selectedImage, setSelectedImage] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const jsonImportRef = useRef<HTMLInputElement>(null);
+
+  // Wizard & Semester State
   const [isWizardOpen, setIsWizardOpen] = useState(false);
+  const [wizardPayload, setWizardPayload] = useState<any>(null);
   const [isCreateSemesterOpen, setIsCreateSemesterOpen] = useState(false);
+
+  // Clear All Timetable Modal State & Toast
+  const [isClearModalOpen, setIsClearModalOpen] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const fetchData = async () => {
     try {
@@ -82,8 +113,16 @@ export const TimetablePage = () => {
       const activeSubjects = rawSubjects.filter((s: any) => s.semesterId === semester.id);
       
       setSubjects(activeSubjects);
-      setSlots(Array.isArray(slotsRes.data) ? slotsRes.data : []);
 
+      const rawSlotsList = Array.isArray(slotsRes.data) ? slotsRes.data : [];
+      const normalizedSlots = rawSlotsList.map((slot: any) => ({
+        ...slot,
+        startTime: normalizeTimeString(slot.startTime, "09:00"),
+        endTime: normalizeTimeString(slot.endTime, "10:00")
+      }));
+
+      setSlots(normalizedSlots);
+      fetchStats();
     } catch (error) {
       console.error("Failed to fetch timetable data:", error);
     } finally {
@@ -94,6 +133,11 @@ export const TimetablePage = () => {
   useEffect(() => {
     fetchData();
   }, []);
+
+  // Clear selection when changing day tab
+  useEffect(() => {
+    setSelectedSlotIds([]);
+  }, [activeTab]);
 
   const resetForm = () => {
     setSubjectId("");
@@ -107,8 +151,8 @@ export const TimetablePage = () => {
 
   const handleEditSlot = (slot: TimetableSlot) => {
     setSubjectId(slot.subjectId);
-    setStartTime(slot.startTime);
-    setEndTime(slot.endTime);
+    setStartTime(normalizeTimeString(slot.startTime, "09:00"));
+    setEndTime(normalizeTimeString(slot.endTime, "10:00"));
     setRoom(slot.room || "");
     setSlotType(slot.slotType);
     setDayOfWeek(slot.dayOfWeek);
@@ -124,8 +168,8 @@ export const TimetablePage = () => {
         semesterId: activeSemester.id,
         subjectId,
         dayOfWeek,
-        startTime,
-        endTime,
+        startTime: normalizeTimeString(startTime, "09:00"),
+        endTime: normalizeTimeString(endTime, "10:00"),
         room,
         slotType
       };
@@ -215,78 +259,160 @@ export const TimetablePage = () => {
     }
   };
 
-  const handleAddExtraClass = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!extraSubjectId || !activeSemester) return alert("Please select a subject.");
+  const handleToggleSelectSlot = (slotId: string) => {
+    setSelectedSlotIds((prev) =>
+      prev.includes(slotId) ? prev.filter((id) => id !== slotId) : [...prev, slotId]
+    );
+  };
+
+  const currentDaySlots = slots.filter((s) => s.dayOfWeek === activeTab);
+
+  const handleSelectAllCurrentDay = () => {
+    const currentDayIds = currentDaySlots.map((s) => s.id);
+    if (selectedSlotIds.length === currentDayIds.length) {
+      setSelectedSlotIds([]);
+    } else {
+      setSelectedSlotIds(currentDayIds);
+    }
+  };
+
+  // Open delete dialog for a single slot
+  const handleInitiateDeleteSingle = (slot: TimetableSlot) => {
+    setSlotsPendingDelete([slot]);
+    setIsDeleteModalOpen(true);
+  };
+
+  // Open delete dialog for multiple selected slots
+  const handleInitiateDeleteSelected = () => {
+    const selectedSlots = slots.filter((s) => selectedSlotIds.includes(s.id));
+    if (selectedSlots.length === 0) return;
+    setSlotsPendingDelete(selectedSlots);
+    setIsDeleteModalOpen(true);
+  };
+
+  // Execute deletion with chosen scope and preservation option
+  const handleConfirmDelete = async ({
+    scope,
+    preserveHistory,
+  }: {
+    scope: "this_day_only" | "all_occurrences";
+    preserveHistory: boolean;
+  }) => {
+    if (!activeSemester || slotsPendingDelete.length === 0) return;
+
     try {
-      await api.post("/timetable/extra-class", {
-        semesterId: activeSemester.id,
-        subjectId: extraSubjectId,
-        date: extraDate,
-        startTime: "17:30", 
-        endTime: "18:20",
-        reason: "Ad-hoc extra class"
-      });
-      setIsAddingExtra(false);
-      alert("Extra class added successfully!");
+      if (scope === "this_day_only") {
+        // Delete only the specific slots on this day
+        const slotIds = slotsPendingDelete.map((s) => s.id);
+        if (slotIds.length === 1) {
+          await api.delete(`/timetable/slots/${slotIds[0]}?preserveHistory=${preserveHistory}`);
+        } else {
+          await api.post("/timetable/slots/delete-batch", {
+            slotIds,
+            preserveHistory,
+          });
+        }
+      } else {
+        // Delete all weekly occurrences of the selected subjects
+        const distinctSubjectIds = Array.from(new Set(slotsPendingDelete.map((s) => s.subjectId)));
+        for (const subjId of distinctSubjectIds) {
+          await api.delete(
+            `/timetable/semester/${activeSemester.id}/subject/${subjId}/slots?preserveHistory=${preserveHistory}`
+          );
+        }
+      }
+
+      setSelectedSlotIds([]);
+      setIsSelectMode(false);
+      await fetchData();
+      window.dispatchEvent(new Event("attendance-updated"));
     } catch (error) {
-      console.error("Failed to add extra class:", error);
+      console.error("Failed to delete slot(s):", error);
+      alert("Failed to delete the selected lecture(s). Please try again.");
     }
   };
 
-  const handleDeleteSlot = async (id: string) => {
-    if (confirm("Remove this class from timetable? Past attendance is safe.")) {
-      try {
-        await api.delete(`/timetable/slots/${id}?preserveHistory=true`);
-        setSlots((prev) => prev.filter((slot) => slot.id !== id));
-        fetchData();
-        window.dispatchEvent(new Event("attendance-updated"));
-      } catch (error) {
-        console.error("Failed to delete slot:", error);
+  const handleSafeDeleteTimetable = () => {
+    setIsClearModalOpen(true);
+  };
+
+  const handleConfirmClearAll = async () => {
+    try {
+      const targetSemId = activeSemester?.id || "active";
+      await api.delete(`/timetable/semester/${targetSemId}/safe`);
+      setSlots([]);
+      setSelectedSlotIds([]);
+      setIsSelectMode(false);
+      await fetchData();
+      window.dispatchEvent(new Event("attendance-updated"));
+      setToastMessage("Timetable schedule cleared successfully!");
+      setTimeout(() => setToastMessage(null), 4000);
+    } catch (error) {
+      console.error("Failed to clear timetable:", error);
+      alert("Failed to clear timetable. Please try again.");
+    }
+  };
+
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      setSelectedImage(file);
+      if (file.type.includes("pdf") || file.name.endsWith(".pdf")) {
+        setImagePreview("pdf_file");
+      } else {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          setImagePreview(reader.result as string);
+        };
+        reader.readAsDataURL(file);
       }
     }
   };
 
-  const handleSafeDeleteTimetable = async () => {
-    if (confirm("Are you sure you want to clear your entire timetable? Past attendance records will be safely preserved, but all scheduled classes will be removed.")) {
-      try {
-        const targetSemId = activeSemester?.id || "active";
-        await api.delete(`/timetable/semester/${targetSemId}/safe`);
-        setSlots([]);
-        await fetchData();
-        window.dispatchEvent(new Event("attendance-updated"));
-        alert("Timetable cleared successfully!");
-      } catch (error) {
-        console.error("Failed to clear timetable:", error);
-        alert("Failed to clear timetable.");
-      }
-    }
-  };
-
-  const handleOcrProcess = async (file: File, semesterName: string, branch: string) => {
-    if (!activeSemester) throw new Error("No active semester");
+  const handleOcrUpload = async () => {
+    if (!selectedImage || !activeSemester) return;
+    
+    setIsUploading(true);
     const formData = new FormData();
-    formData.append("image", file);
+    formData.append("file", selectedImage);
+    formData.append("image", selectedImage);
     formData.append("semesterId", activeSemester.id);
-    formData.append("semesterName", semesterName);
-    formData.append("branch", branch);
-
-    const res = await api.post("/timetable/ocr-import", formData, {
-      headers: { "Content-Type": "multipart/form-data" }
-    });
-    return res.data;
+    
+    try {
+      const res = await api.post("/timetable/ocr-import", formData, {
+        headers: { "Content-Type": "multipart/form-data" }
+      });
+      
+      if (res.data.status === "needs_setup") {
+        setWizardPayload(res.data);
+        setIsOcrModalOpen(false);
+        setIsWizardOpen(true);
+      } else {
+        alert("Timetable imported successfully!");
+        setIsOcrModalOpen(false);
+        fetchData();
+      }
+    } catch (error) {
+      console.error("OCR Import failed:", error);
+      alert("Failed to import timetable. Please try again.");
+    } finally {
+      setIsUploading(false);
+      setSelectedImage(null);
+      setImagePreview(null);
+    }
   };
 
   const handleGenerateTimetable = async (selections: any) => {
-    if (!activeSemester) return;
+    if (!activeSemester || !wizardPayload) return;
     try {
-      const slotsToSave = selections.rawSlots || [];
+      const slotsToSave = selections.rawSlots || wizardPayload.rawSlots || [];
       await api.post("/timetable/save-wizard", {
         semesterId: activeSemester.id,
         selections,
         rawSlots: slotsToSave
       });
       setIsWizardOpen(false);
+      setWizardPayload(null);
       fetchData();
     } catch (error) {
       console.error("Failed to generate timetable:", error);
@@ -329,54 +455,237 @@ export const TimetablePage = () => {
     );
   }
 
-  const currentDaySlots = slots.filter(s => s.dayOfWeek === activeTab);
-
   // Group slots by day for desktop grid view
   const slotsByDay = DAYS.map((_, index) => slots.filter(s => s.dayOfWeek === index));
 
   return (
     <div className="p-4 md:p-8 space-y-6 max-w-7xl mx-auto w-full pb-24 md:pb-8">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <div>
-          <h1 className="text-3xl font-bold text-foreground tracking-tight">Timetable</h1>
-          <p className="text-sm text-muted-foreground mt-1">Manage weekly academic schedule for {activeSemester.name}.</p>
+      {/* Top Header Bar */}
+      {isSelectMode ? (
+        /* Selection Mode Action Bar */
+        <div className="flex items-center justify-between bg-card border border-primary/30 rounded-2xl p-3.5 px-5 shadow-lg animate-in fade-in slide-in-from-top-2 duration-200">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => {
+                setIsSelectMode(false);
+                setSelectedSlotIds([]);
+              }}
+              className="p-2 -ml-2 rounded-xl text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
+              title="Exit selection mode"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+            <div className="flex items-center gap-2">
+              <span className="text-lg font-bold text-foreground font-mono">
+                {selectedSlotIds.length}
+              </span>
+              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                Selected
+              </span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleSelectAllCurrentDay}
+              className="px-3 py-1.5 rounded-xl text-xs font-bold text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer flex items-center gap-1.5"
+            >
+              {selectedSlotIds.length === currentDaySlots.length && currentDaySlots.length > 0 ? (
+                <>
+                  <CheckSquare className="w-4 h-4 text-primary" />
+                  <span>Deselect All</span>
+                </>
+              ) : (
+                <>
+                  <Square className="w-4 h-4" />
+                  <span>Select All</span>
+                </>
+              )}
+            </button>
+            <button
+              onClick={handleInitiateDeleteSelected}
+              disabled={selectedSlotIds.length === 0}
+              className="flex items-center gap-1.5 bg-rose-600 hover:bg-rose-500 disabled:opacity-40 disabled:cursor-not-allowed text-white px-4 py-2 rounded-xl text-xs font-bold shadow-md shadow-rose-600/20 transition-all cursor-pointer"
+              title="Delete selected lectures"
+            >
+              <Trash2 className="w-4 h-4" />
+              <span>Delete</span>
+            </button>
+          </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            onClick={handleSafeDeleteTimetable}
-            title="Clear Timetable Schedule"
-            className="flex items-center gap-2 bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-500/30 px-3.5 py-2 rounded-xl text-xs font-semibold transition-colors cursor-pointer"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Clear Timetable</span>
-          </button>
-          <button
-            onClick={() => setIsWizardOpen(true)}
-            className="flex items-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white px-3.5 py-2 rounded-xl text-xs font-semibold shadow-md transition-all cursor-pointer"
-          >
-            <Upload className="w-3.5 h-3.5" />
-            <span>OCR Auto-Import</span>
-          </button>
-          <button
-            onClick={() => { setIsAdding(true); setDayOfWeek(activeTab); }}
-            className="flex items-center gap-2 bg-primary text-primary-foreground hover:bg-primary/90 px-4 py-2 rounded-xl text-xs font-bold shadow-md transition-colors cursor-pointer"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Add Slot</span>
-          </button>
+      ) : (
+        /* Normal Header Bar */
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+          <div className="flex items-center gap-3">
+            <div>
+              <div className="flex items-center gap-3">
+                <h1 className="text-2xl sm:text-3xl font-bold text-foreground tracking-tight">Timetable</h1>
+                {overallPercentage !== undefined && (
+                  <div className="px-3 py-1 bg-muted border border-border rounded-full flex items-center gap-1.5 text-xs font-mono font-bold text-foreground">
+                    <span className="text-teal-600 dark:text-teal-400">{overallPercentage.toFixed(1)}%</span>
+                    <span className="text-muted-foreground">|</span>
+                    <span className="text-muted-foreground">{targetPercentage}%</span>
+                  </div>
+                )}
+              </div>
+              <div className="flex flex-wrap items-center gap-2.5 mt-1">
+                <p className="text-sm text-muted-foreground">Manage schedule for {activeSemester.name}.</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => setIsSelectMode(true)}
+              title="Select multiple lectures to delete or manage"
+              className="flex items-center gap-1.5 bg-muted hover:bg-muted/80 text-foreground border border-border px-3.5 py-2 rounded-xl text-xs font-semibold transition-colors cursor-pointer"
+            >
+              <Edit3 className="w-3.5 h-3.5 text-muted-foreground" />
+              <span>Edit / Select</span>
+            </button>
+            <button
+              onClick={handleSafeDeleteTimetable}
+              title="Clear Timetable Schedule"
+              className="flex items-center gap-2 bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-500/30 px-3 py-2 rounded-xl text-xs font-semibold transition-colors cursor-pointer"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Clear All</span>
+            </button>
+            <button
+              onClick={() => setIsOcrModalOpen(true)}
+              className="flex items-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white px-3.5 py-2 rounded-xl text-xs font-semibold shadow-md transition-all cursor-pointer"
+            >
+              <Upload className="w-3.5 h-3.5" />
+              <span>OCR Import</span>
+            </button>
+            <button
+              onClick={() => { setIsAdding(true); setDayOfWeek(activeTab); }}
+              className="flex items-center gap-2 bg-primary text-primary-foreground hover:bg-primary/90 px-4 py-2 rounded-xl text-xs font-bold shadow-md transition-colors cursor-pointer"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Add Slot</span>
+            </button>
+          </div>
         </div>
-      </div>
+      )}
       
+      {/* OCR Modal */}
+      {isOcrModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-card border border-border rounded-2xl w-full max-w-md overflow-hidden shadow-2xl">
+            <div className="p-4 border-b border-border flex justify-between items-center">
+              <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
+                <ImageIcon className="w-5 h-5 text-blue-500" />
+                Upload Timetable (PDF / Image)
+              </h2>
+              <button onClick={() => { setIsOcrModalOpen(false); setSelectedImage(null); setImagePreview(null); }} className="text-muted-foreground hover:text-foreground transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="p-6 space-y-6">
+              <div className="text-sm text-muted-foreground text-center">
+                Upload your timetable PDF or Image file. We will extract all branch and semester schedules automatically!
+              </div>
+              
+              <div 
+                onClick={() => fileInputRef.current?.click()}
+                className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-colors ${
+                  imagePreview ? 'border-blue-500/50 bg-blue-500/5' : 'border-border hover:border-primary/50 hover:bg-muted/50'
+                }`}
+              >
+                <input 
+                  type="file" 
+                  accept="image/*,.pdf,application/pdf" 
+                  className="hidden" 
+                  ref={fileInputRef}
+                  onChange={handleImageSelect}
+                />
+                
+                {imagePreview === "pdf_file" ? (
+                  <div className="space-y-3 flex flex-col items-center">
+                    <div className="w-14 h-14 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-500 flex items-center justify-center font-bold text-xs uppercase tracking-wider">
+                      PDF
+                    </div>
+                    <div className="text-sm font-bold text-foreground truncate max-w-[220px]">
+                      {selectedImage?.name}
+                    </div>
+                    <p className="text-xs font-medium text-blue-500">Click to select a different PDF or Image</p>
+                  </div>
+                ) : imagePreview ? (
+                  <div className="space-y-4">
+                    <img src={imagePreview} alt="Preview" className="max-h-48 mx-auto rounded-lg object-contain" />
+                    <p className="text-sm font-medium text-blue-500">Click to change file</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3 flex flex-col items-center">
+                    <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center">
+                      <Upload className="w-6 h-6 text-muted-foreground" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-foreground">Click to browse timetable file</p>
+                      <p className="text-xs text-muted-foreground mt-1">PDF, PNG, JPG, JPEG up to 15MB</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+              
+              <button 
+                onClick={handleOcrUpload}
+                disabled={!selectedImage || isUploading}
+                className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold transition-colors flex items-center justify-center gap-2 shadow-md shadow-blue-500/20 cursor-pointer"
+              >
+                {isUploading ? (
+                  <>
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                    Extracting Master Schedule...
+                  </>
+                ) : (
+                  "Extract Schedule"
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Timetable Setup Wizard Modal */}
       <TimetableWizardModal 
         isOpen={isWizardOpen}
         onClose={() => setIsWizardOpen(false)}
         onGenerate={handleGenerateTimetable}
-        onOcrProcess={handleOcrProcess}
+        setupPayload={wizardPayload}
       />
 
-      {/* Forms (Add Slot) */}
+      {/* Delete Slot Confirmation Modal */}
+      <DeleteSlotModal
+        isOpen={isDeleteModalOpen}
+        onClose={() => {
+          setIsDeleteModalOpen(false);
+          setSlotsPendingDelete([]);
+        }}
+        slotsToDelete={slotsPendingDelete}
+        dayName={DAYS[activeTab]}
+        onConfirmDelete={handleConfirmDelete}
+      />
 
+      {/* Clear All Timetable Slots Modal */}
+      <ClearTimetableModal
+        isOpen={isClearModalOpen}
+        onClose={() => setIsClearModalOpen(false)}
+        onConfirm={handleConfirmClearAll}
+        semesterName={activeSemester?.name || "Active Semester"}
+      />
+
+      {/* Toast Notification */}
+      {toastMessage && (
+        <div className="fixed bottom-6 right-6 z-50 bg-emerald-600 text-white px-4 py-3 rounded-2xl shadow-xl flex items-center gap-2.5 text-xs font-bold animate-in fade-in slide-in-from-bottom-4 duration-300">
+          <CheckCircle2 className="w-4 h-4 text-emerald-200" />
+          <span>{toastMessage}</span>
+        </div>
+      )}
+
+      {/* Forms (Add Slot) */}
       {isAdding && (
         <form onSubmit={handleAddSlot} className="bg-card border border-border rounded-2xl p-6 space-y-5 shadow-xl animate-in slide-in-from-top-4 duration-300">
           <h2 className="text-lg font-bold text-foreground border-b border-border pb-4">{editingSlotId ? "Edit Timetable Slot" : "Add Timetable Slot"}</h2>
@@ -477,8 +786,11 @@ export const TimetablePage = () => {
                         key={slot.id} 
                         slot={slot} 
                         isDesktop 
+                        isSelectMode={isSelectMode}
+                        isSelected={selectedSlotIds.includes(slot.id)}
+                        onToggleSelect={handleToggleSelectSlot}
                         onEdit={handleEditSlot} 
-                        onDelete={handleDeleteSlot} 
+                        onDelete={handleInitiateDeleteSingle} 
                       />
                     ))}
                   </SortableContext>
@@ -491,6 +803,7 @@ export const TimetablePage = () => {
 
       {/* Mobile Daily View (hidden on desktop) */}
       <div className="block lg:hidden space-y-4">
+        {/* Day Tabs */}
         <div className="flex overflow-x-auto hide-scrollbar gap-2 pb-2 -mx-4 px-4">
           {DAYS.map((day, idx) => (
             <button
@@ -507,6 +820,7 @@ export const TimetablePage = () => {
           ))}
         </div>
 
+        {/* Slots List for Selected Day */}
         <div className="space-y-3">
           {currentDaySlots.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 bg-card border border-border rounded-3xl shadow-sm">
@@ -522,8 +836,11 @@ export const TimetablePage = () => {
                   <SortableSlot 
                     key={slot.id} 
                     slot={slot} 
+                    isSelectMode={isSelectMode}
+                    isSelected={selectedSlotIds.includes(slot.id)}
+                    onToggleSelect={handleToggleSelectSlot}
                     onEdit={handleEditSlot} 
-                    onDelete={handleDeleteSlot} 
+                    onDelete={handleInitiateDeleteSingle} 
                   />
                 ))}
               </SortableContext>

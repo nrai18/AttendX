@@ -1,4 +1,5 @@
 import { prisma } from "../lib/prisma";
+import { TimetableService } from "./timetable.service";
 
 export class UserService {
   static async getProfile(userId: string) {
@@ -46,6 +47,20 @@ export class UserService {
         theme: true,
       },
     });
+  }
+
+  static async resetTimetable(userId: string) {
+    const semesters = await prisma.semester.findMany({
+      where: { userId },
+      select: { id: true }
+    });
+
+    for (const sem of semesters) {
+      await TimetableService.safeDeleteTimetable(userId, sem.id);
+    }
+    await TimetableService.safeDeleteTimetable(userId);
+
+    return { success: true, message: "Timetable schedule cleared successfully." };
   }
 
   static async resetData(userId: string) {

@@ -1,5 +1,3 @@
-// src/utils/subjectDictionary.ts
-
 export const COURSE_CURRICULUM: Record<string, string> = {
   // ==========================================
   // Institute Core & Multi-Disciplinary (All Branches)
@@ -153,65 +151,47 @@ export const COURSE_CURRICULUM: Record<string, string> = {
   "SEMS302": "Speech Signal Processing",
   "SEMS401": "Introduction to IoT",
   "SEMS402": "Biomedical Signal Processing",
-  "SEMS403": "Quantum Computing",
+  "SEMS403": "Quantum Computing"
 };
 
-/**
- * Resolves an OCR subject code to its full human-readable name.
- * Automatically strips out slot types like (L), (P), or (T) from the raw OCR string.
- */
 export const resolveSubjectName = (rawCode: string): string => {
-  const cleanCode = rawCode.replace(/\s*\([LPT]\)/g, "").trim();
+  if (!rawCode) return "";
+  const cleanCode = rawCode.replace(/\s*\([LPT]\)/g, '').trim();
   return COURSE_CURRICULUM[cleanCode] || cleanCode;
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Curriculum Metadata — derived from COURSE_CURRICULUM, not hardcoded
-// ─────────────────────────────────────────────────────────────────────────────
+export const BRANCH_NAMES: Record<string, string> = {
+  "CSE": "Computer Science & Engineering",
+  "IT": "Information Technology",
+  "ECE": "Electronics & Communication Engineering",
+  "CY": "CSE (Cyber Security)",
+  "DS": "CSE (Data Science)"
+};
 
-/**
- * Branch prefix → full department name, derived from the distinct 2-letter
- * prefixes of branch-specific codes in COURSE_CURRICULUM.
- * IC/SC/SE codes are institute-wide and not included as selectable branches.
- */
-export const BRANCHES: { code: string; label: string; department: string }[] = [
-  { code: "CSE", label: "Computer Science & Engineering",           department: "Computer Science and Engineering" },
-  { code: "IT",  label: "Information Technology",                   department: "Information Technology" },
-  { code: "ECE", label: "Electronics & Communication Engineering",  department: "Electronics and Communication Engineering" },
-  { code: "DS",  label: "Data Science",                             department: "Computer Science and Engineering (Data Science)" },
-  { code: "CY",  label: "Cyber Security",                           department: "Computer Science and Engineering (Cyber Security)" },
-];
+export const CURRICULUM_META = {
+  branches: Object.keys(BRANCH_NAMES),
+  branchNames: BRANCH_NAMES,
+  semesters: [1, 2, 3, 4, 5, 6, 7, 8],
+};
 
-/**
- * Derive the set of semester numbers from the curriculum code suffixes.
- * Codes like CSMC101 → semester 1, CSMC201 → semester 2, CSMC301 → semester 3, etc.
- * The hundreds digit of the numeric suffix maps to the semester pair:
- *   1xx → Sem 1 & 2,  2xx → Sem 3 & 4,  3xx → Sem 5 & 6,  4xx → Sem 7 & 8
- * We expose all 8 semesters since every 2-semester pair is used.
- */
-export const SEMESTERS: { value: string; number: number; term: "odd" | "even" }[] = [
-  { value: "Semester 1", number: 1, term: "odd"  },
-  { value: "Semester 2", number: 2, term: "even" },
-  { value: "Semester 3", number: 3, term: "odd"  },
-  { value: "Semester 4", number: 4, term: "even" },
-  { value: "Semester 5", number: 5, term: "odd"  },
-  { value: "Semester 6", number: 6, term: "even" },
-  { value: "Semester 7", number: 7, term: "odd"  },
-  { value: "Semester 8", number: 8, term: "even" },
-];
+// Map each code to a SUBJECT_DICTIONARY record for backwards compatibility
+export const SUBJECT_DICTIONARY: Record<string, { title: string; category: string; credits: number }> = {};
 
-/** Single object served by the /curriculum/meta API endpoint. */
-export const CURRICULUM_META = { branches: BRANCHES, semesters: SEMESTERS };
+for (const [code, title] of Object.entries(COURSE_CURRICULUM)) {
+  let category = "Core";
+  let credits = 4;
 
-/**
- * @deprecated Use COURSE_CURRICULUM and resolveSubjectName instead.
- * Kept for backward compatibility — maps old dict shape to new flat map.
- */
-export const SUBJECT_DICTIONARY: Record<string, { title: string; category: string; credits?: number }> =
-  Object.fromEntries(
-    Object.entries(COURSE_CURRICULUM).map(([code, title]) => [
-      code,
-      { title, category: "Major Core", credits: 3 },
-    ])
-  );
+  if (code.startsWith("ICMD") || code.startsWith("ICAE") || code.startsWith("ICVA") || code.startsWith("ICPR")) {
+    category = "Institute Core";
+    credits = code.includes("PR") ? 2 : (code.includes("301") ? 2 : 3);
+  } else if (code.includes("SE") || code.startsWith("SCMS") || code.startsWith("SEMS")) {
+    category = "Elective";
+    credits = 4;
+  }
 
+  SUBJECT_DICTIONARY[code] = {
+    title,
+    category,
+    credits
+  };
+}
