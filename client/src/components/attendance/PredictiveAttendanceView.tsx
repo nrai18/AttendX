@@ -62,7 +62,7 @@ export const PredictiveAttendanceView: React.FC<PredictiveAttendanceViewProps> =
     try {
       await api.patch("/users/me", { targetAttendance: newTarget });
       useAuthStore.getState().setUser({ ...user, targetAttendance: newTarget });
-      useAttendanceStore.getState().fetchStats();
+      await useAttendanceStore.getState().fetchStats();
       window.dispatchEvent(new CustomEvent("attendance-updated"));
     } catch (err) {
       console.error("Failed to update target globally:", err);

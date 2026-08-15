@@ -16,6 +16,7 @@ router.patch("/slots/:id", TimetableController.updateSlot);
 router.post("/slots/swap", TimetableController.swapSlots);
 router.delete("/slots/:id", TimetableController.deleteSlot);
 router.post("/extra-class", TimetableController.addExtraClass);
+router.delete("/extra-class/:id", TimetableController.deleteExtraClass);
 router.post("/ocr-import", upload.single("image"), TimetableController.ocrImport);
 router.post("/save-wizard", TimetableController.saveWizard);
 router.delete("/semester/:semesterId/safe", TimetableController.safeDeleteTimetable);

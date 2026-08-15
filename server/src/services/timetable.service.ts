@@ -180,6 +180,17 @@ export class TimetableService {
     });
   }
 
+  static async deleteExtraClass(overrideId: string) {
+    // Delete any attendance associated with this override
+    await prisma.attendance.deleteMany({
+      where: { overrideId },
+    });
+    // Delete the override
+    return prisma.timetableOverride.delete({
+      where: { id: overrideId },
+    });
+  }
+
   static async exportTimetable(userId: string, semesterId?: string) {
     const semester = await this.getSemesterForUser(userId, semesterId);
     const [subjects, slots, overrides] = await Promise.all([

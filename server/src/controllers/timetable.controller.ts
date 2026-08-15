@@ -46,6 +46,15 @@ export class TimetableController {
     res.status(201).json(extra);
   }
 
+  static async deleteExtraClass(req: Request, res: Response) {
+    try {
+      await TimetableService.deleteExtraClass(String(req.params.id));
+      res.json({ message: "Extra class deleted" });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  }
+
   static async exportTimetable(req: Request | any, res: Response) {
     try {
       const userId = req.user?.userId;

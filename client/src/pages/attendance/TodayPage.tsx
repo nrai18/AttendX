@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Loader2, CheckCircle2, XCircle, AlertCircle, PartyPopper, BookOpen, Palmtree, Timer, TrendingUp, TrendingDown, Plus, MessageSquare, Sparkles, ChevronRight, X } from "lucide-react";
+import { Loader2, CheckCircle2, XCircle, AlertCircle, PartyPopper, BookOpen, Palmtree, Timer, TrendingUp, TrendingDown, Plus, MessageSquare, Sparkles, ChevronRight, X, Trash2 } from "lucide-react";
 import { api } from "../../lib/api";
 import { useAuthStore } from "../../stores/authStore";
 import { CreateSemesterModal } from "../../components/semester/CreateSemesterModal";
@@ -66,9 +66,9 @@ export const TodayPage = () => {
 
       // Save all to backend
       await Promise.all(
-        agenda.map(item =>
+        agenda.filter(item => item.subject?.id).map(item =>
           api.post("/attendance/mark", {
-            subjectId: item.subject.id,
+            subjectId: item.subject!.id,
             date: targetDateStr,
             status: "off",
             timetableSlotId: item.type === "slot" ? item.id : undefined,
@@ -116,6 +116,18 @@ export const TodayPage = () => {
       console.error("Failed to add extra lecture:", err);
     } finally {
       setIsAddingExtra(false);
+    }
+  };
+
+  const handleDeleteExtraClass = async (overrideId: string) => {
+    if (!window.confirm("Are you sure you want to delete this extra class?")) return;
+    try {
+      await api.delete(`/timetable/extra-class/${overrideId}`);
+      fetchData();
+      fetchStats();
+      window.dispatchEvent(new Event("attendance-updated"));
+    } catch (err) {
+      console.error("Failed to delete extra class:", err);
     }
   };
 
@@ -181,6 +193,9 @@ export const TodayPage = () => {
     }
 
     try {
+      if (!item.subject?.id) {
+        throw new Error("Subject is missing for this agenda item");
+      }
       await api.post("/attendance/mark", {
         subjectId: item.subject.id,
         date: targetDateStr,
@@ -198,6 +213,12 @@ export const TodayPage = () => {
   };
 
   const handleStatusClick = (item: AgendaItem, status: string) => {
+    // If clicking the currently active status, unmark it (void)
+    if (item.status === status) {
+      markAttendance(item, "clear");
+      return;
+    }
+
     if (status === "absent") {
       setSelectedRemarkItem({ item, status });
       setRemarkInput(item.remarks || "");
@@ -483,6 +504,16 @@ export const TodayPage = () => {
                   <AlertCircle className="w-3.5 h-3.5" />
                   Off
                 </button>
+                {/* Delete Extra Class Button */}
+                {(item.type === "override" || item.isExtra || item.slotType === "Extra") && (
+                  <button
+                    onClick={() => handleDeleteExtraClass(item.id)}
+                    className="flex items-center justify-center p-2 rounded-xl bg-rose-500/10 text-rose-500 hover:bg-rose-500 hover:text-white transition-colors cursor-pointer ml-2"
+                    title="Delete Extra Class"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                )}
               </div>
             </div>
           ))}
@@ -498,7 +529,7 @@ export const TodayPage = () => {
               Log Contextual Remark
             </h3>
             <p className="text-xs text-muted-foreground">
-              Logging status <span className="font-bold uppercase text-primary">{selectedRemarkItem.status}</span> for <span className="font-semibold text-foreground">{selectedRemarkItem.item.subject.name}</span>. Add an optional remark (e.g., "Medical Leave", "OD for Techfest").
+              Logging status <span className="font-bold uppercase text-primary">{selectedRemarkItem.status}</span> for <span className="font-semibold text-foreground">{selectedRemarkItem.item.subject?.name || "Unknown Subject"}</span>. Add an optional remark (e.g., "Medical Leave", "OD for Techfest").
             </p>
             <div>
               <label className="text-xs font-semibold text-muted-foreground mb-1 block">Remark / Reason</label>
