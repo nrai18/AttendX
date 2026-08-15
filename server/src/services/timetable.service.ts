@@ -1,7 +1,7 @@
 import { prisma } from "../lib/prisma";
 import { GoogleGenAI } from "@google/genai";
-import * as pdfParseModule from "pdf-parse";
-const pdfParse: any = (pdfParseModule as any).default || pdfParseModule;
+// pdf-parse is loaded lazily inside processOcrImage to avoid startup crashes in production
+// (pdf-parse tries to load test files from disk at module init time)
 import { COURSE_CURRICULUM, resolveSubjectName, SUBJECT_DICTIONARY, BRANCH_NAMES } from "../utils/subjectDictionary";
 import { normalizeTimeString } from "../utils/timeUtils";
 
@@ -266,6 +266,9 @@ export class TimetableService {
     // 1. If PDF file, extract text via pdf-parse first
     if (mimeType.includes("pdf") || fileName.endsWith(".pdf")) {
       try {
+        // Lazy require to avoid module-level startup crash in production (pdf-parse loads test files at init)
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const pdfParse = require("pdf-parse");
         const parsed = await pdfParse(fileBuffer);
         extractedText = parsed.text || "";
       } catch (e) {
