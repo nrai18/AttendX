@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Loader2, CheckCircle2, XCircle, AlertCircle, PartyPopper, BookOpen, Palmtree, Timer, TrendingUp, TrendingDown, Plus, MessageSquare, Sparkles, ChevronRight, X } from "lucide-react";
 import { api } from "../../lib/api";
+import { useAuthStore } from "../../stores/authStore";
 import { CreateSemesterModal } from "../../components/semester/CreateSemesterModal";
 
 import { useSearchParams, useNavigate } from "react-router-dom";
@@ -50,8 +51,9 @@ export const TodayPage = () => {
   const [isMarkingFullDayOff, setIsMarkingFullDayOff] = useState(false);
 
   const fetchStats = useAttendanceStore((state) => state.fetchStats);
-  const { overallPercentage, targetPercentage } = useAttendanceStore();
-
+  const user = useAuthStore((state) => state.user);
+  const targetPercentage = user?.targetAttendance ?? 75;
+  const { overallPercentage } = useAttendanceStore();
   const handleMarkFullDayOff = async () => {
     if (agenda.length === 0) return;
     try {
@@ -99,6 +101,7 @@ export const TodayPage = () => {
     try {
       setIsAddingExtra(true);
       await api.post("/timetable/extra-class", {
+        semesterId: activeSemester?.id,
         subjectId,
         date: targetDateStr,
         startTime: "00:00",
@@ -161,9 +164,10 @@ export const TodayPage = () => {
     if (status === "absent") {
       triggerAttendancePopup("crying", "Attendance Dropped! 😭");
     } else if (status === "present" || status === "medical" || status === "od") {
-      const { overallPercentage, targetPercentage } = useAttendanceStore.getState();
-      if (overallPercentage >= (targetPercentage || 75)) {
-        triggerAttendancePopup("target_hit", `Target ${targetPercentage || 75}% Touched! 🎯`);
+      const { overallPercentage } = useAttendanceStore.getState();
+      const targetPct = useAuthStore.getState().user?.targetAttendance ?? 75;
+      if (overallPercentage >= targetPct) {
+        triggerAttendancePopup("target_hit", `Target ${targetPct}% Touched! 🎯`);
       } else {
         triggerAttendancePopup("thumbs_up", "Awesome! Marked Present 👍");
       }
@@ -279,8 +283,8 @@ export const TodayPage = () => {
                 overallPercentage >= targetPercentage ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"
               }`}>
                 {overallPercentage >= targetPercentage
-                  ? `${((overallPercentage ?? 0) - (targetPercentage ?? 75)).toFixed(1)}% above target (${targetPercentage}%)`
-                  : `${((targetPercentage ?? 75) - (overallPercentage ?? 0)).toFixed(1)}% below target (${targetPercentage}%)`}
+                  ? `${((overallPercentage ?? 0) - targetPercentage).toFixed(1)}% above target (${targetPercentage}%)`
+                  : `${(targetPercentage - (overallPercentage ?? 0)).toFixed(1)}% below target (${targetPercentage}%)`}
               </p>
             </div>
           </div>

@@ -14,5 +14,6 @@ router.post("/save-wizard", EventController.saveWizard);
 router.get("/today-status", EventController.getTodayStatus);
 router.post("/clear", EventController.clearAllEvents);
 router.delete("/all", EventController.clearAllEvents);
+router.delete("/", EventController.clearAllEvents);
 
 export default router;

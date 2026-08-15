@@ -169,6 +169,9 @@ export class AttendanceService {
   }
 
   static async getAttendanceLogs(userId: string, options: { subjectId?: string; semesterId?: string }) {
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    const globalTarget = user?.targetAttendance || 75;
+
     const activeSemester = await prisma.semester.findFirst({
       where: {
         userId,
@@ -203,7 +206,7 @@ export class AttendanceService {
       const off = allRecords.filter(a => a.status === "off" || a.status === "cancelled").length;
       const total = countable.length;
       const percentage = total > 0 ? (attended / total) * 100 : 0;
-      const target = sub.targetAttendance || 75;
+      const target = sub.targetAttendance || globalTarget;
       const canMiss = total > 0 ? Math.floor((attended - (target / 100) * total) / (target / 100)) : 0;
       const needAttend = percentage < target && target < 100
         ? Math.ceil(((target / 100) * total - attended) / (1 - target / 100))
@@ -378,6 +381,9 @@ export class AttendanceService {
   }
 
   static async getSubjectStats(userId: string, semesterId?: string) {
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    const globalTarget = user?.targetAttendance || 75;
+
     const subjects = await prisma.subject.findMany({
       where: {
         userId,
@@ -397,7 +403,7 @@ export class AttendanceService {
       const total = countableRecords.length;
 
       let percentage = total > 0 ? (attended / total) * 100 : 0;
-      const target = sub.targetAttendance || 75;
+      const target = sub.targetAttendance || globalTarget;
 
       // How many classes can still be missed while staying above target
       // attended / (total + x) >= target/100  => x = (attended - target*total/100) / (target/100)
@@ -426,6 +432,9 @@ export class AttendanceService {
   }
 
   static async getSingleSubjectStats(userId: string, subjectId: string) {
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    const globalTarget = user?.targetAttendance || 75;
+
     const subject = await prisma.subject.findFirst({
       where: { id: subjectId, userId },
       include: {
@@ -474,7 +483,7 @@ export class AttendanceService {
       name: subject.name,
       code: subject.code,
       colorHex: subject.colorHex,
-      target: subject.targetAttendance || 75,
+      target: subject.targetAttendance || globalTarget,
       attended,
       total,
       percentage,

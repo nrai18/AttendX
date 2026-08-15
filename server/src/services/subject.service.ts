@@ -57,30 +57,46 @@ export class SubjectService {
   }
 
   static async updateSubject(userId: string, subjectId: string, data: any) {
-    return prisma.subject.update({
+    const subject = await prisma.subject.findFirst({
       where: { id: subjectId, userId },
+    });
+
+    if (!subject) {
+      throw new Error("Subject not found");
+    }
+
+    return prisma.subject.update({
+      where: { id: subject.id },
       data,
     });
   }
 
   static async deleteSubject(userId: string, subjectId: string, preserveHistory = true) {
+    const subject = await prisma.subject.findFirst({
+      where: { id: subjectId, userId },
+    });
+
+    if (!subject) {
+      throw new Error("Subject not found");
+    }
+
     if (preserveHistory) {
       // Detach slots and mark subject, retaining past attendance logs
       await prisma.timetableSlot.deleteMany({
-        where: { subjectId },
+        where: { subjectId: subject.id },
       });
       // Soft retain: disconnect slots from attendance records
       await prisma.attendance.updateMany({
-        where: { subjectId },
+        where: { subjectId: subject.id },
         data: { timetableSlotId: null },
       });
       return prisma.subject.delete({
-        where: { id: subjectId, userId },
+        where: { id: subject.id },
       });
     } else {
       // Permanent hard delete (cascades via Prisma schema)
       return prisma.subject.delete({
-        where: { id: subjectId, userId },
+        where: { id: subject.id },
       });
     }
   }

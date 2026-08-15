@@ -32,4 +32,28 @@ export class UserController {
       res.status(500).json({ message: error.message || "Failed to reset app data" });
     }
   }
+
+  static async resetSubjectAttendance(req: AuthenticatedRequest, res: Response) {
+    try {
+      const userId = req.user!.userId;
+      const { subjectIds } = req.body;
+      if (!subjectIds || !Array.isArray(subjectIds) || subjectIds.length === 0) {
+        return res.status(400).json({ message: "Invalid or empty subjectIds array" });
+      }
+      const result = await UserService.resetSubjectAttendance(userId, subjectIds);
+      res.status(200).json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message || "Failed to reset subject attendance" });
+    }
+  }
+
+  static async resetAllAttendance(req: AuthenticatedRequest, res: Response) {
+    try {
+      const userId = req.user!.userId;
+      const result = await UserService.resetAllAttendance(userId);
+      res.status(200).json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message || "Failed to reset all attendance" });
+    }
+  }
 }

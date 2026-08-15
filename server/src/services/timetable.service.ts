@@ -1,6 +1,20 @@
 import { prisma } from "../lib/prisma";
-import { COURSE_CURRICULUM, resolveSubjectName } from "../utils/subjectDictionary";
+import {
+  COURSE_CURRICULUM,
+  resolveSubjectName,
+} from "../utils/subjectDictionary";
 import { GoogleGenAI, Type } from "@google/genai";
+
+const SUBJECT_COLORS = [
+  "#1d4ed8",
+  "#7c3aed",
+  "#db2777",
+  "#0f766e",
+  "#ea580c",
+  "#16a34a",
+  "#b45309",
+  "#2563eb",
+];
 
 export class TimetableService {
   static async getTimetable(semesterId: string) {
@@ -19,6 +33,40 @@ export class TimetableService {
       },
       orderBy: [{ dayOfWeek: "asc" }, { startTime: "asc" }],
     });
+  }
+
+  private static async getSemesterForUser(
+    userId: string,
+    semesterId?: string | null,
+  ) {
+    if (semesterId) {
+      const semester = await prisma.semester.findFirst({
+        where: { id: semesterId, userId },
+      });
+      if (!semester) {
+        throw new Error("Semester not found");
+      }
+      return semester;
+    }
+
+    const activeSemester = await prisma.semester.findFirst({
+      where: { userId, isActive: true },
+    });
+
+    if (activeSemester) {
+      return activeSemester;
+    }
+
+    const latestSemester = await prisma.semester.findFirst({
+      where: { userId },
+      orderBy: { createdAt: "desc" },
+    });
+
+    if (!latestSemester) {
+      throw new Error("No semester found for user");
+    }
+
+    return latestSemester;
   }
 
   static async createSlot(data: any) {
@@ -41,7 +89,8 @@ export class TimetableService {
       where: { id: slotId },
       data: {
         subjectId: data.subjectId,
-        dayOfWeek: data.dayOfWeek !== undefined ? Number(data.dayOfWeek) : undefined,
+        dayOfWeek:
+          data.dayOfWeek !== undefined ? Number(data.dayOfWeek) : undefined,
         startTime: data.startTime,
         endTime: data.endTime,
         room: data.room,
@@ -52,40 +101,42 @@ export class TimetableService {
   }
 
   static async swapSlots(slotAId: string, slotBId: string) {
-    const slotA = await prisma.timetableSlot.findUnique({ where: { id: slotAId } });
-    const slotB = await prisma.timetableSlot.findUnique({ where: { id: slotBId } });
+    const slotA = await prisma.timetableSlot.findUnique({
+      where: { id: slotAId },
+    });
+    const slotB = await prisma.timetableSlot.findUnique({
+      where: { id: slotBId },
+    });
 
     if (!slotA || !slotB) {
       throw new Error("One or both slots not found");
     }
 
-    // Ensure they are on the same day for simplicity, though not strictly required
     if (slotA.dayOfWeek !== slotB.dayOfWeek) {
       throw new Error("Cannot swap slots across different days");
     }
 
-    // Swap the times using a transaction
-    return prisma.$transaction([
-      prisma.timetableSlot.update({
+    return prisma.$transaction(async (tx) => {
+      const updatedA = await tx.timetableSlot.update({
         where: { id: slotAId },
         data: {
           startTime: slotB.startTime,
           endTime: slotB.endTime,
-        }
-      }),
-      prisma.timetableSlot.update({
+        },
+      });
+      const updatedB = await tx.timetableSlot.update({
         where: { id: slotBId },
         data: {
           startTime: slotA.startTime,
           endTime: slotA.endTime,
-        }
-      })
-    ]);
+        },
+      });
+      return [updatedA, updatedB];
+    });
   }
 
   static async deleteSlot(slotId: string, preserveHistory = true) {
     if (preserveHistory) {
-      // Retain past attendance logs by unlinking slot ID
       await prisma.attendance.updateMany({
         where: { timetableSlotId: slotId },
         data: { timetableSlotId: null },
@@ -97,16 +148,27 @@ export class TimetableService {
   }
 
   static async addExtraClass(data: {
-    semesterId: string;
+    semesterId?: string;
     subjectId: string;
     date: string;
     startTime?: string;
     endTime?: string;
     reason?: string;
+    userId?: string;
   }) {
+    const semester = data.semesterId
+      ? await prisma.semester.findFirst({ where: { id: data.semesterId } })
+      : data.userId
+        ? await this.getSemesterForUser(data.userId, null)
+        : null;
+
+    if (!semester) {
+      throw new Error("Semester not found");
+    }
+
     return prisma.timetableOverride.create({
       data: {
-        semesterId: data.semesterId,
+        semesterId: semester.id,
         subjectId: data.subjectId,
         date: new Date(data.date),
         overrideType: "extra_class",
@@ -118,32 +180,194 @@ export class TimetableService {
     });
   }
 
+  static async exportTimetable(userId: string, semesterId?: string) {
+    const semester = await this.getSemesterForUser(userId, semesterId);
+    const [subjects, slots, overrides] = await Promise.all([
+      prisma.subject.findMany({
+        where: { userId, semesterId: semester.id },
+        orderBy: { createdAt: "asc" },
+      }),
+      prisma.timetableSlot.findMany({
+        where: { semesterId: semester.id },
+        include: { subject: true },
+        orderBy: [{ dayOfWeek: "asc" }, { startTime: "asc" }],
+      }),
+      prisma.timetableOverride.findMany({
+        where: { semesterId: semester.id },
+        include: { subject: true },
+        orderBy: { date: "asc" },
+      }),
+    ]);
+
+    return {
+      semester,
+      subjects,
+      slots,
+      overrides,
+      exportedAt: new Date().toISOString(),
+    };
+  }
+
+  static async importTimetable(
+    userId: string,
+    semesterId: string,
+    payload: any,
+  ) {
+    const semester = await prisma.semester.findFirst({
+      where: { id: semesterId, userId },
+    });
+
+    if (!semester) {
+      throw new Error("Semester not found");
+    }
+
+    const subjectsPayload = Array.isArray(payload?.subjects)
+      ? payload.subjects
+      : [];
+    const slotsPayload = Array.isArray(payload?.slots) ? payload.slots : [];
+
+    const subjectIdByCode = new Map<string, string>();
+    for (const subjectData of subjectsPayload) {
+      if (!subjectData?.code) continue;
+      const existingSubject = await prisma.subject.findFirst({
+        where: { semesterId, userId, code: subjectData.code },
+      });
+
+      const subject = existingSubject
+        ? await prisma.subject.update({
+            where: { id: existingSubject.id },
+            data: {
+              name: subjectData.name || subjectData.code,
+              credits: subjectData.credits ?? 3,
+              faculty: subjectData.faculty,
+              colorHex: subjectData.colorHex || existingSubject.colorHex,
+            },
+          })
+        : await prisma.subject.create({
+            data: {
+              semesterId,
+              userId,
+              code: subjectData.code,
+              name: subjectData.name || subjectData.code,
+              credits: subjectData.credits ?? 3,
+              faculty: subjectData.faculty,
+              colorHex:
+                subjectData.colorHex ||
+                SUBJECT_COLORS[subjectIdByCode.size % SUBJECT_COLORS.length],
+            },
+          });
+
+      subjectIdByCode.set(subjectData.code, subject.id);
+    }
+
+    const slotSubjectIds: string[] = Array.from(
+      new Set(
+        slotsPayload
+          .map(
+            (slot: any) =>
+              slot?.subject?.code || slot?.subjectCode || slot?.code,
+          )
+          .filter((code: any): code is string => Boolean(code)),
+      ),
+    );
+
+    const subjectsToUnlink = await prisma.subject.findMany({
+      where: { semesterId, userId, code: { in: slotSubjectIds } },
+      select: { id: true },
+    });
+    const subjectIdsToUnlink = subjectsToUnlink.map((subject) => subject.id);
+
+    if (subjectIdsToUnlink.length > 0) {
+      await prisma.attendance.updateMany({
+        where: { timetableSlotId: { not: null } },
+        data: { timetableSlotId: null },
+      });
+    }
+
+    await prisma.timetableSlot.deleteMany({
+      where: { semesterId },
+    });
+
+    const createdSlots = [];
+    for (const slot of slotsPayload) {
+      const code = slot?.subject?.code || slot?.subjectCode || slot?.code;
+      if (!code) continue;
+
+      let subjectId = subjectIdByCode.get(code);
+      if (!subjectId) {
+        let subject = await prisma.subject.findFirst({
+          where: { semesterId, userId, code },
+        });
+        if (!subject) {
+          subject = await prisma.subject.create({
+            data: {
+              semesterId,
+              userId,
+              code,
+              name: slot?.subject?.name || slot?.name || code,
+              credits: slot?.subject?.credits ?? slot?.credits ?? 3,
+              colorHex:
+                slot?.subject?.colorHex ||
+                SUBJECT_COLORS[subjectIdByCode.size % SUBJECT_COLORS.length],
+            },
+          });
+        }
+        subjectId = subject.id;
+        subjectIdByCode.set(code, subjectId);
+      }
+
+      createdSlots.push(
+        await prisma.timetableSlot.create({
+          data: {
+            semesterId,
+            subjectId,
+            dayOfWeek: Number(slot.dayOfWeek),
+            startTime: slot.startTime,
+            endTime: slot.endTime,
+            room: slot.room,
+            slotType: slot.slotType || slot.type || "lecture",
+          },
+          include: { subject: true },
+        }),
+      );
+    }
+
+    return createdSlots;
+  }
+
   static async processOcrImage(
-    imageBuffer: Buffer, 
-    mimeType: string, 
-    semesterId: string, 
+    imageBuffer: Buffer,
+    mimeType: string,
+    semesterId: string,
     userId: string,
     semesterName: string = "Semester 5",
-    userDepartment: string = "Electronics & Communication Engineering"
+    userDepartment: string = "Electronics & Communication Engineering",
   ) {
-    // If GEMINI_API_KEY is not defined, fallback to structured mock timetable
     if (!process.env.GEMINI_API_KEY) {
-      console.log("GEMINI_API_KEY is not defined. Falling back to mock structured timetable.");
+      console.log(
+        "GEMINI_API_KEY is not defined. Falling back to mock structured timetable.",
+      );
       return this.getMockOcrResponse(semesterId);
     }
 
     try {
-      console.log("Calling Gemini API for Layout-Aware Timetable Extraction...");
+      console.log(
+        "Calling Gemini API for Layout-Aware Timetable Extraction...",
+      );
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
       const base64Image = imageBuffer.toString("base64");
 
       const schema = {
         type: Type.OBJECT,
         properties: {
-          status: { type: Type.STRING, description: "Always return 'needs_setup'" },
+          status: {
+            type: Type.STRING,
+            description: "Always return 'needs_setup'",
+          },
           programElectives: {
             type: Type.ARRAY,
-            description: "Groups of program elective subjects that share a time slot. Empty if none.",
+            description:
+              "Groups of program elective subjects that share a time slot. Empty if none.",
             items: {
               type: Type.OBJECT,
               properties: {
@@ -156,16 +380,17 @@ export class TimetableService {
                     properties: {
                       code: { type: Type.STRING },
                       title: { type: Type.STRING },
-                      credits: { type: Type.NUMBER }
-                    }
-                  }
-                }
-              }
-            }
+                      credits: { type: Type.NUMBER },
+                    },
+                  },
+                },
+              },
+            },
           },
           minorElectives: {
             type: Type.ARRAY,
-            description: "Groups of minor elective subjects that share a time slot. Empty if none.",
+            description:
+              "Groups of minor elective subjects that share a time slot. Empty if none.",
             items: {
               type: Type.OBJECT,
               properties: {
@@ -178,12 +403,12 @@ export class TimetableService {
                     properties: {
                       code: { type: Type.STRING },
                       title: { type: Type.STRING },
-                      credits: { type: Type.NUMBER }
-                    }
-                  }
-                }
-              }
-            }
+                      credits: { type: Type.NUMBER },
+                    },
+                  },
+                },
+              },
+            },
           },
           labGroups: {
             type: Type.ARRAY,
@@ -195,35 +420,63 @@ export class TimetableService {
                 name: { type: Type.STRING },
                 options: {
                   type: Type.ARRAY,
-                  items: { type: Type.STRING }
-                }
-              }
-            }
+                  items: { type: Type.STRING },
+                },
+              },
+            },
           },
           rawSlots: {
             type: Type.ARRAY,
-            description: "Every single timetable slot extracted from the image. dayOfWeek: 0=Mon ... 6=Sun. If multiple electives share a box, output separate slot entries.",
+            description:
+              "Every single timetable slot extracted from the image. dayOfWeek: 0=Mon ... 6=Sun. If multiple electives share a box, output separate slot entries.",
             items: {
               type: Type.OBJECT,
               properties: {
-                code: { type: Type.STRING, description: "Course code, e.g. ECSE304" },
-                dayOfWeek: { type: Type.NUMBER, description: "0 for Monday ... 6 for Sunday" },
-                startTime: { type: Type.STRING, description: "24h HH:MM format" },
+                code: {
+                  type: Type.STRING,
+                  description: "Course code, e.g. ECSE304",
+                },
+                dayOfWeek: {
+                  type: Type.NUMBER,
+                  description: "0 for Monday ... 6 for Sunday",
+                },
+                startTime: {
+                  type: Type.STRING,
+                  description: "24h HH:MM format",
+                },
                 endTime: { type: Type.STRING, description: "24h HH:MM format" },
-                type: { type: Type.STRING, description: "'lecture', 'practical', or 'tutorial'" },
+                type: {
+                  type: Type.STRING,
+                  description: "'lecture', 'practical', or 'tutorial'",
+                },
                 room: { type: Type.STRING },
-                group: { type: Type.STRING, description: "'ALL' or specific group like 'G1', 'G2'" },
-                section: { type: Type.STRING, description: "Section label e.g. 'A', 'B'. Use 'ALL' if applies to all sections." }
-              }
-            }
+                group: {
+                  type: Type.STRING,
+                  description: "'ALL' or specific group like 'G1', 'G2'",
+                },
+                section: {
+                  type: Type.STRING,
+                  description:
+                    "Section label e.g. 'A', 'B'. Use 'ALL' if applies to all sections.",
+                },
+              },
+            },
           },
           sections: {
             type: Type.ARRAY,
-            description: "List of distinct section labels found on this timetable page (e.g. ['A','B']). Return [] if no separate sections exist.",
-            items: { type: Type.STRING }
-          }
+            description:
+              "List of distinct section labels found on this timetable page (e.g. ['A','B']). Return [] if no separate sections exist.",
+            items: { type: Type.STRING },
+          },
         },
-        required: ["status", "programElectives", "minorElectives", "labGroups", "rawSlots", "sections"]
+        required: [
+          "status",
+          "programElectives",
+          "minorElectives",
+          "labGroups",
+          "rawSlots",
+          "sections",
+        ],
       };
 
       const prompt = `You are an expert academic timetable extraction assistant.
@@ -242,7 +495,7 @@ Rules:
 5. Days: Mon=0, Tue=1, Wed=2, Thu=3, Fri=4, Sat=5, Sun=6.
 6. Set status to 'needs_setup'.
 7. In the 'sections' field, list every distinct section label found on this page (e.g. ["A","B"]). If the page has no section split, return [].
-8. In each rawSlot, set the 'section' field to the section label it belongs to (e.g. 'A'), or 'ALL' if it applies to all sections.`;`;
+8. In each rawSlot, set the 'section' field to the section label it belongs to (e.g. 'A'), or 'ALL' if it applies to all sections.`;
 
       const response = await ai.models.generateContent({
         model: "gemini-3.6-flash",
@@ -251,14 +504,14 @@ Rules:
             role: "user",
             parts: [
               { text: prompt },
-              { inlineData: { mimeType: mimeType, data: base64Image } }
-            ]
-          }
+              { inlineData: { mimeType: mimeType, data: base64Image } },
+            ],
+          },
         ],
         config: {
           responseMimeType: "application/json",
           responseSchema: schema,
-        }
+        },
       });
 
       if (!response.text) {
@@ -267,7 +520,6 @@ Rules:
 
       const parsed = JSON.parse(response.text);
 
-      // Enrich elective options with titles from curriculum dictionary
       const enrichOptions = (options: any[]) => {
         if (!options) return;
         for (const opt of options) {
@@ -277,8 +529,10 @@ Rules:
         }
       };
 
-      if (parsed.programElectives) parsed.programElectives.forEach((pe: any) => enrichOptions(pe.options));
-      if (parsed.minorElectives) parsed.minorElectives.forEach((me: any) => enrichOptions(me.options));
+      if (parsed.programElectives)
+        parsed.programElectives.forEach((pe: any) => enrichOptions(pe.options));
+      if (parsed.minorElectives)
+        parsed.minorElectives.forEach((me: any) => enrichOptions(me.options));
 
       return parsed;
     } catch (error) {
@@ -288,9 +542,6 @@ Rules:
     }
   }
 
-  /**
-   * Helper to return layout-aware mock data based on the semester to ensure reliable local test state.
-   */
   private static getMockOcrResponse(semesterId: string) {
     return {
       status: "needs_setup",
@@ -300,9 +551,9 @@ Rules:
           name: "Program Elective",
           options: [
             { code: "ECSE303", title: COURSE_CURRICULUM["ECSE303"] },
-            { code: "ECSE304", title: COURSE_CURRICULUM["ECSE304"] }
-          ]
-        }
+            { code: "ECSE304", title: COURSE_CURRICULUM["ECSE304"] },
+          ],
+        },
       ],
       minorElectives: [
         {
@@ -310,140 +561,160 @@ Rules:
           name: "Minor Elective",
           options: [
             { code: "SCMS301", title: COURSE_CURRICULUM["SCMS301"] },
-            { code: "SEMS301", title: COURSE_CURRICULUM["SEMS301"] }
-          ]
-        }
+            { code: "SEMS301", title: COURSE_CURRICULUM["SEMS301"] },
+          ],
+        },
       ],
       labGroups: [
         {
           id: "lg1",
           name: "Practical Group",
-          options: ["G1", "G2"]
-        }
+          options: ["G1", "G2"],
+        },
       ],
       rawSlots: [
-        // Monday
-        { code: "ECSE303", dayOfWeek: 0, startTime: "09:00", endTime: "09:50", type: "lecture", room: "125", group: "ALL" },
-        { code: "ECSE304", dayOfWeek: 0, startTime: "09:00", endTime: "09:50", type: "lecture", room: "328", group: "ALL" },
-        { code: "ECMC301", dayOfWeek: 0, startTime: "09:50", endTime: "10:40", type: "lecture", room: "326", group: "ALL" },
-        { code: "ICAE301", dayOfWeek: 0, startTime: "14:00", endTime: "15:40", type: "practical", room: "5", group: "ALL" },
-        { code: "SCMS301", dayOfWeek: 0, startTime: "16:30", endTime: "17:20", type: "lecture", room: "228", group: "ALL" },
-        // Tuesday
-        { code: "ICVA301", dayOfWeek: 1, startTime: "09:00", endTime: "09:50", type: "lecture", room: "226", group: "ALL" },
-        { code: "ECSE301", dayOfWeek: 1, startTime: "09:50", endTime: "10:40", type: "lecture", room: "226", group: "ALL" },
-        { code: "ECSE304", dayOfWeek: 1, startTime: "11:00", endTime: "12:40", type: "practical", room: "104", group: "G1" },
-        { code: "ECSE301", dayOfWeek: 1, startTime: "14:00", endTime: "15:40", type: "practical", room: "104", group: "G1" },
-        { code: "SEMS301", dayOfWeek: 1, startTime: "14:50", endTime: "15:40", type: "lecture", room: "133", group: "ALL" },
-        { code: "SCMS301", dayOfWeek: 1, startTime: "15:40", endTime: "16:30", type: "lecture", room: "228", group: "ALL" },
-        // Wednesday
-        { code: "ECSE304", dayOfWeek: 2, startTime: "09:50", endTime: "10:40", type: "lecture", room: "125", group: "ALL" },
-        { code: "ICAE301", dayOfWeek: 2, startTime: "11:00", endTime: "12:40", type: "practical", room: "5", group: "ALL" },
-        { code: "ECSE301", dayOfWeek: 2, startTime: "14:00", endTime: "15:40", type: "practical", room: "104", group: "G2" },
-        { code: "ECMC301", dayOfWeek: 2, startTime: "15:40", endTime: "16:30", type: "lecture", room: "329", group: "ALL" },
-        { code: "SCMS301", dayOfWeek: 2, startTime: "16:30", endTime: "17:20", type: "lecture", room: "227", group: "ALL" },
-        // Thursday
-        { code: "ECSE301", dayOfWeek: 3, startTime: "09:00", endTime: "09:50", type: "lecture", room: "125", group: "ALL" },
-        { code: "ECSE303", dayOfWeek: 3, startTime: "09:50", endTime: "10:40", type: "lecture", room: "226", group: "ALL" },
-        { code: "ECSE304", dayOfWeek: 3, startTime: "09:50", endTime: "10:40", type: "lecture", room: "325", group: "ALL" },
-        { code: "SEMS301", dayOfWeek: 3, startTime: "11:50", endTime: "12:40", type: "lecture", room: "133", group: "ALL" },
-        { code: "ECMC301", dayOfWeek: 3, startTime: "14:00", endTime: "15:40", type: "practical", room: "104", group: "G2" },
-        { code: "ICVA301", dayOfWeek: 3, startTime: "15:40", endTime: "16:30", type: "lecture", room: "230", group: "ALL" },
-        // Friday
-        { code: "ECSE301", dayOfWeek: 4, startTime: "09:00", endTime: "09:50", type: "lecture", room: "326", group: "ALL" },
-        { code: "ECMC301", dayOfWeek: 4, startTime: "09:50", endTime: "10:40", type: "lecture", room: "126", group: "ALL" },
-        { code: "ECMC301", dayOfWeek: 4, startTime: "11:00", endTime: "12:40", type: "practical", room: "104", group: "G1" },
-        { code: "ECSE303", dayOfWeek: 4, startTime: "14:00", endTime: "14:50", type: "lecture", room: "126", group: "ALL" },
-        { code: "ECSE304", dayOfWeek: 4, startTime: "14:00", endTime: "15:40", type: "practical", room: "104", group: "G2" },
-        { code: "ICVA301", dayOfWeek: 4, startTime: "16:30", endTime: "17:20", type: "lecture", room: "329", group: "ALL" },
-      ]
+        {
+          code: "ECSE303",
+          dayOfWeek: 0,
+          startTime: "09:00",
+          endTime: "09:50",
+          type: "lecture",
+          room: "125",
+          group: "ALL",
+        },
+        {
+          code: "ECSE304",
+          dayOfWeek: 0,
+          startTime: "09:00",
+          endTime: "09:50",
+          type: "lecture",
+          room: "328",
+          group: "ALL",
+        },
+        {
+          code: "ECMC301",
+          dayOfWeek: 0,
+          startTime: "09:50",
+          endTime: "10:40",
+          type: "lecture",
+          room: "326",
+          group: "ALL",
+        },
+        {
+          code: "ICAE301",
+          dayOfWeek: 0,
+          startTime: "14:00",
+          endTime: "15:40",
+          type: "practical",
+          room: "5",
+          group: "ALL",
+        },
+        {
+          code: "SCMS301",
+          dayOfWeek: 0,
+          startTime: "16:30",
+          endTime: "17:20",
+          type: "lecture",
+          room: "228",
+          group: "ALL",
+        },
+      ],
     };
   }
 
-  static async saveWizardTimetable(userId: string, semesterId: string, selections: any, rawSlots: any[]) {
-    // 1. Fetch semester info to apply dynamic Year-Specific mapping logic
+  static async saveWizardTimetable(
+    userId: string,
+    semesterId: string,
+    selections: any,
+    rawSlots: any[],
+  ) {
     const semester = await prisma.semester.findUnique({
-      where: { id: semesterId }
+      where: { id: semesterId },
     });
 
-    const normalizedName = semester ? semester.name.toLowerCase() : "";
-    const match = normalizedName.match(/(?:semester|sem)\s*(\d+)/i) || normalizedName.match(/(\d+)/);
-    const semesterNumber = match ? parseInt(match[1], 10) : 5; // Default to 5
-
-    // 2. Filter slots based on user selections and mapping rules
     const {
       programElectiveCode,
       minorElectiveCode,
       labGroup,
       section,
-      // The full elective option lists from the OCR payload (so we know ALL codes in each group)
       programElectiveCodes = [] as string[],
-      minorElectiveCodes   = [] as string[],
+      minorElectiveCodes = [] as string[],
     } = selections;
 
     const normalizedLabGroup = (labGroup || "").trim().toUpperCase();
+    let colorIndex = 0;
+    const colors = SUBJECT_COLORS;
+
+    // Helper to calculate end times dynamically if Gemini misses them
+    const calculateEndTime = (time: string, isLab: boolean) => {
+      if (!time || !time.includes(":")) return "00:00";
+      const [h, m] = time.split(":").map(Number);
+      const durationMins = isLab ? 100 : 50;
+      const totalMins = h * 60 + m + durationMins;
+      const endH = Math.floor(totalMins / 60) % 24;
+      const endM = totalMins % 60;
+      return `${String(endH).padStart(2, "0")}:${String(endM).padStart(2, "0")}`;
+    };
 
     const filteredSlots = rawSlots.filter((slot: any) => {
-      // ── 1. Lab group filter ──────────────────────────────────────────────
-      // Drop this slot if it belongs to a specific group that isn't the user's
       const slotGroup = (slot.group || "ALL").trim().toUpperCase();
-      if (slotGroup !== "ALL" && slotGroup !== normalizedLabGroup) {
-        console.log(`  [SKIP] ${slot.code} day=${slot.dayOfWeek} — group ${slotGroup} ≠ ${normalizedLabGroup}`);
-        return false;
-      }
+      if (slotGroup !== "ALL" && slotGroup !== normalizedLabGroup) return false;
 
-      // ── 2. Section filter (post-OCR, optional) ───────────────────────────
       if (section) {
         const slotSection = (slot.section || "ALL").trim().toUpperCase();
         const userSection = section.trim().toUpperCase();
-        if (slotSection !== "ALL" && slotSection !== userSection) {
-          console.log(`  [SKIP] ${slot.code} day=${slot.dayOfWeek} — section ${slotSection} ≠ ${userSection}`);
-          return false;
-        }
+        if (slotSection !== "ALL" && slotSection !== userSection) return false;
       }
 
-      // ── 3. Elective filtering (any semester that has elective selections) ─
-      // Program elective: if this slot's code is one of the PE options,
-      // keep it only if it matches the user's chosen code
-      if (programElectiveCodes.length > 0 && programElectiveCodes.includes(slot.code)) {
-        if (slot.code !== programElectiveCode) {
-          console.log(`  [SKIP] ${slot.code} — PE not chosen (user picked ${programElectiveCode})`);
-          return false;
-        }
+      if (
+        programElectiveCodes.length > 0 &&
+        programElectiveCodes.includes(slot.code)
+      ) {
+        if (slot.code !== programElectiveCode) return false;
       }
 
-      // Minor elective: same logic
-      if (minorElectiveCodes.length > 0 && minorElectiveCodes.includes(slot.code)) {
-        if (slot.code !== minorElectiveCode) {
-          console.log(`  [SKIP] ${slot.code} — ME not chosen (user picked ${minorElectiveCode})`);
-          return false;
-        }
+      if (
+        minorElectiveCodes.length > 0 &&
+        minorElectiveCodes.includes(slot.code)
+      ) {
+        if (slot.code !== minorElectiveCode) return false;
       }
 
-      console.log(`  [KEEP] ${slot.code} day=${slot.dayOfWeek} ${slot.startTime}-${slot.endTime} group=${slotGroup}`);
       return true;
     });
 
-    console.log(`saveWizardTimetable: ${rawSlots.length} raw → ${filteredSlots.length} after filtering (labGroup=${normalizedLabGroup}, section=${section || "any"})`);
-
     const createdSlots = [];
-    const subjectsMap = new Map(); // code -> subjectId
+    const subjectsMap = new Map();
+    const seenSlots = new Set();
 
     for (const slot of filteredSlots) {
-      const isLab = slot.type === "practical";
-      const baseTitle = resolveSubjectName(slot.code);
+      const isLab = slot.type === "practical" || slot.type === "lab";
 
+      // Auto-fill endTime if the AI failed to extract it properly
+      if (
+        !slot.endTime ||
+        slot.endTime === "undefined" ||
+        slot.endTime.trim() === ""
+      ) {
+        slot.endTime = calculateEndTime(slot.startTime, isLab);
+      }
+
+      const slotKey = `${slot.dayOfWeek}-${slot.startTime}-${slot.endTime}`;
+      if (seenSlots.has(slotKey)) continue;
+      seenSlots.add(slotKey);
+
+      const baseTitle = resolveSubjectName(slot.code);
       const actualCode = isLab ? `${slot.code}_LAB` : slot.code;
-      const actualTitle = isLab && !baseTitle.toLowerCase().includes("lab")
-        ? `${baseTitle} Lab`
-        : baseTitle;
-      const actualCredits = 3; // Default; update when credits data is available
+      const actualTitle =
+        isLab && !baseTitle.toLowerCase().includes("lab")
+          ? `${baseTitle} Lab`
+          : baseTitle;
 
       let subjectId = subjectsMap.get(actualCode);
 
       if (!subjectId) {
-        // Find or create subject
         let subject = await prisma.subject.findFirst({
-          where: { semesterId, userId, code: actualCode }
+          where: { semesterId, userId, code: actualCode },
         });
 
         if (!subject) {
@@ -453,23 +724,21 @@ Rules:
               userId,
               name: actualTitle,
               code: actualCode,
-              credits: actualCredits,
+              credits: 3,
               colorHex: colors[colorIndex % colors.length],
-            }
+            },
           });
           colorIndex++;
         } else if (subject.name !== actualTitle) {
-          // Fix old mock data names
           subject = await prisma.subject.update({
             where: { id: subject.id },
-            data: { name: actualTitle }
+            data: { name: actualTitle },
           });
         }
         subjectId = subject.id;
         subjectsMap.set(actualCode, subjectId);
       }
 
-      // Create timetable slot
       const newSlot = await prisma.timetableSlot.create({
         data: {
           semesterId,
@@ -480,7 +749,7 @@ Rules:
           room: slot.room,
           slotType: slot.type,
         },
-        include: { subject: true }
+        include: { subject: true },
       });
       createdSlots.push(newSlot);
     }
@@ -489,41 +758,47 @@ Rules:
   }
 
   static async safeDeleteTimetable(userId: string, semesterId: string) {
-    // 1. Fetch all slot and override IDs for this semester
     const slots = await prisma.timetableSlot.findMany({
       where: { semesterId },
-      select: { id: true }
+      select: { id: true },
     });
-    const slotIds = slots.map(s => s.id);
+    const slotIds = slots.map((s) => s.id);
 
     const overrides = await prisma.timetableOverride.findMany({
       where: { semesterId },
-      select: { id: true }
+      select: { id: true },
     });
-    const overrideIds = overrides.map(o => o.id);
+    const overrideIds = overrides.map((o) => o.id);
 
-    // 2. Unlink attendance records to safely preserve history
     if (slotIds.length > 0) {
       await prisma.attendance.updateMany({
         where: { userId, timetableSlotId: { in: slotIds } },
-        data: { timetableSlotId: null }
+        data: { timetableSlotId: null },
       });
     }
 
     if (overrideIds.length > 0) {
       await prisma.attendance.updateMany({
         where: { userId, overrideId: { in: overrideIds } },
-        data: { overrideId: null }
+        data: { overrideId: null },
       });
     }
 
-    // 3. Wipe overrides and slots
-    await prisma.timetableOverride.deleteMany({
-      where: { semesterId }
+    // Interactive transaction guarantees safety and prevents the array promise bug
+    const result = await prisma.$transaction(async (tx) => {
+      const overrideDelete = await tx.timetableOverride.deleteMany({
+        where: { semesterId },
+      });
+      const slotDelete = await tx.timetableSlot.deleteMany({
+        where: { semesterId },
+      });
+
+      return {
+        deletedOverrides: overrideDelete.count,
+        deletedSlots: slotDelete.count,
+      };
     });
 
-    await prisma.timetableSlot.deleteMany({
-      where: { semesterId }
-    });
+    return result;
   }
 }

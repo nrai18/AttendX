@@ -157,16 +157,17 @@ export const SubjectsPage = () => {
   const fetchData = async () => {
     try {
       setIsLoading(true);
-      const semesterRes = await api.get("/semesters/active");
+      const [subjectsRes, semesterRes] = await Promise.all([
+        api.get("/subjects"),
+        api.get("/semesters/active"),
+      ]);
+      setSubjects(Array.isArray(subjectsRes.data) ? subjectsRes.data : []);
+
       const semester = semesterRes.data;
       if (semester) {
         setActiveSemesterId(semester.id);
-        const [statsRes, subsRes] = await Promise.all([
-          api.get(`/attendance/stats?semesterId=${semester.id}`),
-          api.get(`/subjects?semesterId=${semester.id}`)
-        ]);
+        const statsRes = await api.get(`/attendance/stats?semesterId=${semester.id}`);
         setSubjectStats(Array.isArray(statsRes.data) ? statsRes.data : []);
-        setSubjects(Array.isArray(subsRes.data) ? subsRes.data : []);
       }
     } catch (error) {
       console.error("Failed to fetch subjects:", error);
@@ -230,14 +231,16 @@ export const SubjectsPage = () => {
   };
 
   // Compute overall stats across all subjects
-  const overallAttended = subjectStats.reduce((sum, s) => sum + s.attended, 0);
-  const overallMissed = subjectStats.reduce((sum, s) => sum + s.missed, 0);
-  const overallOff = subjectStats.reduce((sum, s) => sum + s.off, 0);
-  const overallTotal = subjectStats.reduce((sum, s) => sum + s.total, 0);
+  const safeStats = Array.isArray(subjectStats) ? subjectStats : [];
+  const safeSubjects = Array.isArray(subjects) ? subjects : [];
+  const overallAttended = safeStats.reduce((sum, s) => sum + s.attended, 0);
+  const overallMissed = safeStats.reduce((sum, s) => sum + s.missed, 0);
+  const overallOff = safeStats.reduce((sum, s) => sum + s.off, 0);
+  const overallTotal = safeStats.reduce((sum, s) => sum + s.total, 0);
   const overallPct = overallTotal > 0 ? (overallAttended / overallTotal) * 100 : 0;
-  const overallTarget = subjectStats.length > 0
-    ? Math.round(subjectStats.reduce((sum, s) => sum + s.target, 0) / subjectStats.length)
-    : 75;
+  const overallTarget = user?.targetAttendance ?? (safeStats.length > 0
+    ? Math.round(safeStats.reduce((sum, s) => sum + s.target, 0) / safeStats.length)
+    : 75);
   const overallStat: SubjectStat = {
     id: "overall",
     name: "Overall",
@@ -261,8 +264,8 @@ export const SubjectsPage = () => {
   }
 
   // Merge subjectStats with subject info (for subjects with no recorded attendance yet)
-  const mergedStats: SubjectStat[] = subjects.map(sub => {
-    const stat = subjectStats.find(s => s.id === sub.id);
+  const mergedStats: SubjectStat[] = safeSubjects.map(sub => {
+    const stat = safeStats.find(s => s.id === sub.id);
     if (stat) return { ...stat, colorHex: sub.colorHex || stat.colorHex };
     return {
       id: sub.id,

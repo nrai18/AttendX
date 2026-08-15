@@ -146,8 +146,19 @@ export class EventService {
   }
 
   static async clearAllEvents(userId: string) {
+    const semesters = await prisma.semester.findMany({
+      where: { userId },
+      select: { id: true }
+    });
+    const semesterIds = semesters.map(s => s.id);
+
     return prisma.event.deleteMany({
-      where: { userId }
+      where: {
+        OR: [
+          { userId },
+          ...(semesterIds.length > 0 ? [{ semesterId: { in: semesterIds } }] : [])
+        ]
+      }
     });
   }
 }

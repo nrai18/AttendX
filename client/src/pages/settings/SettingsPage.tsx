@@ -34,7 +34,8 @@ import {
   Mail,
   Phone,
   HelpCircle,
-  HardDrive
+  HardDrive,
+  X
 } from "lucide-react";
 
 import { useThemeStore } from "../../stores/themeStore";
@@ -44,17 +45,20 @@ export const SettingsPage: React.FC = () => {
   const [activeView, setActiveView] = useState<"main" | "backup" | "contact">("main");
 
   // Profile & Criteria
-  const [targetAttendance, setTargetAttendance] = useState<number>(user?.targetAttendance ?? 75);
+  const [targetAttendance, setTargetAttendance] = useState<number | string>(user?.targetAttendance ?? 75);
   const { theme, setTheme } = useThemeStore();
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
 
+  // App Info Modal State
+  const [showAppInfoModal, setShowAppInfoModal] = useState(false);
+
   // Reset Section Toggle
   const [enableReset, setEnableReset] = useState(false);
 
   // Reset Modals State
-  const [resetModalType, setResetModalType] = useState<"subject" | "attendance" | "events" | "entire" | null>(null);
+  const [resetModalType, setResetModalType] = useState<"subject" | "attendance" | "timetable" | "events" | "entire" | null>(null);
 
   const fetchSubjectsForReset = () => {
     api.get("/subjects").then((res) => {
@@ -81,6 +85,7 @@ export const SettingsPage: React.FC = () => {
 
   // Hidden File Input for Import
   const jsonInputRef = useRef<HTMLInputElement>(null);
+  const csvInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     // Pre-fetch subjects for reset subject attendance modal
@@ -94,18 +99,23 @@ export const SettingsPage: React.FC = () => {
     setIsSaving(true);
     setSaveSuccess(false);
 
+    const numericTarget = Math.min(100, Math.max(1, Number(targetAttendance) || 75));
+
     try {
       await api.patch("/users/me", {
-        targetAttendance: Number(targetAttendance),
+        targetAttendance: numericTarget,
         theme,
       });
       if (setUser) {
         setUser({
           ...user!,
-          targetAttendance: Number(targetAttendance),
+          targetAttendance: numericTarget,
           theme,
         });
       }
+      setTargetAttendance(numericTarget);
+      useAttendanceStore.getState().fetchStats();
+      window.dispatchEvent(new CustomEvent("attendance-updated"));
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
     } catch (err: any) {
@@ -178,24 +188,44 @@ export const SettingsPage: React.FC = () => {
   // Export CSV
   const handleExportCSV = async () => {
     try {
-      const res = await api.get("/attendance/stats");
-      const stats = res.data || [];
-
-      let csvContent = "data:text/csv;charset=utf-8,Subject Name,Subject Code,Attended,Total,Percentage\n";
-      stats.forEach((item: any) => {
-        csvContent += `"${item.subject.name}","${item.subject.code || ''}",${item.presentCount},${item.totalCount},${item.percentage}%\n`;
-      });
-
-      const encodedUri = encodeURI(csvContent);
+      const res = await api.get("/data/export", { responseType: 'blob' });
+      
+      const blob = new Blob([res.data], { type: 'application/zip' });
+      const url = window.URL.createObjectURL(blob);
       const link = document.createElement("a");
-      link.setAttribute("href", encodedUri);
-      link.setAttribute("download", `attendance_report_${new Date().toISOString().slice(0, 10)}.csv`);
+      link.href = url;
+      link.setAttribute("download", `attendx_export_${new Date().toISOString().slice(0, 10)}.zip`);
       document.body.appendChild(link);
       link.click();
-      link.remove();
+      link.parentNode?.removeChild(link);
+      window.URL.revokeObjectURL(url);
     } catch (err) {
-      console.error("CSV export failed", err);
-      alert("Failed to generate CSV export.");
+      console.error("CSV/ZIP export failed", err);
+      alert("Failed to generate ZIP export.");
+    }
+  };
+
+  const handleImportCSV = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    try {
+      setBackupStatusMessage("Importing ZIP data...");
+      await api.post("/data/import", formData, {
+        headers: { "Content-Type": "multipart/form-data" }
+      });
+      setBackupStatusMessage("Data imported successfully!");
+      // Force app reload to fetch new data
+      setTimeout(() => window.location.reload(), 1500);
+    } catch (err: any) {
+      console.error("Failed to import ZIP", err);
+      alert(err.response?.data?.error || "Failed to import ZIP file.");
+      setBackupStatusMessage("");
+    } finally {
+      if (e.target) e.target.value = "";
     }
   };
 
@@ -216,6 +246,9 @@ export const SettingsPage: React.FC = () => {
       } else if (resetModalType === "attendance") {
         await api.post("/users/reset-all-attendance");
         setResetSuccessMessage("All attendance records and overrides deleted successfully!");
+      } else if (resetModalType === "timetable") {
+        await api.post("/users/reset-timetable");
+        setResetSuccessMessage("Timetable schedule slots cleared successfully!");
       } else if (resetModalType === "events") {
         await api.post("/users/reset-events");
         setResetSuccessMessage("Academic calendar events removed successfully!");
@@ -261,6 +294,13 @@ export const SettingsPage: React.FC = () => {
           accept=".json"
           ref={jsonInputRef}
           onChange={handleImportBackup}
+          className="hidden"
+        />
+        <input
+          type="file"
+          accept=".zip"
+          ref={csvInputRef}
+          onChange={handleImportCSV}
           className="hidden"
         />
 
@@ -396,12 +436,24 @@ export const SettingsPage: React.FC = () => {
         {/* Developer Info Card */}
         <div className="bg-card border border-emerald-500/30 rounded-2xl p-5 space-y-3 shadow-md bg-gradient-to-br from-emerald-500/5 to-transparent">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-emerald-500/20 text-emerald-500 flex items-center justify-center font-bold text-lg">
+            <img
+              src="/developer-photo.jpg"
+              alt="Naman Rai"
+              referrerPolicy="no-referrer"
+              className="w-12 h-12 rounded-full object-cover border-2 border-emerald-500/40 shadow-sm shrink-0"
+              onError={(e) => {
+                e.currentTarget.style.display = 'none';
+                if (e.currentTarget.nextElementSibling) {
+                  (e.currentTarget.nextElementSibling as HTMLElement).style.display = 'flex';
+                }
+              }}
+            />
+            <div className="w-12 h-12 rounded-full bg-emerald-500/20 text-emerald-500 items-center justify-center font-bold text-lg hidden shrink-0">
               NR
             </div>
             <div>
               <h3 className="text-base font-bold text-foreground">Naman Rai</h3>
-              <p className="text-xs text-muted-foreground">App Developer & Support Leader</p>
+              <p className="text-xs text-muted-foreground">App Developer & IIITU Student</p>
             </div>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs pt-1 border-t border-border/50 text-muted-foreground">
@@ -488,6 +540,13 @@ export const SettingsPage: React.FC = () => {
   // ------------------ MAIN SETTINGS VIEW ------------------
   return (
     <div className="p-4 md:p-8 max-w-3xl mx-auto w-full pb-24 md:pb-8 space-y-8 animate-in fade-in duration-200">
+      <input
+        type="file"
+        accept=".zip"
+        ref={csvInputRef}
+        onChange={handleImportCSV}
+        className="hidden"
+      />
       {/* Header */}
       <div className="flex items-center gap-3">
         <button
@@ -513,7 +572,9 @@ export const SettingsPage: React.FC = () => {
               </div>
               <div>
                 <h3 className="text-sm font-bold text-foreground">Set criteria</h3>
-                <p className="text-xs text-muted-foreground">{targetAttendance}%</p>
+                <p className="text-xs text-muted-foreground">
+                  {targetAttendance !== "" && targetAttendance !== null && targetAttendance !== undefined ? `${targetAttendance}%` : "—"}
+                </p>
               </div>
             </div>
             <div className="flex items-center gap-2">
@@ -521,8 +582,26 @@ export const SettingsPage: React.FC = () => {
                 type="number"
                 min="1"
                 max="100"
+                placeholder="75"
                 value={targetAttendance}
-                onChange={(e) => setTargetAttendance(Number(e.target.value))}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (val === "") {
+                    setTargetAttendance("");
+                  } else {
+                    setTargetAttendance(val);
+                  }
+                }}
+                onBlur={() => {
+                  const num = Number(targetAttendance);
+                  if (targetAttendance === "" || isNaN(num) || num < 1) {
+                    setTargetAttendance(75);
+                  } else if (num > 100) {
+                    setTargetAttendance(100);
+                  } else {
+                    setTargetAttendance(num);
+                  }
+                }}
                 className="w-16 text-center py-1 rounded-lg bg-muted border border-border text-foreground text-xs font-bold focus:outline-none focus:ring-1 focus:ring-primary"
               />
               <button
@@ -575,28 +654,11 @@ export const SettingsPage: React.FC = () => {
         </div>
       </div>
 
-      {/* CATEGORY 2: Database */}
+      {/* CATEGORY 2: Data Management */}
       <div className="space-y-3">
-        <h2 className="text-xs font-bold text-muted-foreground uppercase tracking-wider px-1">Database</h2>
+        <h2 className="text-xs font-bold text-muted-foreground uppercase tracking-wider px-1">Data Management</h2>
         <div className="bg-card border border-border/70 rounded-2xl divide-y divide-border/50 shadow-md">
-          {/* Backup/Restore */}
-          <button
-            onClick={() => setActiveView("backup")}
-            className="w-full text-left p-4 hover:bg-muted/50 transition-colors flex items-center justify-between cursor-pointer group"
-          >
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-blue-500/10 text-blue-500 flex items-center justify-center">
-                <ArrowUpDown className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="text-sm font-bold text-foreground group-hover:text-primary transition-colors">Backup/Restore</h3>
-                <p className="text-xs text-muted-foreground">Avoid losing your data. Set up automatic backups or use manual export and import.</p>
-              </div>
-            </div>
-            <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
-          </button>
-
-          {/* Export data as CSV */}
+          {/* Export data to ZIP */}
           <button
             onClick={handleExportCSV}
             className="w-full text-left p-4 hover:bg-muted/50 transition-colors flex items-center justify-between cursor-pointer group"
@@ -606,11 +668,28 @@ export const SettingsPage: React.FC = () => {
                 <FileSpreadsheet className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="text-sm font-bold text-foreground group-hover:text-primary transition-colors">Export data as CSV</h3>
-                <p className="text-xs text-muted-foreground">Generates a ZIP archive of CSV files readable by spreadsheet apps. These files cannot be imported back.</p>
+                <h3 className="text-sm font-bold text-foreground group-hover:text-primary transition-colors">Export data to ZIP</h3>
+                <p className="text-xs text-muted-foreground">Downloads a ZIP archive of CSV files with your entire semester data.</p>
               </div>
             </div>
             <Download className="w-4 h-4 text-muted-foreground shrink-0" />
+          </button>
+
+          {/* Import data from ZIP */}
+          <button
+            onClick={() => csvInputRef.current?.click()}
+            className="w-full text-left p-4 hover:bg-muted/50 transition-colors flex items-center justify-between cursor-pointer group"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-blue-500/10 text-blue-500 flex items-center justify-center">
+                <Upload className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-foreground group-hover:text-primary transition-colors">Import data from ZIP</h3>
+                <p className="text-xs text-muted-foreground">Restores an exported ZIP file. <span className="text-rose-500 font-bold">WARNING: Replaces current semester.</span></p>
+              </div>
+            </div>
+            <Upload className="w-4 h-4 text-muted-foreground shrink-0" />
           </button>
         </div>
       </div>
@@ -656,13 +735,19 @@ export const SettingsPage: React.FC = () => {
 
           {/* App info */}
           <button
-            onClick={() => alert("Smart Attendance Manager v1.2.0\nDeveloped by Naman Rai")}
-            className="w-full text-left p-4 hover:bg-muted/50 transition-colors flex items-center gap-3 cursor-pointer"
+            onClick={() => setShowAppInfoModal(true)}
+            className="w-full text-left p-4 hover:bg-muted/50 transition-colors flex items-center justify-between gap-3 cursor-pointer group"
           >
-            <div className="w-9 h-9 rounded-xl bg-blue-500/10 text-blue-500 flex items-center justify-center">
-              <Info className="w-5 h-5" />
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-blue-500/10 text-blue-500 flex items-center justify-center group-hover:scale-105 transition-transform">
+                <Info className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-foreground group-hover:text-primary transition-colors">App info</h3>
+                <p className="text-xs text-muted-foreground">Version v1.2.0 & Developer details</p>
+              </div>
             </div>
-            <span className="text-sm font-bold text-foreground">App info</span>
+            <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
           </button>
         </div>
       </div>
@@ -738,7 +823,28 @@ export const SettingsPage: React.FC = () => {
             </div>
           </button>
 
-          {/* Option 3: Remove Academic Hub Calendar & Events */}
+          {/* Option 3: Clear Timetable Schedule */}
+          <button
+            disabled={!enableReset}
+            onClick={() => {
+              setResetConfirmText("");
+              setResetError("");
+              setResetModalType("timetable");
+            }}
+            className={`w-full text-left p-4 flex items-start gap-3 transition-colors cursor-pointer border-b border-border/50 ${
+              enableReset ? "hover:bg-muted/50 opacity-100" : "opacity-40 cursor-not-allowed"
+            }`}
+          >
+            <div className="w-3 h-3 rounded-full bg-blue-500 mt-1 shrink-0" />
+            <div className="flex flex-col gap-0.5">
+              <span className="text-sm font-bold text-foreground">Clear timetable schedule</span>
+              <span className="text-xs text-muted-foreground leading-relaxed">
+                Removes all weekly scheduled class slots and overrides across your active semester. Attendance logs and subjects will be safely preserved.
+              </span>
+            </div>
+          </button>
+
+          {/* Option 4: Remove Academic Hub Calendar & Events */}
           <button
             disabled={!enableReset}
             onClick={() => {
@@ -794,6 +900,7 @@ export const SettingsPage: React.FC = () => {
                 <h3 className="text-lg font-bold text-foreground">
                   {resetModalType === "subject" && "Reset Subject Attendance"}
                   {resetModalType === "attendance" && "Reset All Attendance"}
+                  {resetModalType === "timetable" && "Clear Timetable Schedule"}
                   {resetModalType === "events" && "Remove Academic Calendar & Events"}
                   {resetModalType === "entire" && "Reset Entire App"}
                 </h3>
@@ -849,6 +956,13 @@ export const SettingsPage: React.FC = () => {
                 {resetModalType === "attendance" && (
                   <p className="text-sm text-muted-foreground leading-relaxed">
                     This will delete all attendance logs and timetable overrides across all subjects and semesters. Your subjects and timetable slots will remain untouched.
+                  </p>
+                )}
+
+                {/* Clear Timetable Schedule Content */}
+                {resetModalType === "timetable" && (
+                  <p className="text-sm text-muted-foreground leading-relaxed">
+                    This will clear all weekly schedule slots and overrides from your active timetable. Your subject records and past attendance history will remain safely intact.
                   </p>
                 )}
 
@@ -911,6 +1025,108 @@ export const SettingsPage: React.FC = () => {
                 </div>
               </>
             )}
+          </div>
+        </div>
+      )}
+      {/* App Info Modal */}
+      {showAppInfoModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-card border border-border rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-6 relative overflow-hidden">
+            <button
+              onClick={() => setShowAppInfoModal(false)}
+              className="absolute top-4 right-4 p-2 rounded-full hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            {/* Header / App Logo */}
+            <div className="flex items-center gap-4 border-b border-border/50 pb-5">
+              <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-primary to-blue-600 text-primary-foreground flex items-center justify-center font-black text-xl shadow-lg shadow-primary/25 shrink-0">
+                AX
+              </div>
+              <div>
+                <h2 className="text-xl font-extrabold text-foreground tracking-tight">AttendX</h2>
+                <p className="text-xs font-semibold text-primary">Smart Attendance Manager • v1.2.0</p>
+                <p className="text-xs text-muted-foreground">Built for IIITU Ecosystem</p>
+              </div>
+            </div>
+
+            {/* Creator Profile */}
+            <div className="bg-muted/40 border border-border/60 rounded-2xl p-4 space-y-3">
+              <div className="flex items-center gap-3">
+                <img
+                  src="/developer-photo.jpg"
+                  alt="Naman Rai"
+                  referrerPolicy="no-referrer"
+                  className="w-14 h-14 rounded-full object-cover border-2 border-primary shadow-md shrink-0"
+                  onError={(e) => {
+                    e.currentTarget.style.display = 'none';
+                    if (e.currentTarget.nextElementSibling) {
+                      (e.currentTarget.nextElementSibling as HTMLElement).style.display = 'flex';
+                    }
+                  }}
+                />
+                <div className="w-14 h-14 rounded-full bg-primary/20 text-primary font-bold text-xl items-center justify-center hidden shrink-0">
+                  NR
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-foreground">Naman Rai</h3>
+                  <p className="text-xs font-medium text-primary">Founder & Developer</p>
+                  <p className="text-xs text-muted-foreground">Student at IIITU</p>
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground leading-relaxed pt-1">
+                AttendX was developed to eliminate manual attendance calculations, criteria tracking anxiety, and timetable fragmentation for college students.
+              </p>
+              <div className="flex flex-wrap gap-2 pt-2 border-t border-border/40 text-xs">
+                <a
+                  href="mailto:rai18naman@gmail.com"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-background border border-border text-foreground hover:bg-muted transition-colors font-medium"
+                >
+                  <Mail className="w-3.5 h-3.5 text-primary" />
+                  <span>rai18naman@gmail.com</span>
+                </a>
+                <a
+                  href="tel:+918076408958"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-background border border-border text-foreground hover:bg-muted transition-colors font-medium"
+                >
+                  <Phone className="w-3.5 h-3.5 text-emerald-500" />
+                  <span>+91 8076408958</span>
+                </a>
+              </div>
+            </div>
+
+            {/* Key Features */}
+            <div className="space-y-2 text-xs">
+              <h4 className="font-bold text-foreground text-xs uppercase tracking-wider">Key Capabilities</h4>
+              <ul className="grid grid-cols-2 gap-2 text-muted-foreground font-medium">
+                <li className="flex items-center gap-1.5 bg-card p-2 rounded-xl border border-border/40">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                  Dynamic Criteria Target
+                </li>
+                <li className="flex items-center gap-1.5 bg-card p-2 rounded-xl border border-border/40">
+                  <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                  Predictive Leave Calc
+                </li>
+                <li className="flex items-center gap-1.5 bg-card p-2 rounded-xl border border-border/40">
+                  <span className="w-2 h-2 rounded-full bg-purple-500"></span>
+                  OCR Timetable Importer
+                </li>
+                <li className="flex items-center gap-1.5 bg-card p-2 rounded-xl border border-border/40">
+                  <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+                  Classroom Hub Sync
+                </li>
+              </ul>
+            </div>
+
+            <div className="pt-2 text-center">
+              <button
+                onClick={() => setShowAppInfoModal(false)}
+                className="w-full py-2.5 rounded-xl bg-primary text-primary-foreground font-bold text-xs shadow-md shadow-primary/20 hover:opacity-90 transition-opacity"
+              >
+                Close App Info
+              </button>
+            </div>
           </div>
         </div>
       )}

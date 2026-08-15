@@ -57,13 +57,15 @@ function createInMemoryModelHandler(modelName: string) {
         return value.every((cond) => matchesWhere(item, cond));
       }
       if (typeof value === "object" && value !== null) {
-        if ("equals" in value && item[key] !== value.equals) return false;
-        if ("endsWith" in value && typeof item[key] === "string" && !item[key].endsWith(value.endsWith)) return false;
-        if ("startsWith" in value && typeof item[key] === "string" && !item[key].startsWith(value.startsWith)) return false;
-        if ("in" in value && Array.isArray(value.in) && !value.in.includes(item[key])) return false;
+        const itemValue = (item as any)[key];
+        const filterValue = value as any;
+        if ("equals" in filterValue && itemValue !== filterValue.equals) return false;
+        if ("endsWith" in filterValue && typeof itemValue === "string" && !itemValue.endsWith(filterValue.endsWith)) return false;
+        if ("startsWith" in filterValue && typeof itemValue === "string" && !itemValue.startsWith(filterValue.startsWith)) return false;
+        if ("in" in filterValue && Array.isArray(filterValue.in) && !filterValue.in.includes(itemValue)) return false;
         continue;
       }
-      if (item[key] !== value) return false;
+      if ((item as any)[key] !== value) return false;
     }
     return true;
   };
@@ -165,15 +167,15 @@ export const prisma = new Proxy(
         const fallbackModel = createInMemoryModelHandler(prop);
         return new Proxy(model, {
           get(targetModel, method: string) {
-            const originalFn = targetModel[method];
-            if (typeof originalFn !== "function") return fallbackModel[method];
+            const originalFn = (targetModel as any)[method];
+            if (typeof originalFn !== "function") return (fallbackModel as any)[method];
             return async (...args: any[]) => {
               try {
                 return await originalFn.apply(targetModel, args);
               } catch (dbError: any) {
                 console.warn(`[AI Studio] DB error on prisma.${prop}.${method}, using in-memory fallback:`, dbError?.message || dbError);
-                if (fallbackModel[method]) {
-                  return await fallbackModel[method](...args);
+                if ((fallbackModel as any)[method]) {
+                  return await (fallbackModel as any)[method](...args);
                 }
                 throw dbError;
               }

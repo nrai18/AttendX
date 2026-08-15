@@ -5,7 +5,7 @@
   "main": "dist/server.js",
   "scripts": {
     "dev": "tsx watch src/server.ts",
-    "build": "tsup src/server.ts --format cjs --clean",
+    "build": "tsup ./src/server.ts --format cjs --clean",
     "start": "node dist/server.js",
     "db:push": "prisma db push",
     "db:seed": "prisma db seed"
@@ -22,9 +22,12 @@
     "@prisma/client": "^7.9.1",
     "@types/multer": "^2.2.0",
     "@types/pg": "^8.20.0",
+    "adm-zip": "^0.6.0",
     "bcryptjs": "^3.0.3",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
+    "csv-parse": "^7.0.2",
+    "csv-stringify": "^6.8.3",
     "dotenv": "^17.4.2",
     "express": "^4.22.2",
     "express-async-errors": "^3.1.1",
@@ -42,6 +45,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@types/adm-zip": "^0.5.8",
     "@types/bcryptjs": "^2.4.6",
     "@types/cookie-parser": "^1.4.10",
     "@types/cors": "^2.8.19",
@@ -51,6 +55,7 @@
     "@types/node": "^26.1.2",
     "@types/passport": "^1.0.17",
     "@types/passport-google-oauth20": "^2.0.17",
-    "prisma": "^7.9.1"
+    "prisma": "^7.9.1",
+    "vite": "^8.2.1"
   }
 }

@@ -16,6 +16,8 @@ import {
   Info
 } from "lucide-react";
 import { api } from "../../lib/api";
+import { useAuthStore } from "../../stores/authStore";
+import { useAttendanceStore } from "../../stores/attendanceStore";
 
 interface SubjectStat {
   id: string;
@@ -42,10 +44,30 @@ export const PredictiveAttendanceView: React.FC<PredictiveAttendanceViewProps> =
 }) => {
   const [subjects, setSubjects] = useState<SubjectStat[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [globalTarget, setGlobalTarget] = useState<number>(75);
+  const user = useAuthStore((state) => state.user);
+  const [globalTarget, setGlobalTarget] = useState<number>(user?.targetAttendance ?? 75);
+
+  useEffect(() => {
+    if (user?.targetAttendance) {
+      setGlobalTarget(user.targetAttendance);
+    }
+  }, [user?.targetAttendance]);
 
   // Custom simulation increments per subject: { [subjectId]: { addAttend: number, addMiss: number } }
   const [simulations, setSimulations] = useState<Record<string, { addAttend: number; addMiss: number }>>({});
+
+  const handleTargetChange = async (newTarget: number) => {
+    setGlobalTarget(newTarget);
+    if (!user) return;
+    try {
+      await api.patch("/users/me", { targetAttendance: newTarget });
+      useAuthStore.getState().setUser({ ...user, targetAttendance: newTarget });
+      useAttendanceStore.getState().fetchStats();
+      window.dispatchEvent(new CustomEvent("attendance-updated"));
+    } catch (err) {
+      console.error("Failed to update target globally:", err);
+    }
+  };
 
   const fetchStats = async () => {
     try {
@@ -54,10 +76,15 @@ export const PredictiveAttendanceView: React.FC<PredictiveAttendanceViewProps> =
       const list: SubjectStat[] = Array.isArray(res.data) ? res.data : [];
       setSubjects(list);
 
-      // Default global target to average target or 75
+      // Default global target to average target or user's target
       if (list.length > 0) {
-        const avg = Math.round(list.reduce((acc, s) => acc + (s.target || 75), 0) / list.length);
+        // Use useAuthStore.getState() to avoid stale closure in event listener
+        const latestUser = useAuthStore.getState().user;
+        const avg = Math.round(list.reduce((acc, s) => acc + (s.target || latestUser?.targetAttendance || 75), 0) / list.length);
         setGlobalTarget(avg);
+      } else {
+        const latestUser = useAuthStore.getState().user;
+        setGlobalTarget(latestUser?.targetAttendance ?? 75);
       }
     } catch (error) {
       console.error("Failed to load predictive stats:", error);
@@ -167,7 +194,7 @@ export const PredictiveAttendanceView: React.FC<PredictiveAttendanceViewProps> =
                 {[75, 80, 85, 90].map((t) => (
                   <button
                     key={t}
-                    onClick={() => setGlobalTarget(t)}
+                    onClick={() => handleTargetChange(t)}
                     className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all ${
                       globalTarget === t
                         ? "bg-primary text-primary-foreground shadow-sm"

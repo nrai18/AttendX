@@ -33,15 +33,15 @@ export const CreateSemesterModal: React.FC<CreateSemesterModalProps> = ({
   const [loadingSemesters, setLoadingSemesters] = useState(false);
 
   // Form fields
-  const [name, setName] = useState("Fall 2026");
-  const [startDate, setStartDate] = useState(
-    new Date().toISOString().split("T")[0]
-  );
-  const [endDate, setEndDate] = useState(
-    new Date(new Date().setMonth(new Date().getMonth() + 4))
-      .toISOString()
-      .split("T")[0]
-  );
+  const [year, setYear] = useState("1");
+  const [semesterOption, setSemesterOption] = useState("1");
+  
+  const currentMonth = new Date().toISOString().slice(0, 7); // YYYY-MM
+  const dateIn4Months = new Date(new Date().setMonth(new Date().getMonth() + 4));
+  const defaultEndMonth = dateIn4Months.toISOString().slice(0, 7);
+  
+  const [startMonth, setStartMonth] = useState(currentMonth);
+  const [endMonth, setEndMonth] = useState(defaultEndMonth);
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState("");
 
@@ -63,20 +63,31 @@ export const CreateSemesterModal: React.FC<CreateSemesterModalProps> = ({
     }
   }, [isOpen]);
 
+  // Update semester options when year changes
+  useEffect(() => {
+    const y = parseInt(year);
+    setSemesterOption(String(y * 2 - 1)); // default to odd semester for that year
+  }, [year]);
+
   if (!isOpen) return null;
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim()) {
-      setError("Please enter a semester name");
-      return;
-    }
     setError("");
     setIsCreating(true);
 
+    const suffix = year === "1" ? "st" : year === "2" ? "nd" : year === "3" ? "rd" : "th";
+    const generatedName = `Semester ${semesterOption} (${year}${suffix} Year)`;
+
+    // Calculate dates
+    const startDate = `${startMonth}-01`;
+    const [endY, endM] = endMonth.split("-");
+    const lastDay = new Date(parseInt(endY), parseInt(endM), 0).getDate();
+    const endDate = `${endMonth}-${lastDay.toString().padStart(2, "0")}`;
+
     try {
       await api.post("/semesters", {
-        name: name.trim(),
+        name: generatedName,
         startDate,
         endDate,
         isActive: true,
@@ -163,41 +174,58 @@ export const CreateSemesterModal: React.FC<CreateSemesterModalProps> = ({
         )}
 
         <form onSubmit={handleCreate} className="space-y-4">
-          <div>
-            <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">
-              Semester Name
-            </label>
-            <input
-              type="text"
-              placeholder="e.g. Fall 2026 / Semester 5"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="w-full px-4 py-2.5 rounded-xl bg-background border border-border text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 font-medium"
-              required
-            />
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">
+                Year
+              </label>
+              <select
+                value={year}
+                onChange={(e) => setYear(e.target.value)}
+                className="w-full px-4 py-2.5 rounded-xl bg-background border border-border text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 font-medium appearance-none"
+              >
+                <option value="1">1st Year</option>
+                <option value="2">2nd Year</option>
+                <option value="3">3rd Year</option>
+                <option value="4">4th Year</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">
+                Semester
+              </label>
+              <select
+                value={semesterOption}
+                onChange={(e) => setSemesterOption(e.target.value)}
+                className="w-full px-4 py-2.5 rounded-xl bg-background border border-border text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 font-medium appearance-none"
+              >
+                <option value={String(parseInt(year) * 2 - 1)}>Semester {parseInt(year) * 2 - 1}</option>
+                <option value={String(parseInt(year) * 2)}>Semester {parseInt(year) * 2}</option>
+              </select>
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">
-                Start Date
+                Start Month
               </label>
               <input
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
+                type="month"
+                value={startMonth}
+                onChange={(e) => setStartMonth(e.target.value)}
                 className="w-full px-3 py-2.5 rounded-xl bg-background border border-border text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 font-medium"
                 required
               />
             </div>
             <div>
               <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">
-                End Date
+                End Month
               </label>
               <input
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
+                type="month"
+                value={endMonth}
+                onChange={(e) => setEndMonth(e.target.value)}
                 className="w-full px-3 py-2.5 rounded-xl bg-background border border-border text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 font-medium"
                 required
               />

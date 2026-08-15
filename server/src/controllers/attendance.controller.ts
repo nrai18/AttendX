@@ -40,7 +40,7 @@ export class AttendanceController {
   static async getSingleSubjectStats(req: AuthenticatedRequest, res: Response) {
     const { subjectId } = req.params;
     try {
-      const stats = await AttendanceService.getSingleSubjectStats(req.user!.userId, subjectId);
+      const stats = await AttendanceService.getSingleSubjectStats(req.user!.userId, String(subjectId));
       res.json(stats);
     } catch (error: any) {
       if (error.message === "Subject not found") {

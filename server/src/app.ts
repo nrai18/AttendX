@@ -15,6 +15,7 @@ import timetableRoutes from "./routes/timetable.routes";
 import attendanceRoutes from "./routes/attendance.routes";
 import classroomRoutes from "./routes/classroom.routes";
 import eventRoutes from "./routes/event.routes";
+import dataRoutes from "./routes/data.routes";
 import { CURRICULUM_META } from "./utils/subjectDictionary";
 
 import passport from "./config/passport";
@@ -53,6 +54,7 @@ app.use("/api/timetable", timetableRoutes);
 app.use("/api/attendance", attendanceRoutes);
 app.use("/api/classrooms", classroomRoutes);
 app.use("/api/events", eventRoutes);
+app.use("/api/data", dataRoutes);
 
 // Public: curriculum metadata — branches & semesters derived from actual curriculum
 // No auth required; used by the timetable import wizard on the client

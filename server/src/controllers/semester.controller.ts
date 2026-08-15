@@ -19,13 +19,13 @@ export class SemesterController {
   }
 
   static async activate(req: AuthenticatedRequest, res: Response) {
-    const semester = await SemesterService.activateSemester(req.user!.userId, req.params.id);
+    const semester = await SemesterService.activateSemester(req.user!.userId, String(req.params.id));
     res.json(semester);
   }
 
   static async remove(req: AuthenticatedRequest, res: Response) {
     const wipe = req.query.wipe === "true";
-    await SemesterService.deleteSemester(req.user!.userId, req.params.id, wipe);
+    await SemesterService.deleteSemester(req.user!.userId, String(req.params.id), wipe);
     res.json({ message: "Semester deleted successfully" });
   }
 }

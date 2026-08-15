@@ -53,7 +53,7 @@ export class ClassroomController {
   static async getClassroomFeed(req: AuthenticatedRequest, res: Response) {
     try {
       const { id } = req.params;
-      const feed = await ClassroomService.getClassroomFeed(req.user!.userId, id);
+      const feed = await ClassroomService.getClassroomFeed(req.user!.userId, String(id));
       res.json(feed);
     } catch (error: any) {
       if (error.message.includes("Access denied")) {

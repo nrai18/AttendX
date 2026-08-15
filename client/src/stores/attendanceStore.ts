@@ -1,9 +1,11 @@
 import { create } from "zustand";
 import { api } from "../lib/api";
+import { useAuthStore } from "./authStore";
 
 interface AttendanceState {
   overallPercentage: number;
   targetPercentage: number;
+  hasActiveSemester: boolean | null;
   isLoading: boolean;
   fetchStats: () => Promise<void>;
 }
@@ -11,13 +13,17 @@ interface AttendanceState {
 export const useAttendanceStore = create<AttendanceState>((set) => ({
   overallPercentage: 0,
   targetPercentage: 75,
+  hasActiveSemester: null,
   isLoading: false,
   fetchStats: async () => {
     set({ isLoading: true });
     try {
+      const user = useAuthStore.getState().user;
+      const userTarget = user?.targetAttendance || 75;
+
       const activeSemRes = await api.get("/semesters/active");
       if (!activeSemRes.data) {
-        set({ overallPercentage: 0, isLoading: false });
+        set({ overallPercentage: 0, targetPercentage: userTarget, hasActiveSemester: false, isLoading: false });
         return;
       }
       
@@ -28,16 +34,16 @@ export const useAttendanceStore = create<AttendanceState>((set) => ({
       let totalClasses = 0;
       
       subjects.forEach((sub: any) => {
-        totalAttended += (sub.attended || 0);
-        totalClasses += (sub.total || 0);
+        totalAttended += sub.attended;
+        totalClasses += sub.total;
       });
       
       const overallPercentage = totalClasses > 0 ? (totalAttended / totalClasses) * 100 : 0;
       
-      set({ overallPercentage, isLoading: false });
+      set({ overallPercentage, targetPercentage: userTarget, hasActiveSemester: true, isLoading: false });
     } catch (error) {
       console.error("Failed to fetch global attendance stats:", error);
-      set({ isLoading: false });
+      set({ hasActiveSemester: false, isLoading: false });
     }
   }
 }));

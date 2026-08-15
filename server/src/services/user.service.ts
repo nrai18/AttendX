@@ -46,8 +46,24 @@ export class UserService {
     await prisma.timetableOverride.deleteMany({ where: { semester: { userId } } });
     await prisma.timetableSlot.deleteMany({ where: { semester: { userId } } });
     await prisma.subject.deleteMany({ where: { userId } });
-    await prisma.event.deleteMany({ where: { userId } });
     await prisma.semester.deleteMany({ where: { userId } });
     return { success: true, message: "All app data reset successfully." };
+  }
+
+  static async resetSubjectAttendance(userId: string, subjectIds: string[]) {
+    await prisma.attendance.deleteMany({
+      where: {
+        userId,
+        subjectId: { in: subjectIds },
+      },
+    });
+    return { success: true, message: "Subject attendance reset successfully." };
+  }
+
+  static async resetAllAttendance(userId: string) {
+    await prisma.attendance.deleteMany({
+      where: { userId },
+    });
+    return { success: true, message: "All attendance records reset successfully." };
   }
 }

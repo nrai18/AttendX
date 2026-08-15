@@ -48,7 +48,7 @@ export const SemesterHubPage = () => {
       }
 
       const eventsRes = await api.get("/events");
-      setEvents(Array.isArray(eventsRes.data) ? eventsRes.data : []);
+      setEvents(eventsRes.data);
     } catch (error) {
       console.error("Failed to fetch academic data:", error);
     } finally {

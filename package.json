@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx watch server/src/server.ts",
+    "dev": "npm --prefix server run dev",
     "build": "cd client && npm run build && cd ../server && npm run build",
     "start": "node server/dist/server.js"
   },

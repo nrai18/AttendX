@@ -16,7 +16,8 @@ export const TopBar: React.FC<TopBarProps> = ({
 }) => {
   const user = useAuthStore((state) => state.user);
   const logout = useAuthStore((state) => state.logout);
-  const { overallPercentage, targetPercentage } = useAttendanceStore();
+  const { overallPercentage } = useAttendanceStore();
+  const targetPercentage = user?.targetAttendance ?? 75;
   const { theme, toggleTheme } = useThemeStore();
 
   return (

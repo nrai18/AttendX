@@ -19,13 +19,13 @@ export class SubjectController {
   }
 
   static async update(req: AuthenticatedRequest, res: Response) {
-    const updated = await SubjectService.updateSubject(req.user!.userId, req.params.id, req.body);
+    const updated = await SubjectService.updateSubject(req.user!.userId, String(req.params.id), req.body);
     res.json(updated);
   }
 
   static async remove(req: AuthenticatedRequest, res: Response) {
     const preserveHistory = req.query.preserveHistory !== "false";
-    await SubjectService.deleteSubject(req.user!.userId, req.params.id, preserveHistory);
+    await SubjectService.deleteSubject(req.user!.userId, String(req.params.id), preserveHistory);
     res.json({ message: "Subject removed successfully", preservedHistory: preserveHistory });
   }
 }

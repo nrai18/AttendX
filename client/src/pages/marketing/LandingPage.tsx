@@ -171,8 +171,20 @@ export const LandingPage: React.FC = () => {
                 <Card className="relative bg-[#09090b] border-white/10 rounded-3xl overflow-hidden">
                   <div className="h-32 bg-gradient-to-br from-primary/20 to-blue-600/20" />
                   <CardContent className="pt-0 relative px-8 pb-8 text-center">
-                    <div className="w-24 h-24 rounded-full border-4 border-[#09090b] bg-[#1a1a24] mx-auto -mt-12 mb-4 flex items-center justify-center overflow-hidden">
-                      <span className="text-3xl font-bold text-white">NR</span>
+                    <div className="w-24 h-24 rounded-full border-4 border-[#09090b] bg-[#1a1a24] mx-auto -mt-12 mb-4 flex items-center justify-center overflow-hidden shadow-xl">
+                      <img
+                        src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=400"
+                        alt="Naman Rai"
+                        referrerPolicy="no-referrer"
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          e.currentTarget.style.display = 'none';
+                          if (e.currentTarget.nextElementSibling) {
+                            (e.currentTarget.nextElementSibling as HTMLElement).style.display = 'block';
+                          }
+                        }}
+                      />
+                      <span className="text-3xl font-bold text-white hidden">NR</span>
                     </div>
                     <h3 className="text-2xl font-bold mb-1 text-white">Naman Rai</h3>
                     <p className="text-primary font-medium mb-4">Founder & Developer</p>

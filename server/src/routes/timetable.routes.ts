@@ -8,6 +8,8 @@ const upload = multer({ storage: multer.memoryStorage() });
 
 router.use(authenticate);
 
+router.get("/export/:semesterId", TimetableController.exportTimetable);
+router.post("/import/:semesterId", TimetableController.importTimetable);
 router.get("/:semesterId", TimetableController.getTimetable);
 router.post("/slots", TimetableController.createSlot);
 router.patch("/slots/:id", TimetableController.updateSlot);

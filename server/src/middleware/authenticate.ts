@@ -1,18 +1,12 @@
-import { Request, Response, NextFunction } from "express";
-import { verifyAccessToken } from "../utils/jwt";
+import { Request, Response, NextFunction, RequestHandler } from "express";
 
 import { prisma } from "../lib/prisma";
 
-export interface AuthenticatedRequest extends Request {
-  user?: {
-    userId: string;
-    role: string;
-  };
-}
+export type AuthenticatedRequest = Request;
 
 let devUserId: string | null = null;
 
-export const authenticate = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+export const authenticate: RequestHandler = async (req, res, next) => {
   try {
     if (!devUserId) {
       let user = await prisma.user.findFirst({ where: { email: "dev@iiitu.ac.in" } });

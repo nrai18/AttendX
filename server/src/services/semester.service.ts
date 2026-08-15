@@ -37,29 +37,45 @@ export class SemesterService {
   }
 
   static async activateSemester(userId: string, semesterId: string) {
+    const semester = await prisma.semester.findFirst({
+      where: { id: semesterId, userId },
+    });
+
+    if (!semester) {
+      throw new Error("Semester not found");
+    }
+
     await prisma.semester.updateMany({
       where: { userId, isActive: true },
       data: { isActive: false },
     });
     return prisma.semester.update({
-      where: { id: semesterId, userId },
+      where: { id: semester.id },
       data: { isActive: true },
     });
   }
 
   static async deleteSemester(userId: string, semesterId: string, wipeAttendance = false) {
+    const semester = await prisma.semester.findFirst({
+      where: { id: semesterId, userId },
+    });
+
+    if (!semester) {
+      throw new Error("Semester not found");
+    }
+
     if (wipeAttendance) {
       // Wipes all associated attendance
       return prisma.semester.delete({
-        where: { id: semesterId, userId },
+        where: { id: semester.id },
       });
     } else {
       // Soft-delete or detach slots while retaining historical attendance
       await prisma.timetableSlot.deleteMany({
-        where: { semesterId },
+        where: { semesterId: semester.id },
       });
       return prisma.semester.update({
-        where: { id: semesterId, userId },
+        where: { id: semester.id },
         data: { isActive: false },
       });
     }

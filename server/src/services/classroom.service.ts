@@ -143,7 +143,7 @@ export class ClassroomService {
     const announcements = await prisma.announcement.findMany({
       where: { classroomId },
       include: {
-        author: {
+        createdBy: {
           select: { name: true },
         },
       },
@@ -153,7 +153,7 @@ export class ClassroomService {
 
     const assignments = await prisma.assignment.findMany({
       where: { classroomId },
-      orderBy: { dueDate: 'asc' },
+      orderBy: { deadline: 'asc' },
       take: 20,
     });
 

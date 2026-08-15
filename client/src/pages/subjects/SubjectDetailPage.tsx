@@ -22,6 +22,7 @@ import {
 import { api } from "../../lib/api";
 import { triggerAttendancePopup } from "../../stores/animationPopupStore";
 import { useAttendanceStore } from "../../stores/attendanceStore";
+import { useAuthStore } from "../../stores/authStore";
 
 interface AttendanceLogItem {
   id: string;
@@ -112,9 +113,10 @@ export const SubjectDetailPage = () => {
           totalClasses += s.total;
         });
         const pct = totalClasses > 0 ? (totalAttended / totalClasses) * 100 : 0;
-        const avgTarget = subjects.length > 0
-          ? Math.round(subjects.reduce((acc: number, s: any) => acc + s.target, 0) / subjects.length)
-          : 75;
+        const user = useAuthStore.getState().user;
+        const avgTarget = user?.targetAttendance ?? (Array.isArray(subjects) && subjects.length > 0
+          ? Math.round(subjects.reduce((acc: number, s: any) => acc + (s.target || 75), 0) / subjects.length)
+          : 75);
 
         const totalCanMiss = Math.floor((totalAttended - (avgTarget / 100) * totalClasses) / (avgTarget / 100));
 
@@ -176,9 +178,10 @@ export const SubjectDetailPage = () => {
     if (newStatus === "absent") {
       triggerAttendancePopup("crying", "Attendance Dropped! 😭");
     } else if (newStatus === "present") {
-      const { overallPercentage, targetPercentage } = useAttendanceStore.getState();
-      if (overallPercentage >= (targetPercentage || 75)) {
-        triggerAttendancePopup("target_hit", `Target ${targetPercentage || 75}% Touched! 🎯`);
+      const { overallPercentage } = useAttendanceStore.getState();
+      const targetPct = useAuthStore.getState().user?.targetAttendance ?? 75;
+      if (overallPercentage >= targetPct) {
+        triggerAttendancePopup("target_hit", `Target ${targetPct}% Touched! 🎯`);
       } else {
         triggerAttendancePopup("thumbs_up", "Awesome! Marked Present 👍");
       }
