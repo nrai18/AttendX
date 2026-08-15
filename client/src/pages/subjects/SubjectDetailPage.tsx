@@ -114,9 +114,8 @@ export const SubjectDetailPage = () => {
         });
         const pct = totalClasses > 0 ? (totalAttended / totalClasses) * 100 : 0;
         const user = useAuthStore.getState().user;
-        const avgTarget = user?.targetAttendance ?? (Array.isArray(subjects) && subjects.length > 0
-          ? Math.round(subjects.reduce((acc: number, s: any) => acc + (s.target || 75), 0) / subjects.length)
-          : 75);
+        // Always use user.targetAttendance as the single source of truth
+        const avgTarget = user?.targetAttendance ?? 75;
 
         const totalCanMiss = Math.floor((totalAttended - (avgTarget / 100) * totalClasses) / (avgTarget / 100));
 
@@ -142,7 +141,7 @@ export const SubjectDetailPage = () => {
             id: sub.id,
             name: sub.name,
             code: sub.code,
-            target: sub.target,
+            target: useAuthStore.getState().user?.targetAttendance ?? 75,
             attended: sub.attended,
             total: sub.total,
             percentage: sub.percentage,

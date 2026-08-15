@@ -76,16 +76,9 @@ export const PredictiveAttendanceView: React.FC<PredictiveAttendanceViewProps> =
       const list: SubjectStat[] = Array.isArray(res.data) ? res.data : [];
       setSubjects(list);
 
-      // Default global target to average target or user's target
-      if (list.length > 0) {
-        // Use useAuthStore.getState() to avoid stale closure in event listener
-        const latestUser = useAuthStore.getState().user;
-        const avg = Math.round(list.reduce((acc, s) => acc + (s.target || latestUser?.targetAttendance || 75), 0) / list.length);
-        setGlobalTarget(avg);
-      } else {
-        const latestUser = useAuthStore.getState().user;
-        setGlobalTarget(latestUser?.targetAttendance ?? 75);
-      }
+      // Always use user.targetAttendance as the single source of truth — never average subject targets
+      const latestUser = useAuthStore.getState().user;
+      setGlobalTarget(latestUser?.targetAttendance ?? 75);
     } catch (error) {
       console.error("Failed to load predictive stats:", error);
     } finally {

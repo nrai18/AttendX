@@ -238,9 +238,8 @@ export const SubjectsPage = () => {
   const overallOff = safeStats.reduce((sum, s) => sum + s.off, 0);
   const overallTotal = safeStats.reduce((sum, s) => sum + s.total, 0);
   const overallPct = overallTotal > 0 ? (overallAttended / overallTotal) * 100 : 0;
-  const overallTarget = user?.targetAttendance ?? (safeStats.length > 0
-    ? Math.round(safeStats.reduce((sum, s) => sum + s.target, 0) / safeStats.length)
-    : 75);
+  // Always use user.targetAttendance as the single source of truth — never average subject targets
+  const overallTarget = user?.targetAttendance ?? 75;
   const overallStat: SubjectStat = {
     id: "overall",
     name: "Overall",
