@@ -48,7 +48,7 @@ export const PredictiveAttendanceView: React.FC<PredictiveAttendanceViewProps> =
   const [globalTarget, setGlobalTarget] = useState<number>(user?.targetAttendance ?? 75);
 
   useEffect(() => {
-    if (user?.targetAttendance) {
+    if (user?.targetAttendance !== undefined && user?.targetAttendance !== null) {
       setGlobalTarget(user.targetAttendance);
     }
   }, [user?.targetAttendance]);

@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { persist, createJSONStorage } from "zustand/middleware";
 
 export interface User {
   id: string;
@@ -25,37 +26,48 @@ interface AuthState {
   setLoading: (loading: boolean) => void;
 }
 
-export const useAuthStore = create<AuthState>((set) => ({
-  user: {
-    id: "dev-user-id",
-    email: "dev@iiitu.ac.in",
-    name: "Developer",
-    role: "admin",
-    targetAttendance: 75,
-    theme: "system",
-  },
-  accessToken: "dummy-token",
-  isAuthenticated: true,
-  isLoading: false,
-
-  setUser: (user) => set({ user }),
-  setAccessToken: (accessToken) => set({ accessToken }),
-
-  setAuth: (user, accessToken) =>
-    set({
-      user,
-      accessToken,
+export const useAuthStore = create<AuthState>()(
+  persist(
+    (set) => ({
+      user: {
+        id: "dev-user-id",
+        email: "dev@iiitu.ac.in",
+        name: "Developer",
+        role: "admin",
+        targetAttendance: 75,
+        theme: "system",
+      },
+      accessToken: "dummy-token",
       isAuthenticated: true,
       isLoading: false,
-    }),
 
-  logout: () =>
-    set({
-      user: null,
-      accessToken: null,
-      isAuthenticated: false,
-      isLoading: false,
-    }),
+      setUser: (user) => set({ user }),
+      setAccessToken: (accessToken) => set({ accessToken }),
 
-  setLoading: (isLoading) => set({ isLoading }),
-}));
+      setAuth: (user, accessToken) =>
+        set({
+          user,
+          accessToken,
+          isAuthenticated: true,
+          isLoading: false,
+        }),
+
+      logout: () => {
+        localStorage.removeItem("attendx-auth");
+        set({
+          user: null,
+          accessToken: null,
+          isAuthenticated: false,
+          isLoading: false,
+        });
+      },
+
+      setLoading: (isLoading) => set({ isLoading }),
+    }),
+    {
+      name: "attendx-auth",
+      storage: createJSONStorage(() => localStorage),
+    }
+  )
+);
+

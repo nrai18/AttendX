@@ -94,6 +94,12 @@ export const SettingsPage: React.FC = () => {
     }).catch((err) => console.error(err));
   }, []);
 
+  useEffect(() => {
+    if (user?.targetAttendance !== undefined && user?.targetAttendance !== null) {
+      setTargetAttendance(user.targetAttendance);
+    }
+  }, [user?.targetAttendance]);
+
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSaving(true);
