@@ -272,7 +272,7 @@ export const SubjectsPage = () => {
       name: sub.name,
       code: sub.code,
       colorHex: sub.colorHex || "#8b5cf6",
-      target: 75,
+      target: user?.targetAttendance ?? 75,
       attended: 0,
       missed: 0,
       off: 0,

@@ -206,7 +206,7 @@ export class AttendanceService {
       const off = allRecords.filter(a => a.status === "off" || a.status === "cancelled").length;
       const total = countable.length;
       const percentage = total > 0 ? (attended / total) * 100 : 0;
-      const target = sub.targetAttendance || globalTarget;
+      const target = globalTarget;
       const canMiss = total > 0 ? Math.floor((attended - (target / 100) * total) / (target / 100)) : 0;
       const needAttend = percentage < target && target < 100
         ? Math.ceil(((target / 100) * total - attended) / (1 - target / 100))
@@ -403,7 +403,7 @@ export class AttendanceService {
       const total = countableRecords.length;
 
       let percentage = total > 0 ? (attended / total) * 100 : 0;
-      const target = sub.targetAttendance || globalTarget;
+      const target = globalTarget;
 
       // How many classes can still be missed while staying above target
       // attended / (total + x) >= target/100  => x = (attended - target*total/100) / (target/100)
@@ -483,7 +483,7 @@ export class AttendanceService {
       name: subject.name,
       code: subject.code,
       colorHex: subject.colorHex,
-      target: subject.targetAttendance || globalTarget,
+      target: globalTarget,
       attended,
       total,
       percentage,
@@ -573,7 +573,7 @@ export class AttendanceService {
       }
       
       const daySlots = regularSlots.filter(s => s.dayOfWeek === dbDayOfWeek);
-      const dayOverrides = overrides.filter(o => o.date.getTime() === d.getTime());
+      const dayOverrides = overrides.filter(o => o.date.toISOString().split("T")[0] === dateKey);
       
       let expectedClasses = 0;
 
@@ -589,7 +589,7 @@ export class AttendanceService {
       const extras = dayOverrides.filter(o => o.overrideType === "extra_class");
       expectedClasses += extras.length;
 
-      const dayAtts = attendances.filter(a => a.date.getTime() === d.getTime());
+      const dayAtts = attendances.filter(a => a.date.toISOString().split("T")[0] === dateKey);
 
       let status = "off";
 

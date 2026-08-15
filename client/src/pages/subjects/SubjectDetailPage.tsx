@@ -257,7 +257,7 @@ export const SubjectDetailPage = () => {
   }
 
   const pct = headerStats ? headerStats.percentage : 0;
-  const targetPct = headerStats ? headerStats.target : 75;
+  const targetPct = headerStats ? headerStats.target : (useAuthStore.getState().user?.targetAttendance ?? 75);
 
   return (
     <div className="min-h-screen bg-background text-foreground pb-28">

@@ -23,6 +23,13 @@ export class UserService {
   }
 
   static async updateProfile(userId: string, data: any) {
+    if (data.targetAttendance !== undefined) {
+      await prisma.subject.updateMany({
+        where: { userId },
+        data: { targetAttendance: null }
+      });
+    }
+
     return prisma.user.update({
       where: { id: userId },
       data,
