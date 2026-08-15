@@ -95,9 +95,11 @@ export async function startServer() {
       console.error("Vite middleware startup error:", e);
     }
   } else {
-    // __dirname in production = /opt/render/project/src/server/dist/src
-    // Go up 3 levels to reach the repo root, then into client/dist
-    const distPath = path.resolve(__dirname, "../../../client/dist");
+    // tsup bundles to server/dist/server.js so:
+    //   __dirname = /opt/render/project/src/server/dist
+    //   ../../    = /opt/render/project/src
+    //   ../../client/dist = /opt/render/project/src/client/dist  ✓
+    const distPath = path.resolve(__dirname, "../../client/dist");
     app.use(express.static(distPath));
     app.get("*", (req, res, next) => {
       if (req.path.startsWith("/api")) return next();
