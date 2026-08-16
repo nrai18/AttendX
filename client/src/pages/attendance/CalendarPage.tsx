@@ -1,8 +1,9 @@
+// Replace the whole file to make it simpler and cleaner
 import React, { useState, useEffect } from "react";
 import { format, subMonths, addMonths, startOfMonth, endOfMonth, startOfWeek, endOfWeek, isSameMonth, isSameDay, addDays } from "date-fns";
-import { ChevronLeft, ChevronRight, Loader2, MessageSquare, X, ExternalLink, CheckCircle2, XCircle, ShieldAlert, Award, AlertCircle, Info } from "lucide-react";
+import { ChevronLeft, ChevronRight, Loader2, MessageSquare, CheckCircle2, XCircle, ShieldAlert, Award, AlertCircle } from "lucide-react";
 import { api } from "../../lib/api";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 
 interface DayDetail {
   id: string;
@@ -43,7 +44,7 @@ export const CalendarPage = () => {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [data, setData] = useState<CalendarData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [selectedDateKey, setSelectedDateKey] = useState<string | null>(null);
+  const navigate = useNavigate();
 
   const fetchCalendar = async () => {
     try {
@@ -93,21 +94,6 @@ export const CalendarPage = () => {
     }
   };
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case "present":
-        return <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20"><CheckCircle2 className="w-3 h-3" /> Attended</span>;
-      case "absent":
-        return <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-0.5 rounded-full bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20"><XCircle className="w-3 h-3" /> Absent</span>;
-      case "medical":
-        return <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-0.5 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20"><ShieldAlert className="w-3 h-3" /> Medical</span>;
-      case "od":
-        return <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-0.5 rounded-full bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20"><Award className="w-3 h-3" /> Official Duty</span>;
-      default:
-        return <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20"><AlertCircle className="w-3 h-3" /> Off</span>;
-    }
-  };
-
   if (isLoading && !data) {
     return (
       <div className="flex-1 flex items-center justify-center py-20">
@@ -123,10 +109,6 @@ export const CalendarPage = () => {
     days: { not_marked: 0, off: 0, missed: 0, attended: 0, mixed: 0 }, 
     lectures: { off: 0, missed: 0, attended: 0, total: 0, percentage: 0 } 
   };
-
-  const selectedDayDetails = selectedDateKey ? details[selectedDateKey] || [] : [];
-  const selectedDayEvents = selectedDateKey ? events[selectedDateKey] || [] : [];
-  const selectedDayStatus = selectedDateKey ? days[selectedDateKey] : null;
 
   return (
     <div className="flex flex-col space-y-6">
@@ -176,10 +158,8 @@ export const CalendarPage = () => {
             <div key={i} className="flex justify-center">
               {isCurrentMonth ? (
                 <button
-                  onClick={() => setSelectedDateKey(dateKey)}
-                  className={`flex flex-col items-center justify-center relative w-12 h-14 hover:bg-muted/60 rounded-2xl transition-all cursor-pointer group ${animBorder} ${
-                    selectedDateKey === dateKey ? "ring-2 ring-primary bg-primary/10" : ""
-                  }`}
+                  onClick={() => navigate(`/today?date=${dateKey}`)}
+                  className={`flex flex-col items-center justify-center relative w-12 h-14 hover:bg-muted/60 rounded-2xl transition-all cursor-pointer group ${animBorder}`}
                   title={dayEvents.map(e => e.title).join(", ") || (hasRemarks ? "Has logged remarks" : undefined)}
                 >
                   <div className={`w-8 h-8 flex items-center justify-center rounded-full text-sm font-medium transition-transform group-hover:scale-110 ${
@@ -281,86 +261,6 @@ export const CalendarPage = () => {
           </div>
         </div>
       </div>
-
-      {/* Expanded Day Modal / Drawer */}
-      {selectedDateKey && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-card border border-border rounded-3xl p-6 w-full max-w-lg shadow-2xl space-y-5 relative">
-            <div className="flex items-start justify-between">
-              <div>
-                <h3 className="text-lg font-bold text-foreground">
-                  {format(new Date(selectedDateKey + "T00:00:00"), "EEEE, MMMM d, yyyy")}
-                </h3>
-                <p className="text-xs text-muted-foreground mt-0.5 capitalize">
-                  Status: <span className="font-semibold text-foreground">{selectedDayStatus?.replace("_", " ") || "No classes"}</span>
-                </p>
-              </div>
-              <button
-                onClick={() => setSelectedDateKey(null)}
-                className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded-xl transition-colors cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1">
-              {selectedDayEvents.length > 0 && (
-                <div className="space-y-2 mb-3">
-                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block">Academic Hub Events</span>
-                  {selectedDayEvents.map(evt => (
-                    <div key={evt.id} className="p-3 bg-purple-500/10 border border-purple-500/20 rounded-2xl flex items-center justify-between">
-                      <div>
-                        <p className="text-sm font-bold text-foreground">{evt.title}</p>
-                        <p className="text-xs text-purple-600 dark:text-purple-400 capitalize font-medium">{evt.eventType.replace("_", " ")}</p>
-                      </div>
-                      <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-purple-500 text-white uppercase tracking-wider animate-pulse">
-                        Event
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {selectedDayDetails.length === 0 ? (
-                selectedDayEvents.length === 0 && (
-                  <div className="text-center py-8 bg-muted/30 border border-border rounded-2xl">
-                    <Info className="w-8 h-8 text-muted-foreground mx-auto mb-2 opacity-60" />
-                    <p className="text-xs text-muted-foreground">No specific class logs recorded for this day.</p>
-                  </div>
-                )
-              ) : (
-                selectedDayDetails.map((item) => (
-                  <div
-                    key={item.id}
-                    className="p-3.5 bg-muted/40 border border-border rounded-2xl flex flex-col space-y-2"
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-sm font-semibold text-foreground">{item.subjectName}</span>
-                      {getStatusBadge(item.status)}
-                    </div>
-                    {item.remarks && (
-                      <div className="bg-primary/10 border border-primary/20 text-foreground px-3 py-1.5 rounded-xl text-xs flex items-center gap-2">
-                        <MessageSquare className="w-3.5 h-3.5 text-primary flex-shrink-0" />
-                        <span><strong className="text-primary font-semibold">Remark:</strong> {item.remarks}</span>
-                      </div>
-                    )}
-                  </div>
-                ))
-              )}
-            </div>
-
-            <div className="pt-2">
-              <Link
-                to={`/today?date=${selectedDateKey}`}
-                className="flex items-center justify-center gap-2 w-full py-2.5 bg-primary text-primary-foreground font-semibold rounded-xl text-xs hover:bg-primary/90 transition-all shadow-md shadow-primary/20 cursor-pointer"
-              >
-                <ExternalLink className="w-4 h-4" />
-                <span>Open Day View in Agenda</span>
-              </Link>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
