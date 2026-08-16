@@ -2,6 +2,8 @@ import { Request, Response } from "express";
 import { TimetableService } from "../services/timetable.service";
 import { SemesterService } from "../services/semester.service";
 import { UserService } from "../services/user.service";
+import { AuthenticatedRequest } from "../middleware/authenticate";
+import { CacheService } from "../services/cache.service";
 
 export class TimetableController {
   static async getTimetable(req: Request, res: Response) {
@@ -11,43 +13,48 @@ export class TimetableController {
     res.json(slots);
   }
 
-  static async createSlot(req: Request, res: Response) {
+  static async createSlot(req: AuthenticatedRequest, res: Response) {
     const slot = await TimetableService.createSlot(req.body);
+    await CacheService.invalidateUser(req.user!.userId);
     res.status(201).json(slot);
   }
 
-  static async updateSlot(req: Request, res: Response) {
+  static async updateSlot(req: AuthenticatedRequest, res: Response) {
     const slotId = String(req.params.id);
     const slot = await TimetableService.updateSlot(slotId, req.body);
+    await CacheService.invalidateUser(req.user!.userId);
     res.json(slot);
   }
 
-  static async swapSlots(req: Request, res: Response) {
+  static async swapSlots(req: AuthenticatedRequest, res: Response) {
     const { slotAId, slotBId } = req.body;
     if (!slotAId || !slotBId) {
       return res.status(400).json({ error: "Missing slotAId or slotBId" });
     }
     const result = await TimetableService.swapSlots(slotAId, slotBId);
+    await CacheService.invalidateUser(req.user!.userId);
     res.json(result);
   }
 
-  static async deleteSlot(req: Request, res: Response) {
+  static async deleteSlot(req: AuthenticatedRequest, res: Response) {
     const slotId = String(req.params.id);
     const preserveHistory = req.query.preserveHistory !== "false";
     await TimetableService.deleteSlot(slotId, preserveHistory);
+    await CacheService.invalidateUser(req.user!.userId);
     res.json({ message: "Slot deleted", preservedHistory: preserveHistory });
   }
 
-  static async deleteSlotsBatch(req: Request, res: Response) {
+  static async deleteSlotsBatch(req: AuthenticatedRequest, res: Response) {
     const { slotIds, preserveHistory = true } = req.body;
     if (!Array.isArray(slotIds)) {
       return res.status(400).json({ error: "slotIds array is required" });
     }
     const result = await TimetableService.deleteSlotsBatch(slotIds, preserveHistory);
+    await CacheService.invalidateUser(req.user!.userId);
     res.json({ message: "Slots deleted", count: result.count, preservedHistory: preserveHistory });
   }
 
-  static async deleteSubjectSlots(req: Request, res: Response) {
+  static async deleteSubjectSlots(req: AuthenticatedRequest, res: Response) {
     const semesterId = String(req.params.semesterId);
     const subjectId = String(req.params.subjectId);
     const preserveHistory = req.query.preserveHistory !== "false";
@@ -55,20 +62,23 @@ export class TimetableController {
       return res.status(400).json({ error: "semesterId and subjectId are required" });
     }
     const result = await TimetableService.deleteSubjectSlots(semesterId, subjectId, preserveHistory);
+    await CacheService.invalidateUser(req.user!.userId);
     res.json({ message: "Subject slots deleted", count: result.count, preservedHistory: preserveHistory });
   }
 
-  static async addExtraClass(req: Request, res: Response) {
+  static async addExtraClass(req: AuthenticatedRequest, res: Response) {
     const extra = await TimetableService.addExtraClass(req.body);
+    await CacheService.invalidateUser(req.user!.userId);
     res.status(201).json(extra);
   }
 
-  static async deleteExtraClass(req: Request, res: Response) {
+  static async deleteExtraClass(req: AuthenticatedRequest, res: Response) {
     const id = String(req.params.id);
     if (!id) {
       return res.status(400).json({ error: "id is required" });
     }
     await TimetableService.deleteExtraClass(id);
+    await CacheService.invalidateUser(req.user!.userId);
     res.json({ message: "Extra class deleted" });
   }
 
@@ -105,6 +115,7 @@ export class TimetableController {
       }
 
       const slots = await TimetableService.saveWizardTimetable(userId, semesterId, selections, rawSlots);
+      await CacheService.invalidateUser(userId);
       res.status(201).json({ message: "Timetable generated successfully", slots });
     } catch (error: any) {
       console.error("Wizard Save Error:", error);
@@ -134,6 +145,7 @@ export class TimetableController {
         await UserService.resetTimetable(userId);
       }
 
+      await CacheService.invalidateUser(userId);
       res.status(200).json({ message: "Timetable cleared successfully" });
     } catch (error: any) {
       console.error("Safe Delete Error:", error);
@@ -171,6 +183,7 @@ export class TimetableController {
       }
 
       const result = await TimetableService.importTimetable(userId, semesterId, payload);
+      await CacheService.invalidateUser(userId);
       res.status(200).json({ message: "Timetable imported successfully", result });
     } catch (error: any) {
       console.error("Import Error:", error);

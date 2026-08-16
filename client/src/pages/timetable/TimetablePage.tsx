@@ -10,7 +10,6 @@ import { DndContext, closestCenter, DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { normalizeTimeString } from "../../utils/timeUtils";
 import { useAttendanceStore } from "../../stores/attendanceStore";
-import { useNotificationStore } from "../../stores/notificationStore";
 
 interface Subject {
   id: string;
@@ -323,18 +322,10 @@ export const TimetablePage = () => {
         }
       }
 
-      const deletedCount = slotsPendingDelete.length;
       setSelectedSlotIds([]);
       setIsSelectMode(false);
       await fetchData();
       window.dispatchEvent(new Event("attendance-updated"));
-
-      useNotificationStore.getState().notify({
-        title: "Slots Deleted",
-        description: `${deletedCount} timetable slot(s) deleted.`,
-        type: "info",
-        category: "delete",
-      });
     } catch (error) {
       console.error("Failed to delete slot(s):", error);
       alert("Failed to delete the selected lecture(s). Please try again.");
@@ -354,13 +345,8 @@ export const TimetablePage = () => {
       setIsSelectMode(false);
       await fetchData();
       window.dispatchEvent(new Event("attendance-updated"));
-      
-      useNotificationStore.getState().notify({
-        title: "Timetable Reset Done",
-        description: "All timetable slots cleared for active semester.",
-        type: "success",
-        category: "reset",
-      });
+      setToastMessage("Timetable schedule cleared successfully!");
+      setTimeout(() => setToastMessage(null), 4000);
     } catch (error) {
       console.error("Failed to clear timetable:", error);
       alert("Failed to clear timetable. Please try again.");

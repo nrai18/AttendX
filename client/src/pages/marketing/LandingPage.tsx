@@ -3,273 +3,310 @@ import { Link } from "react-router-dom";
 import { 
   GraduationCap, 
   ArrowRight, 
-  Calendar, 
-  ShieldCheck, 
-  Calculator, 
-  BookOpen, 
-  FileText,
-  Lock,
-  ChevronRight,
-  Sparkles,
-  Check
+  CalendarDays, 
+  Bell, 
+  Users, 
+  Code2, 
+  Mail, 
+  Phone,
+  CheckCircle2,
+  Send
 } from "lucide-react";
 import { Button } from "../../components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
+import { Input } from "../../components/ui/input";
+import { Label } from "../../components/ui/label";
 
 export const LandingPage: React.FC = () => {
   return (
-    <div className="min-h-screen bg-background text-foreground antialiased selection:bg-primary/20 selection:text-primary">
-      {/* Institutional Top Banner */}
-      <div className="bg-muted/60 border-b border-border py-2 px-4 text-center text-xs font-medium text-muted-foreground flex items-center justify-center gap-2">
-        <span className="inline-block w-2 h-2 rounded-full bg-emerald-500"></span>
-        <span>Official Academic Companion for Indian Institute of Information Technology Una (IIITUGORD02)</span>
-      </div>
-
-      {/* Navigation Header */}
-      <header className="sticky top-0 w-full z-50 border-b border-border bg-background/90 backdrop-blur-md">
-        <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-primary flex items-center justify-center text-primary-foreground font-bold shadow-sm">
-              <GraduationCap className="w-5 h-5" />
+    <div className="min-h-screen bg-[#050508] text-white selection:bg-primary/30">
+      {/* Navigation */}
+      <nav className="fixed top-0 w-full z-50 border-b border-white/5 bg-[#050508]/80 backdrop-blur-md">
+        <div className="container mx-auto px-6 h-16 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-lg bg-primary/20 flex items-center justify-center">
+              <GraduationCap className="w-5 h-5 text-primary" />
             </div>
-            <div className="flex flex-col">
-              <span className="font-bold text-base tracking-tight leading-none text-foreground">AttendX</span>
-              <span className="text-[10px] text-muted-foreground font-mono mt-0.5">IIIT Una Edition</span>
-            </div>
+            <span className="font-bold text-xl tracking-tight">AttendX</span>
           </div>
-
-          <nav className="hidden md:flex items-center gap-6 text-xs font-semibold text-muted-foreground">
-            <a href="#ordinance-rules" className="hover:text-foreground transition-colors">Ordinance Rules</a>
-            <a href="#core-capabilities" className="hover:text-foreground transition-colors">Capabilities</a>
-            <a href="#ai-rag" className="hover:text-foreground transition-colors">Policy AI</a>
-            <a href="#architecture" className="hover:text-foreground transition-colors">Engineering</a>
-          </nav>
-
-          <div className="flex items-center gap-3">
+          <div className="hidden md:flex items-center gap-8 text-sm font-medium text-white/70">
+            <a href="#features" className="hover:text-white transition-colors">Features</a>
+            <a href="#about" className="hover:text-white transition-colors">About Us</a>
+            <a href="#contact" className="hover:text-white transition-colors">Contact</a>
+          </div>
+          <div className="flex items-center gap-4">
             <Link to="/login">
-              <Button variant="ghost" size="sm" className="text-xs font-semibold rounded-lg px-3.5">
-                Sign In
+              <Button variant="ghost" className="text-white/80 hover:text-white hover:bg-white/10 rounded-xl">
+                Log in
               </Button>
             </Link>
             <Link to="/signup">
-              <Button size="sm" className="bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-semibold rounded-lg shadow-sm px-4">
+              <Button className="bg-primary hover:bg-primary/90 text-white rounded-xl shadow-lg shadow-primary/20 transition-all hover:scale-105 hidden sm:flex">
                 Get Started
               </Button>
             </Link>
           </div>
         </div>
-      </header>
+      </nav>
 
       {/* Hero Section */}
-      <section className="py-20 md:py-28 px-6 border-b border-border bg-gradient-to-b from-background via-muted/10 to-background">
-        <div className="max-w-4xl mx-auto text-center space-y-6">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-secondary border border-border text-xs font-medium text-muted-foreground mx-auto">
-            <ShieldCheck className="w-3.5 h-3.5 text-primary" />
-            <span>Strictly Compliant with B.Tech Ordinances (IIITUGORD02)</span>
+      <section className="relative pt-32 pb-20 md:pt-48 md:pb-32 px-6 overflow-hidden">
+        {/* Background glow effects */}
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-primary/20 rounded-full blur-[120px] opacity-50 pointer-events-none" />
+        
+        <div className="container mx-auto max-w-5xl text-center relative z-10">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/10 text-sm text-primary mb-8 animate-fade-in">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
+            </span>
+            AttendX 1.0 is live at IIITU
           </div>
-
-          <h1 className="text-4xl sm:text-5xl md:text-6xl font-bold tracking-tight text-foreground leading-[1.15]">
-            Academic Intelligence & Attendance Governance for IIIT Una
+          
+          <h1 className="text-5xl md:text-7xl font-extrabold tracking-tight mb-8 bg-gradient-to-b from-white to-white/60 bg-clip-text text-transparent">
+            Take Control of Your <br className="hidden md:block" />
+            College Attendance.
           </h1>
-
-          <p className="text-base sm:text-lg text-muted-foreground max-w-2xl mx-auto leading-relaxed">
-            Eliminate attendance uncertainty with automated 75% threshold enforcement, predictive shortage grading protection, and vector-grounded ordinance intelligence.
+          
+          <p className="text-lg md:text-xl text-white/60 mb-10 max-w-2xl mx-auto">
+            The ultimate smart attendance tracker designed exclusively for IIITU students. Never worry about falling below the 75% threshold again.
           </p>
-
-          <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
-            <Link to="/signup" className="w-full sm:w-auto">
-              <Button size="lg" className="w-full h-11 px-6 text-sm font-semibold rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground shadow-sm">
-                Launch AttendX Console <ArrowRight className="ml-2 w-4 h-4" />
+          
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+            <Link to="/signup">
+              <Button size="lg" className="h-14 px-8 text-base bg-primary hover:bg-primary/90 text-white rounded-2xl shadow-xl shadow-primary/20 transition-all hover:-translate-y-1 w-full sm:w-auto">
+                Join AttendX Now <ArrowRight className="ml-2 w-5 h-5" />
               </Button>
             </Link>
-            <Link to="/login" className="w-full sm:w-auto">
-              <Button size="lg" variant="outline" className="w-full h-11 px-6 text-sm font-semibold rounded-lg border-border bg-card hover:bg-accent">
-                Sign In to Existing Account
+            <Link to="/login">
+              <Button size="lg" variant="outline" className="h-14 px-8 text-base border-white/10 bg-white/5 hover:bg-white/10 rounded-2xl transition-all w-full sm:w-auto text-white">
+                I already have an account
               </Button>
             </Link>
           </div>
+        </div>
+      </section>
 
-          {/* Quick Metrics Strip */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-10 max-w-3xl mx-auto text-left">
-            <div className="p-4 rounded-xl bg-card border border-border">
-              <p className="text-xs text-muted-foreground font-medium">Mandatory Threshold</p>
-              <p className="text-xl font-bold font-mono text-foreground mt-1">75.00%</p>
-              <p className="text-[11px] text-muted-foreground mt-0.5">Section 6.1 Compliance</p>
+      {/* Features Section */}
+      <section id="features" className="py-24 bg-[#09090b] relative">
+        <div className="container mx-auto px-6 max-w-6xl">
+          <div className="text-center mb-16">
+            <h2 className="text-3xl md:text-4xl font-bold mb-4">Everything you need to succeed</h2>
+            <p className="text-white/60 max-w-xl mx-auto">
+              We built AttendX to solve the exact problems we face every semester. Automated, smart, and beautifully designed.
+            </p>
+          </div>
+
+          <div className="grid md:grid-cols-3 gap-6">
+            <Card className="bg-[#050508] border-white/5 overflow-hidden group hover:border-primary/50 transition-colors">
+              <CardHeader>
+                <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                  <CalendarDays className="w-6 h-6 text-primary" />
+                </div>
+                <CardTitle>Smart Timetable</CardTitle>
+                <CardDescription className="text-white/50 text-base">
+                  Interactive dynamic timetable that knows exactly what classes you have today and automatically calculates absences.
+                </CardDescription>
+              </CardHeader>
+            </Card>
+
+            <Card className="bg-[#050508] border-white/5 overflow-hidden group hover:border-blue-500/50 transition-colors">
+              <CardHeader>
+                <div className="w-12 h-12 rounded-xl bg-blue-500/10 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                  <Bell className="w-6 h-6 text-blue-500" />
+                </div>
+                <CardTitle>Absence Predictions</CardTitle>
+                <CardDescription className="text-white/50 text-base">
+                  Set your target (e.g. 75%) and AttendX will tell you exactly how many more classes you can safely skip.
+                </CardDescription>
+              </CardHeader>
+            </Card>
+
+            <Card className="bg-[#050508] border-white/5 overflow-hidden group hover:border-purple-500/50 transition-colors">
+              <CardHeader>
+                <div className="w-12 h-12 rounded-xl bg-purple-500/10 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                  <Users className="w-6 h-6 text-purple-500" />
+                </div>
+                <CardTitle>Classrooms Hub</CardTitle>
+                <CardDescription className="text-white/50 text-base">
+                  Join your batch's classroom to get official announcements, assignments, and notes directly from your CR.
+                </CardDescription>
+              </CardHeader>
+            </Card>
+          </div>
+        </div>
+      </section>
+
+      {/* About Us Section */}
+      <section id="about" className="py-24 relative overflow-hidden">
+        <div className="container mx-auto px-6 max-w-5xl">
+          <div className="flex flex-col md:flex-row items-center gap-12">
+            <div className="flex-1 space-y-6">
+              <h2 className="text-3xl md:text-4xl font-bold">About the Creator</h2>
+              <div className="w-20 h-1 bg-primary rounded-full" />
+              <p className="text-lg text-white/70 leading-relaxed">
+                AttendX was developed by <strong>Naman Rai</strong>, a student at IIITU who was tired of manually calculating attendance percentages and constantly worrying about falling below the mandatory 75% criteria.
+              </p>
+              <p className="text-lg text-white/70 leading-relaxed">
+                Our mission is to provide a seamless, stress-free academic experience. By centralizing timetables, attendance tracking, and classroom communication into one beautiful platform, students can focus on what actually matters: learning.
+              </p>
+              <ul className="space-y-3 pt-4">
+                {[
+                  "Built with modern web technologies",
+                  "Designed exclusively for the IIITU ecosystem",
+                  "Open to feedback and continuous improvement"
+                ].map((item, i) => (
+                  <li key={i} className="flex items-center gap-3 text-white/80">
+                    <CheckCircle2 className="w-5 h-5 text-primary shrink-0" />
+                    <span>{item}</span>
+                  </li>
+                ))}
+              </ul>
             </div>
-            <div className="p-4 rounded-xl bg-card border border-border">
-              <p className="text-xs text-muted-foreground font-medium">Shortage Warning</p>
-              <p className="text-xl font-bold font-mono text-amber-500 mt-1">55% - 75%</p>
-              <p className="text-[11px] text-muted-foreground mt-0.5">L Grade Makeup Rule</p>
-            </div>
-            <div className="p-4 rounded-xl bg-card border border-border">
-              <p className="text-xs text-muted-foreground font-medium">Severe Shortage</p>
-              <p className="text-xl font-bold font-mono text-rose-500 mt-1">&lt; 55.00%</p>
-              <p className="text-[11px] text-muted-foreground mt-0.5">R Grade Year Repeat</p>
-            </div>
-            <div className="p-4 rounded-xl bg-card border border-border">
-              <p className="text-xs text-muted-foreground font-medium">End-Sem Passing</p>
-              <p className="text-xl font-bold font-mono text-emerald-500 mt-1">&ge; 30.00%</p>
-              <p className="text-[11px] text-muted-foreground mt-0.5">Section 13.3 Mandate</p>
+            
+            {/* Creator Card */}
+            <div className="w-full md:w-[400px]">
+              <div className="relative group">
+                <div className="absolute -inset-1 bg-gradient-to-r from-primary to-blue-600 rounded-3xl blur opacity-25 group-hover:opacity-50 transition duration-1000"></div>
+                <Card className="relative bg-[#09090b] border-white/10 rounded-3xl overflow-hidden">
+                  <div className="h-32 bg-gradient-to-br from-primary/20 to-blue-600/20" />
+                  <CardContent className="pt-0 relative px-8 pb-8 text-center">
+                    <div className="w-24 h-24 rounded-full border-4 border-[#09090b] bg-[#1a1a24] mx-auto -mt-12 mb-4 flex items-center justify-center overflow-hidden shadow-xl">
+                      <img
+                        src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=400"
+                        alt="Naman Rai"
+                        referrerPolicy="no-referrer"
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          e.currentTarget.style.display = 'none';
+                          if (e.currentTarget.nextElementSibling) {
+                            (e.currentTarget.nextElementSibling as HTMLElement).style.display = 'block';
+                          }
+                        }}
+                      />
+                      <span className="text-3xl font-bold text-white hidden">NR</span>
+                    </div>
+                    <h3 className="text-2xl font-bold mb-1 text-white">Naman Rai</h3>
+                    <p className="text-primary font-medium mb-4">Founder & Developer</p>
+                    <p className="text-white/60 text-sm mb-6">
+                      Passionate about building scalable web applications and solving real-world student problems.
+                    </p>
+                    <div className="flex justify-center gap-3">
+                      <a href="https://github.com/nrai18" target="_blank" rel="noreferrer" className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center hover:bg-white/10 transition-colors text-white">
+                        <Code2 className="w-5 h-5" />
+                      </a>
+                      <a href="mailto:rai18naman@gmail.com" className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center hover:bg-white/10 transition-colors text-white">
+                        <Mail className="w-5 h-5" />
+                      </a>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
             </div>
           </div>
         </div>
       </section>
 
-      {/* Core Capabilities Section */}
-      <section id="core-capabilities" className="py-20 px-6 max-w-6xl mx-auto space-y-12">
-        <div className="text-center max-w-2xl mx-auto space-y-3">
-          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">
-            Engineered for Academic Precision
-          </h2>
-          <p className="text-sm text-muted-foreground leading-relaxed">
-            AttendX is not a generic to-do list. Every calculation directly reflects IIIT Una's Senate-approved evaluation standards.
+      {/* Contact Section */}
+      <section id="contact" className="py-24 bg-[#09090b]">
+        <div className="container mx-auto px-6 max-w-5xl">
+          <div className="text-center mb-16">
+            <h2 className="text-3xl md:text-4xl font-bold mb-4">Get in Touch</h2>
+            <p className="text-white/60 max-w-xl mx-auto">
+              Have a feature request, found a bug, or just want to say hi? Reach out directly.
+            </p>
+          </div>
+
+          <div className="grid md:grid-cols-5 gap-12">
+            {/* Contact Info */}
+            <div className="md:col-span-2 space-y-8">
+              <div>
+                <h3 className="text-xl font-bold mb-6">Contact Information</h3>
+                <div className="space-y-6">
+                  <div className="flex items-start gap-4">
+                    <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+                      <Phone className="w-6 h-6 text-primary" />
+                    </div>
+                    <div>
+                      <p className="text-sm text-white/50 font-medium mb-1">Phone</p>
+                      <a href="tel:8076408958" className="text-lg text-white hover:text-primary transition-colors">
+                        +91 80764 08958
+                      </a>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-start gap-4">
+                    <div className="w-12 h-12 rounded-xl bg-blue-500/10 flex items-center justify-center shrink-0">
+                      <Mail className="w-6 h-6 text-blue-500" />
+                    </div>
+                    <div>
+                      <p className="text-sm text-white/50 font-medium mb-1">Email</p>
+                      <a href="mailto:rai18naman@gmail.com" className="text-lg text-white hover:text-blue-500 transition-colors">
+                        rai18naman@gmail.com
+                      </a>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-4">
+                    <div className="w-12 h-12 rounded-xl bg-white/10 flex items-center justify-center shrink-0">
+                      <Code2 className="w-6 h-6 text-white" />
+                    </div>
+                    <div>
+                      <p className="text-sm text-white/50 font-medium mb-1">GitHub Repository</p>
+                      <a href="https://github.com/nrai18/AttendX" target="_blank" rel="noreferrer" className="text-lg text-white hover:text-gray-300 transition-colors break-all">
+                        github.com/nrai18/AttendX
+                      </a>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Contact Form */}
+            <div className="md:col-span-3">
+              <Card className="bg-[#050508] border-white/10 rounded-3xl p-2">
+                <CardContent className="p-6 md:p-8 space-y-6">
+                  <div className="grid sm:grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                      <Label htmlFor="name" className="text-white/70">Your Name</Label>
+                      <Input id="name" placeholder="John Doe" className="bg-white/5 border-white/10 h-12 rounded-xl focus-visible:ring-primary text-white placeholder:text-white/30" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="email" className="text-white/70">Email Address</Label>
+                      <Input id="email" type="email" placeholder="john@iiitu.ac.in" className="bg-white/5 border-white/10 h-12 rounded-xl focus-visible:ring-primary text-white placeholder:text-white/30" />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="message" className="text-white/70">Message</Label>
+                    <textarea 
+                      id="message" 
+                      placeholder="How can we help you?" 
+                      className="w-full bg-white/5 border border-white/10 rounded-xl p-4 min-h-[150px] focus:outline-none focus:ring-2 focus:ring-primary/50 text-white placeholder:text-white/30 resize-none"
+                    />
+                  </div>
+                  <Button className="w-full h-12 rounded-xl bg-primary hover:bg-primary/90 text-white font-semibold text-base shadow-lg shadow-primary/20">
+                    Send Message <Send className="w-4 h-4 ml-2" />
+                  </Button>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Footer */}
+      <footer className="border-t border-white/5 py-12 bg-[#050508]">
+        <div className="container mx-auto px-6 flex flex-col md:flex-row items-center justify-between gap-6">
+          <div className="flex items-center gap-2 opacity-70">
+            <GraduationCap className="w-5 h-5 text-white" />
+            <span className="font-bold text-lg tracking-tight text-white">AttendX</span>
+          </div>
+          <p className="text-white/40 text-sm text-center">
+            &copy; {new Date().getFullYear()} Naman Rai. Built for IIITU.
           </p>
-        </div>
-
-        <div className="grid md:grid-cols-2 gap-8">
-          {/* Card 1 */}
-          <div className="p-6 rounded-2xl bg-card border border-border space-y-4">
-            <div className="w-10 h-10 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary font-bold">
-              <Calculator className="w-5 h-5" />
-            </div>
-            <h3 className="text-lg font-bold text-foreground">Algorithmic Buffer & Safe Leave Calculator</h3>
-            <p className="text-sm text-muted-foreground leading-relaxed">
-              Calculates real-time safe leave margins and recovery requirements for every enrolled course, accounting for target attendance percentages and conducted lectures.
-            </p>
-            <div className="pt-2 flex flex-wrap gap-2 text-xs font-mono text-muted-foreground">
-              <span className="px-2.5 py-1 rounded-md bg-secondary border border-border">Continuous Margin Math</span>
-              <span className="px-2.5 py-1 rounded-md bg-secondary border border-border">Lab & Theory Weightages</span>
-            </div>
-          </div>
-
-          {/* Card 2 */}
-          <div className="p-6 rounded-2xl bg-card border border-border space-y-4">
-            <div className="w-10 h-10 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-500 font-bold">
-              <Calendar className="w-5 h-5" />
-            </div>
-            <h3 className="text-lg font-bold text-foreground">Interactive Timetable & Dynamic Overrides</h3>
-            <p className="text-sm text-muted-foreground leading-relaxed">
-              Manage slot swaps, extra classes, medical leave waivers, and on-duty (OD) entries with automated Redis cache invalidation for zero stale reads.
-            </p>
-            <div className="pt-2 flex flex-wrap gap-2 text-xs font-mono text-muted-foreground">
-              <span className="px-2.5 py-1 rounded-md bg-secondary border border-border">Section 6.8 On-Duty Counted as Present</span>
-              <span className="px-2.5 py-1 rounded-md bg-secondary border border-border">Ad-hoc Slot Rescheduling</span>
-            </div>
-          </div>
-
-          {/* Card 3 */}
-          <div className="p-6 rounded-2xl bg-card border border-border space-y-4">
-            <div className="w-10 h-10 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-500 font-bold">
-              <BookOpen className="w-5 h-5" />
-            </div>
-            <h3 className="text-lg font-bold text-foreground">RAG AI Policy Advisor (IIITUGORD02)</h3>
-            <p className="text-sm text-muted-foreground leading-relaxed">
-              Powered by Google GenAI's 3072-dimensional vector embeddings and Gemini 3.6 Flash. Ask questions on 9-day medical leave limits, hostel roll call extensions, and mess rebate formulas with exact clause citations.
-            </p>
-            <div className="pt-2 flex flex-wrap gap-2 text-xs font-mono text-muted-foreground">
-              <span className="px-2.5 py-1 rounded-md bg-secondary border border-border">gemini-embedding-2 Vector DB</span>
-              <span className="px-2.5 py-1 rounded-md bg-secondary border border-border">100% Policy Grounded</span>
-            </div>
-          </div>
-
-          {/* Card 4 */}
-          <div className="p-6 rounded-2xl bg-card border border-border space-y-4">
-            <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-500 font-bold">
-              <ShieldCheck className="w-5 h-5" />
-            </div>
-            <h3 className="text-lg font-bold text-foreground">LightGBM Drop Risk Forecasting</h3>
-            <p className="text-sm text-muted-foreground leading-relaxed">
-              Machine learning engine that analyzes consecutive absences, lab class strictness, and day-of-week risk factors to alert students before reaching critical shortage thresholds.
-            </p>
-            <div className="pt-2 flex flex-wrap gap-2 text-xs font-mono text-muted-foreground">
-              <span className="px-2.5 py-1 rounded-md bg-secondary border border-border">Trained LightGBM Classifier</span>
-              <span className="px-2.5 py-1 rounded-md bg-secondary border border-border">Proactive Warning Alerts</span>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Ordinance Quick Reference Section */}
-      <section id="ordinance-rules" className="py-20 px-6 border-t border-border bg-muted/20">
-        <div className="max-w-5xl mx-auto space-y-10">
-          <div className="space-y-3">
-            <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">
-              Essential B.Tech Ordinance Clauses
-            </h2>
-            <p className="text-sm text-muted-foreground">
-              Key academic and administrative regulations every IIIT Una student must follow:
-            </p>
-          </div>
-
-          <div className="grid md:grid-cols-3 gap-6 text-sm">
-            <div className="p-5 rounded-xl bg-card border border-border space-y-2.5">
-              <span className="text-xs font-mono font-bold text-primary">Section 6.5</span>
-              <h4 className="font-bold text-foreground">Short Absence (up to 9 Days)</h4>
-              <p className="text-xs text-muted-foreground leading-relaxed">
-                Submit medical application to HoD. If approved, the leave period is deducted from the total held classes in the attendance denominator. Admissible once per semester.
-              </p>
-            </div>
-
-            <div className="p-5 rounded-xl bg-card border border-border space-y-2.5">
-              <span className="text-xs font-mono font-bold text-primary">Section 11.17</span>
-              <h4 className="font-bold text-foreground">Mess Rebate Formula (N - 2)</h4>
-              <p className="text-xs text-muted-foreground leading-relaxed">
-                Apply 3 days in advance with Warden approval for vacations or official leaves. Rebate is credited for (N - 2) days where N is the total number of days absent.
-              </p>
-            </div>
-
-            <div className="p-5 rounded-xl bg-card border border-border space-y-2.5">
-              <span className="text-xs font-mono font-bold text-primary">Section 18</span>
-              <h4 className="font-bold text-foreground">B.Tech with Honors (172 Credits)</h4>
-              <p className="text-xs text-muted-foreground leading-relaxed">
-                Requires SGPA $\ge 8.0$ in first 4 semesters, CGPA $\ge 8.5$ in all 8 semesters, and 4 approved NPTEL/MOOC Elite certificates (12 extra credits).
-              </p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Engineering & Developer Note */}
-      <section id="architecture" className="py-20 px-6 max-w-4xl mx-auto border-t border-border">
-        <div className="p-8 rounded-2xl bg-card border border-border space-y-6">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-primary/20 text-primary font-bold flex items-center justify-center text-sm">
-              NR
-            </div>
-            <div>
-              <h3 className="font-bold text-base text-foreground">Developed by Naman Rai</h3>
-              <p className="text-xs text-muted-foreground font-mono">B.Tech Student & Software Engineer — IIIT Una</p>
-            </div>
-          </div>
-
-          <p className="text-sm text-muted-foreground leading-relaxed">
-            AttendX was engineered to solve the persistent anxiety surrounding university attendance math and ordinance navigation. Built as a distributed full-stack system on Node.js/Express, PostgreSQL, Redis, FastAPI, Celery background workers, and LangGraph RAG intelligence.
-          </p>
-
-          <div className="flex items-center gap-4 text-xs font-semibold text-primary pt-2">
-            <a href="https://github.com/nrai18/AttendX" target="_blank" rel="noreferrer" className="hover:underline flex items-center gap-1">
-              GitHub Repository <ChevronRight className="w-3.5 h-3.5" />
-            </a>
-            <span className="text-muted-foreground/30">•</span>
-            <a href="mailto:rai18naman@gmail.com" className="hover:underline">
-              rai18naman@gmail.com
-            </a>
-          </div>
-        </div>
-      </section>
-
-      {/* Institutional Footer */}
-      <footer className="border-t border-border py-12 px-6 bg-muted/10 text-xs text-muted-foreground">
-        <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-6">
-          <div className="flex items-center gap-2">
-            <GraduationCap className="w-4 h-4 text-primary" />
-            <span className="font-semibold text-foreground">AttendX Platform</span>
-            <span>— Indian Institute of Information Technology Una</span>
-          </div>
-
-          <div className="flex items-center gap-6">
-            <Link to="/terms" className="hover:text-foreground transition-colors">Terms of Service</Link>
-            <Link to="/privacy" className="hover:text-foreground transition-colors">Privacy Policy</Link>
-            <a href="https://www.iiitu.ac.in" target="_blank" rel="noreferrer" className="hover:text-foreground transition-colors">IIIT Una Official</a>
+          <div className="flex gap-6 text-sm text-white/40">
+            <a href="#" className="hover:text-white transition-colors">Privacy</a>
+            <a href="#" className="hover:text-white transition-colors">Terms</a>
           </div>
         </div>
       </footer>

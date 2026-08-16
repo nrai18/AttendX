@@ -37,8 +37,6 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
 };
 
 import { LandingPage } from "./pages/marketing/LandingPage";
-import { TermsPage } from "./pages/marketing/TermsPage";
-import { PrivacyPage } from "./pages/marketing/PrivacyPage";
 
 // ... [Keep existing placeholders] ...
 
@@ -64,10 +62,8 @@ export function App() {
       <Toaster position="bottom-center" theme={theme as any} toastOptions={{ className: 'rounded-xl border border-border shadow-lg' }} />
       <BrowserRouter>
         <Routes>
-          {/* Public Landing & Policy Pages */}
+          {/* Public Landing Page */}
           <Route path="/" element={<RootRoute />} />
-          <Route path="/terms" element={<TermsPage />} />
-          <Route path="/privacy" element={<PrivacyPage />} />
 
           {/* Auth Routes */}
           <Route path="/login" element={<LoginPage />} />

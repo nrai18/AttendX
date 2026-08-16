@@ -1,7 +1,6 @@
 import { Response } from "express";
 import { EventService } from "../services/event.service";
 import { AuthenticatedRequest } from "../middleware/authenticate";
-import { CacheService } from "../services/cache.service";
 
 export class EventController {
   static async getEvents(req: AuthenticatedRequest, res: Response) {
@@ -43,7 +42,6 @@ export class EventController {
     }
     try {
       const created = await EventService.saveWizardEvents(req.user!.userId, semesterId, events);
-      await CacheService.invalidateUser(req.user!.userId);
       res.json({ message: "Events saved successfully", events: created });
     } catch (error) {
       console.error("Save wizard failed:", error);
@@ -68,7 +66,6 @@ export class EventController {
   static async clearAllEvents(req: AuthenticatedRequest, res: Response) {
     try {
       await EventService.clearAllEvents(req.user!.userId);
-      await CacheService.invalidateUser(req.user!.userId);
       res.json({ message: "All events removed successfully" });
     } catch (error) {
       console.error("Clear events failed:", error);

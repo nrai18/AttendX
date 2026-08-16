@@ -4,7 +4,6 @@ import { api } from "../../lib/api";
 import { CreateSemesterModal } from "../../components/semester/CreateSemesterModal";
 import { useAuthStore } from "../../stores/authStore";
 import { useNavigate } from "react-router-dom";
-import { useNotificationStore } from "../../stores/notificationStore";
 
 interface Subject {
   id: string;
@@ -221,16 +220,9 @@ export const SubjectsPage = () => {
   };
 
   const handleDelete = async (id: string) => {
-    const subjectToDelete = subjects.find((s) => s.id === id);
     if (confirm("Are you sure you want to remove this subject? Past attendance will be safely preserved.")) {
       try {
         await api.delete(`/subjects/${id}?preserveHistory=true`);
-        useNotificationStore.getState().notify({
-          title: "Subject Deleted",
-          description: `Subject "${subjectToDelete?.name || id}" removed from active semester.`,
-          type: "info",
-          category: "delete",
-        });
         fetchData();
       } catch (error) {
         console.error("Failed to delete subject:", error);

@@ -1,14 +1,10 @@
-import lightgbm as lgb
-import numpy as np
+import onnxruntime as ort
 import numpy as np
 
 class PredictiveMLEngine:
-    def __init__(self, model_path: str = "models/attendance_risk.txt"):
-        import os
-        if os.path.exists(model_path):
-            self.model = lgb.Booster(model_file=model_path)
-        else:
-            self.model = None
+    def __init__(self, model_path: str = "models/attendance_risk.onnx"):
+        # self.session = ort.InferenceSession(model_path)
+        self.session = None # Mocked until model is trained
         
     def predict_drop_risk(self, features: dict) -> float:
         """
@@ -18,7 +14,8 @@ class PredictiveMLEngine:
         - day_of_week
         - is_lab
         """
-        if not self.model:
+        if not self.session:
+            # Return dummy prediction for now
             return 0.15
             
         # Example ONNX inference
@@ -29,5 +26,6 @@ class PredictiveMLEngine:
             features.get("is_lab", 0)
         ]], dtype=np.float32)
         
-        result = self.model.predict(input_data)
-        return float(result[0])
+        input_name = self.session.get_inputs()[0].name
+        result = self.session.run(None, {input_name: input_data})
+        return float(result[0][0])

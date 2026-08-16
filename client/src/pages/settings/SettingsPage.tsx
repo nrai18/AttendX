@@ -3,7 +3,6 @@ import { useAuthStore } from "../../stores/authStore";
 import { useAttendanceStore } from "../../stores/attendanceStore";
 import { api } from "../../lib/api";
 import { toast } from "sonner";
-import { useNotificationStore } from "../../stores/notificationStore";
 import {
   Settings,
   Target,
@@ -251,13 +250,6 @@ export const SettingsPage: React.FC = () => {
           ws.close();
           if (msg.progress === 100) {
             toast.success("Data imported successfully! Redirecting...", { id: toastId });
-            useNotificationStore.getState().notify({
-              title: "ZIP Import Done",
-              description: "All historical courses, timetable, and attendance synced successfully.",
-              type: "success",
-              category: "reset",
-              silentToast: true,
-            });
             setTimeout(() => window.location.href = "/timetable", 1500);
           } else {
             toast.error(msg.status, { id: toastId });
@@ -295,47 +287,17 @@ export const SettingsPage: React.FC = () => {
         }
         await api.post("/users/reset-subject-attendance", { subjectIds: selectedSubjectIds });
         setResetSuccessMessage("Attendance cleared for selected subjects!");
-        useNotificationStore.getState().notify({
-          title: "Subject Attendance Reset Done",
-          description: `Attendance cleared for ${selectedSubjectIds.length} subject(s).`,
-          type: "success",
-          category: "reset",
-        });
       } else if (resetModalType === "attendance") {
         await api.post("/users/reset-all-attendance");
         setResetSuccessMessage("All attendance records and overrides deleted successfully!");
-        useNotificationStore.getState().notify({
-          title: "All Attendance Reset Done",
-          description: "All attendance records and overrides cleared for current semester.",
-          type: "success",
-          category: "reset",
-        });
       } else if (resetModalType === "timetable") {
         await api.post("/users/reset-timetable");
         setResetSuccessMessage("Timetable schedule slots cleared successfully!");
-        useNotificationStore.getState().notify({
-          title: "Timetable Reset Done",
-          description: "All schedule slots cleared for active semester.",
-          type: "success",
-          category: "reset",
-        });
       } else if (resetModalType === "events") {
         await api.post("/users/reset-events");
         setResetSuccessMessage("Academic calendar events removed successfully!");
-        useNotificationStore.getState().notify({
-          title: "Academic Events Reset Done",
-          description: "All academic calendar events removed.",
-          type: "success",
-          category: "reset",
-        });
       } else if (resetModalType === "entire") {
         await api.post("/users/reset-data");
-        useNotificationStore.getState().notify({
-          title: "Full App Data Reset Done",
-          description: "All application data, courses, and schedules reset.",
-          type: "success",
-          category: "reset",
-        });
         window.location.href = "/today";
         return;
       }

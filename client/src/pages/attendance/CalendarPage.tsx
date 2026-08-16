@@ -16,7 +16,6 @@ interface CalendarEvent {
   id: string;
   title: string;
   eventType: string;
-  targetSemester?: string;
 }
 
 interface CalendarData {
@@ -156,11 +155,12 @@ export const CalendarPage = () => {
           }
 
           return (
-            <div key={i} className="flex justify-center relative">
+            <div key={i} className="flex justify-center">
               {isCurrentMonth ? (
                 <button
                   onClick={() => navigate(`/today?date=${dateKey}`)}
                   className={`flex flex-col items-center justify-center relative w-12 h-14 hover:bg-muted/60 rounded-2xl transition-all cursor-pointer group ${animBorder}`}
+                  title={dayEvents.map(e => e.title).join(", ") || (hasRemarks ? "Has logged remarks" : undefined)}
                 >
                   <div className={`w-8 h-8 flex items-center justify-center rounded-full text-sm font-medium transition-transform group-hover:scale-110 ${
                     isToday ? "bg-primary text-primary-foreground font-bold shadow-md shadow-primary/20" : "text-foreground"
@@ -176,68 +176,6 @@ export const CalendarPage = () => {
                       <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-ping" />
                     )}
                   </div>
-
-                  {/* Rich Event & Attendance Hover Tooltip Popover */}
-                  {(hasEvent || hasRemarks || (status && status !== "not_marked")) && (
-                    <div className="absolute bottom-full mb-2.5 left-1/2 -translate-x-1/2 hidden group-hover:flex flex-col z-50 pointer-events-none w-52 sm:w-60 p-2.5 bg-popover/95 backdrop-blur-md border border-border text-popover-foreground rounded-2xl shadow-xl shadow-black/30 text-left animate-in fade-in zoom-in-95 duration-150">
-                      <div className="flex items-center justify-between gap-1 pb-1.5 mb-1.5 border-b border-border/60">
-                        <span className="text-[11px] font-bold text-foreground">
-                          {format(d, "EEE, MMM d, yyyy")}
-                        </span>
-                        {status && status !== "not_marked" && (
-                          <span className={`text-[9px] px-1.5 py-0.2 rounded font-semibold uppercase tracking-wider ${
-                            status === "attended" ? "bg-emerald-500/15 text-emerald-400" :
-                            status === "missed" ? "bg-rose-500/15 text-rose-400" :
-                            status === "mixed" ? "bg-purple-500/15 text-purple-400" :
-                            status === "off" ? "bg-amber-500/15 text-amber-400" : "bg-muted text-muted-foreground"
-                          }`}>
-                            {status.replace("_", " ")}
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Events list */}
-                      {dayEvents.length > 0 && (
-                        <div className="space-y-1.5">
-                          {dayEvents.map((evt, eIdx) => (
-                            <div key={eIdx} className="flex items-start gap-1.5 text-xs">
-                              <span className={`w-2 h-2 rounded-full mt-1 shrink-0 ${
-                                evt.eventType === "fest" ? "bg-purple-500 shadow-[0_0_8px_rgba(168,85,247,0.6)]" :
-                                evt.eventType === "midsem" || evt.eventType === "endsem" ? "bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.6)]" :
-                                evt.eventType === "holiday" ? "bg-emerald-500" : "bg-blue-500"
-                              }`} />
-                              <div className="min-w-0 flex-1">
-                                <p className="font-semibold text-foreground text-[11px] leading-snug">
-                                  {evt.title}
-                                </p>
-                                <div className="flex items-center gap-1.5 mt-0.5">
-                                  <span className="text-[9px] uppercase tracking-wider font-semibold text-muted-foreground">
-                                    {evt.eventType}
-                                  </span>
-                                  {evt.targetSemester && evt.targetSemester !== "All" && (
-                                    <span className="text-[9px] px-1 py-0.1 bg-secondary text-secondary-foreground rounded text-[8px] font-mono">
-                                      {evt.targetSemester}
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-
-                      {/* Remarks */}
-                      {hasRemarks && (
-                        <div className="mt-1.5 pt-1 border-t border-border/40 text-[10px] text-primary flex items-center gap-1">
-                          <MessageSquare className="w-2.5 h-2.5 shrink-0" />
-                          <span className="truncate">Includes logged session remarks</span>
-                        </div>
-                      )}
-
-                      {/* Tooltip Down Arrow */}
-                      <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 border-4 border-transparent border-t-popover" />
-                    </div>
-                  )}
                 </button>
               ) : (
                 <div className="w-12 h-14" />

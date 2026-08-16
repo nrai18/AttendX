@@ -74,7 +74,7 @@ export class AttendanceController {
     try {
       const calendar = await CacheService.getOrSet(
         req.user!.userId,
-        `calendar:v2:${month}`,
+        `calendar:${month}`,
         () => AttendanceService.getMonthlyCalendar(req.user!.userId, month)
       );
       res.json(calendar);

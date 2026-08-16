@@ -6,7 +6,6 @@ import { TopBar } from "./TopBar";
 import { useAttendanceStore } from "../../stores/attendanceStore";
 import { AttendanceAnimationPopup } from "../common/AttendanceAnimationPopup";
 import { CreateSemesterModal } from "../semester/CreateSemesterModal";
-import { FloatingChatbot } from "../common/FloatingChatbot";
 import { Plus } from "lucide-react";
 
 interface AppShellProps {
@@ -61,9 +60,6 @@ export const AppShell: React.FC<AppShellProps> = ({ title, onAddClick }) => {
 
       {/* 2-Second Popup Animation Overlay */}
       <AttendanceAnimationPopup />
-
-      {/* Floating AI Ordinance & Policy Chatbot */}
-      <FloatingChatbot />
 
       <CreateSemesterModal 
         isOpen={isCreateSemesterOpen} 

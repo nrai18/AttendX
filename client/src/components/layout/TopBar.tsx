@@ -4,7 +4,6 @@ import { Plus, SlidersHorizontal, LogOut, Sun, Moon } from "lucide-react";
 import { Button } from "../ui/button";
 import { useAttendanceStore } from "../../stores/attendanceStore";
 import { useThemeStore } from "../../stores/themeStore";
-import { NotificationCenter } from "./NotificationCenter";
 
 interface TopBarProps {
   title?: string;
@@ -33,8 +32,6 @@ export const TopBar: React.FC<TopBarProps> = ({
 
         {/* Right Side Controls */}
         <div className="flex items-center gap-2">
-          {/* In-App Notification Center */}
-          <NotificationCenter />
           {/* Attendance Percentage Badge (e.g. 87.10 | 75) */}
           <div className="flex items-center gap-1.5 bg-muted/60 border border-border rounded-xl px-3 py-1.5 text-xs font-mono font-semibold">
             <span

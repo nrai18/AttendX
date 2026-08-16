@@ -4,6 +4,4 @@ __pycache__/
 .pytest_cache/
 *.pyc
 uploads/
-models/
-diagnose.py
-test_db.py
+
