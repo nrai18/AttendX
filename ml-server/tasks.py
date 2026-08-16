@@ -28,13 +28,18 @@ import csv
 import datetime
 
 @celery_app.task(bind=True, name="process_zip_upload")
-def process_zip_upload(self, file_path: str, user_id: str):
+def process_zip_upload(self, file_b64: str, user_id: str):
     try:
         self.update_state(state='PROGRESS', meta={'progress': 10, 'status': 'Extracting ZIP'})
+        import base64
+        import io
+        
+        zip_bytes = base64.b64decode(file_b64)
+        
         extract_dir = f"uploads/{uuid.uuid4()}_extracted"
         os.makedirs(extract_dir, exist_ok=True)
         
-        with zipfile.ZipFile(file_path, 'r') as zip_ref:
+        with zipfile.ZipFile(io.BytesIO(zip_bytes), 'r') as zip_ref:
             zip_ref.extractall(extract_dir)
             
         self.update_state(state='PROGRESS', meta={'progress': 30, 'status': 'Validating CSV files'})
@@ -174,7 +179,8 @@ def process_zip_upload(self, file_path: str, user_id: str):
         r.delete(f"user_keys:{user_id}")
         
         # Clean up
-        os.remove(file_path)
+        import shutil
+        shutil.rmtree(extract_dir, ignore_errors=True)
         
         self.update_state(state='PROGRESS', meta={'progress': 100, 'status': 'Completed successfully'})
         return {'progress': 100, 'status': 'Completed successfully'}

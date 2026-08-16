@@ -55,7 +55,8 @@ async def websocket_endpoint(websocket: WebSocket, task_id: str):
                 if res.state == 'SUCCESS':
                     break
             else:
-                await websocket.send_json({"progress": 0, "status": "Failed"})
+                error_msg = str(res.info) if res.info else "Unknown error"
+                await websocket.send_json({"progress": 0, "status": f"Error: {error_msg}"})
                 break
             await asyncio.sleep(0.5)
     except WebSocketDisconnect:
@@ -66,14 +67,12 @@ async def upload_zip(user_id: str, file: UploadFile = File(...)):
     if not file.filename.endswith('.zip'):
         raise HTTPException(status_code=400, detail="Only .zip files allowed")
         
-    os.makedirs("uploads", exist_ok=True)
-    file_path = f"uploads/{uuid.uuid4()}_{file.filename}"
+    file_bytes = await file.read()
+    import base64
+    file_b64 = base64.b64encode(file_bytes).decode('utf-8')
     
-    with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
-        
     # Trigger Celery task
-    task = celery_app.send_task("process_zip_upload", args=[file_path, user_id])
+    task = celery_app.send_task("process_zip_upload", args=[file_b64, user_id])
     
     return {"status": "accepted", "message": "ZIP upload processing in background", "task_id": task.id}
 
