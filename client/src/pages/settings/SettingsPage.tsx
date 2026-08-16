@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { useAuthStore } from "../../stores/authStore";
 import { useAttendanceStore } from "../../stores/attendanceStore";
 import { api } from "../../lib/api";
+import { toast } from "sonner";
 import {
   Settings,
   Target,
@@ -82,6 +83,7 @@ export const SettingsPage: React.FC = () => {
   const [autoBackupEnabled, setAutoBackupEnabled] = useState(false);
   const [isBackupNowLoading, setIsBackupNowLoading] = useState(false);
   const [backupStatusMessage, setBackupStatusMessage] = useState("");
+  const [isImportingCSV, setIsImportingCSV] = useState(false);
 
   // Hidden File Input for Import
   const jsonInputRef = useRef<HTMLInputElement>(null);
@@ -218,8 +220,10 @@ export const SettingsPage: React.FC = () => {
     const formData = new FormData();
     formData.append("file", file);
 
+    const toastId = toast.loading("Uploading ZIP to ML Server...");
+    setIsImportingCSV(true);
+
     try {
-      setBackupStatusMessage("Uploading ZIP to ML Server...");
       const res = await fetch(`http://localhost:8000/upload/zip?user_id=${user.id}`, {
         method: "POST",
         body: formData,
@@ -237,29 +241,29 @@ export const SettingsPage: React.FC = () => {
       
       ws.onmessage = (event) => {
         const msg = JSON.parse(event.data);
-        setBackupStatusMessage(`Importing: ${msg.status} (${msg.progress}%)`);
+        toast.loading(`Importing: ${msg.status} (${msg.progress}%)`, { id: toastId });
         
         if (msg.progress === 100 || msg.status.includes('Error')) {
           ws.close();
           if (msg.progress === 100) {
-            setBackupStatusMessage("Data imported successfully! Reloading...");
+            toast.success("Data imported successfully! Reloading...", { id: toastId });
             setTimeout(() => window.location.reload(), 1500);
           } else {
-            alert(msg.status);
-            setBackupStatusMessage("");
+            toast.error(msg.status, { id: toastId });
+            setIsImportingCSV(false);
           }
         }
       };
 
       ws.onerror = () => {
-        setBackupStatusMessage("");
-        alert("Lost connection to progress tracker, but import may still be running.");
+        toast.error("Lost connection to progress tracker, but import may still be running.", { id: toastId });
+        setIsImportingCSV(false);
       };
 
     } catch (err: any) {
       console.error("Failed to import ZIP", err);
-      alert(err.message || "Failed to import ZIP file.");
-      setBackupStatusMessage("");
+      toast.error(err.message || "Failed to import ZIP file.", { id: toastId });
+      setIsImportingCSV(false);
     } finally {
       if (e.target) e.target.value = "";
     }
@@ -715,18 +719,19 @@ export const SettingsPage: React.FC = () => {
           {/* Import data from ZIP */}
           <button
             onClick={() => csvInputRef.current?.click()}
-            className="w-full text-left p-4 hover:bg-muted/50 transition-colors flex items-center justify-between cursor-pointer group"
+            disabled={isImportingCSV}
+            className="w-full text-left p-4 hover:bg-muted/50 transition-colors flex items-center justify-between cursor-pointer group disabled:opacity-50"
           >
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 rounded-xl bg-blue-500/10 text-blue-500 flex items-center justify-center">
-                <Upload className="w-5 h-5" />
+                {isImportingCSV ? <Loader2 className="w-5 h-5 animate-spin" /> : <Upload className="w-5 h-5" />}
               </div>
               <div>
                 <h3 className="text-sm font-bold text-foreground group-hover:text-primary transition-colors">Import data from ZIP</h3>
                 <p className="text-xs text-muted-foreground">Restores an exported ZIP file. <span className="text-rose-500 font-bold">WARNING: Replaces current semester.</span></p>
               </div>
             </div>
-            <Upload className="w-4 h-4 text-muted-foreground shrink-0" />
+            {isImportingCSV ? <Loader2 className="w-4 h-4 text-muted-foreground shrink-0 animate-spin" /> : <Upload className="w-4 h-4 text-muted-foreground shrink-0" />}
           </button>
         </div>
       </div>
