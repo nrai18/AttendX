@@ -11,16 +11,15 @@ from dotenv import load_dotenv
 load_dotenv()
 
 redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
-if redis_url.startswith("redis://") and not "localhost" in redis_url and not "127.0.0.1" in redis_url:
-    redis_url = redis_url.replace("redis://", "rediss://", 1)
 
 celery_app = Celery(
     "attendx_worker",
     broker=redis_url,
-    backend=redis_url,
-    broker_use_ssl={'ssl_cert_reqs': ssl.CERT_NONE},
-    redis_backend_use_ssl={'ssl_cert_reqs': ssl.CERT_NONE}
+    backend=redis_url
 )
+
+# Limit concurrency to 2 to prevent Out-Of-Memory errors on Render's free tier
+celery_app.conf.worker_concurrency = 2
 
 def get_db_connection():
     return psycopg2.connect(os.getenv("DATABASE_URL", "postgresql://attendx:attendx_password@localhost:5432/attendx"))
