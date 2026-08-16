@@ -21,11 +21,11 @@ export class DataService {
     const subjectStatsRows = subjects.map((sub: any, idx: number) => {
       let attended = 0, missed = 0, off = 0;
       sub.attendance.forEach((log: any) => {
-        if (log.status === "present") attended++;
+        if (log.status === "present" || log.status === "medical" || log.status === "od") attended++;
         if (log.status === "absent") missed++;
-        if (log.status === "off") off++;
+        if (log.status === "off" || log.status === "cancelled") off++;
       });
-      const total = attended + missed + off;
+      const total = attended + missed;
       const pct = total > 0 ? ((attended / total) * 100).toFixed(2) + "%" : "0.00%";
       return {
         "Sr. No.": idx + 1,
@@ -79,12 +79,14 @@ export class DataService {
         currentDate = dateStr;
         logLectureNo = 1;
       } else {
-        logLectureNo++;
+        lectureNo++;
       }
       
       let attStatus = "Attended";
       if (log.status === "absent") attStatus = "Missed";
-      if (log.status === "off") attStatus = "Off";
+      if (log.status === "off" || log.status === "cancelled") attStatus = "Off";
+      if (log.status === "medical") attStatus = "Medical";
+      if (log.status === "od") attStatus = "OD";
 
       return {
         "Sr. No.": idx + 1,
@@ -191,10 +193,12 @@ export class DataService {
         const dateStr = row["Date"]; // YYYY-MM-DD
         const dateObj = new Date(dateStr);
         
-        const attStr = row["Attendance"];
+        const attStr = row["Attendance"] || "";
         let status: any = "present";
-        if (attStr === "Missed") status = "absent";
-        if (attStr === "Off") status = "off";
+        if (attStr === "Missed" || attStr === "Absent") status = "absent";
+        if (attStr === "Off" || attStr === "Holiday") status = "off";
+        if (attStr === "Medical") status = "medical";
+        if (attStr === "OD" || attStr === "On Duty") status = "od";
 
         const typeStr = row["Type"];
         let isOverride = typeStr === "Extra" || typeStr === "override";

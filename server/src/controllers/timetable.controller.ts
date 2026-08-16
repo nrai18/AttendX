@@ -43,8 +43,15 @@ export class TimetableController {
     if (!Array.isArray(slotIds)) {
       return res.status(400).json({ error: "slotIds array is required" });
     }
-    const result = await TimetableService.deleteSlotsBatch(slotIds, preserveHistory);
-    res.json({ message: "Slots deleted", count: result.count, preservedHistory: preserveHistory });
+    const result = await TimetableService.deleteSlotsBatch(
+      slotIds,
+      preserveHistory,
+    );
+    res.json({
+      message: "Slots deleted",
+      count: result.count,
+      preservedHistory: preserveHistory,
+    });
   }
 
   static async deleteSubjectSlots(req: Request, res: Response) {
@@ -52,10 +59,20 @@ export class TimetableController {
     const subjectId = String(req.params.subjectId);
     const preserveHistory = req.query.preserveHistory !== "false";
     if (!semesterId || !subjectId) {
-      return res.status(400).json({ error: "semesterId and subjectId are required" });
+      return res
+        .status(400)
+        .json({ error: "semesterId and subjectId are required" });
     }
-    const result = await TimetableService.deleteSubjectSlots(semesterId, subjectId, preserveHistory);
-    res.json({ message: "Subject slots deleted", count: result.count, preservedHistory: preserveHistory });
+    const result = await TimetableService.deleteSubjectSlots(
+      semesterId,
+      subjectId,
+      preserveHistory,
+    );
+    res.json({
+      message: "Subject slots deleted",
+      count: result.count,
+      preservedHistory: preserveHistory,
+    });
   }
 
   static async addExtraClass(req: Request, res: Response) {
@@ -75,19 +92,29 @@ export class TimetableController {
   static async ocrImport(req: Request | any, res: Response) {
     const file = req.file || (req.files && req.files[0]);
     if (!file) {
-      return res.status(400).json({ error: "No timetable PDF or image file provided" });
+      return res
+        .status(400)
+        .json({ error: "No timetable PDF or image file provided" });
     }
     const semesterId = req.body.semesterId;
     const userId = req.user?.userId;
 
     if (!semesterId || !userId) {
-      return res.status(400).json({ error: "Missing semesterId or user context" });
+      return res
+        .status(400)
+        .json({ error: "Missing semesterId or user context" });
     }
 
     try {
       const mimeType = file.mimetype || "application/pdf";
       const fileName = file.originalname || "timetable.pdf";
-      const ocrResult = await TimetableService.processOcrImage(file.buffer, mimeType, fileName, semesterId, userId);
+      const ocrResult = await TimetableService.processOcrImage(
+        file.buffer,
+        mimeType,
+        fileName,
+        semesterId,
+        userId,
+      );
       res.status(200).json(ocrResult);
     } catch (error: any) {
       console.error("OCR Import Error:", error);
@@ -104,8 +131,15 @@ export class TimetableController {
         return res.status(400).json({ error: "Missing required fields" });
       }
 
-      const slots = await TimetableService.saveWizardTimetable(userId, semesterId, selections, rawSlots);
-      res.status(201).json({ message: "Timetable generated successfully", slots });
+      const slots = await TimetableService.saveWizardTimetable(
+        userId,
+        semesterId,
+        selections,
+        rawSlots,
+      );
+      res
+        .status(201)
+        .json({ message: "Timetable generated successfully", slots });
     } catch (error: any) {
       console.error("Wizard Save Error:", error);
       res.status(500).json({ error: "Failed to save personalized timetable" });
@@ -114,21 +148,33 @@ export class TimetableController {
 
   static async safeDeleteTimetable(req: Request | any, res: Response) {
     try {
-      let semesterId = req.params.semesterId ? String(req.params.semesterId) : undefined;
+      let semesterId = req.params.semesterId
+        ? String(req.params.semesterId)
+        : undefined;
       const userId = req.user?.userId;
-      
+
       if (!userId) {
         return res.status(401).json({ error: "Unauthorized" });
       }
 
-      if (!semesterId || semesterId === "undefined" || semesterId === "null" || semesterId === "active") {
+      if (
+        !semesterId ||
+        semesterId === "undefined" ||
+        semesterId === "null" ||
+        semesterId === "active"
+      ) {
         const activeSem = await SemesterService.getActiveSemester(userId);
         if (activeSem) {
           semesterId = activeSem.id;
         }
       }
 
-      if (semesterId && semesterId !== "undefined" && semesterId !== "null" && semesterId !== "active") {
+      if (
+        semesterId &&
+        semesterId !== "undefined" &&
+        semesterId !== "null" &&
+        semesterId !== "active"
+      ) {
         await TimetableService.safeDeleteTimetable(userId, semesterId);
       } else {
         await UserService.resetTimetable(userId);
@@ -137,7 +183,9 @@ export class TimetableController {
       res.status(200).json({ message: "Timetable cleared successfully" });
     } catch (error: any) {
       console.error("Safe Delete Error:", error);
-      res.status(500).json({ error: error.message || "Failed to clear timetable" });
+      res
+        .status(500)
+        .json({ error: error.message || "Failed to clear timetable" });
     }
   }
 
@@ -147,16 +195,26 @@ export class TimetableController {
       const userId = req.user?.userId;
 
       if (!semesterId || !userId) {
-        return res.status(400).json({ error: "Missing semesterId or user context" });
+        return res
+          .status(400)
+          .json({ error: "Missing semesterId or user context" });
       }
 
-      const exportData = await TimetableService.exportTimetable(userId, semesterId);
+      const exportData = await TimetableService.exportTimetable(
+        userId,
+        semesterId,
+      );
       res.setHeader("Content-Type", "application/json");
-      res.setHeader("Content-Disposition", `attachment; filename=schedule_${semesterId}.json`);
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename=schedule_${semesterId}.json`,
+      );
       res.status(200).json(exportData);
     } catch (error: any) {
       console.error("Export Error:", error);
-      res.status(500).json({ error: error.message || "Failed to export timetable" });
+      res
+        .status(500)
+        .json({ error: error.message || "Failed to export timetable" });
     }
   }
 
@@ -167,14 +225,24 @@ export class TimetableController {
       const payload = req.body;
 
       if (!semesterId || !userId) {
-        return res.status(400).json({ error: "Missing semesterId or user context" });
+        return res
+          .status(400)
+          .json({ error: "Missing semesterId or user context" });
       }
 
-      const result = await TimetableService.importTimetable(userId, semesterId, payload);
-      res.status(200).json({ message: "Timetable imported successfully", result });
+      const result = await TimetableService.importTimetable(
+        userId,
+        semesterId,
+        payload,
+      );
+      res
+        .status(200)
+        .json({ message: "Timetable imported successfully", result });
     } catch (error: any) {
       console.error("Import Error:", error);
-      res.status(400).json({ error: error.message || "Failed to import timetable" });
+      res
+        .status(400)
+        .json({ error: error.message || "Failed to import timetable" });
     }
   }
 }

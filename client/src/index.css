@@ -5,7 +5,8 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme {
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 
   --color-border: hsl(var(--border));
   --color-input: hsl(var(--input));
@@ -59,53 +60,52 @@
   }
 }
 
-/*
-  The default theme is dark, as requested ("Dark-first, #050508 background, indigo-violet brand")
-*/
 @layer base {
   :root {
-    --background: 240 20% 4.5%;
+    /* Refined Light Theme (Institutional, Crisp, Clean Editorial) */
+    --background: 210 20% 98%;
+    --foreground: 222 47% 11%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+    --primary: 221 83% 53%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 215 16% 93%;
+    --secondary-foreground: 222 47% 11%;
+    --muted: 215 16% 93%;
+    --muted-foreground: 215 16% 47%;
+    --accent: 215 16% 90%;
+    --accent-foreground: 222 47% 11%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214 20% 88%;
+    --input: 214 20% 88%;
+    --ring: 221 83% 53%;
+    --radius: 0.625rem;
+  }
+
+  .dark {
+    /* Bespoke Dark Theme (Deep Obsidian & Charcoal, No Harsh Neon/Violet blobs) */
+    --background: 222 35% 7%;
     --foreground: 210 40% 98%;
-    --card: 240 18% 7%;
+    --card: 222 30% 10%;
     --card-foreground: 210 40% 98%;
-    --popover: 240 18% 7%;
+    --popover: 222 30% 10%;
     --popover-foreground: 210 40% 98%;
-    --primary: 239 84% 67%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 240 12% 12%;
+    --primary: 217 91% 60%;
+    --primary-foreground: 222 47% 11%;
+    --secondary: 217 20% 16%;
     --secondary-foreground: 210 40% 98%;
-    --muted: 240 12% 12%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 240 12% 14%;
+    --muted: 217 20% 14%;
+    --muted-foreground: 215 20% 65%;
+    --accent: 217 20% 18%;
     --accent-foreground: 210 40% 98%;
     --destructive: 0 72% 51%;
     --destructive-foreground: 210 40% 98%;
-    --border: 240 12% 15%;
-    --input: 240 12% 15%;
-    --ring: 239 84% 67%;
-    --radius: 0.875rem;
-  }
-
-  .light {
-    --background: 210 40% 98%;
-    --foreground: 222.2 84% 4.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-    --primary: 239 84% 59%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 239 84% 59%;
+    --border: 217 20% 18%;
+    --input: 217 20% 18%;
+    --ring: 217 91% 60%;
   }
 }
 
@@ -114,27 +114,23 @@
     @apply border-border;
   }
   
-  /* Dark Theme Default Atmosphere */
   body {
-    @apply bg-background text-foreground;
-    background-image: radial-gradient(circle at 50% 0%, rgba(99, 102, 241, 0.08) 0%, transparent 65%);
-    background-attachment: fixed;
+    @apply bg-background text-foreground font-sans;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    letter-spacing: -0.011em;
     overscroll-behavior-y: none;
     -webkit-tap-highlight-color: transparent;
   }
 
-  /* Light Theme Specific Atmosphere & Rich UI Polish */
-  html.light body {
-    background-color: #f8fafc;
-    background-image: radial-gradient(circle at 50% 0%, rgba(99, 102, 241, 0.06) 0%, transparent 70%);
-    background-attachment: fixed;
-    color: #0f172a;
+  h1, h2, h3, h4, h5, h6 {
+    letter-spacing: -0.025em;
   }
 
-  /* Light Mode Structural Surface Card Overrides */
+  /* Light Theme Surface Normalizations */
   html.light .bg-\[\#050508\],
   html.light .bg-\[\#050508\]\/80,
-  html.light .bg-\[\#070810\] {
+  html.light .bg-\[\#070810\],
+  html.light .bg-\[\#09090b\] {
     background-color: #f8fafc !important;
   }
 
@@ -144,27 +140,6 @@
   html.light .bg-\[\#0e0f19\],
   html.light .bg-\[\#12131f\] {
     background-color: #ffffff !important;
-    border-color: #e2e8f0 !important;
-    box-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.05), 0 2px 6px -1px rgba(15, 23, 42, 0.02) !important;
-  }
-
-  html.light .bg-black\/40,
-  html.light .bg-black\/50,
-  html.light .bg-black\/60,
-  html.light .bg-black\/80 {
-    background-color: #f1f5f9 !important;
-    color: #0f172a !important;
-  }
-
-  html.light .bg-white\/5,
-  html.light .bg-white\/10 {
-    background-color: #f1f5f9 !important;
-  }
-
-  html.light .border-white\/5,
-  html.light .border-white\/10,
-  html.light .border-white\/15,
-  html.light .border-white\/20 {
     border-color: #e2e8f0 !important;
   }
 
@@ -179,7 +154,7 @@
 
   html.light .text-white\/70,
   html.light .text-white\/60 {
-    color: #334155 !important;
+    color: #475569 !important;
   }
 
   html.light .text-white\/50,
@@ -188,144 +163,34 @@
     color: #64748b !important;
   }
 
-  /* Keep Button Text White inside Filled Solid Action Buttons in Light Mode */
-  html.light button.bg-primary,
-  html.light button.bg-primary *,
-  html.light button.bg-indigo-600,
-  html.light button.bg-indigo-600 *,
-  html.light button.bg-indigo-500,
-  html.light button.bg-indigo-500 *,
-  html.light button.bg-blue-600,
-  html.light button.bg-blue-600 *,
-  html.light button.bg-blue-500,
-  html.light button.bg-blue-500 *,
-  html.light button.bg-emerald-600,
-  html.light button.bg-emerald-600 *,
-  html.light button.bg-emerald-500,
-  html.light button.bg-emerald-500 *,
-  html.light button.bg-rose-600,
-  html.light button.bg-rose-600 *,
-  html.light button.bg-rose-500,
-  html.light button.bg-rose-500 *,
-  html.light button.bg-purple-600,
-  html.light button.bg-purple-600 * {
+  /* Keep Button Text White inside Filled Solid Action Buttons */
+  button.bg-primary,
+  button.bg-primary *,
+  button.bg-blue-600,
+  button.bg-blue-600 *,
+  button.bg-indigo-600,
+  button.bg-indigo-600 * {
     color: #ffffff !important;
   }
 
-  /* Light Theme Vibrant Text Colors (Vivid & Crisp Contrast) */
-  html.light .text-indigo-400,
-  html.light .text-indigo-500 {
-    color: #4f46e5 !important;
-  }
-  html.light .text-blue-400,
-  html.light .text-blue-500 {
-    color: #2563eb !important;
-  }
-  html.light .text-emerald-400,
-  html.light .text-emerald-500 {
-    color: #16a34a !important;
-  }
-  html.light .text-rose-400,
-  html.light .text-rose-500 {
-    color: #e11d48 !important;
-  }
-  html.light .text-amber-400,
-  html.light .text-amber-500,
-  html.light .text-yellow-400 {
-    color: #d97706 !important;
-  }
-  html.light .text-purple-400,
-  html.light .text-purple-500,
-  html.light .text-violet-400 {
-    color: #9333ea !important;
+  /* Form Control Overrides */
+  input, select, textarea {
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   }
 
-  /* Light Theme Badge / Alert Box Styling */
-  html.light .bg-indigo-950\/20,
-  html.light .bg-indigo-500\/10,
-  html.light .bg-primary\/10 {
-    background-color: #e0e7ff !important;
-  }
-  html.light .border-indigo-500\/30,
-  html.light .border-indigo-500\/20,
-  html.light .border-primary\/20 {
-    border-color: #a5b4fc !important;
-  }
-
-  html.light .bg-rose-950\/20,
-  html.light .bg-rose-500\/10 {
-    background-color: #ffe4e6 !important;
-  }
-  html.light .border-rose-500\/30,
-  html.light .border-rose-500\/20 {
-    border-color: #fca5a5 !important;
-  }
-
-  html.light .bg-emerald-950\/20,
-  html.light .bg-emerald-500\/10 {
-    background-color: #dcfce7 !important;
-  }
-  html.light .border-emerald-500\/30,
-  html.light .border-emerald-500\/20 {
-    border-color: #86efac !important;
-  }
-
-  html.light .bg-amber-950\/20,
-  html.light .bg-amber-500\/10,
-  html.light .bg-yellow-500\/10 {
-    background-color: #fef3c7 !important;
-  }
-  html.light .border-amber-500\/30,
-  html.light .border-amber-500\/20 {
-    border-color: #fde047 !important;
-  }
-
-  html.light .bg-blue-500\/10 {
-    background-color: #dbeafe !important;
-  }
-  html.light .border-blue-500\/20 {
-    border-color: #93c5fd !important;
-  }
-
-  html.light .bg-purple-500\/10 {
-    background-color: #f3e8ff !important;
-  }
-  html.light .border-purple-500\/20 {
-    border-color: #d8b4fe !important;
-  }
-
-  /* Light Mode Form Control Overrides */
-  html.light input[type="text"],
-  html.light input[type="email"],
-  html.light input[type="password"],
-  html.light input[type="date"],
-  html.light input[type="time"],
-  html.light input[type="number"],
-  html.light select,
-  html.light textarea {
-    background-color: #ffffff !important;
-    color: #0f172a !important;
-    border-color: #cbd5e1 !important;
-  }
-
-  html.light input::placeholder,
-  html.light textarea::placeholder {
-    color: #94a3b8 !important;
-  }
-
-  /* Smooth Custom Scrollbars for Both Themes */
+  /* Clean Institutional Scrollbars */
   ::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
+    width: 5px;
+    height: 5px;
   }
   ::-webkit-scrollbar-track {
     background: transparent;
   }
   ::-webkit-scrollbar-thumb {
-    background: rgba(148, 163, 184, 0.2);
-    border-radius: 9999px;
+    background: rgba(148, 163, 184, 0.25);
+    border-radius: 4px;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: rgba(148, 163, 184, 0.4);
+    background: rgba(148, 163, 184, 0.45);
   }
 }

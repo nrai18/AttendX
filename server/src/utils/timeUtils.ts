@@ -5,7 +5,7 @@
 
 export function normalizeTimeString(
   timeStr: string | null | undefined,
-  fallback: string = "00:00"
+  fallback: string = "00:00",
 ): string {
   if (!timeStr) return fallback;
   const raw = String(timeStr).trim();
@@ -23,7 +23,9 @@ export function normalizeTimeString(
   }
 
   // Case 2: 12-hour AM/PM format (e.g. "9:00 AM", "09:50 PM", "2:30pm")
-  const ampmMatch = raw.match(/^(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM|am|pm)?$/i);
+  const ampmMatch = raw.match(
+    /^(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM|am|pm)?$/i,
+  );
   if (ampmMatch && ampmMatch[3]) {
     let hours = parseInt(ampmMatch[1], 10);
     const minutes = ampmMatch[2];

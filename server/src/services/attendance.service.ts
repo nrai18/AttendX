@@ -9,6 +9,11 @@ export class AttendanceService {
    */
   static async getTodayAgenda(userId: string, dateStr: string) {
     const targetDate = new Date(dateStr);
+    const startOfDay = new Date(targetDate);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(targetDate);
+    endOfDay.setHours(23, 59, 59, 999);
+
     const dayOfWeek = targetDate.getDay() === 0 ? 6 : targetDate.getDay() - 1; // 0=Mon, 6=Sun in our db
 
     // We need to fetch the active semester for the user first
@@ -35,7 +40,10 @@ export class AttendanceService {
     const overrides = await prisma.timetableOverride.findMany({
       where: {
         semesterId: activeSemester.id,
-        date: targetDate,
+        date: {
+          gte: startOfDay,
+          lte: endOfDay,
+        },
       },
       include: {
         subject: true,
@@ -46,12 +54,19 @@ export class AttendanceService {
     const attendanceRecords = await prisma.attendance.findMany({
       where: {
         userId,
-        date: targetDate,
+        date: {
+          gte: startOfDay,
+          lte: endOfDay,
+        },
+      },
+      include: {
+        subject: true,
       },
     });
 
     // Map them together
     const agenda: any[] = [];
+    const usedAttendanceIds = new Set<string>();
 
     // Add regular slots, replacing them if they have an override (rescheduled/holiday)
     for (const slot of regularSlots) {
@@ -62,7 +77,13 @@ export class AttendanceService {
           continue; // skip this slot entirely
         }
         // Rescheduled
-        const existingAtt = attendanceRecords.find(a => a.overrideId === relatedOverride.id);
+        let existingAtt = attendanceRecords.find(a => a.overrideId === relatedOverride.id);
+        if (!existingAtt) {
+          existingAtt = attendanceRecords.find(a => !usedAttendanceIds.has(a.id) && a.subjectId === (relatedOverride.subjectId || slot.subjectId));
+        }
+        if (existingAtt) {
+          usedAttendanceIds.add(existingAtt.id);
+        }
         agenda.push({
           id: relatedOverride.id,
           type: "override",
@@ -76,8 +97,14 @@ export class AttendanceService {
           attendanceId: existingAtt?.id || null,
         });
       } else {
-        // Normal slot
-        const existingAtt = attendanceRecords.find(a => a.timetableSlotId === slot.id);
+        // Normal slot: Match by timetableSlotId first, or match by subjectId for imported ZIP records
+        let existingAtt = attendanceRecords.find(a => a.timetableSlotId === slot.id);
+        if (!existingAtt) {
+          existingAtt = attendanceRecords.find(a => !usedAttendanceIds.has(a.id) && a.subjectId === slot.subjectId);
+        }
+        if (existingAtt) {
+          usedAttendanceIds.add(existingAtt.id);
+        }
         agenda.push({
           id: slot.id,
           type: "slot",
@@ -96,7 +123,13 @@ export class AttendanceService {
     // Add extra classes that aren't tied to an original slot
     const extraClasses = overrides.filter(o => o.overrideType === "extra_class");
     for (const extra of extraClasses) {
-      const existingAtt = attendanceRecords.find(a => a.overrideId === extra.id);
+      let existingAtt = attendanceRecords.find(a => a.overrideId === extra.id);
+      if (!existingAtt) {
+        existingAtt = attendanceRecords.find(a => !usedAttendanceIds.has(a.id) && a.subjectId === extra.subjectId);
+      }
+      if (existingAtt) {
+        usedAttendanceIds.add(existingAtt.id);
+      }
       agenda.push({
         id: extra.id,
         type: "override",
@@ -109,6 +142,24 @@ export class AttendanceService {
         status: existingAtt?.status || null,
         remarks: existingAtt?.remarks || null,
         attendanceId: existingAtt?.id || null,
+      });
+    }
+
+    // Add any remaining unmatched attendance records (from ZIP import) for this day
+    const unmatchedRecords = attendanceRecords.filter(a => !usedAttendanceIds.has(a.id));
+    for (const att of unmatchedRecords) {
+      agenda.push({
+        id: `imported-${att.id}`,
+        type: "imported",
+        isImported: true,
+        subject: att.subject,
+        startTime: "09:00",
+        endTime: "10:00",
+        room: "Imported Record",
+        slotType: "lecture",
+        status: att.status || "present",
+        remarks: att.remarks || "Imported Attendance Record",
+        attendanceId: att.id,
       });
     }
 
@@ -125,17 +176,40 @@ export class AttendanceService {
     overrideId?: string;
   }) {
     const targetDate = new Date(data.date);
+    const startOfDay = new Date(targetDate);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(targetDate);
+    endOfDay.setHours(23, 59, 59, 999);
     
     // Check if record exists
-    const existing = await prisma.attendance.findFirst({
+    let existing = await prisma.attendance.findFirst({
       where: {
         userId,
         subjectId: data.subjectId,
-        date: targetDate,
+        date: {
+          gte: startOfDay,
+          lte: endOfDay,
+        },
         ...(data.timetableSlotId ? { timetableSlotId: data.timetableSlotId } : {}),
         ...(data.overrideId ? { overrideId: data.overrideId } : {}),
       },
     });
+
+    // If not found with slotId, check if an unlinked record exists for the same subject & date (e.g. from ZIP)
+    if (!existing && (data.timetableSlotId || data.overrideId)) {
+      existing = await prisma.attendance.findFirst({
+        where: {
+          userId,
+          subjectId: data.subjectId,
+          date: {
+            gte: startOfDay,
+            lte: endOfDay,
+          },
+          timetableSlotId: null,
+          overrideId: null,
+        },
+      });
+    }
 
     if (data.status === "not_marked" || data.status === "clear") {
       if (existing) {
@@ -151,6 +225,8 @@ export class AttendanceService {
         data: {
           status: data.status,
           ...(data.remarks !== undefined ? { remarks: data.remarks } : {}),
+          ...(data.timetableSlotId ? { timetableSlotId: data.timetableSlotId } : {}),
+          ...(data.overrideId ? { overrideId: data.overrideId } : {}),
         },
       });
     }
@@ -256,13 +332,27 @@ export class AttendanceService {
 
     const today = new Date();
     today.setHours(23, 59, 59, 999);
-    const semStart = new Date(activeSemester.startDate);
-    semStart.setHours(0, 0, 0, 0);
+    
+    // Calculate the true earliest date across semester start, all attendance records, and overrides
+    let earliestDate = new Date(activeSemester.startDate);
+    for (const att of attendanceRecords) {
+      const attDate = new Date(att.date);
+      if (attDate < earliestDate) {
+        earliestDate = attDate;
+      }
+    }
+    for (const ov of overrides) {
+      const ovDate = new Date(ov.date);
+      if (ovDate < earliestDate) {
+        earliestDate = ovDate;
+      }
+    }
+    earliestDate.setHours(0, 0, 0, 0);
 
     const logs: any[] = [];
 
-    // Loop dates from today down to semStart (newest first)
-    for (let d = new Date(today); d >= semStart; d.setDate(d.getDate() - 1)) {
+    // Loop dates from today down to earliestDate (newest first)
+    for (let d = new Date(today); d >= earliestDate; d.setDate(d.getDate() - 1)) {
       const dateKey = d.toISOString().split("T")[0];
       const dayOfWeek = d.getDay() === 0 ? 6 : d.getDay() - 1;
 
@@ -275,6 +365,7 @@ export class AttendanceService {
 
       for (const sub of subjects) {
         const stats = subjectStatsMap[sub.id];
+        if (!stats) continue;
 
         const regularSlots = sub.timetableSlots.filter(s => s.dayOfWeek === dayOfWeek);
         const dateOverrides = overrides.filter(
@@ -284,13 +375,21 @@ export class AttendanceService {
           a => a.subjectId === sub.id && new Date(a.date).toISOString().split("T")[0] === dateKey
         );
 
+        const usedAttIds = new Set<string>();
+
         for (const slot of regularSlots) {
           const override = dateOverrides.find(o => o.originalSlotId === slot.id);
           if (override && (override.overrideType === "holiday" || override.overrideType === "cancelled")) {
             continue;
           }
 
-          const att = dateAttendance.find(a => a.timetableSlotId === slot.id || (override && a.overrideId === override.id));
+          let att = dateAttendance.find(a => (a.timetableSlotId === slot.id) || (override && a.overrideId === override.id));
+          if (!att) {
+            att = dateAttendance.find(a => !usedAttIds.has(a.id) && !a.timetableSlotId && !a.overrideId);
+          }
+          if (att) {
+            usedAttIds.add(att.id);
+          }
           
           logs.push({
             id: att?.id || `slot-${slot.id}-${dateKey}`,
@@ -319,7 +418,13 @@ export class AttendanceService {
 
         const extraOverrides = dateOverrides.filter(o => o.overrideType === "extra_class");
         for (const extra of extraOverrides) {
-          const att = dateAttendance.find(a => a.overrideId === extra.id);
+          let att = dateAttendance.find(a => a.overrideId === extra.id);
+          if (!att) {
+            att = dateAttendance.find(a => !usedAttIds.has(a.id) && !a.timetableSlotId && !a.overrideId);
+          }
+          if (att) {
+            usedAttIds.add(att.id);
+          }
           logs.push({
             id: att?.id || `extra-${extra.id}-${dateKey}`,
             date: dateKey,
@@ -346,8 +451,8 @@ export class AttendanceService {
           });
         }
 
-        const matchedAttIds = logs.filter(l => l.attendanceId).map(l => l.attendanceId);
-        const unmatchedAtts = dateAttendance.filter(a => !matchedAttIds.includes(a.id));
+        // Add any remaining unmatched attendance records from ZIP or manual logs
+        const unmatchedAtts = dateAttendance.filter(a => !usedAttIds.has(a.id));
         for (const att of unmatchedAtts) {
           logs.push({
             id: att.id,
@@ -364,8 +469,9 @@ export class AttendanceService {
             needAttend: stats.needAttend,
             statusText: stats.statusText,
             slotType: "Lecture",
-            startTime: "00:00",
-            endTime: "00:00",
+            isExtra: false,
+            startTime: "09:00",
+            endTime: "10:00",
             status: att.status,
             remarks: att.remarks || null,
             attendanceId: att.id,
@@ -493,9 +599,12 @@ export class AttendanceService {
 
   static async getMonthlyCalendar(userId: string, monthStr: string) {
     const [year, m] = monthStr.split("-").map(Number);
-    const startDate = new Date(year, m - 1, 1);
-    const endDate = new Date(year, m, 0); 
-    endDate.setHours(23, 59, 59, 999);
+    // Number of days in month m (1-indexed)
+    const daysInMonth = new Date(year, m, 0).getDate();
+    
+    // Start & end dates for Prisma range query with 2-day margin for timezone robustness
+    const queryStart = new Date(Date.UTC(year, m - 2, 25, 0, 0, 0, 0));
+    const queryEnd = new Date(Date.UTC(year, m, 5, 23, 59, 59, 999));
 
     const activeSemester = await prisma.semester.findFirst({
       where: { userId, isActive: true },
@@ -519,14 +628,14 @@ export class AttendanceService {
     const overrides = await prisma.timetableOverride.findMany({
       where: {
         semesterId: activeSemester.id,
-        date: { gte: startDate, lte: endDate },
+        date: { gte: queryStart, lte: queryEnd },
       },
     });
 
     const attendances = await prisma.attendance.findMany({
       where: {
         userId,
-        date: { gte: startDate, lte: endDate },
+        date: { gte: queryStart, lte: queryEnd },
       },
       include: {
         subject: true,
@@ -540,7 +649,7 @@ export class AttendanceService {
           { userId },
           { classroomId: null }
         ],
-        date: { lte: endDate }
+        date: { lte: queryEnd }
       }
     });
 
@@ -550,15 +659,28 @@ export class AttendanceService {
     const dayStats = { not_marked: 0, off: 0, missed: 0, attended: 0, mixed: 0 };
     const lectureStats = { off: 0, missed: 0, attended: 0, total: 0, percentage: 0 };
 
-    for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
-      const dateKey = d.toISOString().split("T")[0]; // YYYY-MM-DD
-      const jsDayOfWeek = d.getDay();
-      const dbDayOfWeek = jsDayOfWeek === 0 ? 6 : jsDayOfWeek - 1; // 0=Mon, 6=Sun
+    const getCleanDateKey = (dt: Date | string | null | undefined): string => {
+      if (!dt) return "";
+      if (typeof dt === "string") return dt.substring(0, 10);
+      const y = dt.getUTCFullYear();
+      const mo = String(dt.getUTCMonth() + 1).padStart(2, "0");
+      const da = String(dt.getUTCDate()).padStart(2, "0");
+      return `${y}-${mo}-${da}`;
+    };
+
+    const now = new Date();
+    const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+
+    for (let day = 1; day <= daysInMonth; day++) {
+      const dateKey = `${year}-${String(m).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+      const dObj = new Date(Date.UTC(year, m - 1, day));
+      const jsDayOfWeek = dObj.getUTCDay(); // 0=Sun, 1=Mon, ..., 6=Sat
+      const dbDayOfWeek = jsDayOfWeek === 0 ? 6 : jsDayOfWeek - 1; // 0=Mon, ..., 6=Sun
 
       const dayEvents = globalEvents.filter(e => {
-        const start = new Date(e.date).setHours(0,0,0,0);
-        const end = e.endDate ? new Date(e.endDate).setHours(23,59,59,999) : new Date(e.date).setHours(23,59,59,999);
-        return d.getTime() >= start && d.getTime() <= end;
+        const startKey = getCleanDateKey(e.date);
+        const endKey = e.endDate ? getCleanDateKey(e.endDate) : startKey;
+        return dateKey >= startKey && dateKey <= endKey;
       });
 
       // ONLY actual holidays or vacations count as global off
@@ -573,7 +695,7 @@ export class AttendanceService {
       }
       
       const daySlots = regularSlots.filter(s => s.dayOfWeek === dbDayOfWeek);
-      const dayOverrides = overrides.filter(o => o.date.toISOString().split("T")[0] === dateKey);
+      const dayOverrides = overrides.filter(o => getCleanDateKey(o.date) === dateKey);
       
       let expectedClasses = 0;
 
@@ -589,14 +711,14 @@ export class AttendanceService {
       const extras = dayOverrides.filter(o => o.overrideType === "extra_class");
       expectedClasses += extras.length;
 
-      const dayAtts = attendances.filter(a => a.date.toISOString().split("T")[0] === dateKey);
+      const dayAtts = attendances.filter(a => getCleanDateKey(a.date) === dateKey);
 
       let status = "off";
 
-      if (expectedClasses === 0) {
+      if (expectedClasses === 0 && dayAtts.length === 0) {
         status = "off";
-      } else if (dayAtts.length < expectedClasses) {
-        status = "not_marked";
+      } else if (dayAtts.length === 0) {
+        status = (dateKey > todayKey) ? "future" : "not_marked";
       } else {
         let presentCount = 0;
         let absentCount = 0;
@@ -608,17 +730,21 @@ export class AttendanceService {
           else if (a.status === "off" || a.status === "cancelled") offCount++;
         }
 
-        if (presentCount > 0 && absentCount === 0) status = "attended";
-        else if (absentCount > 0 && presentCount === 0) status = "missed";
-        else if (presentCount > 0 && absentCount > 0) status = "mixed";
-        else status = "off";
+        if (presentCount > 0 && absentCount === 0) {
+          status = (dayAtts.length < expectedClasses && dateKey <= todayKey) ? "not_marked" : "attended";
+        } else if (absentCount > 0 && presentCount === 0) {
+          status = (dayAtts.length < expectedClasses && dateKey <= todayKey) ? "not_marked" : "missed";
+        } else if (presentCount > 0 && absentCount > 0) {
+          status = "mixed";
+        } else if (offCount > 0 && presentCount === 0 && absentCount === 0) {
+          status = "off";
+        } else {
+          status = "not_marked";
+        }
       }
 
-      const today = new Date();
-      today.setHours(0,0,0,0);
-      
-      if (d > today) {
-        if (status === "not_marked") status = "future";
+      if (dateKey > todayKey && status === "not_marked") {
+        status = "future";
       }
 
       daysObj[dateKey] = status;
@@ -637,7 +763,7 @@ export class AttendanceService {
       else if (status === "attended") dayStats.attended++;
       else if (status === "mixed") dayStats.mixed++;
 
-      if (d <= today) {
+      if (dateKey <= todayKey) {
         for (const a of dayAtts) {
           if (a.status === "present" || a.status === "medical" || a.status === "od") lectureStats.attended++;
           else if (a.status === "absent") lectureStats.missed++;

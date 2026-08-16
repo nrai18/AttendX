@@ -1,5 +1,12 @@
 import React, { useState } from "react";
-import { Trash2, ShieldCheck, AlertCircle, Calendar, CalendarRange, X } from "lucide-react";
+import {
+  Trash2,
+  ShieldCheck,
+  AlertCircle,
+  Calendar,
+  CalendarRange,
+  X,
+} from "lucide-react";
 import { formatTimeRange } from "../../utils/timeUtils";
 
 interface Subject {
@@ -38,7 +45,9 @@ export const DeleteSlotModal: React.FC<DeleteSlotModalProps> = ({
   dayName,
   onConfirmDelete,
 }) => {
-  const [scope, setScope] = useState<"this_day_only" | "all_occurrences">("this_day_only");
+  const [scope, setScope] = useState<"this_day_only" | "all_occurrences">(
+    "this_day_only",
+  );
   const [preserveHistory, setPreserveHistory] = useState(true);
   const [isDeleting, setIsDeleting] = useState(false);
 
@@ -46,14 +55,17 @@ export const DeleteSlotModal: React.FC<DeleteSlotModalProps> = ({
 
   const isSingle = slotsToDelete.length === 1;
   const singleSlot = slotsToDelete[0];
-  const subjectName = isSingle ? singleSlot.subject?.name : `${slotsToDelete.length} lectures`;
+  const subjectName = isSingle
+    ? singleSlot.subject?.name
+    : `${slotsToDelete.length} lectures`;
 
   const handleAction = async (forcePreserve?: boolean) => {
     setIsDeleting(true);
     try {
       await onConfirmDelete({
         scope,
-        preserveHistory: forcePreserve !== undefined ? forcePreserve : preserveHistory,
+        preserveHistory:
+          forcePreserve !== undefined ? forcePreserve : preserveHistory,
       });
       onClose();
     } catch (err) {
@@ -70,14 +82,24 @@ export const DeleteSlotModal: React.FC<DeleteSlotModalProps> = ({
         <div className="p-6 pb-4">
           <div className="flex items-start justify-between">
             <div>
-              <h2 className="text-xl font-bold text-foreground">Delete lectures?</h2>
+              <h2 className="text-xl font-bold text-foreground">
+                Delete lectures?
+              </h2>
               <p className="text-sm text-muted-foreground mt-1">
                 {isSingle ? (
                   <>
-                    Removing <span className="font-semibold text-foreground">{singleSlot.subject?.name}</span> ({formatTimeRange(singleSlot.startTime, singleSlot.endTime)})
+                    Removing{" "}
+                    <span className="font-semibold text-foreground">
+                      {singleSlot.subject?.name}
+                    </span>{" "}
+                    ({formatTimeRange(singleSlot.startTime, singleSlot.endTime)}
+                    )
                   </>
                 ) : (
-                  <>Removing {slotsToDelete.length} selected lectures from your timetable.</>
+                  <>
+                    Removing {slotsToDelete.length} selected lectures from your
+                    timetable.
+                  </>
                 )}
               </p>
             </div>
@@ -143,7 +165,12 @@ export const DeleteSlotModal: React.FC<DeleteSlotModalProps> = ({
               <span>Safe Delete Protection</span>
             </div>
             <p className="leading-relaxed">
-              Use <strong className="text-teal-600 dark:text-teal-400 font-semibold">SAFE DELETE</strong> to delete the lectures from the timetable while keeping any previously recorded attendance and statistics.
+              Use{" "}
+              <strong className="text-teal-600 dark:text-teal-400 font-semibold">
+                SAFE DELETE
+              </strong>{" "}
+              to delete the lectures from the timetable while keeping any
+              previously recorded attendance and statistics.
             </p>
           </div>
         </div>

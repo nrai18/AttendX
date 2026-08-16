@@ -109,6 +109,38 @@ function createInMemoryModelHandler(modelName: string) {
       };
       return list[index];
     },
+    async updateMany(args: any) {
+      const list = memoryStore[storeKey];
+      let count = 0;
+      for (let i = 0; i < list.length; i++) {
+        if (matchesWhere(list[i], args?.where)) {
+          list[i] = {
+            ...list[i],
+            ...(args?.data || {}),
+            updatedAt: new Date(),
+          };
+          count++;
+        }
+      }
+      return { count };
+    },
+    async createMany(args: any) {
+      const list = memoryStore[storeKey];
+      const items = Array.isArray(args?.data) ? args.data : [args?.data];
+      let count = 0;
+      for (const item of items) {
+        if (!item) continue;
+        const newItem = {
+          id: item.id || `mem_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          ...item,
+        };
+        list.push(newItem);
+        count++;
+      }
+      return { count };
+    },
     async upsert(args: any) {
       const existing = await this.findFirst({ where: args?.where });
       if (existing) {
@@ -143,11 +175,17 @@ import { PrismaPg } from "@prisma/adapter-pg";
 let realPrisma: any = null;
 if (process.env.DATABASE_URL && process.env.DATABASE_URL.trim().length > 0) {
   try {
-    const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+    const pool = new Pool({ 
+      connectionString: process.env.DATABASE_URL,
+      ssl: { rejectUnauthorized: false },
+      connectionTimeoutMillis: 15000,
+      idleTimeoutMillis: 30000,
+      max: 10,
+    });
     const adapter = new PrismaPg(pool);
     realPrisma = new PrismaClient({ adapter });
   } catch (err) {
-    console.warn("[AI Studio] Prisma init warning — fallback active:", err);
+    console.warn("[AttendX] Prisma init warning — fallback active:", err);
   }
 }
 
@@ -157,6 +195,24 @@ export const prisma = new Proxy(
     get(_, prop: string) {
       if (prop === "$connect" || prop === "$disconnect") {
         return async () => {};
+      }
+      if (prop === "$transaction") {
+        return async (callbackOrArray: any, options?: any) => {
+          if (realPrisma && typeof realPrisma.$transaction === "function") {
+            try {
+              return await realPrisma.$transaction(callbackOrArray, options);
+            } catch (txErr: any) {
+              console.warn("[AttendX] $transaction DB error, executing on in-memory proxy:", txErr?.message || txErr);
+            }
+          }
+          if (typeof callbackOrArray === "function") {
+            return await callbackOrArray(prisma);
+          }
+          if (Array.isArray(callbackOrArray)) {
+            return await Promise.all(callbackOrArray);
+          }
+          return null;
+        };
       }
       if (realPrisma && typeof realPrisma[prop] === "function") {
         return realPrisma[prop].bind(realPrisma);
@@ -173,7 +229,7 @@ export const prisma = new Proxy(
               try {
                 return await originalFn.apply(targetModel, args);
               } catch (dbError: any) {
-                console.warn(`[AI Studio] DB error on prisma.${prop}.${method}, using in-memory fallback:`, dbError?.message || dbError);
+                console.warn(`[AttendX] DB error on prisma.${prop}.${method}, using in-memory fallback:`, dbError?.message || dbError);
                 if ((fallbackModel as any)[method]) {
                   return await (fallbackModel as any)[method](...args);
                 }
