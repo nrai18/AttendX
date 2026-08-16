@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { api } from "../../lib/api";
 import { useNotificationStore } from "../../stores/notificationStore";
 import {
@@ -30,6 +31,7 @@ export const CreateSemesterModal: React.FC<CreateSemesterModalProps> = ({
   onClose,
   onSuccess,
 }) => {
+  const navigate = useNavigate();
   const [semesters, setSemesters] = useState<Semester[]>([]);
   const [loadingSemesters, setLoadingSemesters] = useState(false);
 
@@ -94,13 +96,14 @@ export const CreateSemesterModal: React.FC<CreateSemesterModalProps> = ({
         isActive: true,
       });
       useNotificationStore.getState().notify({
-        title: "Semester Created",
-        description: `Active semester "${generatedName}" created and ready for attendance.`,
+        title: "Add timetable",
+        description: `Active semester "${generatedName}" created! Please add or import your timetable schedule.`,
         type: "success",
         category: "semester",
       });
       onSuccess();
       onClose();
+      navigate("/timetable");
     } catch (err: any) {
       console.error("Failed to create semester", err);
       setError(err?.response?.data?.message || "Failed to create semester. Please try again.");

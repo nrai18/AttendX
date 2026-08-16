@@ -40,9 +40,7 @@ export const ClearTimetableModal: React.FC<ClearTimetableModalProps> = ({
               <Trash2 className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-foreground">
-                Clear All Timetable Slots
-              </h2>
+              <h2 className="text-base font-bold text-foreground">Clear All Timetable Slots</h2>
               <p className="text-xs text-muted-foreground">{semesterName}</p>
             </div>
           </div>
@@ -60,16 +58,15 @@ export const ClearTimetableModal: React.FC<ClearTimetableModalProps> = ({
           <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-start gap-3">
             <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
             <p className="text-xs text-amber-900 dark:text-amber-200 leading-relaxed font-medium">
-              This will remove all weekly lecture and lab slots from your
-              schedule for <strong>{semesterName}</strong>.
+              This will remove all weekly lecture and lab slots from your schedule for{" "}
+              <strong>{semesterName}</strong>.
             </p>
           </div>
 
           <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-start gap-3">
             <ShieldCheck className="w-5 h-5 text-emerald-500 shrink-0 mt-0.5" />
             <p className="text-xs text-emerald-900 dark:text-emerald-200 leading-relaxed font-medium">
-              <strong>Your data is safe:</strong> All subjects, credit settings,
-              and past attendance logs will be preserved.
+              <strong>Your data is safe:</strong> All subjects, credit settings, and past attendance logs will be preserved.
             </p>
           </div>
         </div>

@@ -1,34 +1,16 @@
 import React, { useState, useEffect, useRef } from "react";
-import {
-  Plus,
-  Trash2,
-  Loader2,
-  CalendarPlus,
-  Upload,
-  Image as ImageIcon,
-  X,
-  Download,
-  FileSpreadsheet,
-  Edit3,
-  ArrowLeft,
-  CheckSquare,
-  Square,
-  CheckCircle2,
-} from "lucide-react";
+import { Plus, Trash2, Loader2, CalendarPlus, Upload, Image as ImageIcon, X, Download, FileSpreadsheet, Edit3, ArrowLeft, CheckSquare, Square, CheckCircle2 } from "lucide-react";
 import { api } from "../../lib/api";
 import { TimetableWizardModal } from "./TimetableWizardModal";
 import { CreateSemesterModal } from "../../components/semester/CreateSemesterModal";
 import { SortableSlot } from "./SortableSlot";
 import { DeleteSlotModal } from "./DeleteSlotModal";
 import { ClearTimetableModal } from "./ClearTimetableModal";
-import { useNotificationStore } from "../../stores/notificationStore";
 import { DndContext, closestCenter, DragEndEvent } from "@dnd-kit/core";
-import {
-  SortableContext,
-  verticalListSortingStrategy,
-} from "@dnd-kit/sortable";
+import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { normalizeTimeString } from "../../utils/timeUtils";
 import { useAttendanceStore } from "../../stores/attendanceStore";
+import { useNotificationStore } from "../../stores/notificationStore";
 
 interface Subject {
   id: string;
@@ -56,36 +38,26 @@ interface Semester {
   isActive: boolean;
 }
 
-const DAYS = [
-  "Monday",
-  "Tuesday",
-  "Wednesday",
-  "Thursday",
-  "Friday",
-  "Saturday",
-  "Sunday",
-];
+const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+
+
 
 export const TimetablePage = () => {
   const [slots, setSlots] = useState<TimetableSlot[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [activeSemester, setActiveSemester] = useState<Semester | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<number>(
-    new Date().getDay() === 0 ? 6 : new Date().getDay() - 1,
-  );
+  const [activeTab, setActiveTab] = useState<number>(new Date().getDay() === 0 ? 6 : new Date().getDay() - 1);
+
 
   // Selection & Delete Modal State
   const [isSelectMode, setIsSelectMode] = useState(false);
   const [selectedSlotIds, setSelectedSlotIds] = useState<string[]>([]);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
-  const [slotsPendingDelete, setSlotsPendingDelete] = useState<TimetableSlot[]>(
-    [],
-  );
+  const [slotsPendingDelete, setSlotsPendingDelete] = useState<TimetableSlot[]>([]);
 
   // Attendance stats for header badge
-  const { overallPercentage, targetPercentage, fetchStats } =
-    useAttendanceStore();
+  const { overallPercentage, targetPercentage, fetchStats } = useAttendanceStore();
 
   // Form State
   const [isAdding, setIsAdding] = useState(false);
@@ -99,9 +71,7 @@ export const TimetablePage = () => {
 
   // Extra Class Form State
   const [isAddingExtra, setIsAddingExtra] = useState(false);
-  const [extraDate, setExtraDate] = useState(
-    new Date().toISOString().split("T")[0],
-  );
+  const [extraDate, setExtraDate] = useState(new Date().toISOString().split("T")[0]);
   const [extraSubjectId, setExtraSubjectId] = useState("");
 
   // OCR Upload State
@@ -124,36 +94,32 @@ export const TimetablePage = () => {
   const fetchData = async () => {
     try {
       setIsLoading(true);
-
+      
       const semRes = await api.get("/semesters/active");
       const semester = semRes.data;
-
+      
       if (!semester) {
         setIsLoading(false);
         return;
       }
-
+      
       setActiveSemester(semester);
 
       const [subjRes, slotsRes] = await Promise.all([
         api.get("/subjects"),
-        api.get(`/timetable/${semester.id}`),
+        api.get(`/timetable/${semester.id}`)
       ]);
-
-      const rawSubjects = Array.isArray(subjRes.data)
-        ? subjRes.data
-        : subjRes.data?.subjects || [];
-      const activeSubjects = rawSubjects.filter(
-        (s: any) => s.semesterId === semester.id,
-      );
-
+      
+      const rawSubjects = Array.isArray(subjRes.data) ? subjRes.data : (subjRes.data?.subjects || []);
+      const activeSubjects = rawSubjects.filter((s: any) => s.semesterId === semester.id);
+      
       setSubjects(activeSubjects);
 
       const rawSlotsList = Array.isArray(slotsRes.data) ? slotsRes.data : [];
       const normalizedSlots = rawSlotsList.map((slot: any) => ({
         ...slot,
         startTime: normalizeTimeString(slot.startTime, "09:00"),
-        endTime: normalizeTimeString(slot.endTime, "10:00"),
+        endTime: normalizeTimeString(slot.endTime, "10:00")
       }));
 
       setSlots(normalizedSlots);
@@ -197,10 +163,7 @@ export const TimetablePage = () => {
 
   const handleAddSlot = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!subjectId || !activeSemester)
-      return alert(
-        "Please select a subject and ensure you have an active semester.",
-      );
+    if (!subjectId || !activeSemester) return alert("Please select a subject and ensure you have an active semester.");
     try {
       const payload = {
         semesterId: activeSemester.id,
@@ -209,7 +172,7 @@ export const TimetablePage = () => {
         startTime: normalizeTimeString(startTime, "09:00"),
         endTime: normalizeTimeString(endTime, "10:00"),
         room,
-        slotType,
+        slotType
       };
 
       if (editingSlotId) {
@@ -217,7 +180,7 @@ export const TimetablePage = () => {
       } else {
         await api.post("/timetable/slots", payload);
       }
-
+      
       resetForm();
       fetchData();
     } catch (error) {
@@ -229,15 +192,10 @@ export const TimetablePage = () => {
     if (!activeSemester) return;
     try {
       const res = await api.get(`/timetable/export/${activeSemester.id}`);
-      const dataStr =
-        "data:text/json;charset=utf-8," +
-        encodeURIComponent(JSON.stringify(res.data, null, 2));
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(res.data, null, 2));
       const downloadAnchor = document.createElement("a");
       downloadAnchor.setAttribute("href", dataStr);
-      downloadAnchor.setAttribute(
-        "download",
-        `schedule_${activeSemester.name.replace(/\s+/g, "_")}.json`,
-      );
+      downloadAnchor.setAttribute("download", `schedule_${activeSemester.name.replace(/\s+/g, "_")}.json`);
       document.body.appendChild(downloadAnchor);
       downloadAnchor.click();
       downloadAnchor.remove();
@@ -247,20 +205,14 @@ export const TimetablePage = () => {
     }
   };
 
-  const handleImportJsonFile = async (
-    e: React.ChangeEvent<HTMLInputElement>,
-  ) => {
+  const handleImportJsonFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!activeSemester || !e.target.files?.[0]) return;
     const file = e.target.files[0];
     const reader = new FileReader();
     reader.onload = async (event) => {
       try {
         const payload = JSON.parse(event.target?.result as string);
-        if (
-          confirm(
-            "Importing this timetable will replace scheduled classes in your active semester. Attendance records are safely preserved. Proceed?",
-          )
-        ) {
+        if (confirm("Importing this timetable will replace scheduled classes in your active semester. Attendance records are safely preserved. Proceed?")) {
           await api.post(`/timetable/import/${activeSemester.id}`, payload);
           fetchData();
           alert("Timetable imported successfully!");
@@ -276,43 +228,29 @@ export const TimetablePage = () => {
 
   const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
-
+    
     if (over && active.id !== over.id) {
       const activeSlotId = active.id as string;
       const overSlotId = over.id as string;
 
       // Optimistically swap the times in local state
-      const activeSlot = slots.find((s) => s.id === activeSlotId);
-      const overSlot = slots.find((s) => s.id === overSlotId);
-
+      const activeSlot = slots.find(s => s.id === activeSlotId);
+      const overSlot = slots.find(s => s.id === overSlotId);
+      
       if (activeSlot && overSlot) {
-        setSlots((prev) =>
-          prev
-            .map((s) => {
-              if (s.id === activeSlotId)
-                return {
-                  ...s,
-                  startTime: overSlot.startTime,
-                  endTime: overSlot.endTime,
-                };
-              if (s.id === overSlotId)
-                return {
-                  ...s,
-                  startTime: activeSlot.startTime,
-                  endTime: activeSlot.endTime,
-                };
-              return s;
-            })
-            .sort((a, b) => {
-              if (a.dayOfWeek !== b.dayOfWeek) return a.dayOfWeek - b.dayOfWeek;
-              return a.startTime.localeCompare(b.startTime);
-            }),
-        );
+        setSlots(prev => prev.map(s => {
+          if (s.id === activeSlotId) return { ...s, startTime: overSlot.startTime, endTime: overSlot.endTime };
+          if (s.id === overSlotId) return { ...s, startTime: activeSlot.startTime, endTime: activeSlot.endTime };
+          return s;
+        }).sort((a, b) => {
+          if (a.dayOfWeek !== b.dayOfWeek) return a.dayOfWeek - b.dayOfWeek;
+          return a.startTime.localeCompare(b.startTime);
+        }));
 
         try {
           await api.post("/timetable/slots/swap", {
             slotAId: activeSlotId,
-            slotBId: overSlotId,
+            slotBId: overSlotId
           });
         } catch (error) {
           console.error("Failed to swap slots:", error);
@@ -324,9 +262,7 @@ export const TimetablePage = () => {
 
   const handleToggleSelectSlot = (slotId: string) => {
     setSelectedSlotIds((prev) =>
-      prev.includes(slotId)
-        ? prev.filter((id) => id !== slotId)
-        : [...prev, slotId],
+      prev.includes(slotId) ? prev.filter((id) => id !== slotId) : [...prev, slotId]
     );
   };
 
@@ -370,9 +306,7 @@ export const TimetablePage = () => {
         // Delete only the specific slots on this day
         const slotIds = slotsPendingDelete.map((s) => s.id);
         if (slotIds.length === 1) {
-          await api.delete(
-            `/timetable/slots/${slotIds[0]}?preserveHistory=${preserveHistory}`,
-          );
+          await api.delete(`/timetable/slots/${slotIds[0]}?preserveHistory=${preserveHistory}`);
         } else {
           await api.post("/timetable/slots/delete-batch", {
             slotIds,
@@ -381,12 +315,10 @@ export const TimetablePage = () => {
         }
       } else {
         // Delete all weekly occurrences of the selected subjects
-        const distinctSubjectIds = Array.from(
-          new Set(slotsPendingDelete.map((s) => s.subjectId)),
-        );
+        const distinctSubjectIds = Array.from(new Set(slotsPendingDelete.map((s) => s.subjectId)));
         for (const subjId of distinctSubjectIds) {
           await api.delete(
-            `/timetable/semester/${activeSemester.id}/subject/${subjId}/slots?preserveHistory=${preserveHistory}`,
+            `/timetable/semester/${activeSemester.id}/subject/${subjId}/slots?preserveHistory=${preserveHistory}`
           );
         }
       }
@@ -453,18 +385,18 @@ export const TimetablePage = () => {
 
   const handleOcrUpload = async () => {
     if (!selectedImage || !activeSemester) return;
-
+    
     setIsUploading(true);
     const formData = new FormData();
     formData.append("file", selectedImage);
     formData.append("image", selectedImage);
     formData.append("semesterId", activeSemester.id);
-
+    
     try {
       const res = await api.post("/timetable/ocr-import", formData, {
-        headers: { "Content-Type": "multipart/form-data" },
+        headers: { "Content-Type": "multipart/form-data" }
       });
-
+      
       if (res.data.status === "needs_setup") {
         setWizardPayload(res.data);
         setIsOcrModalOpen(false);
@@ -491,7 +423,7 @@ export const TimetablePage = () => {
       await api.post("/timetable/save-wizard", {
         semesterId: activeSemester.id,
         selections,
-        rawSlots: slotsToSave,
+        rawSlots: slotsToSave
       });
       setIsWizardOpen(false);
       setWizardPayload(null);
@@ -509,19 +441,16 @@ export const TimetablePage = () => {
       </div>
     );
   }
-
+  
   if (!activeSemester) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center p-8 text-center space-y-4 my-12">
         <div className="w-16 h-16 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 mb-2">
           <CalendarPlus className="w-8 h-8" />
         </div>
-        <h2 className="text-2xl font-bold text-foreground">
-          No Active Semester
-        </h2>
+        <h2 className="text-2xl font-bold text-foreground">No Active Semester</h2>
         <p className="text-sm text-muted-foreground max-w-md">
-          Please create and activate a semester first to start managing your
-          subjects, timetable, and attendance.
+          Please create and activate a semester first to start managing your subjects, timetable, and attendance.
         </p>
         <button
           onClick={() => setIsCreateSemesterOpen(true)}
@@ -541,9 +470,7 @@ export const TimetablePage = () => {
   }
 
   // Group slots by day for desktop grid view
-  const slotsByDay = DAYS.map((_, index) =>
-    slots.filter((s) => s.dayOfWeek === index),
-  );
+  const slotsByDay = DAYS.map((_, index) => slots.filter(s => s.dayOfWeek === index));
 
   return (
     <div className="p-4 md:p-8 space-y-6 max-w-7xl mx-auto w-full pb-24 md:pb-8">
@@ -577,8 +504,7 @@ export const TimetablePage = () => {
               onClick={handleSelectAllCurrentDay}
               className="px-3 py-1.5 rounded-xl text-xs font-bold text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer flex items-center gap-1.5"
             >
-              {selectedSlotIds.length === currentDaySlots.length &&
-              currentDaySlots.length > 0 ? (
+              {selectedSlotIds.length === currentDaySlots.length && currentDaySlots.length > 0 ? (
                 <>
                   <CheckSquare className="w-4 h-4 text-primary" />
                   <span>Deselect All</span>
@@ -607,25 +533,17 @@ export const TimetablePage = () => {
           <div className="flex items-center gap-3">
             <div>
               <div className="flex items-center gap-3">
-                <h1 className="text-2xl sm:text-3xl font-bold text-foreground tracking-tight">
-                  Timetable
-                </h1>
+                <h1 className="text-2xl sm:text-3xl font-bold text-foreground tracking-tight">Timetable</h1>
                 {overallPercentage !== undefined && (
                   <div className="px-3 py-1 bg-muted border border-border rounded-full flex items-center gap-1.5 text-xs font-mono font-bold text-foreground">
-                    <span className="text-teal-600 dark:text-teal-400">
-                      {overallPercentage.toFixed(1)}%
-                    </span>
+                    <span className="text-teal-600 dark:text-teal-400">{overallPercentage.toFixed(1)}%</span>
                     <span className="text-muted-foreground">|</span>
-                    <span className="text-muted-foreground">
-                      {targetPercentage}%
-                    </span>
+                    <span className="text-muted-foreground">{targetPercentage}%</span>
                   </div>
                 )}
               </div>
               <div className="flex flex-wrap items-center gap-2.5 mt-1">
-                <p className="text-sm text-muted-foreground">
-                  Manage schedule for {activeSemester.name}.
-                </p>
+                <p className="text-sm text-muted-foreground">Manage schedule for {activeSemester.name}.</p>
               </div>
             </div>
           </div>
@@ -655,10 +573,7 @@ export const TimetablePage = () => {
               <span>OCR Import</span>
             </button>
             <button
-              onClick={() => {
-                setIsAdding(true);
-                setDayOfWeek(activeTab);
-              }}
+              onClick={() => { setIsAdding(true); setDayOfWeek(activeTab); }}
               className="flex items-center gap-2 bg-primary text-primary-foreground hover:bg-primary/90 px-4 py-2 rounded-xl text-xs font-bold shadow-md transition-colors cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5" />
@@ -667,7 +582,7 @@ export const TimetablePage = () => {
           </div>
         </div>
       )}
-
+      
       {/* OCR Modal */}
       {isOcrModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
@@ -677,40 +592,30 @@ export const TimetablePage = () => {
                 <ImageIcon className="w-5 h-5 text-blue-500" />
                 Upload Timetable (PDF / Image)
               </h2>
-              <button
-                onClick={() => {
-                  setIsOcrModalOpen(false);
-                  setSelectedImage(null);
-                  setImagePreview(null);
-                }}
-                className="text-muted-foreground hover:text-foreground transition-colors"
-              >
+              <button onClick={() => { setIsOcrModalOpen(false); setSelectedImage(null); setImagePreview(null); }} className="text-muted-foreground hover:text-foreground transition-colors">
                 <X className="w-5 h-5" />
               </button>
             </div>
-
+            
             <div className="p-6 space-y-6">
               <div className="text-sm text-muted-foreground text-center">
-                Upload your timetable PDF or Image file. We will extract all
-                branch and semester schedules automatically!
+                Upload your timetable PDF or Image file. We will extract all branch and semester schedules automatically!
               </div>
-
-              <div
+              
+              <div 
                 onClick={() => fileInputRef.current?.click()}
                 className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-colors ${
-                  imagePreview
-                    ? "border-blue-500/50 bg-blue-500/5"
-                    : "border-border hover:border-primary/50 hover:bg-muted/50"
+                  imagePreview ? 'border-blue-500/50 bg-blue-500/5' : 'border-border hover:border-primary/50 hover:bg-muted/50'
                 }`}
               >
-                <input
-                  type="file"
-                  accept="image/*,.pdf,application/pdf"
-                  className="hidden"
+                <input 
+                  type="file" 
+                  accept="image/*,.pdf,application/pdf" 
+                  className="hidden" 
                   ref={fileInputRef}
                   onChange={handleImageSelect}
                 />
-
+                
                 {imagePreview === "pdf_file" ? (
                   <div className="space-y-3 flex flex-col items-center">
                     <div className="w-14 h-14 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-500 flex items-center justify-center font-bold text-xs uppercase tracking-wider">
@@ -719,20 +624,12 @@ export const TimetablePage = () => {
                     <div className="text-sm font-bold text-foreground truncate max-w-[220px]">
                       {selectedImage?.name}
                     </div>
-                    <p className="text-xs font-medium text-blue-500">
-                      Click to select a different PDF or Image
-                    </p>
+                    <p className="text-xs font-medium text-blue-500">Click to select a different PDF or Image</p>
                   </div>
                 ) : imagePreview ? (
                   <div className="space-y-4">
-                    <img
-                      src={imagePreview}
-                      alt="Preview"
-                      className="max-h-48 mx-auto rounded-lg object-contain"
-                    />
-                    <p className="text-sm font-medium text-blue-500">
-                      Click to change file
-                    </p>
+                    <img src={imagePreview} alt="Preview" className="max-h-48 mx-auto rounded-lg object-contain" />
+                    <p className="text-sm font-medium text-blue-500">Click to change file</p>
                   </div>
                 ) : (
                   <div className="space-y-3 flex flex-col items-center">
@@ -740,18 +637,14 @@ export const TimetablePage = () => {
                       <Upload className="w-6 h-6 text-muted-foreground" />
                     </div>
                     <div>
-                      <p className="text-sm font-medium text-foreground">
-                        Click to browse timetable file
-                      </p>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        PDF, PNG, JPG, JPEG up to 15MB
-                      </p>
+                      <p className="text-sm font-medium text-foreground">Click to browse timetable file</p>
+                      <p className="text-xs text-muted-foreground mt-1">PDF, PNG, JPG, JPEG up to 15MB</p>
                     </div>
                   </div>
                 )}
               </div>
-
-              <button
+              
+              <button 
                 onClick={handleOcrUpload}
                 disabled={!selectedImage || isUploading}
                 className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold transition-colors flex items-center justify-center gap-2 shadow-md shadow-blue-500/20 cursor-pointer"
@@ -771,7 +664,7 @@ export const TimetablePage = () => {
       )}
 
       {/* Timetable Setup Wizard Modal */}
-      <TimetableWizardModal
+      <TimetableWizardModal 
         isOpen={isWizardOpen}
         onClose={() => setIsWizardOpen(false)}
         onGenerate={handleGenerateTimetable}
@@ -808,34 +701,21 @@ export const TimetablePage = () => {
 
       {/* Forms (Add Slot) */}
       {isAdding && (
-        <form
-          onSubmit={handleAddSlot}
-          className="bg-card border border-border rounded-2xl p-6 space-y-5 shadow-xl animate-in slide-in-from-top-4 duration-300"
-        >
-          <h2 className="text-lg font-bold text-foreground border-b border-border pb-4">
-            {editingSlotId ? "Edit Timetable Slot" : "Add Timetable Slot"}
-          </h2>
+        <form onSubmit={handleAddSlot} className="bg-card border border-border rounded-2xl p-6 space-y-5 shadow-xl animate-in slide-in-from-top-4 duration-300">
+          <h2 className="text-lg font-bold text-foreground border-b border-border pb-4">{editingSlotId ? "Edit Timetable Slot" : "Add Timetable Slot"}</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-5">
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                Day
-              </label>
+              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Day</label>
               <select
                 value={dayOfWeek}
                 onChange={(e) => setDayOfWeek(Number(e.target.value))}
                 className="w-full bg-background border border-border rounded-xl px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 text-sm"
               >
-                {DAYS.map((day, idx) => (
-                  <option key={day} value={idx}>
-                    {day}
-                  </option>
-                ))}
+                {DAYS.map((day, idx) => <option key={day} value={idx}>{day}</option>)}
               </select>
             </div>
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                Subject
-              </label>
+              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Subject</label>
               <select
                 required
                 value={subjectId}
@@ -843,17 +723,11 @@ export const TimetablePage = () => {
                 className="w-full bg-background border border-border rounded-xl px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 text-sm"
               >
                 <option value="">Select...</option>
-                {subjects.map((sub) => (
-                  <option key={sub.id} value={sub.id}>
-                    {sub.name}
-                  </option>
-                ))}
+                {subjects.map(sub => <option key={sub.id} value={sub.id}>{sub.name}</option>)}
               </select>
             </div>
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                Room (Optional)
-              </label>
+              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Room (Optional)</label>
               <input
                 type="text"
                 value={room}
@@ -863,9 +737,7 @@ export const TimetablePage = () => {
               />
             </div>
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                Start Time
-              </label>
+              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Start Time</label>
               <input
                 type="time"
                 required
@@ -875,9 +747,7 @@ export const TimetablePage = () => {
               />
             </div>
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                End Time
-              </label>
+              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">End Time</label>
               <input
                 type="time"
                 required
@@ -887,9 +757,7 @@ export const TimetablePage = () => {
               />
             </div>
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                Type
-              </label>
+              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Type</label>
               <select
                 value={slotType}
                 onChange={(e) => setSlotType(e.target.value)}
@@ -902,19 +770,8 @@ export const TimetablePage = () => {
             </div>
           </div>
           <div className="flex justify-end gap-3 pt-4 border-t border-border">
-            <button
-              type="button"
-              onClick={resetForm}
-              className="px-5 py-2 rounded-xl text-xs font-semibold text-muted-foreground hover:bg-muted transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="px-6 py-2 rounded-xl text-xs font-bold bg-primary text-primary-foreground hover:bg-primary/90 transition-all shadow-md shadow-primary/20"
-            >
-              {editingSlotId ? "Save Changes" : "Save Slot"}
-            </button>
+            <button type="button" onClick={resetForm} className="px-5 py-2 rounded-xl text-xs font-semibold text-muted-foreground hover:bg-muted transition-colors">Cancel</button>
+            <button type="submit" className="px-6 py-2 rounded-xl text-xs font-bold bg-primary text-primary-foreground hover:bg-primary/90 transition-all shadow-md shadow-primary/20">{editingSlotId ? "Save Changes" : "Save Slot"}</button>
           </div>
         </form>
       )}
@@ -923,47 +780,31 @@ export const TimetablePage = () => {
       <div className="hidden lg:block bg-card border border-border rounded-3xl overflow-hidden shadow-xl">
         <div className="grid grid-cols-7 border-b border-border bg-muted/50">
           {DAYS.map((day) => (
-            <div
-              key={day}
-              className="py-3 text-center border-r border-border last:border-0"
-            >
-              <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
-                {day}
-              </span>
+            <div key={day} className="py-3 text-center border-r border-border last:border-0">
+              <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{day}</span>
             </div>
           ))}
         </div>
         <div className="grid grid-cols-7 min-h-[500px]">
           {slotsByDay.map((daySlots, idx) => (
-            <div
-              key={idx}
-              className="border-r border-border last:border-0 p-3 space-y-3 bg-card"
-            >
+            <div key={idx} className="border-r border-border last:border-0 p-3 space-y-3 bg-card">
               {daySlots.length === 0 ? (
                 <div className="h-full flex items-center justify-center">
-                  <span className="text-xs text-muted-foreground/50 font-medium">
-                    No Classes
-                  </span>
+                  <span className="text-xs text-muted-foreground/50 font-medium">No Classes</span>
                 </div>
               ) : (
-                <DndContext
-                  collisionDetection={closestCenter}
-                  onDragEnd={handleDragEnd}
-                >
-                  <SortableContext
-                    items={daySlots.map((s) => s.id)}
-                    strategy={verticalListSortingStrategy}
-                  >
-                    {daySlots.map((slot) => (
-                      <SortableSlot
-                        key={slot.id}
-                        slot={slot}
-                        isDesktop
+                <DndContext collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                  <SortableContext items={daySlots.map(s => s.id)} strategy={verticalListSortingStrategy}>
+                    {daySlots.map(slot => (
+                      <SortableSlot 
+                        key={slot.id} 
+                        slot={slot} 
+                        isDesktop 
                         isSelectMode={isSelectMode}
                         isSelected={selectedSlotIds.includes(slot.id)}
                         onToggleSelect={handleToggleSelectSlot}
-                        onEdit={handleEditSlot}
-                        onDelete={handleInitiateDeleteSingle}
+                        onEdit={handleEditSlot} 
+                        onDelete={handleInitiateDeleteSingle} 
                       />
                     ))}
                   </SortableContext>
@@ -983,8 +824,8 @@ export const TimetablePage = () => {
               key={day}
               onClick={() => setActiveTab(idx)}
               className={`whitespace-nowrap px-5 py-2.5 rounded-xl text-xs font-bold transition-all shadow-sm ${
-                activeTab === idx
-                  ? "bg-primary text-primary-foreground shadow-primary/20"
+                activeTab === idx 
+                  ? "bg-primary text-primary-foreground shadow-primary/20" 
                   : "bg-card border border-border text-muted-foreground hover:bg-muted hover:text-foreground"
               }`}
             >
@@ -1000,28 +841,20 @@ export const TimetablePage = () => {
               <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-3">
                 <CalendarPlus className="w-6 h-6 text-muted-foreground/50" />
               </div>
-              <p className="text-sm font-medium text-muted-foreground">
-                Free Day!
-              </p>
+              <p className="text-sm font-medium text-muted-foreground">Free Day!</p>
             </div>
           ) : (
-            <DndContext
-              collisionDetection={closestCenter}
-              onDragEnd={handleDragEnd}
-            >
-              <SortableContext
-                items={currentDaySlots.map((s) => s.id)}
-                strategy={verticalListSortingStrategy}
-              >
-                {currentDaySlots.map((slot) => (
-                  <SortableSlot
-                    key={slot.id}
-                    slot={slot}
+            <DndContext collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+              <SortableContext items={currentDaySlots.map(s => s.id)} strategy={verticalListSortingStrategy}>
+                {currentDaySlots.map(slot => (
+                  <SortableSlot 
+                    key={slot.id} 
+                    slot={slot} 
                     isSelectMode={isSelectMode}
                     isSelected={selectedSlotIds.includes(slot.id)}
                     onToggleSelect={handleToggleSelectSlot}
-                    onEdit={handleEditSlot}
-                    onDelete={handleInitiateDeleteSingle}
+                    onEdit={handleEditSlot} 
+                    onDelete={handleInitiateDeleteSingle} 
                   />
                 ))}
               </SortableContext>
