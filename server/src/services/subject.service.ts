@@ -2,10 +2,21 @@ import { prisma } from "../lib/prisma";
 
 export class SubjectService {
   static async listSubjects(userId: string, semesterId?: string) {
+    let targetSemesterId = semesterId;
+    
+    if (!targetSemesterId) {
+      const activeSemester = await prisma.semester.findFirst({
+        where: { userId, isActive: true }
+      });
+      if (activeSemester) {
+        targetSemesterId = activeSemester.id;
+      }
+    }
+
     return prisma.subject.findMany({
       where: {
         userId,
-        ...(semesterId && { semesterId }),
+        ...(targetSemesterId && { semesterId: targetSemesterId }),
       },
       include: {
         timetableSlots: true,

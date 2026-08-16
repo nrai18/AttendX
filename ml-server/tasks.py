@@ -77,6 +77,7 @@ def process_zip_upload(self, file_path: str, user_id: str):
         self.update_state(state='PROGRESS', meta={'progress': 70, 'status': 'Wiping old semester data & Importing'})
         
         # 2. Wipe current semester data (Cascades to slots and logs)
+        cursor.execute('DELETE FROM timetable_overrides WHERE "semesterId" = %s', (sem_id,))
         cursor.execute('DELETE FROM subjects WHERE "semesterId" = %s', (sem_id,))
         
         execute_values(cursor, 'INSERT INTO subjects (id, "semesterId", "userId", name, "targetAttendance", "colorHex", "createdAt", "updatedAt") VALUES %s', subject_values)
