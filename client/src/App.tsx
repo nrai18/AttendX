@@ -43,6 +43,7 @@ import { LandingPage } from "./pages/marketing/LandingPage";
 
 import { SettingsPage } from "./pages/settings/SettingsPage";
 import { PredictiveAttendancePage } from "./pages/attendance/PredictiveAttendancePage";
+import { Toaster } from "sonner";
 
 const RootRoute: React.FC = () => {
   const { isAuthenticated, isLoading } = useAuthStore();
@@ -55,40 +56,43 @@ export function App() {
   useTheme();
 
   return (
-    <BrowserRouter>
-      <Routes>
-        {/* Public Landing Page */}
-        <Route path="/" element={<RootRoute />} />
+    <>
+      <Toaster position="bottom-center" toastOptions={{ className: 'rounded-xl border border-border shadow-lg' }} />
+      <BrowserRouter>
+        <Routes>
+          {/* Public Landing Page */}
+          <Route path="/" element={<RootRoute />} />
 
-        {/* Auth Routes */}
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/signup" element={<SignupPage />} />
+          {/* Auth Routes */}
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/signup" element={<SignupPage />} />
 
-        {/* Protected App Routes */}
-        <Route
-          element={
-            <ProtectedRoute>
-              <AppShell />
-            </ProtectedRoute>
-          }
-        >
-          <Route path="/today" element={<TodayPage />} />
-          <Route path="/predictive" element={<PredictiveAttendancePage />} />
-          <Route path="/timetable" element={<TimetablePage />} />
-          <Route path="/semester" element={<SemesterHubPage />} />
-          <Route path="/calendar" element={<CalendarPage />} />
-          <Route path="/subjects" element={<SubjectsPage />} />
-          <Route path="/subjects/manage" element={<SubjectsPage />} />
-          <Route path="/subjects/:id" element={<SubjectDetailPage />} />
-          <Route path="/classrooms" element={<ClassroomsPage />} />
-          <Route path="/classrooms/:id" element={<ClassroomFeedPage />} />
-          <Route path="/settings" element={<SettingsPage />} />
-        </Route>
+          {/* Protected App Routes */}
+          <Route
+            element={
+              <ProtectedRoute>
+                <AppShell />
+              </ProtectedRoute>
+            }
+          >
+            <Route path="/today" element={<TodayPage />} />
+            <Route path="/predictive" element={<PredictiveAttendancePage />} />
+            <Route path="/timetable" element={<TimetablePage />} />
+            <Route path="/semester" element={<SemesterHubPage />} />
+            <Route path="/calendar" element={<CalendarPage />} />
+            <Route path="/subjects" element={<SubjectsPage />} />
+            <Route path="/subjects/manage" element={<SubjectsPage />} />
+            <Route path="/subjects/:id" element={<SubjectDetailPage />} />
+            <Route path="/classrooms" element={<ClassroomsPage />} />
+            <Route path="/classrooms/:id" element={<ClassroomFeedPage />} />
+            <Route path="/settings" element={<SettingsPage />} />
+          </Route>
 
-        {/* Default Redirect */}
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </BrowserRouter>
+          {/* Default Redirect */}
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </BrowserRouter>
+    </>
   );
 }
 
