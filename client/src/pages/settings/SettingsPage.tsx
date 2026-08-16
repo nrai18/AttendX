@@ -213,27 +213,58 @@ export const SettingsPage: React.FC = () => {
 
   const handleImportCSV = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
+    if (!file || !user) return;
 
     const formData = new FormData();
     formData.append("file", file);
 
     try {
-      setBackupStatusMessage("Importing ZIP data...");
-      await api.post("/data/import", formData, {
-        headers: { "Content-Type": "multipart/form-data" }
+      setBackupStatusMessage("Uploading ZIP to ML Server...");
+      const res = await fetch(`http://localhost:8000/upload/zip?user_id=${user.id}`, {
+        method: "POST",
+        body: formData,
       });
-      setBackupStatusMessage("Data imported successfully!");
-      // Force app reload to fetch new data
-      setTimeout(() => window.location.reload(), 1500);
+
+      if (!res.ok) {
+        throw new Error("Failed to upload ZIP");
+      }
+
+      const data = await res.json();
+      const taskId = data.task_id;
+
+      // Connect to WebSocket for progress
+      const ws = new WebSocket(`ws://localhost:8000/ws/progress/${taskId}`);
+      
+      ws.onmessage = (event) => {
+        const msg = JSON.parse(event.data);
+        setBackupStatusMessage(`Importing: ${msg.status} (${msg.progress}%)`);
+        
+        if (msg.progress === 100 || msg.status.includes('Error')) {
+          ws.close();
+          if (msg.progress === 100) {
+            setBackupStatusMessage("Data imported successfully! Reloading...");
+            setTimeout(() => window.location.reload(), 1500);
+          } else {
+            alert(msg.status);
+            setBackupStatusMessage("");
+          }
+        }
+      };
+
+      ws.onerror = () => {
+        setBackupStatusMessage("");
+        alert("Lost connection to progress tracker, but import may still be running.");
+      };
+
     } catch (err: any) {
       console.error("Failed to import ZIP", err);
-      alert(err.response?.data?.error || "Failed to import ZIP file.");
+      alert(err.message || "Failed to import ZIP file.");
       setBackupStatusMessage("");
     } finally {
       if (e.target) e.target.value = "";
     }
   };
+
 
   // Trigger Resets
   const handlePerformReset = async () => {

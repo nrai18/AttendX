@@ -5,6 +5,7 @@ import { api } from "../../lib/api";
 import { EventWizardModal } from "./EventWizardModal";
 import { CreateSemesterModal } from "../../components/semester/CreateSemesterModal";
 import { Link } from "react-router-dom";
+import { useAuthStore } from "../../stores/authStore";
 
 interface AppEvent {
   id: string;
@@ -31,6 +32,7 @@ export const SemesterHubPage = () => {
   const [activeSemester, setActiveSemester] = useState<Semester | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [calendarData, setCalendarData] = useState<any>(null);
+  const user = useAuthStore((state) => state.user);
   
   // OCR State
   const fileInputRef = useRef<HTMLInputElement>(null);
