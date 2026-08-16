@@ -1,4 +1,5 @@
 from fastapi import FastAPI, BackgroundTasks, HTTPException, UploadFile, File, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Dict, Any
 import shutil
@@ -16,6 +17,15 @@ from ml_engine import PredictiveMLEngine
 from langgraph_agent import chatbot
 
 app = FastAPI(title="AttendX ML Server")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 ml_engine = PredictiveMLEngine()
 
 celery_app = Celery(
