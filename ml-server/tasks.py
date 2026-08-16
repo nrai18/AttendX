@@ -52,14 +52,9 @@ def process_zip_upload(self, file_path: str, user_id: str):
             raise Exception("No active semester found. Please create a semester first.")
         sem_id = sem_row[0]
         
-        self.update_state(state='PROGRESS', meta={'progress': 60, 'status': 'Wiping old semester data'})
+        now = datetime.datetime.now(datetime.timezone.utc)
         
-        # 2. Wipe current semester data (Cascades to slots and logs)
-        cursor.execute('DELETE FROM subjects WHERE "semesterId" = %s', (sem_id,))
-        
-        now = datetime.datetime.now()
-        
-        self.update_state(state='PROGRESS', meta={'progress': 70, 'status': 'Importing Subjects'})
+        self.update_state(state='PROGRESS', meta={'progress': 60, 'status': 'Parsing Subjects'})
         
         # 3. Import Subjects
         subject_map = {}
@@ -76,8 +71,15 @@ def process_zip_upload(self, file_path: str, user_id: str):
                 subject_map[sub_name] = sub_id
                 subject_values.append((sub_id, sem_id, user_id, sub_name, target, "#3b82f6", now, now))
                 
-        if subject_values:
-            execute_values(cursor, 'INSERT INTO subjects (id, "semesterId", "userId", name, "targetAttendance", "colorHex", "createdAt", "updatedAt") VALUES %s', subject_values)
+        if not subject_values:
+            return {'progress': 0, 'status': 'Error: The ZIP file contains no valid subjects.'}
+
+        self.update_state(state='PROGRESS', meta={'progress': 70, 'status': 'Wiping old semester data & Importing'})
+        
+        # 2. Wipe current semester data (Cascades to slots and logs)
+        cursor.execute('DELETE FROM subjects WHERE "semesterId" = %s', (sem_id,))
+        
+        execute_values(cursor, 'INSERT INTO subjects (id, "semesterId", "userId", name, "targetAttendance", "colorHex", "createdAt", "updatedAt") VALUES %s', subject_values)
             
         self.update_state(state='PROGRESS', meta={'progress': 80, 'status': 'Importing Timetable Slots'})
         
@@ -149,6 +151,14 @@ def process_zip_upload(self, file_path: str, user_id: str):
         conn.commit()
         cursor.close()
         conn.close()
+        
+        # Invalidate Redis cache so frontend sees new data
+        import redis
+        r = redis.Redis.from_url(os.getenv("REDIS_URL"))
+        keys = r.smembers(f"user_keys:{user_id}")
+        if keys:
+            r.delete(*keys)
+        r.delete(f"user_keys:{user_id}")
         
         # Clean up
         os.remove(file_path)
