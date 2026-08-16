@@ -6,6 +6,7 @@ import shutil
 import uuid
 import os
 import asyncio
+import ssl
 from celery import Celery
 from celery.result import AsyncResult
 from dotenv import load_dotenv
@@ -36,8 +37,8 @@ celery_app = Celery(
     "attendx_worker",
     broker=redis_url,
     backend=redis_url,
-    broker_use_ssl={'ssl_cert_reqs': 'CERT_NONE'},
-    redis_backend_use_ssl={'ssl_cert_reqs': 'CERT_NONE'}
+    broker_use_ssl={'ssl_cert_reqs': ssl.CERT_NONE},
+    redis_backend_use_ssl={'ssl_cert_reqs': ssl.CERT_NONE}
 )
 
 # --- Endpoints ---
