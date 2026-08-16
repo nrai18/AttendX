@@ -6,6 +6,7 @@ import { EventWizardModal } from "./EventWizardModal";
 import { CreateSemesterModal } from "../../components/semester/CreateSemesterModal";
 import { Link } from "react-router-dom";
 import { useAuthStore } from "../../stores/authStore";
+import { useNotificationStore } from "../../stores/notificationStore";
 
 interface AppEvent {
   id: string;
@@ -128,6 +129,12 @@ export const SemesterHubPage = () => {
       setEvents([]);
       fetchCalendar();
       window.dispatchEvent(new Event("attendance-updated"));
+      useNotificationStore.getState().notify({
+        title: "Academic Events Reset Done",
+        description: "All academic calendar events removed.",
+        type: "success",
+        category: "reset",
+      });
     } catch (error) {
       console.error("Failed to clear events:", error);
       alert("Failed to clear events.");

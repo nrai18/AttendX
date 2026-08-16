@@ -7,6 +7,7 @@ import { CreateSemesterModal } from "../../components/semester/CreateSemesterMod
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { useAttendanceStore } from "../../stores/attendanceStore";
 import { triggerAttendancePopup } from "../../stores/animationPopupStore";
+import { useNotificationStore } from "../../stores/notificationStore";
 
 interface AgendaItem {
   id: string;
@@ -123,6 +124,12 @@ export const TodayPage = () => {
     if (!window.confirm("Are you sure you want to delete this extra class?")) return;
     try {
       await api.delete(`/timetable/extra-class/${overrideId}`);
+      useNotificationStore.getState().notify({
+        title: "Extra Class Deleted",
+        description: "Ad-hoc extra class removed from today's schedule.",
+        type: "info",
+        category: "delete",
+      });
       fetchData();
       fetchStats();
       window.dispatchEvent(new Event("attendance-updated"));

@@ -3,3 +3,7 @@ __pycache__/
 .env
 .pytest_cache/
 *.pyc
+uploads/
+models/
+diagnose.py
+test_db.py
