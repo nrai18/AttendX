@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { api } from "../../lib/api";
+import { useNotificationStore } from "../../stores/notificationStore";
 import {
   Calendar,
   Plus,
@@ -91,6 +92,12 @@ export const CreateSemesterModal: React.FC<CreateSemesterModalProps> = ({
         startDate,
         endDate,
         isActive: true,
+      });
+      useNotificationStore.getState().notify({
+        title: "Semester Created",
+        description: `Active semester "${generatedName}" created and ready for attendance.`,
+        type: "success",
+        category: "semester",
       });
       onSuccess();
       onClose();
