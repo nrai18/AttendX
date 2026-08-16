@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { useSilentRefresh } from "./hooks/useSilentRefresh";
 import { useTheme } from "./hooks/useTheme";
 import { useAuthStore } from "./stores/authStore";
+import { useThemeStore } from "./stores/themeStore";
 import { AppShell } from "./components/layout/AppShell";
 import { LoginPage } from "./pages/auth/LoginPage";
 import { SignupPage } from "./pages/auth/SignupPage";
@@ -54,10 +55,11 @@ const RootRoute: React.FC = () => {
 export function App() {
   useSilentRefresh();
   useTheme();
+  const theme = useThemeStore(state => state.theme);
 
   return (
     <>
-      <Toaster position="bottom-center" toastOptions={{ className: 'rounded-xl border border-border shadow-lg' }} />
+      <Toaster position="bottom-center" theme={theme as any} toastOptions={{ className: 'rounded-xl border border-border shadow-lg' }} />
       <BrowserRouter>
         <Routes>
           {/* Public Landing Page */}
