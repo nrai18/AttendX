@@ -1,6 +1,7 @@
 import { Response } from "express";
 import { UserService } from "../services/user.service";
 import { AuthenticatedRequest } from "../middleware/authenticate";
+import { CacheService } from "../services/cache.service";
 
 export class UserController {
   static async getMe(req: AuthenticatedRequest, res: Response) {
@@ -17,6 +18,7 @@ export class UserController {
     try {
       const userId = req.user!.userId;
       const updatedUser = await UserService.updateProfile(userId, req.body);
+      await CacheService.invalidateUser(userId);
       res.status(200).json(updatedUser);
     } catch (error: any) {
       res.status(400).json({ message: error.message });
@@ -27,6 +29,7 @@ export class UserController {
     try {
       const userId = req.user!.userId;
       const result = await UserService.resetData(userId);
+      await CacheService.invalidateUser(userId);
       res.status(200).json(result);
     } catch (error: any) {
       res.status(500).json({ message: error.message || "Failed to reset app data" });
@@ -41,6 +44,7 @@ export class UserController {
         return res.status(400).json({ message: "Invalid or empty subjectIds array" });
       }
       const result = await UserService.resetSubjectAttendance(userId, subjectIds);
+      await CacheService.invalidateUser(userId);
       res.status(200).json(result);
     } catch (error: any) {
       res.status(500).json({ message: error.message || "Failed to reset subject attendance" });
@@ -51,6 +55,7 @@ export class UserController {
     try {
       const userId = req.user!.userId;
       const result = await UserService.resetAllAttendance(userId);
+      await CacheService.invalidateUser(userId);
       res.status(200).json(result);
     } catch (error: any) {
       res.status(500).json({ message: error.message || "Failed to reset all attendance" });
