@@ -61,4 +61,26 @@ export class UserController {
       res.status(500).json({ message: error.message || "Failed to reset all attendance" });
     }
   }
+
+  static async resetTimetable(req: AuthenticatedRequest, res: Response) {
+    try {
+      const userId = req.user!.userId;
+      const result = await UserService.resetTimetable(userId);
+      await CacheService.invalidateUser(userId);
+      res.status(200).json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message || "Failed to reset timetable" });
+    }
+  }
+
+  static async resetEvents(req: AuthenticatedRequest, res: Response) {
+    try {
+      const userId = req.user!.userId;
+      const result = await UserService.resetEvents(userId);
+      await CacheService.invalidateUser(userId);
+      res.status(200).json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message || "Failed to reset events" });
+    }
+  }
 }

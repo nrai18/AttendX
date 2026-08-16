@@ -63,6 +63,13 @@ export class UserService {
     return { success: true, message: "Timetable schedule cleared successfully." };
   }
 
+  static async resetEvents(userId: string) {
+    await prisma.event.deleteMany({
+      where: { userId }
+    });
+    return { success: true, message: "Events cleared successfully." };
+  }
+
   static async resetData(userId: string) {
     await prisma.attendance.deleteMany({ where: { userId } });
     await prisma.timetableOverride.deleteMany({ where: { semester: { userId } } });
