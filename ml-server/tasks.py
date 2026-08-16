@@ -33,9 +33,15 @@ def process_zip_upload(self, file_path: str, user_id: str):
             
         self.update_state(state='PROGRESS', meta={'progress': 30, 'status': 'Validating CSV files'})
         
-        subject_csv = os.path.join(extract_dir, 'subject_stats.csv')
+        subject_csv_1 = os.path.join(extract_dir, 'subject_stats.csv')
+        subject_csv_2 = os.path.join(extract_dir, 'subjects.csv')
+        subject_csv = subject_csv_1 if os.path.exists(subject_csv_1) else subject_csv_2
+        
         timetable_csv = os.path.join(extract_dir, 'timetable.csv')
-        logs_csv = os.path.join(extract_dir, 'attendance_logs.csv')
+        
+        logs_csv_1 = os.path.join(extract_dir, 'attendance_logs.csv')
+        logs_csv_2 = os.path.join(extract_dir, 'records.csv')
+        logs_csv = logs_csv_1 if os.path.exists(logs_csv_1) else logs_csv_2
         
         if not os.path.exists(subject_csv) or not os.path.exists(timetable_csv) or not os.path.exists(logs_csv):
             return {'progress': 0, 'status': 'Error: Invalid ZIP format. Missing required CSV files.'}
