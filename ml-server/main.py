@@ -28,10 +28,16 @@ app.add_middleware(
 
 ml_engine = PredictiveMLEngine()
 
+redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+if redis_url.startswith("redis://") and not "localhost" in redis_url and not "127.0.0.1" in redis_url:
+    redis_url = redis_url.replace("redis://", "rediss://", 1)
+
 celery_app = Celery(
     "attendx_worker",
-    broker=os.getenv("REDIS_URL", "redis://localhost:6379/0"),
-    backend=os.getenv("REDIS_URL", "redis://localhost:6379/0")
+    broker=redis_url,
+    backend=redis_url,
+    broker_use_ssl={'ssl_cert_reqs': 'CERT_NONE'},
+    redis_backend_use_ssl={'ssl_cert_reqs': 'CERT_NONE'}
 )
 
 # --- Endpoints ---
