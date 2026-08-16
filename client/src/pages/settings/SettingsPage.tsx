@@ -224,7 +224,9 @@ export const SettingsPage: React.FC = () => {
     setIsImportingCSV(true);
 
     try {
-      const res = await fetch(`http://localhost:8000/upload/zip?user_id=${user.id}`, {
+      const mlApiUrl = import.meta.env.VITE_ML_API_URL || "http://localhost:8000";
+      
+      const res = await fetch(`${mlApiUrl}/upload/zip?user_id=${user.id}`, {
         method: "POST",
         body: formData,
       });
@@ -237,7 +239,8 @@ export const SettingsPage: React.FC = () => {
       const taskId = data.task_id;
 
       // Connect to WebSocket for progress
-      const ws = new WebSocket(`ws://localhost:8000/ws/progress/${taskId}`);
+      const wsUrl = mlApiUrl.replace(/^http/, 'ws');
+      const ws = new WebSocket(`${wsUrl}/ws/progress/${taskId}`);
       
       ws.onmessage = (event) => {
         const msg = JSON.parse(event.data);
