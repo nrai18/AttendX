@@ -246,8 +246,8 @@ export const SettingsPage: React.FC = () => {
         if (msg.progress === 100 || msg.status.includes('Error')) {
           ws.close();
           if (msg.progress === 100) {
-            toast.success("Data imported successfully! Reloading...", { id: toastId });
-            setTimeout(() => window.location.reload(), 1500);
+            toast.success("Data imported successfully! Redirecting...", { id: toastId });
+            setTimeout(() => window.location.href = "/timetable", 1500);
           } else {
             toast.error(msg.status, { id: toastId });
             setIsImportingCSV(false);
