@@ -69,6 +69,10 @@ export class UserService {
     await prisma.timetableSlot.deleteMany({ where: { semester: { userId } } });
     await prisma.subject.deleteMany({ where: { userId } });
     await prisma.semester.deleteMany({ where: { userId } });
+    await prisma.event.deleteMany({ where: { userId } });
+    await prisma.assignmentCompletion.deleteMany({ where: { userId } });
+    await prisma.assignment.deleteMany({ where: { userId } });
+    await prisma.note.deleteMany({ where: { userId } });
     return { success: true, message: "All app data reset successfully." };
   }
 
