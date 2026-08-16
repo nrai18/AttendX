@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Loader2, CheckCircle2, XCircle, AlertCircle, PartyPopper, BookOpen, Palmtree, Timer, TrendingUp, TrendingDown, Plus, MessageSquare, Sparkles, ChevronRight, X, Trash2 } from "lucide-react";
+import { Loader2, CheckCircle2, XCircle, AlertCircle, PartyPopper, BookOpen, Palmtree, Timer, TrendingUp, TrendingDown, Plus, MessageSquare, Sparkles, ChevronRight, ChevronLeft, X, Trash2 } from "lucide-react";
 import { api } from "../../lib/api";
 import { useAuthStore } from "../../stores/authStore";
 import { CreateSemesterModal } from "../../components/semester/CreateSemesterModal";
@@ -344,11 +344,35 @@ export const TodayPage = () => {
       </div>
 
       <div className="flex justify-between items-center flex-wrap gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">{dateParam ? "Classes on" : "Today's Schedule"}</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            {adjustedDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
-          </p>
+        <div className="flex items-center gap-3">
+          <button 
+            onClick={() => {
+              const prev = new Date(targetDateStr);
+              prev.setDate(prev.getDate() - 1);
+              navigate(`/today?date=${prev.toISOString().split("T")[0]}`);
+            }}
+            className="p-1.5 hover:bg-muted rounded-lg text-muted-foreground transition-colors cursor-pointer"
+          >
+            <ChevronLeft className="w-5 h-5" />
+          </button>
+          
+          <div>
+            <h1 className="text-2xl font-bold text-foreground">{dateParam ? "Classes on" : "Today's Schedule"}</h1>
+            <p className="text-sm text-muted-foreground mt-1">
+              {new Date(targetDateStr).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+            </p>
+          </div>
+
+          <button 
+            onClick={() => {
+              const next = new Date(targetDateStr);
+              next.setDate(next.getDate() + 1);
+              navigate(`/today?date=${next.toISOString().split("T")[0]}`);
+            }}
+            className="p-1.5 hover:bg-muted rounded-lg text-muted-foreground transition-colors cursor-pointer"
+          >
+            <ChevronRight className="w-5 h-5" />
+          </button>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           {activeSemester && agenda.length > 0 && (
