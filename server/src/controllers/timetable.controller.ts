@@ -6,10 +6,15 @@ import { AuthenticatedRequest } from "../middleware/authenticate";
 import { CacheService } from "../services/cache.service";
 
 export class TimetableController {
-  static async getTimetable(req: Request, res: Response) {
+  static async getTimetable(req: Request | any, res: Response) {
     const semesterId = String(req.params.semesterId);
     const group = (req.query.group as string) || undefined;
-    const slots = await TimetableService.getTimetable(semesterId, group);
+    const userId = req.user?.userId || "anonymous";
+    const slots = await CacheService.getOrSet(
+      userId,
+      `timetable:${semesterId}:${group || "all"}`,
+      () => TimetableService.getTimetable(semesterId, group)
+    );
     res.json(slots);
   }
 

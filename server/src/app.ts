@@ -80,20 +80,11 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
 });
 
 export async function startServer() {
+  console.log("startServer() invoked...");
   const PORT = 3000;
 
   if (process.env.NODE_ENV !== "production") {
-    try {
-      const { createServer: createViteServer } = await import("vite");
-      const vite = await createViteServer({
-        root: path.resolve(process.cwd(), "client"),
-        server: { middlewareMode: true },
-        appType: "spa",
-      });
-      app.use(vite.middlewares);
-    } catch (e) {
-      console.error("Vite middleware startup error:", e);
-    }
+    console.log("Skipping Vite middleware in dev since we run a separate client dev server.");
   } else {
     // tsup bundles to server/dist/server.js so:
     //   __dirname = /opt/render/project/src/server/dist
@@ -107,6 +98,7 @@ export async function startServer() {
     });
   }
 
+  console.log("Calling app.listen...");
   app.listen(Number(PORT), "0.0.0.0", () => {
     console.log(`🚀 Server ready at: http://0.0.0.0:${PORT}`);
   });

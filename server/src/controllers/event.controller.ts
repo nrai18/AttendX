@@ -27,7 +27,13 @@ export class EventController {
       return res.status(400).json({ error: "Missing semesterId" });
     }
     try {
-      const payload = await EventService.processCalendarOcr(req.user!.userId, req.file.buffer, semesterId);
+      const payload = await EventService.processCalendarOcr(
+        req.user!.userId, 
+        req.file.buffer, 
+        semesterId, 
+        req.file.originalname, 
+        req.file.mimetype
+      );
       res.json(payload);
     } catch (error) {
       console.error("OCR import failed:", error);

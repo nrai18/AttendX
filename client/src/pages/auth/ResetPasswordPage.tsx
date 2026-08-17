@@ -1,6 +1,6 @@
-import React, { useState, useMemo } from "react";
-import { useNavigate, Link } from "react-router-dom";
-import { GraduationCap, Mail, Lock, User as UserIcon, Loader2, ArrowRight, Check, X, ArrowLeft } from "lucide-react";
+import React, { useState, useMemo, useEffect } from "react";
+import { useNavigate, useSearchParams, Link } from "react-router-dom";
+import { GraduationCap, Lock, Loader2, ArrowRight, Check, X, AlertTriangle, ArrowLeft } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
@@ -8,16 +8,15 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { neon } from "../../lib/neon";
 import { toast } from "sonner";
 
-export const SignupPage: React.FC = () => {
+export const ResetPasswordPage: React.FC = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const token = searchParams.get("token");
 
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [showVerification, setShowVerification] = useState(false);
+  const [isSuccess, setIsSuccess] = useState(false);
 
-  // Password rules validation
   const rules = useMemo(() => {
     return [
       { id: "length", label: "At least 8 characters", valid: password.length >= 8 },
@@ -31,33 +30,74 @@ export const SignupPage: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!isPasswordValid) {
-      toast.error("Please meet all password requirements");
+    if (!isPasswordValid) return;
+    if (!token) {
+      toast.error("Missing reset token");
       return;
     }
 
     setLoading(true);
 
     try {
-      const { data, error } = await neon.auth.signUp.email({ 
-        email, 
-        password,
-        name 
+      const { data, error } = await neon.auth.resetPassword({ 
+        newPassword: password,
+        token 
       });
       
       if (error) {
-        toast.error(error.message || "Sign up failed");
+        toast.error(error.message || "Failed to reset password");
       } else {
-        toast.success("Account created successfully!");
-        navigate("/today", { replace: true });
+        setIsSuccess(true);
       }
     } catch (err: any) {
       toast.error("An unexpected error occurred");
-      console.error("Signup Failed:", err);
+      console.error("Reset Password Failed:", err);
     } finally {
       setLoading(false);
     }
   };
+
+  if (!token) {
+    return (
+      <div className="min-h-screen bg-[#050508] text-white flex items-center justify-center p-4 antialiased">
+        <div className="w-full max-w-md space-y-6 text-center">
+          <div className="inline-flex p-4 rounded-full bg-amber-500/20 text-amber-500 mb-4">
+            <AlertTriangle className="w-8 h-8" />
+          </div>
+          <h2 className="text-2xl font-bold">Invalid Reset Link</h2>
+          <p className="text-muted-foreground">
+            This password reset link is invalid or has expired. Please request a new one.
+          </p>
+          <div className="pt-6">
+            <Button className="w-full" onClick={() => navigate("/forgot-password")}>
+              Request New Link
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (isSuccess) {
+    return (
+      <div className="min-h-screen bg-[#050508] text-white flex items-center justify-center p-4 antialiased">
+        <div className="w-full max-w-md space-y-6 text-center">
+          <div className="inline-flex p-4 rounded-full bg-emerald-500/20 text-emerald-500 mb-4">
+            <Check className="w-8 h-8" />
+          </div>
+          <h2 className="text-2xl font-bold">Password Reset Successful</h2>
+          <p className="text-muted-foreground">
+            Your password has been changed successfully. You can now sign in with your new password.
+          </p>
+          <div className="pt-6">
+            <Button className="w-full" onClick={() => navigate("/login")}>
+              Sign In
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#050508] text-white flex items-center justify-center p-4 antialiased relative">
@@ -73,52 +113,19 @@ export const SignupPage: React.FC = () => {
           <div className="inline-flex p-3 rounded-2xl bg-gradient-to-tr from-indigo-600 to-violet-500 shadow-xl shadow-indigo-500/25 mb-2">
             <GraduationCap className="w-8 h-8 text-white" />
           </div>
-          <h1 className="text-3xl font-extrabold tracking-tight">Create Account</h1>
-          <p className="text-sm text-muted-foreground">Join AttendX to organize your academic schedule</p>
+          <h1 className="text-3xl font-extrabold tracking-tight">AttendX</h1>
         </div>
 
         <Card className="bg-[#0c0d12]/90 border-white/10 shadow-2xl backdrop-blur-xl">
           <form onSubmit={handleSubmit}>
             <CardHeader className="space-y-1">
-              <CardTitle className="text-xl">Sign Up</CardTitle>
-              <CardDescription>Enter your details to create your student account</CardDescription>
+              <CardTitle className="text-xl">Create new password</CardTitle>
+              <CardDescription>Your new password must meet the security requirements.</CardDescription>
             </CardHeader>
 
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="name">Full Name</Label>
-                <div className="relative">
-                  <UserIcon className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
-                  <Input
-                    id="name"
-                    type="text"
-                    placeholder="Raina"
-                    value={name}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setName(e.target.value)}
-                    required
-                    className="pl-9 bg-white/5 border-white/10 focus:border-primary text-white"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
-                <div className="relative">
-                  <Mail className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
-                  <Input
-                    id="email"
-                    type="email"
-                    placeholder="student@iiitu.ac.in"
-                    value={email}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEmail(e.target.value)}
-                    required
-                    className="pl-9 bg-white/5 border-white/10 focus:border-primary text-white"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="password">Password</Label>
+                <Label htmlFor="password">New Password</Label>
                 <div className="relative">
                   <Lock className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
                   <Input
@@ -132,7 +139,6 @@ export const SignupPage: React.FC = () => {
                   />
                 </div>
 
-                {/* Real-time password rules */}
                 {password.length > 0 && (
                   <div className="pt-2 space-y-1.5">
                     {rules.map(rule => (
@@ -158,14 +164,8 @@ export const SignupPage: React.FC = () => {
                 disabled={loading || (password.length > 0 && !isPasswordValid)} 
                 className="w-full bg-primary hover:bg-primary/90 font-semibold h-11 rounded-xl"
               >
-                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <>Create Account <ArrowRight className="w-4 h-4 ml-2" /></>}
+                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <>Reset Password <ArrowRight className="w-4 h-4 ml-2" /></>}
               </Button>
-              <p className="text-sm text-center text-muted-foreground">
-                Already have an account?{" "}
-                <Link to="/login" className="text-primary hover:underline font-medium">
-                  Sign in
-                </Link>
-              </p>
             </CardFooter>
           </form>
         </Card>

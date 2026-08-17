@@ -6,7 +6,12 @@ import { CacheService } from "../services/cache.service";
 export class SubjectController {
   static async list(req: AuthenticatedRequest, res: Response) {
     const semesterId = req.query.semesterId as string | undefined;
-    const subjects = await SubjectService.listSubjects(req.user!.userId, semesterId);
+    const userId = req.user!.userId;
+    const subjects = await CacheService.getOrSet(
+      userId,
+      `subjects:${semesterId || "all"}`,
+      () => SubjectService.listSubjects(userId, semesterId)
+    );
     res.json(subjects);
   }
 

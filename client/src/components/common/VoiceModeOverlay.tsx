@@ -8,6 +8,14 @@ interface VoiceModeOverlayProps {
   onSendMessage: (query: string) => Promise<string | undefined>;
 }
 
+const FILLER_PHRASES = [
+  "Let me look that up for you...",
+  "Checking the institute ordinances...",
+  "I'm analyzing your request...",
+  "Let me check the regulations for that...",
+  "Looking into the policies right now..."
+];
+
 export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
   isOpen,
   onClose,
@@ -142,6 +150,11 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
     const query = transcript.trim();
     stopListening();
     setIsProcessing(true);
+
+    // Speak a filler phrase immediately while doing the work in the background
+    const randomFiller = FILLER_PHRASES[Math.floor(Math.random() * FILLER_PHRASES.length)];
+    setLastResponse(randomFiller);
+    handleSpeakText(randomFiller);
 
     try {
       const response = await onSendMessage(query);

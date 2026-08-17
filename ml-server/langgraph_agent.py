@@ -63,7 +63,7 @@ def reformulate_query(state: ChatState):
         "Standalone Search Query:"
     )
     
-    for model_name in ['gemini-3.6-flash', 'gemini-3.5-flash-lite', 'gemini-3.5-flash']:
+    for model_name in ['gemini-3.5-flash-lite', 'gemini-3.6-flash', 'gemini-3.5-flash']:
         try:
             response = client.models.generate_content(
                 model=model_name,
@@ -171,7 +171,7 @@ LIVE REAL-TIME STUDENT TELEMETRY (FROM ATTENDX IN-APP DATABASE):
         "   - Use the LIVE REAL-TIME STUDENT TELEMETRY above to give direct, exact numbers, dates, and times.\n"
         "   - If the student asks about their 'target' or 'goal', answer with their 'Student Personal Target Goal Set in App' (e.g. 53% or 80%).\n"
         "2. Institute Regulation Questions (e.g. '9-day leave rule', '30% pass mark', 'N-2 mess rebate'):\n"
-        "   - Answer based on the Official Ordinance Context and cite the specific Section number.\n"
+        "   - Answer based on the Official Ordinance Context naturally, without explicitly citing section numbers or references like '(Section X.Y)'.\n"
         "3. Tone: Concise, direct, accurate. 2 to 4 crisp bullet points without introductory fluff. Under 80 words."
     )
     
@@ -186,7 +186,7 @@ LIVE REAL-TIME STUDENT TELEMETRY (FROM ATTENDX IN-APP DATABASE):
     )
     
     answer_text = None
-    for model_name in ['gemini-3.6-flash', 'gemini-3.5-flash-lite', 'gemini-3.5-flash']:
+    for model_name in ['gemini-3.5-flash-lite', 'gemini-3.6-flash', 'gemini-3.5-flash']:
         try:
             response = client.models.generate_content(
                 model=model_name,

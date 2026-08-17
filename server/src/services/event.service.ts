@@ -25,70 +25,126 @@ export class EventService {
     });
   }
 
-  static async processCalendarOcr(userId: string, fileBuffer: Buffer, semesterId: string) {
-    // Simulate OCR delay
-    await new Promise((resolve) => setTimeout(resolve, 2000));
+  static async processCalendarOcr(userId: string, fileBuffer: Buffer, semesterId: string, fileName: string = "", mimeType: string = "") {
+    let extractedText = "";
 
-    // The user provided the exact dates for Semester 5 IIIT-U
-    // We will return a structured proposal for the user to confirm via EventWizardModal
-    const proposedEvents = [
-      {
-        title: "Mid Semester Exams",
-        eventType: "midsem",
-        date: "2026-09-21",
-        endDate: "2026-09-23",
-      },
-      {
-        title: "Mid Semester Practical Exams",
-        eventType: "midsem",
-        date: "2026-09-24",
-        endDate: "2026-09-25",
-      },
-      {
-        title: "Mridang Cultural Fest",
-        eventType: "fest",
-        date: "2026-10-01",
-        endDate: "2026-10-03",
-      },
-      {
-        title: "Institute Day",
-        eventType: "institute",
-        date: "2026-10-03",
-      },
-      {
-        title: "Yalgaar Sports Fest",
-        eventType: "fest",
-        date: "2026-10-05",
-        endDate: "2026-10-28",
-      },
-      {
-        title: "Mid Semester Break",
-        eventType: "holiday",
-        date: "2026-11-09",
-        endDate: "2026-11-13",
-      },
-      {
-        title: "End Semester Theory Exams",
-        eventType: "endsem",
-        date: "2026-11-30",
-        endDate: "2026-12-05",
-      },
-      {
-        title: "End Semester Lab Exams",
-        eventType: "endsem",
-        date: "2026-12-07",
-        endDate: "2026-12-12",
-      },
-      {
-        title: "Winter Vacation Begins",
-        eventType: "vacation",
-        date: "2026-12-13",
+    // 1. If PDF file, extract text via pdf-parse first
+    if (mimeType.includes("pdf") || fileName.endsWith(".pdf")) {
+      try {
+        // Lazy require to avoid module-level startup crash in production
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const pdfParse = require("pdf-parse");
+        const parsed = await pdfParse(fileBuffer);
+        extractedText = parsed.text || "";
+      } catch (e) {
+        console.warn("pdf-parse extraction warning:", e);
       }
-    ];
+    }
 
+    // 2. AI Gemini Vision / OCR processing
+    if (process.env.GEMINI_API_KEY) {
+      const { GoogleGenAI } = require("@google/genai");
+      try {
+        const ai = new GoogleGenAI({
+          apiKey: process.env.GEMINI_API_KEY,
+          httpOptions: { headers: { "User-Agent": "aistudio-build" } },
+        });
+
+        const prompt = `
+You are an expert academic calendar parser for a technical university.
+Parse this uploaded academic calendar document (${fileName}).
+Extract all important dates including Exams, Holidays, Fests, Semester Start/End dates, and any other significant academic events.
+
+${extractedText ? `Extracted Document Raw Text:\n${extractedText.slice(0, 10000)}\n` : ""}
+
+Guidelines for eventType field:
+- "midsem" for Mid Semester Exams / Practical Exams
+- "endsem" for End Semester Theory / Lab Exams
+- "holiday" for single day holidays, gazetted holidays, or breaks
+- "fest" for cultural/technical/sports fests like Mridang, Yalgaar, Meraki
+- "institute" for Institute Day, Convocation, etc.
+- "vacation" for Winter/Summer vacations or semester breaks
+- "academic" for generic academic milestones (Registration, Grade submission, etc.)
+
+Dates must be in 'YYYY-MM-DD' format. If an event spans multiple days, provide 'endDate'.
+
+Return ONLY strict JSON matching this structure:
+{
+  "status": "needs_setup",
+  "rawEvents": [
+    {
+      "title": "Event Title",
+      "eventType": "midsem|endsem|holiday|fest|institute|vacation|academic",
+      "date": "2026-09-21",
+      "endDate": "2026-09-23" // optional
+    }
+  ]
+}
+`;
+
+        const contents: any[] = [prompt];
+        if (mimeType.includes("pdf") || fileName.endsWith(".pdf")) {
+          contents.push({
+            inlineData: { mimeType: "application/pdf", data: fileBuffer.toString("base64") }
+          });
+        } else {
+          contents.push({
+            inlineData: { mimeType: mimeType || "image/png", data: fileBuffer.toString("base64") }
+          });
+        }
+
+        const candidateModels = ["gemini-3.6-flash", "gemini-3.5-flash-lite", "gemini-3.5-flash", "gemini-3.7-flash"];
+        let response: any = null;
+        let lastError: any = null;
+
+        for (const modelName of candidateModels) {
+          for (let attempt = 0; attempt < 2; attempt++) {
+            try {
+              response = await ai.models.generateContent({
+                model: modelName,
+                contents,
+                config: { responseMimeType: "application/json" }
+              });
+              if (response && response.text) break;
+            } catch (err: any) {
+              lastError = err;
+              const isTransient = err?.status === "UNAVAILABLE" || err?.code === 503 || err?.code === 429 || String(err?.message || "").includes("demand");
+              if (isTransient && attempt === 0) {
+                await new Promise((res) => setTimeout(res, 800));
+                continue;
+              }
+              break;
+            }
+          }
+          if (response && response.text) break;
+        }
+
+        if (!response && lastError) throw lastError;
+
+        const textResponse = response?.text || "";
+        let parsedAiResult: any = null;
+        try {
+          parsedAiResult = JSON.parse(textResponse);
+        } catch (e) {
+          const jsonMatch = textResponse.match(/\{[\s\S]*\}/);
+          if (jsonMatch) parsedAiResult = JSON.parse(jsonMatch[0]);
+        }
+
+        if (parsedAiResult && parsedAiResult.rawEvents) {
+          return {
+            status: parsedAiResult.status || "needs_setup",
+            rawEvents: parsedAiResult.rawEvents
+          };
+        }
+      } catch (err) {
+        console.error("Gemini Calendar OCR Error:", err);
+      }
+    }
+
+    // Fallback to empty if AI fails or no API key
     return {
       status: "needs_setup",
-      rawEvents: proposedEvents
+      rawEvents: []
     };
   }
 

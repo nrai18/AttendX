@@ -18,7 +18,7 @@ export default defineConfig({
   server: {
     proxy: {
       "/api": {
-        target: "http://localhost:3000", // <-- Ensure this matches your Express backend port
+        target: "http://127.0.0.1:3000", // <-- Ensure this matches your Express backend port
         changeOrigin: true,
         secure: false,
       },
