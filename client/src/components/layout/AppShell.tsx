@@ -5,9 +5,7 @@ import { Sidebar } from "./Sidebar";
 import { TopBar } from "./TopBar";
 import { useAttendanceStore } from "../../stores/attendanceStore";
 import { AttendanceAnimationPopup } from "../common/AttendanceAnimationPopup";
-import { CreateSemesterModal } from "../semester/CreateSemesterModal";
 import { FloatingChatbot } from "../common/FloatingChatbot";
-import { Plus } from "lucide-react";
 
 interface AppShellProps {
   title?: string;
@@ -15,11 +13,15 @@ interface AppShellProps {
 }
 
 export const AppShell: React.FC<AppShellProps> = ({ title, onAddClick }) => {
-  const [isCreateSemesterOpen, setIsCreateSemesterOpen] = React.useState(false);
-  const { fetchStats, hasActiveSemester, isLoading } = useAttendanceStore();
+  const { fetchStats } = useAttendanceStore();
 
   useEffect(() => {
     fetchStats();
+    const handleUpdate = () => {
+      fetchStats();
+    };
+    window.addEventListener("attendance-updated", handleUpdate);
+    return () => window.removeEventListener("attendance-updated", handleUpdate);
   }, [fetchStats]);
 
   return (
@@ -34,24 +36,6 @@ export const AppShell: React.FC<AppShellProps> = ({ title, onAddClick }) => {
 
         {/* Page Content */}
         <main className="flex-1 max-w-5xl w-full mx-auto p-4 sm:p-6 space-y-6">
-          {!isLoading && hasActiveSemester === false && (
-            <div className="bg-indigo-950/20 border border-indigo-500/30 rounded-2xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div>
-                <h3 className="text-base font-bold text-white">No Active Semester</h3>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  Create an active semester to enable attendance percentage calculations and safe buffer metrics.
-                </p>
-              </div>
-              <button
-                onClick={() => setIsCreateSemesterOpen(true)}
-                className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-lg shadow-indigo-600/30 shrink-0 cursor-pointer"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Create Semester</span>
-              </button>
-            </div>
-          )}
-
           <Outlet />
         </main>
       </div>
@@ -64,12 +48,6 @@ export const AppShell: React.FC<AppShellProps> = ({ title, onAddClick }) => {
 
       {/* Floating AI Ordinance & Policy Chatbot */}
       <FloatingChatbot />
-
-      <CreateSemesterModal 
-        isOpen={isCreateSemesterOpen} 
-        onClose={() => setIsCreateSemesterOpen(false)} 
-        onSuccess={() => fetchStats()} 
-      />
     </div>
   );
 };

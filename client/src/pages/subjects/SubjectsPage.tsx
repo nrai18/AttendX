@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Plus, Pencil, Trash2, Loader2, AlertCircle, TrendingUp, TrendingDown, CheckCircle2, XCircle, Shield } from "lucide-react";
 import { api } from "../../lib/api";
 import { CreateSemesterModal } from "../../components/semester/CreateSemesterModal";
+import { SubjectModal } from "../../components/subjects/SubjectModal";
 import { useAuthStore } from "../../stores/authStore";
 import { useNavigate } from "react-router-dom";
 
@@ -11,6 +12,7 @@ interface Subject {
   code?: string;
   faculty?: string;
   colorHex?: string;
+  targetAttendance?: number;
   _count?: { attendance: number };
 }
 
@@ -144,15 +146,9 @@ export const SubjectsPage = () => {
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isAdding, setIsAdding] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingSubject, setEditingSubject] = useState<Subject | null>(null);
   const [activeSemesterId, setActiveSemesterId] = useState<string | null>(null);
   const [isCreateSemesterOpen, setIsCreateSemesterOpen] = useState(false);
-
-  // Form State
-  const [name, setName] = useState("");
-  const [code, setCode] = useState("");
-  const [faculty, setFaculty] = useState("");
-  const [colorHex, setColorHex] = useState("#8b5cf6");
 
   const fetchData = async () => {
     try {
@@ -186,37 +182,9 @@ export const SubjectsPage = () => {
     return () => window.removeEventListener("attendance-updated", handleUpdate);
   }, []);
 
-  const resetForm = () => {
-    setName("");
-    setCode("");
-    setFaculty("");
-    setColorHex("#8b5cf6");
-    setIsAdding(false);
-    setEditingId(null);
-  };
-
   const handleEdit = (subject: Subject) => {
-    setName(subject.name);
-    setCode(subject.code || "");
-    setFaculty(subject.faculty || "");
-    setColorHex(subject.colorHex || "#8b5cf6");
-    setEditingId(subject.id);
-    setIsAdding(false);
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      if (editingId) {
-        await api.patch(`/subjects/${editingId}`, { name, code, faculty, colorHex });
-      } else {
-        await api.post("/subjects", { name, code, faculty, colorHex });
-      }
-      resetForm();
-      fetchData();
-    } catch (error) {
-      console.error("Failed to save subject:", error);
-    }
+    setEditingSubject(subject);
+    setIsAdding(true);
   };
 
   const handleDelete = async (id: string) => {
@@ -290,7 +258,7 @@ export const SubjectsPage = () => {
           <p className="text-sm text-muted-foreground">Your semester attendance overview.</p>
         </div>
         <button
-          onClick={() => { resetForm(); setIsAdding(true); }}
+          onClick={() => { setEditingSubject(null); setIsAdding(true); }}
           className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-primary-foreground px-4 py-2 rounded-lg text-sm font-medium transition-colors"
         >
           <Plus className="w-4 h-4" />
@@ -314,74 +282,6 @@ export const SubjectsPage = () => {
             <span>Create Semester</span>
           </button>
         </div>
-      )}
-
-      {(isAdding || editingId) && (
-        <form onSubmit={handleSubmit} className="bg-card border border-border rounded-2xl p-5 space-y-4 shadow-md">
-          <h2 className="text-lg font-semibold text-foreground">{editingId ? "Edit Subject" : "New Subject"}</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Subject Name *</label>
-              <input
-                required
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="e.g. Digital Design"
-                className="w-full bg-background border border-border rounded-lg px-4 py-2.5 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/50"
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Subject Code</label>
-              <input
-                type="text"
-                value={code}
-                onChange={(e) => setCode(e.target.value)}
-                placeholder="e.g. ECSE303"
-                className="w-full bg-background border border-border rounded-lg px-4 py-2.5 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/50"
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Faculty Name</label>
-              <input
-                type="text"
-                value={faculty}
-                onChange={(e) => setFaculty(e.target.value)}
-                placeholder="e.g. SAK"
-                className="w-full bg-background border border-border rounded-lg px-4 py-2.5 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/50"
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Color Indicator</label>
-              <div className="flex gap-2">
-                {["#8b5cf6", "#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#ec4899"].map((color) => (
-                  <button
-                    key={color}
-                    type="button"
-                    onClick={() => setColorHex(color)}
-                    className={`w-10 h-10 rounded-full transition-transform ${colorHex === color ? "scale-110 ring-2 ring-primary ring-offset-2 ring-offset-background" : "opacity-80 hover:opacity-100"}`}
-                    style={{ backgroundColor: color }}
-                  />
-                ))}
-              </div>
-            </div>
-          </div>
-          <div className="flex justify-end gap-3 pt-2">
-            <button
-              type="button"
-              onClick={resetForm}
-              className="px-4 py-2 rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="px-4 py-2 rounded-lg text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
-            >
-              Save Subject
-            </button>
-          </div>
-        </form>
       )}
 
       {mergedStats.length === 0 && !isLoading && !isAdding ? (
@@ -542,6 +442,12 @@ export const SubjectsPage = () => {
         isOpen={isCreateSemesterOpen}
         onClose={() => setIsCreateSemesterOpen(false)}
         onSuccess={fetchData}
+      />
+      <SubjectModal
+        isOpen={isAdding}
+        onClose={() => { setIsAdding(false); setEditingSubject(null); }}
+        onSuccess={fetchData}
+        subject={editingSubject}
       />
     </div>
   );

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { toast } from "sonner";
 import { api } from "../../lib/api";
 import {
   Calendar,
@@ -92,6 +93,7 @@ export const CreateSemesterModal: React.FC<CreateSemesterModalProps> = ({
         endDate,
         isActive: true,
       });
+      toast.success("Semester created and activated successfully!");
       onSuccess();
       onClose();
     } catch (err: any) {

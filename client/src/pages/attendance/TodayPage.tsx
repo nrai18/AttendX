@@ -31,7 +31,9 @@ export const TodayPage = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const dateParam = searchParams.get("date");
-  const targetDateStr = dateParam || new Date().toISOString().split("T")[0];
+  const today = new Date();
+  const localTodayStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+  const targetDateStr = dateParam || localTodayStr;
   
   const [agenda, setAgenda] = useState<AgendaItem[]>([]);
   const [todayStatus, setTodayStatus] = useState<any>(null);
@@ -283,7 +285,7 @@ export const TodayPage = () => {
         </div>
       )}
 
-      {/* Overall Attendance & Predictive Forecast Banner */}
+      {/* Overall Attendance & Forecast Banner */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <div className={`rounded-2xl border p-4 flex items-center justify-between gap-4 transition-colors ${
           overallPercentage >= targetPercentage
@@ -318,7 +320,7 @@ export const TodayPage = () => {
           </div>
         </div>
 
-        {/* Predictive AI Quick Access Card */}
+        {/* Forecast AI Quick Access Card */}
         <div 
           onClick={() => navigate("/predictive")}
           className="rounded-2xl border border-primary/30 bg-gradient-to-r from-primary/10 via-card to-card p-4 flex items-center justify-between gap-3 cursor-pointer hover:border-primary/60 transition-all group shadow-sm"
@@ -329,7 +331,7 @@ export const TodayPage = () => {
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-1.5">
-                <p className="text-sm font-bold text-foreground truncate">Predictive Engine</p>
+                <p className="text-sm font-bold text-foreground truncate">Forecast Engine</p>
                 <span className="text-[10px] font-extrabold text-primary bg-primary/20 px-1.5 py-0.2 rounded uppercase">Forecast</span>
               </div>
               <p className="text-xs text-muted-foreground truncate mt-0.5">
@@ -349,7 +351,8 @@ export const TodayPage = () => {
             onClick={() => {
               const prev = new Date(targetDateStr);
               prev.setDate(prev.getDate() - 1);
-              navigate(`/today?date=${prev.toISOString().split("T")[0]}`);
+              const dateStr = `${prev.getFullYear()}-${String(prev.getMonth()+1).padStart(2,'0')}-${String(prev.getDate()).padStart(2,'0')}`;
+              navigate(`/today?date=${dateStr}`);
             }}
             className="p-1.5 hover:bg-muted rounded-lg text-muted-foreground transition-colors cursor-pointer"
           >
@@ -367,7 +370,8 @@ export const TodayPage = () => {
             onClick={() => {
               const next = new Date(targetDateStr);
               next.setDate(next.getDate() + 1);
-              navigate(`/today?date=${next.toISOString().split("T")[0]}`);
+              const dateStr = `${next.getFullYear()}-${String(next.getMonth()+1).padStart(2,'0')}-${String(next.getDate()).padStart(2,'0')}`;
+              navigate(`/today?date=${dateStr}`);
             }}
             className="p-1.5 hover:bg-muted rounded-lg text-muted-foreground transition-colors cursor-pointer"
           >

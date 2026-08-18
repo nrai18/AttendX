@@ -45,11 +45,14 @@ export const SemesterHubPage = () => {
     try {
       setIsLoading(true);
       const semRes = await api.get("/semesters/active");
+      
+      let eventsUrl = "/events";
       if (semRes.data) {
         setActiveSemester(semRes.data);
+        eventsUrl = `/events?semesterId=${semRes.data.id}`;
       }
 
-      const eventsRes = await api.get("/events");
+      const eventsRes = await api.get(eventsUrl);
       setEvents(eventsRes.data);
     } catch (error) {
       console.error("Failed to fetch academic data:", error);
@@ -105,11 +108,10 @@ export const SemesterHubPage = () => {
     }
   };
 
-  const handleSaveEvents = async (selectedEvents: any[]) => {
-    if (!activeSemester) return;
+  const handleSaveEvents = async (selectedEvents: any[], semesterId: string) => {
     try {
       await api.post("/events/save-wizard", {
-        semesterId: activeSemester.id,
+        semesterId,
         events: selectedEvents
       });
       setIsWizardOpen(false);
@@ -222,7 +224,7 @@ export const SemesterHubPage = () => {
       {/* Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-white tracking-tight">Academic Hub</h1>
+          <h1 className="text-3xl font-bold text-white tracking-tight">Semester Overview</h1>
           <p className="text-muted-foreground mt-1">
             {activeSemester ? `Managing ${activeSemester.name}` : "Track events, exams, and holidays."}
           </p>

@@ -1,18 +1,18 @@
 import React, { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { GraduationCap, Mail, Lock, Loader2, ArrowRight, ArrowLeft } from "lucide-react";
+import { GraduationCap, Mail, Lock, Loader2, ArrowRight } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "../../components/ui/card";
-import { neon } from "../../lib/neon";
-import { toast } from "sonner";
+import { useAuthStore } from "../../stores/authStore";
 
 export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
+  const setAuth = useAuthStore((state) => state.setAuth);
 
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [email, setEmail] = useState("dev@iiitu.ac.in");
+  const [password, setPassword] = useState("password");
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -20,47 +20,37 @@ export const LoginPage: React.FC = () => {
     setLoading(true);
 
     try {
-      const { data, error } = await neon.auth.signIn.email({ email, password });
-      
-      if (error) {
-        toast.error(error.message || "Login failed");
-      } else {
-        toast.success("Welcome back!");
-        navigate("/today", { replace: true });
-      }
+      const { api } = await import("../../lib/api");
+      const res = await api.post("/auth/login", { email, password });
+      const { user, accessToken } = res.data;
+      setAuth(user, accessToken);
+      navigate("/today");
     } catch (err: any) {
-      toast.error("An unexpected error occurred");
       console.error("Login Failed:", err);
+      // The global API interceptor will display the detailed toast error.
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-[#050508] text-white flex items-center justify-center p-4 antialiased relative">
-      <Link 
-        to="/" 
-        className="absolute top-8 left-8 inline-flex items-center text-sm text-white/50 hover:text-white transition-colors"
-      >
-        <ArrowLeft className="w-4 h-4 mr-2" /> Back to Home
-      </Link>
-
+    <div className="min-h-screen bg-[#050508] text-white flex items-center justify-center p-4 antialiased">
       <div className="w-full max-w-md space-y-6">
         {/* Brand Header */}
         <div className="text-center space-y-2">
           <div className="inline-flex p-3 rounded-2xl bg-gradient-to-tr from-indigo-600 to-violet-500 shadow-xl shadow-indigo-500/25 mb-2">
             <GraduationCap className="w-8 h-8 text-white" />
           </div>
-          <h1 className="text-3xl font-extrabold tracking-tight">AttendX</h1>
-          <p className="text-sm text-muted-foreground">Sign in to your account</p>
+          <h1 className="text-3xl font-extrabold tracking-tight">AttendX Dev Mode</h1>
+          <p className="text-sm text-muted-foreground">Log in directly to access the dashboard</p>
         </div>
 
         {/* Card Form */}
         <Card className="bg-[#0c0d12]/90 border-white/10 shadow-2xl backdrop-blur-xl">
           <form onSubmit={handleSubmit}>
             <CardHeader className="space-y-1">
-              <CardTitle className="text-xl">Welcome back</CardTitle>
-              <CardDescription>Enter your email and password to access your dashboard</CardDescription>
+              <CardTitle className="text-xl">Dev Sign In</CardTitle>
+              <CardDescription>Bypass backend authentication credentials for quick feature testing</CardDescription>
             </CardHeader>
 
             <CardContent className="space-y-4">
@@ -71,7 +61,7 @@ export const LoginPage: React.FC = () => {
                   <Input
                     id="email"
                     type="email"
-                    placeholder="student@iiitu.ac.in"
+                    placeholder="dev@iiitu.ac.in"
                     value={email}
                     onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEmail(e.target.value)}
                     required
@@ -81,12 +71,7 @@ export const LoginPage: React.FC = () => {
               </div>
 
               <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="password">Password</Label>
-                  <Link to="/forgot-password" className="text-xs text-primary hover:underline">
-                    Forgot password?
-                  </Link>
-                </div>
+                <Label htmlFor="password">Password</Label>
                 <div className="relative">
                   <Lock className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
                   <Input
@@ -104,14 +89,8 @@ export const LoginPage: React.FC = () => {
 
             <CardFooter className="flex flex-col space-y-4 pt-4">
               <Button type="submit" disabled={loading} className="w-full bg-primary hover:bg-primary/90 font-semibold h-11 rounded-xl">
-                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <>Sign In <ArrowRight className="w-4 h-4 ml-2" /></>}
+                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <>Dev Login <ArrowRight className="w-4 h-4 ml-2" /></>}
               </Button>
-              <p className="text-sm text-center text-muted-foreground">
-                Don't have an account?{" "}
-                <Link to="/signup" className="text-primary hover:underline font-medium">
-                  Create one
-                </Link>
-              </p>
             </CardFooter>
           </form>
         </Card>

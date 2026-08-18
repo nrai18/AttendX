@@ -3,12 +3,15 @@ import { api } from "../lib/api";
 import { useAuthStore } from "./authStore";
 
 export interface SubjectStat {
+  id: string;
   subjectId: string;
   name: string;
   code: string;
+  colorHex?: string;
   attended: number;
   total: number;
   percentage: number;
+  target?: number;
 }
 
 export interface AttendanceHistoryEntry {
@@ -75,12 +78,15 @@ export const useAttendanceStore = create<AttendanceState>((set) => ({
         totalClasses += tot;
         const pct = tot > 0 ? (att / tot) * 100 : (sub.percentage || 0);
         return {
+          id: sub.id || sub.subjectId || "",
           subjectId: sub.id || sub.subjectId || "",
           name: sub.name || sub.subjectName || "Course",
           code: sub.code || sub.subjectCode || "",
+          colorHex: sub.colorHex,
           attended: att,
           total: tot,
-          percentage: Number(pct.toFixed(1))
+          percentage: Number(pct.toFixed(1)),
+          target: sub.target,
         };
       });
       
@@ -117,7 +123,7 @@ export const useAttendanceStore = create<AttendanceState>((set) => ({
       // 3. Fetch Calendar Events & Holidays
       let events: CalendarEventEntry[] = [];
       try {
-        const eventsRes = await api.get("/events");
+        const eventsRes = await api.get(`/events?semesterId=${activeSemRes.data.id}`);
         const rawEvents = Array.isArray(eventsRes.data) ? eventsRes.data : [];
         events = rawEvents.map((ev: any) => ({
           title: ev.title || "Event",
@@ -137,7 +143,7 @@ export const useAttendanceStore = create<AttendanceState>((set) => ({
         subjects, 
         historyLogs,
         events,
-        hasActiveSemester: subjects.length > 0 || historyLogs.length > 0, 
+        hasActiveSemester: true, 
         isLoading: false 
       });
     } catch (error) {

@@ -24,14 +24,10 @@ interface SubjectStat {
   name: string;
   code?: string;
   colorHex?: string;
-  target: number;
+  target?: number;
   attended: number;
-  missed: number;
-  off: number;
   total: number;
   percentage: number;
-  canMiss: number;
-  needAttend: number;
 }
 
 interface PredictiveAttendanceViewProps {
@@ -42,9 +38,9 @@ interface PredictiveAttendanceViewProps {
 export const PredictiveAttendanceView: React.FC<PredictiveAttendanceViewProps> = ({
   compact = false,
 }) => {
-  const [subjects, setSubjects] = useState<SubjectStat[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
   const user = useAuthStore((state) => state.user);
+  const subjects = useAttendanceStore((state) => state.subjects) as unknown as SubjectStat[];
+  const isLoading = useAttendanceStore((state) => state.isLoading);
   const [globalTarget, setGlobalTarget] = useState<number>(user?.targetAttendance ?? 75);
 
   useEffect(() => {
@@ -52,6 +48,7 @@ export const PredictiveAttendanceView: React.FC<PredictiveAttendanceViewProps> =
       setGlobalTarget(user.targetAttendance);
     }
   }, [user?.targetAttendance]);
+
 
   // Custom simulation increments per subject: { [subjectId]: { addAttend: number, addMiss: number } }
   const [simulations, setSimulations] = useState<Record<string, { addAttend: number; addMiss: number }>>({});
@@ -68,33 +65,6 @@ export const PredictiveAttendanceView: React.FC<PredictiveAttendanceViewProps> =
       console.error("Failed to update target globally:", err);
     }
   };
-
-  const fetchStats = async () => {
-    try {
-      setIsLoading(true);
-      const res = await api.get("/attendance/stats");
-      const list: SubjectStat[] = Array.isArray(res.data) ? res.data : [];
-      setSubjects(list);
-
-      // Always use user.targetAttendance as the single source of truth — never average subject targets
-      const latestUser = useAuthStore.getState().user;
-      setGlobalTarget(latestUser?.targetAttendance ?? 75);
-    } catch (error) {
-      console.error("Failed to load predictive stats:", error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchStats();
-
-    const handleUpdate = () => {
-      fetchStats();
-    };
-    window.addEventListener("attendance-updated", handleUpdate);
-    return () => window.removeEventListener("attendance-updated", handleUpdate);
-  }, []);
 
   // Compute Overall Stats
   const totalAttended = subjects.reduce((sum, s) => sum + s.attended, 0);
@@ -171,7 +141,7 @@ export const PredictiveAttendanceView: React.FC<PredictiveAttendanceViewProps> =
               </div>
               <div>
                 <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
-                  Predictive Attendance Engine
+                  Attendance Forecast Engine
                 </h2>
                 <p className="text-xs text-muted-foreground">
                   Smart forecast based on your past attendance logs
@@ -262,7 +232,7 @@ export const PredictiveAttendanceView: React.FC<PredictiveAttendanceViewProps> =
         </div>
       </div>
 
-      {/* Per-Subject Predictive Breakdown & What-If Simulator */}
+      {/* Per-Subject Forecast Breakdown & What-If Simulator */}
       <div className="space-y-4">
         <div className="flex items-center justify-between px-1">
           <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
@@ -281,10 +251,11 @@ export const PredictiveAttendanceView: React.FC<PredictiveAttendanceViewProps> =
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-3">
-            {subjects.map((sub) => {
-              const needed = calculateConsecutiveNeeded(sub.attended, sub.total, globalTarget);
-              const safeMisses = calculateSafeMisses(sub.attended, sub.total, globalTarget);
-              const isOnTrack = sub.percentage >= globalTarget;
+            {subjects.map((sub: any) => {
+              const subTarget = sub.target ?? globalTarget;
+              const needed = calculateConsecutiveNeeded(sub.attended, sub.total, subTarget);
+              const safeMisses = calculateSafeMisses(sub.attended, sub.total, subTarget);
+              const isOnTrack = sub.percentage >= subTarget;
 
               // What-If Simulation
               const sim = simulations[sub.id] || { addAttend: 0, addMiss: 0 };
@@ -343,14 +314,14 @@ export const PredictiveAttendanceView: React.FC<PredictiveAttendanceViewProps> =
                         <span className={isOnTrack ? "text-emerald-500" : "text-amber-500"}>
                           Current: {sub.percentage.toFixed(1)}%
                         </span>
-                        <span className="text-muted-foreground">Target: {globalTarget}%</span>
+                        <span className="text-emerald-700">Safe to miss {safeMisses} classes and stay ≥{subTarget}%</span>
                       </div>
 
                       <div className="h-2 bg-muted rounded-full overflow-hidden relative">
                         {/* Target Line */}
                         <div
                           className="absolute top-0 bottom-0 w-0.5 bg-foreground/60 z-10"
-                          style={{ left: `${globalTarget}%` }}
+                          style={{ left: `${subTarget}%` }}
                         />
                         <div
                           className={`h-full rounded-full transition-all duration-500 ${
@@ -414,10 +385,10 @@ export const PredictiveAttendanceView: React.FC<PredictiveAttendanceViewProps> =
                             <span className="text-[10px] text-muted-foreground">Simulated:</span>
                             <span
                               className={`text-xs font-extrabold ${
-                                simPct >= globalTarget ? "text-emerald-400" : "text-rose-400"
+                                simPct >= subTarget ? "text-emerald-400" : "text-rose-400"
                               }`}
                             >
-                              {simPct.toFixed(1)}%
+                              {simPct.toFixed(1)}% {simPct >= subTarget ? '✅' : '⚠️'}
                             </span>
                           </div>
                         )}

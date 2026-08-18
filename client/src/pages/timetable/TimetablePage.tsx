@@ -139,6 +139,22 @@ export const TimetablePage = () => {
     setSelectedSlotIds([]);
   }, [activeTab]);
 
+  useEffect(() => {
+    if (activeSemester?.id) {
+      fetchData();
+    }
+  }, [activeSemester?.id]);
+
+  useEffect(() => {
+    const handleUpdate = () => {
+      if (activeSemester?.id) {
+        fetchData();
+      }
+    };
+    window.addEventListener("attendance-updated", handleUpdate);
+    return () => window.removeEventListener("attendance-updated", handleUpdate);
+  }, [activeSemester?.id]);
+
   const resetForm = () => {
     setSubjectId("");
     setStartTime("09:00");

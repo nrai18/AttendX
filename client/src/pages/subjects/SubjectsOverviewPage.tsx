@@ -39,7 +39,7 @@ export const SubjectsOverviewPage = () => {
     return "text-rose-400";
   };
 
-  const getPredictiveText = (stat: SubjectStats) => {
+  const getForecastText = (stat: SubjectStats) => {
     if (stat.total === 0) return { text: "No classes logged yet", icon: <TrendingUp className="w-4 h-4 text-muted-foreground" /> };
     
     // Calculate if we can skip the next class and stay above target
@@ -99,7 +99,7 @@ export const SubjectsOverviewPage = () => {
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {stats.map(stat => {
-          const prediction = getPredictiveText(stat);
+          const prediction = getForecastText(stat);
           return (
             <Link to={`/subjects/${stat.id}`} key={stat.id} className="block group">
               <div className="bg-card border border-border rounded-2xl p-5 group-hover:border-primary/30 group-hover:bg-muted/30 transition-all relative overflow-hidden h-full">

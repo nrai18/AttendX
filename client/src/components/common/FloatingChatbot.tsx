@@ -327,7 +327,7 @@ export const FloatingChatbot: React.FC = () => {
               <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400"></span>
             </span>
           </div>
-          <span className="font-bold tracking-wide">Ordinance AI</span>
+          <span className="font-bold tracking-wide">AttendX AI</span>
           <span className="hidden sm:inline-block text-[10px] text-white/80 bg-white/20 px-1.5 py-0.5 rounded-full font-mono">
             Ctrl+/
           </span>

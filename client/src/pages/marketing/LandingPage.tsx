@@ -173,7 +173,7 @@ export const LandingPage: React.FC = () => {
                   <CardContent className="pt-0 relative px-8 pb-8 text-center">
                     <div className="w-24 h-24 rounded-full border-4 border-[#09090b] bg-[#1a1a24] mx-auto -mt-12 mb-4 flex items-center justify-center overflow-hidden shadow-xl">
                       <img
-                        src="/developer-photo.jpg"
+                        src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=400"
                         alt="Naman Rai"
                         referrerPolicy="no-referrer"
                         className="w-full h-full object-cover"
@@ -305,8 +305,8 @@ export const LandingPage: React.FC = () => {
             &copy; {new Date().getFullYear()} Naman Rai. Built for IIITU.
           </p>
           <div className="flex gap-6 text-sm text-white/40">
-            <Link to="/privacy" className="hover:text-white transition-colors">Privacy</Link>
-            <Link to="/terms" className="hover:text-white transition-colors">Terms</Link>
+            <a href="#" className="hover:text-white transition-colors">Privacy</a>
+            <a href="#" className="hover:text-white transition-colors">Terms</a>
           </div>
         </div>
       </footer>

@@ -40,6 +40,7 @@ import {
 } from "lucide-react";
 
 import { useThemeStore } from "../../stores/themeStore";
+import { FrequencySelector, type FrequencyData } from "../../components/ui/frequency-selector";
 
 export const SettingsPage: React.FC = () => {
   const { user, setUser } = useAuthStore();
@@ -54,6 +55,9 @@ export const SettingsPage: React.FC = () => {
 
   // App Info Modal State
   const [showAppInfoModal, setShowAppInfoModal] = useState(false);
+
+  // Frequency Selector State (Demo / UI)
+  const [reminderFrequency, setReminderFrequency] = useState<FrequencyData>({ type: "Weekly", subValue: "Mon" });
 
   // Reset Section Toggle
   const [enableReset, setEnableReset] = useState(false);
@@ -71,7 +75,6 @@ export const SettingsPage: React.FC = () => {
   const [resetConfirmText, setResetConfirmText] = useState("");
   const [isResetting, setIsResetting] = useState(false);
   const [resetError, setResetError] = useState("");
-  const [resetSuccessMessage, setResetSuccessMessage] = useState("");
 
   // Contact Us State
   const [contactTopic, setContactTopic] = useState("Suggest an idea");
@@ -286,16 +289,16 @@ export const SettingsPage: React.FC = () => {
           return;
         }
         await api.post("/users/reset-subject-attendance", { subjectIds: selectedSubjectIds });
-        setResetSuccessMessage("Attendance cleared for selected subjects!");
+        toast.success("Attendance cleared for selected subjects!");
       } else if (resetModalType === "attendance") {
         await api.post("/users/reset-all-attendance");
-        setResetSuccessMessage("All attendance records and overrides deleted successfully!");
+        toast.success("All attendance records and overrides deleted successfully!");
       } else if (resetModalType === "timetable") {
         await api.post("/users/reset-timetable");
-        setResetSuccessMessage("Timetable schedule slots cleared successfully!");
+        toast.success("Timetable schedule slots cleared successfully!");
       } else if (resetModalType === "events") {
         await api.post("/users/reset-events");
-        setResetSuccessMessage("Academic calendar events removed successfully!");
+        toast.success("Academic calendar events removed successfully!");
       } else if (resetModalType === "entire") {
         await api.post("/users/reset-data");
         window.location.href = "/today";
@@ -305,14 +308,11 @@ export const SettingsPage: React.FC = () => {
       useAttendanceStore.getState().fetchStats();
       window.dispatchEvent(new Event("attendance-updated"));
 
-      setTimeout(() => {
-        setResetModalType(null);
-        setResetSuccessMessage("");
-        setIsResetting(false);
-        setSelectedSubjectIds([]);
-        setResetConfirmText("");
-        fetchSubjectsForReset();
-      }, 1500);
+      setResetModalType(null);
+      setIsResetting(false);
+      setSelectedSubjectIds([]);
+      setResetConfirmText("");
+      fetchSubjectsForReset();
     } catch (err: any) {
       console.error("Reset failed", err);
       setResetError(err?.response?.data?.message || "Reset action failed. Try again.");
@@ -698,7 +698,21 @@ export const SettingsPage: React.FC = () => {
         </div>
       </div>
 
-      {/* CATEGORY 2: Data Management */}
+      {/* CATEGORY 2: Notifications & Reminders */}
+      <div className="space-y-3">
+        <h2 className="text-xs font-bold text-muted-foreground uppercase tracking-wider px-1">Notifications & Reminders</h2>
+        <div className="bg-card border border-border/70 rounded-2xl p-4 shadow-md space-y-4">
+          <div>
+            <h3 className="text-sm font-bold text-foreground">Reminder Frequency</h3>
+            <p className="text-xs text-muted-foreground">Select how often you want to receive academic updates.</p>
+          </div>
+          <div className="w-full flex items-center justify-center bg-transparent transition-colors duration-500">
+            <FrequencySelector value={reminderFrequency} onChange={setReminderFrequency} />
+          </div>
+        </div>
+      </div>
+
+      {/* CATEGORY 3: Data Management */}
       <div className="space-y-3">
         <h2 className="text-xs font-bold text-muted-foreground uppercase tracking-wider px-1">Data Management</h2>
         <div className="bg-card border border-border/70 rounded-2xl divide-y divide-border/50 shadow-md">
@@ -889,7 +903,7 @@ export const SettingsPage: React.FC = () => {
             </div>
           </button>
 
-          {/* Option 4: Remove Academic Hub Calendar & Events */}
+          {/* Option 4: Remove Semester Overview Calendar & Events */}
           <button
             disabled={!enableReset}
             onClick={() => {
@@ -953,123 +967,118 @@ export const SettingsPage: React.FC = () => {
               </div>
             </div>
 
-            {resetSuccessMessage ? (
-              <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-500 text-sm font-bold flex items-center gap-2">
-                <CheckCircle2 className="w-5 h-5" />
-                <span>{resetSuccessMessage}</span>
-              </div>
-            ) : (
-              <>
-                {/* Reset Subject Attendance Content */}
-                {resetModalType === "subject" && (
-                  <div className="space-y-3">
-                    <p className="text-xs text-muted-foreground">Select subjects to reset attendance history for:</p>
-                    <div className="max-h-48 overflow-y-auto space-y-1.5 pr-1">
-                      {subjects.length === 0 ? (
-                        <p className="text-xs text-muted-foreground py-4 text-center">No subjects found.</p>
-                      ) : (
-                        subjects.map((sub) => {
-                          const isChecked = selectedSubjectIds.includes(sub.id);
-                          return (
-                            <button
-                              key={sub.id}
-                              type="button"
-                              onClick={() => {
-                                if (isChecked) {
-                                  setSelectedSubjectIds(selectedSubjectIds.filter((id) => id !== sub.id));
-                                } else {
-                                  setSelectedSubjectIds([...selectedSubjectIds, sub.id]);
-                                }
-                              }}
-                              className={`w-full text-left px-3.5 py-2.5 rounded-xl border text-xs font-semibold flex items-center justify-between transition-colors cursor-pointer ${
-                                isChecked
-                                  ? "bg-primary/10 border-primary text-primary"
-                                  : "bg-muted/40 border-border text-foreground hover:bg-muted"
-                              }`}
-                            >
-                              <span>{sub.name}</span>
-                              {isChecked && <Check className="w-4 h-4 text-primary" />}
-                            </button>
-                          );
-                        })
-                      )}
-                    </div>
+            <>
+              {/* Reset Subject Attendance Content */}
+              {resetModalType === "subject" && (
+                <div className="space-y-3">
+                  <p className="text-xs text-muted-foreground">Select subjects to reset attendance history for:</p>
+                  <div className="max-h-48 overflow-y-auto space-y-1.5 pr-1">
+                    {subjects.length === 0 ? (
+                      <p className="text-xs text-muted-foreground py-4 text-center">No subjects found.</p>
+                    ) : (
+                      subjects.map((sub) => {
+                        const isChecked = selectedSubjectIds.includes(sub.id);
+                        return (
+                          <button
+                            key={sub.id}
+                            type="button"
+                            onClick={() => {
+                              if (isChecked) {
+                                setSelectedSubjectIds(selectedSubjectIds.filter((id) => id !== sub.id));
+                              } else {
+                                setSelectedSubjectIds([...selectedSubjectIds, sub.id]);
+                              }
+                            }}
+                            className={`w-full text-left px-3.5 py-2.5 rounded-xl border text-xs font-semibold flex items-center justify-between transition-colors cursor-pointer ${
+                              isChecked
+                                ? "bg-primary/10 border-primary text-primary"
+                                : "bg-muted/40 border-border text-foreground hover:bg-muted"
+                            }`}
+                          >
+                            <span>{sub.name}</span>
+                            {isChecked && <Check className="w-4 h-4 text-primary" />}
+                          </button>
+                        );
+                      })
+                    )}
                   </div>
-                )}
-
-                {/* Reset All Attendance Content */}
-                {resetModalType === "attendance" && (
-                  <p className="text-sm text-muted-foreground leading-relaxed">
-                    This will delete all attendance logs and timetable overrides across all subjects and semesters. Your subjects and timetable slots will remain untouched.
-                  </p>
-                )}
-
-                {/* Clear Timetable Schedule Content */}
-                {resetModalType === "timetable" && (
-                  <p className="text-sm text-muted-foreground leading-relaxed">
-                    This will clear all weekly schedule slots and overrides from your active timetable. Your subject records and past attendance history will remain safely intact.
-                  </p>
-                )}
-
-                {/* Remove Events Content */}
-                {resetModalType === "events" && (
-                  <p className="text-sm text-muted-foreground leading-relaxed">
-                    This will permanently remove all academic calendar events (exams, fests, holidays). Event rings and highlight banners will be removed across all calendar views.
-                  </p>
-                )}
-
-                {/* Reset Entire App Content */}
-                {resetModalType === "entire" && (
-                  <div className="space-y-3">
-                    <p className="text-sm text-muted-foreground leading-relaxed">
-                      This will permanently wipe your semesters, subjects, timetable slots, attendance logs, and academic events.
-                    </p>
-                    <div>
-                      <label className="block text-xs text-muted-foreground font-medium mb-1.5">
-                        Type <span className="font-bold text-foreground">RESET</span> to confirm:
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="RESET"
-                        value={resetConfirmText}
-                        onChange={(e) => setResetConfirmText(e.target.value)}
-                        className="w-full px-4 py-2.5 rounded-xl bg-background border border-border text-foreground font-mono text-sm focus:outline-none focus:border-rose-500"
-                      />
-                    </div>
-                  </div>
-                )}
-
-                {resetError && (
-                  <p className="text-xs text-rose-500 bg-rose-500/10 p-2.5 rounded-lg border border-rose-500/20 font-semibold">
-                    {resetError}
-                  </p>
-                )}
-
-                <div className="flex items-center justify-end gap-3 pt-2">
-                  <button
-                    type="button"
-                    disabled={isResetting}
-                    onClick={() => setResetModalType(null)}
-                    className="px-4 py-2 rounded-xl text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    disabled={
-                      isResetting ||
-                      (resetModalType === "entire" && resetConfirmText.trim() !== "RESET") ||
-                      (resetModalType === "subject" && selectedSubjectIds.length === 0)
-                    }
-                    onClick={handlePerformReset}
-                    className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-500 text-white transition-all shadow-md shadow-rose-600/30 disabled:opacity-40 cursor-pointer"
-                  >
-                    {isResetting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
-                    Confirm Reset
-                  </button>
                 </div>
-              </>
-            )}
+              )}
+
+              {/* Reset All Attendance Content */}
+              {resetModalType === "attendance" && (
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  This will delete all attendance logs and timetable overrides across all subjects and semesters. Your subjects and timetable slots will remain untouched.
+                </p>
+              )}
+
+              {/* Clear Timetable Schedule Content */}
+              {resetModalType === "timetable" && (
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  This will clear all weekly schedule slots and overrides from your active timetable. Your subject records and past attendance history will remain safely intact.
+                </p>
+              )}
+
+              {/* Remove Events Content */}
+              {resetModalType === "events" && (
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  This will permanently remove all academic calendar events (exams, fests, holidays). Event rings and highlight banners will be removed across all calendar views.
+                </p>
+              )}
+
+              {/* Reset Entire App Content */}
+              {resetModalType === "entire" && (
+                <div className="space-y-3">
+                  <p className="text-sm text-muted-foreground leading-relaxed">
+                    This will permanently wipe your semesters, subjects, timetable slots, attendance logs, and academic events.
+                  </p>
+                  <div>
+                    <label className="block text-xs text-muted-foreground font-medium mb-1.5">
+                      Type <span className="font-bold text-foreground">RESET</span> to confirm:
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="RESET"
+                      value={resetConfirmText}
+                      onChange={(e) => setResetConfirmText(e.target.value)}
+                      className="w-full px-4 py-2.5 rounded-xl bg-background border border-border text-foreground font-mono text-sm focus:outline-none focus:border-rose-500"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {resetError && (
+                <p className="text-xs text-rose-500 bg-rose-500/10 p-2.5 rounded-lg border border-rose-500/20 font-semibold">
+                  {resetError}
+                </p>
+              )}
+
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  disabled={isResetting}
+                  onClick={() => setResetModalType(null)}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={
+                    isResetting ||
+                    (resetModalType === "entire" && resetConfirmText.trim() !== "RESET") ||
+                    (resetModalType === "subject" && selectedSubjectIds.length === 0)
+                  }
+                  onClick={async () => {
+                    await handlePerformReset();
+                  }}
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-500 text-white transition-all shadow-md shadow-rose-600/30 disabled:opacity-40 cursor-pointer"
+                >
+                  {isResetting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                  Confirm Reset
+                </button>
+              </div>
+            </>
           </div>
         </div>
       )}
@@ -1151,7 +1160,7 @@ export const SettingsPage: React.FC = () => {
                 </li>
                 <li className="flex items-center gap-1.5 bg-card p-2 rounded-xl border border-border/40">
                   <span className="w-2 h-2 rounded-full bg-blue-500"></span>
-                  Predictive Leave Calc
+                  Forecast Leave Calc
                 </li>
                 <li className="flex items-center gap-1.5 bg-card p-2 rounded-xl border border-border/40">
                   <span className="w-2 h-2 rounded-full bg-purple-500"></span>

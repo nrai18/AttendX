@@ -1,9 +1,10 @@
 // Replace the whole file to make it simpler and cleaner
 import React, { useState, useEffect } from "react";
 import { format, subMonths, addMonths, startOfMonth, endOfMonth, startOfWeek, endOfWeek, isSameMonth, isSameDay, addDays } from "date-fns";
-import { ChevronLeft, ChevronRight, Loader2, MessageSquare, CheckCircle2, XCircle, ShieldAlert, Award, AlertCircle } from "lucide-react";
+import { ChevronLeft, ChevronRight, Loader2, MessageSquare, Upload } from "lucide-react";
 import { api } from "../../lib/api";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
+import { CalendarImportModal } from "../../components/calendar/CalendarImportModal";
 
 interface DayDetail {
   id: string;
@@ -44,6 +45,7 @@ export const CalendarPage = () => {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [data, setData] = useState<CalendarData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const navigate = useNavigate();
 
   const fetchCalendar = async () => {
@@ -87,7 +89,7 @@ export const CalendarPage = () => {
       case "attended": return "bg-emerald-500";
       case "missed": return "bg-rose-500";
       case "mixed": return "bg-purple-500";
-      case "off": return "bg-amber-500";
+      case "off": return "bg-yellow-500";
       case "not_marked":
       case "future": return "bg-muted-foreground/30";
       default: return "bg-muted-foreground/20";
@@ -113,7 +115,16 @@ export const CalendarPage = () => {
   return (
     <div className="flex flex-col space-y-6">
       <div className="flex items-center justify-between mb-2">
-        <h2 className="text-xl font-bold text-foreground tracking-tight">{format(currentDate, "MMMM yyyy")}</h2>
+        <div className="flex items-center gap-3">
+          <h2 className="text-xl font-bold text-foreground tracking-tight">{format(currentDate, "MMMM yyyy")}</h2>
+          <button 
+            onClick={() => setIsImportModalOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-primary/10 hover:bg-primary/20 text-primary rounded-lg text-xs font-semibold transition-colors"
+          >
+            <Upload className="w-3.5 h-3.5" />
+            AI Import
+          </button>
+        </div>
         <div className="flex gap-2">
           <button onClick={() => setCurrentDate(subMonths(currentDate, 1))} className="p-2 hover:bg-muted rounded-lg text-muted-foreground transition-colors cursor-pointer">
             <ChevronLeft className="w-5 h-5" />
@@ -201,7 +212,7 @@ export const CalendarPage = () => {
             <div>
               <div className="text-lg font-bold text-foreground mb-0.5">{stats.days.off}</div>
               <div className="flex items-center justify-center gap-1.5">
-                <div className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                <div className="w-1.5 h-1.5 rounded-full bg-yellow-500" />
                 <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Off</span>
               </div>
             </div>
@@ -261,6 +272,12 @@ export const CalendarPage = () => {
           </div>
         </div>
       </div>
+
+      <CalendarImportModal 
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+        onSuccess={fetchCalendar}
+      />
     </div>
   );
 };

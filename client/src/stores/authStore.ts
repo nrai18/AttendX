@@ -29,9 +29,16 @@ interface AuthState {
 export const useAuthStore = create<AuthState>()(
   persist(
     (set) => ({
-      user: null,
-      accessToken: null,
-      isAuthenticated: false,
+      user: {
+        id: "dev-user-id",
+        email: "dev@iiitu.ac.in",
+        name: "Developer",
+        role: "admin",
+        targetAttendance: 75,
+        theme: "system",
+      },
+      accessToken: "dummy-token",
+      isAuthenticated: true,
       isLoading: false,
 
       setUser: (user) => set({ user }),
