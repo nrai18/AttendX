@@ -38,6 +38,7 @@ interface AttendanceState {
   historyLogs: AttendanceHistoryEntry[];
   events: CalendarEventEntry[];
   hasActiveSemester: boolean;
+  activeSemesterId: string | null;
   isLoading: boolean;
   fetchStats: () => Promise<void>;
 }
@@ -51,6 +52,7 @@ export const useAttendanceStore = create<AttendanceState>((set) => ({
   historyLogs: [],
   events: [],
   hasActiveSemester: false,
+  activeSemesterId: null,
   isLoading: false,
   fetchStats: async () => {
     set({ isLoading: true });
@@ -60,7 +62,7 @@ export const useAttendanceStore = create<AttendanceState>((set) => ({
 
       const activeSemRes = await api.get("/semesters/active");
       if (!activeSemRes.data) {
-        set({ overallPercentage: 0, targetPercentage: userTarget, hasActiveSemester: false, isLoading: false });
+        set({ overallPercentage: 0, targetPercentage: userTarget, hasActiveSemester: false, activeSemesterId: null, isLoading: false });
         return;
       }
 
@@ -144,6 +146,7 @@ export const useAttendanceStore = create<AttendanceState>((set) => ({
         historyLogs,
         events,
         hasActiveSemester: true, 
+        activeSemesterId: activeSemRes.data.id,
         isLoading: false 
       });
     } catch (error) {

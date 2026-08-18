@@ -1,9 +1,9 @@
 import React, { useState } from "react";
-import { X, Upload, Loader2, Calendar } from "lucide-react";
+import { X, Upload, Loader2, Calendar, Check } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { api } from "../../lib/api";
 import { toast } from "sonner";
-import { useAuthStore } from "../../stores/authStore";
+import { useAttendanceStore } from "../../stores/attendanceStore";
 
 interface CalendarImportModalProps {
   isOpen: boolean;
@@ -20,7 +20,7 @@ interface ParsedEvent {
 }
 
 export const CalendarImportModal: React.FC<CalendarImportModalProps> = ({ isOpen, onClose, onSuccess }) => {
-  const { activeSemester } = useAuthStore();
+  const { activeSemesterId } = useAttendanceStore();
   const [file, setFile] = useState<File | null>(null);
   const [isParsing, setIsParsing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -40,7 +40,9 @@ export const CalendarImportModal: React.FC<CalendarImportModalProps> = ({ isOpen
       setIsParsing(true);
       const formData = new FormData();
       formData.append("file", file);
-      formData.append("semesterId", activeSemester?.id || "");
+      if (activeSemesterId) {
+        formData.append("semesterId", activeSemesterId);
+      }
 
       const res = await api.post("/events/import-rag", formData, {
         headers: { "Content-Type": "multipart/form-data" },
@@ -58,7 +60,7 @@ export const CalendarImportModal: React.FC<CalendarImportModalProps> = ({ isOpen
   };
 
   const handleSave = async () => {
-    if (!parsedEvents || !activeSemester) return;
+    if (!parsedEvents || !activeSemesterId) return;
 
     const selectedEvents = parsedEvents.filter((_, i) => selectedIndices.has(i));
     if (selectedEvents.length === 0) {
@@ -69,7 +71,7 @@ export const CalendarImportModal: React.FC<CalendarImportModalProps> = ({ isOpen
     try {
       setIsSaving(true);
       await api.post("/events/import-rag/save", {
-        semesterId: activeSemester.id,
+        semesterId: activeSemesterId,
         events: selectedEvents.map(e => ({
           title: e.title,
           startDate: new Date(e.startDate).toISOString(),

@@ -68,7 +68,6 @@ export const PredictiveAttendanceView: React.FC<PredictiveAttendanceViewProps> =
 
   // Compute Overall Stats
   const totalAttended = subjects.reduce((sum, s) => sum + s.attended, 0);
-  const totalMissed = subjects.reduce((sum, s) => sum + s.missed, 0);
   const totalRecorded = subjects.reduce((sum, s) => sum + s.total, 0);
   const overallPercentage = totalRecorded > 0 ? (totalAttended / totalRecorded) * 100 : 0;
 
