@@ -96,7 +96,11 @@ async def upload_zip(user_id: str, file: UploadFile = File(...)):
 @app.post("/upload/calendar-ocr")
 async def calendar_ocr(file: UploadFile = File(...)):
     try:
-        from google.genai import types
+        from langchain_google_genai import ChatGoogleGenerativeAI
+        from langchain_core.messages import HumanMessage
+        from pydantic import BaseModel, Field
+        from typing import List, Optional
+        import base64
         
         file_bytes = await file.read()
         mime_type = file.content_type or "application/pdf"
@@ -107,54 +111,55 @@ async def calendar_ocr(file: UploadFile = File(...)):
         elif "jpeg" in mime_type or "jpg" in mime_type:
             mime_type = "image/jpeg"
             
-        client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY", "dummy"))
-        
-        prompt = """
-        You are an expert OCR parser for Indian Institute of Information Technology (IIIT) academic calendars.
-        Extract all academic activities, exams, cycle tests, holidays, fests, and vacations from this academic calendar document.
-
-        For each event, accurately parse:
-        - title (string: clean, descriptive name of the event)
-        - eventType (string: exactly one of 'midsem', 'endsem', 'ct', 'fest', 'institute', 'vacation', 'holiday', 'other')
-        - date (YYYY-MM-DD string: start date. Ensure the correct 4-digit year e.g. 2026 or 2027)
-        - endDate (YYYY-MM-DD string, optional: end date if it spans multiple days)
-        - targetSemester (string: e.g. 'I Sem', 'III & V Sem', 'VII Sem', 'II Sem', 'IV, VI & VIII Sem', or 'All' if applicable to all students)
-
-        Return ONLY a raw JSON array of objects. No additional text, no markdown.
-        """
-        
-        part = types.Part.from_bytes(data=file_bytes, mime_type=mime_type)
-        
-        resp_text = None
-        for model_name in ['gemini-3.6-flash', 'gemini-3.5-flash-lite', 'gemini-3.5-flash']:
-            try:
-                response = client.models.generate_content(
-                    model=model_name,
-                    contents=[part, prompt],
-                    config=types.GenerateContentConfig(
-                        response_mime_type="application/json"
-                    )
-                )
-                if response and response.text:
-                    resp_text = response.text.strip()
-                    break
-            except Exception as model_err:
-                print(f"Calendar OCR model {model_name} attempt error: {model_err}")
-                continue
-                
-        if not resp_text:
-            raise HTTPException(status_code=500, detail="AI Vision model failed to extract calendar events. Please check API key quota.")
+        class AcademicEvent(BaseModel):
+            title: str = Field(description="Clean, descriptive name of the event")
+            eventType: str = Field(description="Exactly one of 'midsem', 'endsem', 'ct', 'fest', 'institute', 'vacation', 'holiday', 'other'")
+            date: str = Field(description="Start date in YYYY-MM-DD format. Ensure correct year.")
+            endDate: Optional[str] = Field(None, description="End date in YYYY-MM-DD format if spanning multiple days")
+            targetSemester: str = Field(description="e.g. 'I Sem', 'III & V Sem', or 'All'")
             
-        if resp_text.startswith("```json"):
-            resp_text = resp_text[7:-3].strip()
-        elif resp_text.startswith("```"):
-            resp_text = resp_text[3:-3].strip()
-            
-        events = json.loads(resp_text)
-        return {"status": "success", "rawEvents": events}
+        class EventList(BaseModel):
+            rawEvents: List[AcademicEvent]
+
+        llm = ChatGoogleGenerativeAI(model="gemini-3.6-flash", temperature=0)
+        structured_llm = llm.with_structured_output(EventList)
+        
+        prompt = "You are an expert OCR parser for academic calendars. Extract all academic activities, exams, cycle tests, holidays, fests, and vacations."
+        
+        file_data = base64.b64encode(file_bytes).decode('utf-8')
+        message = HumanMessage(
+            content=[
+                {"type": "text", "text": prompt},
+                {"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{file_data}"}}
+            ]
+        )
+        
+        # In case it's a PDF, we should technically pass it as a document or use the genai file API. 
+        # But ChatGoogleGenerativeAI supports base64 inline passing for images/PDFs natively if it's gemini-1.5/3.6.
+        # However, passing PDF via `image_url` is supported in some LangChain versions, otherwise we fallback to PyPDFLoader.
+        if mime_type == "application/pdf":
+            import tempfile
+            from langchain_community.document_loaders import PyPDFLoader
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+                tmp.write(file_bytes)
+                tmp_path = tmp.name
+            loader = PyPDFLoader(tmp_path)
+            docs = loader.load()
+            text_content = "\n".join([doc.page_content for doc in docs])
+            os.remove(tmp_path)
+            message = HumanMessage(content=f"{prompt}\n\nDocument Text:\n{text_content}")
+
+        result = structured_llm.invoke([message])
+        
+        return {
+            "status": "needs_setup",
+            "rawEvents": [event.dict() for event in result.rawEvents]
+        }
+        
     except Exception as e:
-        print("Calendar OCR Error:", e)
-        raise HTTPException(status_code=500, detail=f"Failed to process calendar: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"OCR processing failed: {str(e)}")
 
 @app.get("/")
 def health_check():
