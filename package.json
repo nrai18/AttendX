@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "npm --prefix server run dev",
-    "build": "cd client && npm run build && cd ../server && npm run build",
+    "build": "cd client && npm install && npm run build && cd ../server && npm install && npm run build",
     "start": "node server/dist/server.js"
   },
   "dependencies": {
