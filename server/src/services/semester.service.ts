@@ -1,4 +1,5 @@
 import { prisma } from "../lib/prisma";
+import { CacheService } from "./cache.service";
 
 export class SemesterService {
   static async listSemesters(userId: string) {
@@ -18,7 +19,7 @@ export class SemesterService {
       });
     }
 
-    return prisma.semester.create({
+    const semester = await prisma.semester.create({
       data: {
         userId,
         name: data.name,
@@ -27,6 +28,8 @@ export class SemesterService {
         isActive: data.isActive ?? true,
       },
     });
+    await CacheService.invalidateUser(userId);
+    return semester;
   }
 
   static async getActiveSemester(userId: string) {
@@ -49,10 +52,12 @@ export class SemesterService {
       where: { userId, isActive: true },
       data: { isActive: false },
     });
-    return prisma.semester.update({
+    const updatedSemester = await prisma.semester.update({
       where: { id: semester.id },
       data: { isActive: true },
     });
+    await CacheService.invalidateUser(userId);
+    return updatedSemester;
   }
 
   static async deleteSemester(userId: string, semesterId: string, wipeAttendance = false) {
@@ -66,18 +71,22 @@ export class SemesterService {
 
     if (wipeAttendance) {
       // Wipes all associated attendance
-      return prisma.semester.delete({
+      const deletedSemester = await prisma.semester.delete({
         where: { id: semester.id },
       });
+      await CacheService.invalidateUser(userId);
+      return deletedSemester;
     } else {
       // Soft-delete or detach slots while retaining historical attendance
       await prisma.timetableSlot.deleteMany({
         where: { semesterId: semester.id },
       });
-      return prisma.semester.update({
+      const updatedSemester = await prisma.semester.update({
         where: { id: semester.id },
         data: { isActive: false },
       });
+      await CacheService.invalidateUser(userId);
+      return updatedSemester;
     }
   }
 }

@@ -262,8 +262,9 @@ export class AttendanceService {
     const logs: any[] = [];
 
     // Loop dates from today down to semStart (newest first)
+    const pad = (n: number) => String(n).padStart(2, '0');
     for (let d = new Date(today); d >= semStart; d.setDate(d.getDate() - 1)) {
-      const dateKey = d.toISOString().split("T")[0];
+      const dateKey = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
       const dayOfWeek = d.getDay() === 0 ? 6 : d.getDay() - 1;
 
       const dateFormatted = d.toLocaleDateString("en-US", {
@@ -403,7 +404,7 @@ export class AttendanceService {
       const total = countableRecords.length;
 
       let percentage = total > 0 ? (attended / total) * 100 : 0;
-      const target = globalTarget;
+      const target = sub.targetAttendance !== null ? sub.targetAttendance : globalTarget;
 
       // How many classes can still be missed while staying above target
       // attended / (total + x) >= target/100  => x = (attended - target*total/100) / (target/100)
@@ -483,7 +484,7 @@ export class AttendanceService {
       name: subject.name,
       code: subject.code,
       colorHex: subject.colorHex,
-      target: globalTarget,
+      target: subject.targetAttendance !== null ? subject.targetAttendance : globalTarget,
       attended,
       total,
       percentage,
@@ -493,9 +494,8 @@ export class AttendanceService {
 
   static async getMonthlyCalendar(userId: string, monthStr: string) {
     const [year, m] = monthStr.split("-").map(Number);
-    const startDate = new Date(year, m - 1, 1);
-    const endDate = new Date(year, m, 0); 
-    endDate.setHours(23, 59, 59, 999);
+    const startDate = new Date(Date.UTC(year, m - 1, 1));
+    const endDate = new Date(Date.UTC(year, m, 0, 23, 59, 59, 999)); 
 
     const activeSemester = await prisma.semester.findFirst({
       where: { userId, isActive: true },
@@ -527,6 +527,7 @@ export class AttendanceService {
       where: {
         userId,
         date: { gte: startDate, lte: endDate },
+        subject: { semesterId: activeSemester.id }
       },
       include: {
         subject: true,
@@ -535,10 +536,10 @@ export class AttendanceService {
 
     const globalEvents = await prisma.event.findMany({
       where: {
+        userId,
         OR: [
           { semesterId: activeSemester.id },
-          { userId },
-          { classroomId: null }
+          { semesterId: null }
         ],
         date: { lte: endDate }
       }
@@ -550,14 +551,14 @@ export class AttendanceService {
     const dayStats = { not_marked: 0, off: 0, missed: 0, attended: 0, mixed: 0 };
     const lectureStats = { off: 0, missed: 0, attended: 0, total: 0, percentage: 0 };
 
-    for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+    for (let d = new Date(startDate); d <= endDate; d.setUTCDate(d.getUTCDate() + 1)) {
       const dateKey = d.toISOString().split("T")[0]; // YYYY-MM-DD
-      const jsDayOfWeek = d.getDay();
+      const jsDayOfWeek = d.getUTCDay();
       const dbDayOfWeek = jsDayOfWeek === 0 ? 6 : jsDayOfWeek - 1; // 0=Mon, 6=Sun
 
       const dayEvents = globalEvents.filter(e => {
-        const start = new Date(e.date).setHours(0,0,0,0);
-        const end = e.endDate ? new Date(e.endDate).setHours(23,59,59,999) : new Date(e.date).setHours(23,59,59,999);
+        const start = new Date(e.date).setUTCHours(0,0,0,0);
+        const end = e.endDate ? new Date(e.endDate).setUTCHours(23,59,59,999) : new Date(e.date).setUTCHours(23,59,59,999);
         return d.getTime() >= start && d.getTime() <= end;
       });
 
@@ -586,15 +587,40 @@ export class AttendanceService {
         }
       }
       
-      const extras = dayOverrides.filter(o => o.overrideType === "extra_class");
+      const extras = dayOverrides.filter(o => {
+        const oDateStr = new Date(o.date).toISOString().split("T")[0];
+        return o.overrideType === "extra_class" && oDateStr === dateKey;
+      });
       expectedClasses += extras.length;
 
-      const dayAtts = attendances.filter(a => a.date.toISOString().split("T")[0] === dateKey);
+      const dayAtts = attendances.filter(a => {
+        const aDateStr = new Date(a.date).toISOString().split("T")[0];
+        return aDateStr === dateKey;
+      });
+
+      if (dateKey === "2026-08-18") {
+        console.log("DEBUG 2026-08-18:");
+        console.log("expectedClasses:", expectedClasses);
+        console.log("dayAtts:", dayAtts.map(a => a.date));
+        console.log("all attendances:", attendances.map(a => a.date));
+      }
 
       let status = "off";
 
       if (expectedClasses === 0) {
         status = "off";
+        // If there are attendances on an off day (e.g., extra class without override, or just manually marked)
+        if (dayAtts.length > 0) {
+          let presentCount = 0;
+          let absentCount = 0;
+          for (const a of dayAtts) {
+            if (a.status === "present" || a.status === "medical" || a.status === "od") presentCount++;
+            else if (a.status === "absent") absentCount++;
+          }
+          if (presentCount > 0 && absentCount === 0) status = "attended";
+          else if (absentCount > 0 && presentCount === 0) status = "missed";
+          else if (presentCount > 0 && absentCount > 0) status = "mixed";
+        }
       } else if (dayAtts.length < expectedClasses) {
         status = "not_marked";
       } else {
@@ -614,10 +640,14 @@ export class AttendanceService {
         else status = "off";
       }
 
-      const today = new Date();
-      today.setHours(0,0,0,0);
+      // Get today's date string in the server's local timezone (or matching the client's)
+      // A safe way is to compare dateKey with today's date formatted as YYYY-MM-DD
+      const now = new Date();
+      // Use IST offset (+5:30) or local offset
+      const tzOffset = now.getTimezoneOffset() * 60000; 
+      const localTodayStr = new Date(now.getTime() - tzOffset).toISOString().split("T")[0];
       
-      if (d > today) {
+      if (dateKey > localTodayStr) {
         if (status === "not_marked") status = "future";
       }
 
@@ -637,12 +667,10 @@ export class AttendanceService {
       else if (status === "attended") dayStats.attended++;
       else if (status === "mixed") dayStats.mixed++;
 
-      if (d <= today) {
-        for (const a of dayAtts) {
-          if (a.status === "present" || a.status === "medical" || a.status === "od") lectureStats.attended++;
-          else if (a.status === "absent") lectureStats.missed++;
-          else if (a.status === "off" || a.status === "cancelled") lectureStats.off++;
-        }
+      for (const a of dayAtts) {
+        if (a.status === "present" || a.status === "medical" || a.status === "od") lectureStats.attended++;
+        else if (a.status === "absent") lectureStats.missed++;
+        else if (a.status === "off" || a.status === "cancelled") lectureStats.off++;
       }
     }
 

@@ -4,12 +4,13 @@ import { AuthenticatedRequest } from "../middleware/authenticate";
 
 export class EventController {
   static async getEvents(req: AuthenticatedRequest, res: Response) {
-    const { startDate, endDate } = req.query;
+    const { startDate, endDate, semesterId } = req.query;
     try {
       const events = await EventService.getEvents(
         req.user!.userId,
         startDate as string | undefined,
-        endDate as string | undefined
+        endDate as string | undefined,
+        semesterId as string | undefined
       );
       res.json(events);
     } catch (error) {

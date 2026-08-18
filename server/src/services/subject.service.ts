@@ -76,9 +76,17 @@ export class SubjectService {
       throw new Error("Subject not found");
     }
 
+    const updateData: any = {};
+    if (data.name !== undefined) updateData.name = data.name;
+    if (data.code !== undefined) updateData.code = data.code;
+    if (data.faculty !== undefined) updateData.faculty = data.faculty;
+    if (data.colorHex !== undefined) updateData.colorHex = data.colorHex;
+    if (data.credits !== undefined) updateData.credits = data.credits ? Number(data.credits) : null;
+    if (data.targetAttendance !== undefined) updateData.targetAttendance = data.targetAttendance !== null ? Number(data.targetAttendance) : null;
+
     return prisma.subject.update({
       where: { id: subject.id },
-      data,
+      data: updateData,
     });
   }
 

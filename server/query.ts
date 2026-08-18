@@ -1,11 +1,11 @@
-import { prisma } from "./src/lib/prisma";
+import { prisma } from './src/lib/prisma';
+async function run() {
+  const evts = await prisma.event.findMany();
+  console.log("EVENTS:");
+  console.log(JSON.stringify(evts, null, 2));
 
-async function query() {
-  const users = await prisma.user.findMany({ select: { id: true, targetAttendance: true } });
-  console.log("Users:", users);
-
-  const subjects = await prisma.subject.findMany({ select: { id: true, name: true, targetAttendance: true } });
-  console.log("Subjects:", subjects);
+  const sems = await prisma.semester.findMany();
+  console.log("SEMESTERS:");
+  console.log(JSON.stringify(sems, null, 2));
 }
-
-query().catch(console.error);
+run().catch(console.error).finally(() => prisma.$disconnect());

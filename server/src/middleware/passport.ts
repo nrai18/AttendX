@@ -20,7 +20,7 @@ passport.use(
         
         // This is where you would lookup or create the user in the database
         // For now, we pass the profile
-        return done(null, profile);
+        return done(null, profile as any);
       } catch (error) {
         return done(error as Error, false);
       }
