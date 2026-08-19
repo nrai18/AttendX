@@ -4,9 +4,15 @@ import { api } from "../../lib/api";
 
 interface EventItem {
   title: string;
-  eventType: string;
-  date: string;
-  endDate?: string;
+  category: string;
+  startDate: string;
+  endDate: string;
+  isHoliday: boolean;
+}
+
+interface EventGroup {
+  targetSemester: string;
+  events: EventItem[];
 }
 
 interface Semester {
@@ -17,14 +23,15 @@ interface Semester {
 interface WizardProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (events: EventItem[], semesterId: string) => Promise<void>;
-  eventsPayload: EventItem[] | null;
+  onSave: (events: any[], semesterId: string) => Promise<void>;
+  eventsPayload: EventGroup[] | null;
 }
 
 export const EventWizardModal: React.FC<WizardProps> = ({ isOpen, onClose, onSave, eventsPayload }) => {
   const [isSaving, setIsSaving] = useState(false);
   const [semesters, setSemesters] = useState<Semester[]>([]);
   const [selectedSemester, setSelectedSemester] = useState<string>("");
+  const [selectedGroupIndex, setSelectedGroupIndex] = useState(0);
   const [selectedEvents, setSelectedEvents] = useState<Set<number>>(new Set());
 
   useEffect(() => {
@@ -37,43 +44,97 @@ export const EventWizardModal: React.FC<WizardProps> = ({ isOpen, onClose, onSav
         else if (res.data.length > 0) setSelectedSemester(res.data[0].id);
       }).catch(console.error);
       
-      // Select all events by default
-      if (eventsPayload) {
-        setSelectedEvents(new Set(eventsPayload.map((_, i) => i)));
+      // Select all events of the first group by default
+      if (eventsPayload && eventsPayload.length > 0) {
+        setSelectedGroupIndex(0);
+        setSelectedEvents(new Set(eventsPayload[0].events.map((_, i) => i)));
       }
     }
   }, [isOpen, eventsPayload]);
 
-  if (!isOpen || !eventsPayload) return null;
+  useEffect(() => {
+    if (eventsPayload && eventsPayload[selectedGroupIndex]) {
+      setSelectedEvents(new Set(eventsPayload[selectedGroupIndex].events.map((_, i) => i)));
+    }
+  }, [selectedGroupIndex, eventsPayload]);
+
+  if (!isOpen || !eventsPayload || eventsPayload.length === 0) return null;
+
+  const currentGroup = eventsPayload[selectedGroupIndex];
+  const currentEvents = currentGroup.events;
 
   const handleSave = async () => {
     setIsSaving(true);
-    const filteredEvents = eventsPayload.filter((_, i) => selectedEvents.has(i));
+    const filteredEvents = currentEvents
+      .filter((_, i) => selectedEvents.has(i))
+      .map(e => ({
+        title: e.title,
+        date: e.startDate,
+        endDate: e.endDate,
+        eventType: e.category.toLowerCase(),
+        isHoliday: e.isHoliday
+      }));
     await onSave(filteredEvents, selectedSemester);
     setIsSaving(false);
   };
 
   const toggleEvent = (index: number) => {
+    const evt = currentEvents[index];
+    const isHoliday = evt.isHoliday || evt.category.toUpperCase() === "HOLIDAY";
+    if (isHoliday) return; // Cannot toggle holiday events
+
     const next = new Set(selectedEvents);
     if (next.has(index)) next.delete(index);
     else next.add(index);
     setSelectedEvents(next);
   };
 
-  const getTypeColor = (type: string) => {
+  const toggleAll = () => {
+    if (selectedEvents.size === currentEvents.length) {
+      // Deselect all (except holidays)
+      const holidays = currentEvents.reduce((acc, evt, idx) => {
+        if (evt.isHoliday || evt.category.toUpperCase() === "HOLIDAY") acc.add(idx);
+        return acc;
+      }, new Set<number>());
+      setSelectedEvents(holidays);
+    } else {
+      // Select all
+      setSelectedEvents(new Set(currentEvents.map((_, i) => i)));
+    }
+  };
+
+  const getTypeColor = (evt: any) => {
+    const type = (evt.category || "").toUpperCase();
+    if (type === "FEST" && evt.title) {
+      const hash = evt.title.split('').reduce((acc: number, char: string) => acc + char.charCodeAt(0), 0);
+      const colors = [
+        "bg-fuchsia-500/20 text-fuchsia-400 border-fuchsia-500/30",
+        "bg-pink-500/20 text-pink-400 border-pink-500/30",
+        "bg-indigo-500/20 text-indigo-400 border-indigo-500/30",
+        "bg-cyan-500/20 text-cyan-400 border-cyan-500/30",
+        "bg-teal-500/20 text-teal-400 border-teal-500/30",
+        "bg-violet-500/20 text-violet-400 border-violet-500/30",
+        "bg-fuchsia-600/20 text-fuchsia-500 border-fuchsia-600/30",
+        "bg-purple-600/20 text-purple-400 border-purple-500/30"
+      ];
+      return colors[hash % colors.length];
+    }
+    
+    // Attempt to guess midsem vs endsem from title like the backend does
+    const titleLower = (evt.title || "").toLowerCase();
+    if (type === "EXAM") {
+      if (titleLower.includes("mid")) return "bg-orange-500/20 text-orange-400 border-orange-500/30";
+      if (titleLower.includes("end") || titleLower.includes("theory")) return "bg-rose-500/20 text-rose-400 border-rose-500/30";
+      if (titleLower.includes("cycle") || titleLower.includes("ct")) return "bg-amber-500/20 text-amber-400 border-amber-500/30";
+      return "bg-red-500/20 text-red-400 border-red-500/30";
+    }
+
     switch(type) {
-      case "midsem":
-      case "endsem":
-      case "ct":
-        return "text-red-400 bg-red-400/10 border-red-400/20";
-      case "holiday":
-      case "vacation":
-        return "text-emerald-400 bg-emerald-400/10 border-emerald-400/20";
-      case "fest":
-      case "institute":
-        return "text-purple-400 bg-purple-400/10 border-purple-400/20";
-      default:
-        return "text-blue-400 bg-blue-400/10 border-blue-400/20";
+      case "LAB_EXAM": return "bg-yellow-500/20 text-yellow-400 border-yellow-500/30";
+      case "HOLIDAY": return "bg-emerald-500/20 text-emerald-400 border-emerald-500/30";
+      case "VACATION": return "bg-lime-500/20 text-lime-400 border-lime-500/30";
+      case "COMMENCEMENT": return "bg-sky-500/20 text-sky-400 border-sky-500/30";
+      default: return "bg-blue-500/20 text-blue-400 border-blue-500/30";
     }
   };
 
@@ -112,48 +173,76 @@ export const EventWizardModal: React.FC<WizardProps> = ({ isOpen, onClose, onSav
             </button>
           </div>
 
-          <div className="pl-12 mb-4">
-             <label className="block text-sm font-medium text-foreground mb-1.5">Target Semester</label>
-             <select
-               value={selectedSemester}
-               onChange={(e) => setSelectedSemester(e.target.value)}
-               className="w-full bg-black/20 border border-white/10 text-white rounded-xl px-4 py-2.5 outline-none focus:border-indigo-500 transition-colors"
-             >
-               <option value="" disabled>Select Semester</option>
-               {semesters.map(s => (
-                 <option key={s.id} value={s.id}>{s.name}</option>
-               ))}
-             </select>
+          <div className="pl-12 flex flex-col gap-4 mb-4">
+             <div>
+               <label className="block text-sm font-medium text-foreground mb-1.5">Parsed Target Semester</label>
+               <select
+                 value={selectedGroupIndex}
+                 onChange={(e) => setSelectedGroupIndex(Number(e.target.value))}
+                 className="w-full bg-black/20 border border-white/10 text-white rounded-xl px-4 py-2.5 outline-none focus:border-indigo-500 transition-colors"
+               >
+                 {eventsPayload.map((g, i) => (
+                   <option key={i} value={i}>{g.targetSemester}</option>
+                 ))}
+               </select>
+             </div>
+             
+             <div>
+               <label className="block text-sm font-medium text-foreground mb-1.5">Map to System Semester</label>
+               <select
+                 value={selectedSemester}
+                 onChange={(e) => setSelectedSemester(e.target.value)}
+                 className="w-full bg-black/20 border border-white/10 text-white rounded-xl px-4 py-2.5 outline-none focus:border-indigo-500 transition-colors"
+               >
+                 <option value="" disabled>Select Semester</option>
+                 {semesters.map(s => (
+                   <option key={s.id} value={s.id}>{s.name}</option>
+                 ))}
+               </select>
+             </div>
           </div>
         </div>
         
         <div className="p-6 md:p-8 pt-0 overflow-y-auto pl-20">
+          <div className="flex justify-between items-center mb-4 pr-2">
+            <span className="text-sm font-medium text-white/70">
+              {selectedEvents.size} of {currentEvents.length} events selected
+            </span>
+            <button 
+              onClick={toggleAll}
+              className="text-sm font-medium text-indigo-400 hover:text-indigo-300 transition-colors"
+            >
+              {selectedEvents.size === currentEvents.length ? "Deselect All" : "Select All"}
+            </button>
+          </div>
           <div className="space-y-3">
-            {eventsPayload.map((evt, idx) => (
+            {currentEvents.map((evt, idx) => {
+              const isHoliday = evt.isHoliday || evt.category.toUpperCase() === "HOLIDAY";
+              return (
               <div 
                 key={idx} 
                 onClick={() => toggleEvent(idx)}
                 className={`flex items-center gap-4 p-4 rounded-xl border transition-all cursor-pointer ${
                   selectedEvents.has(idx) ? 'border-indigo-500/50 bg-indigo-500/5' : 'border-white/5 bg-white/[0.02] opacity-50'
-                }`}
+                } ${isHoliday ? '!opacity-100 cursor-default' : ''}`}
               >
                 <div className={`w-5 h-5 rounded-md border flex items-center justify-center transition-colors ${
                   selectedEvents.has(idx) ? 'bg-indigo-500 border-indigo-500 text-white' : 'border-white/20'
-                }`}>
+                } ${isHoliday ? 'bg-indigo-600/50 border-indigo-600/50 cursor-not-allowed' : ''}`}>
                   {selectedEvents.has(idx) && <CheckCircle2 className="w-3.5 h-3.5" />}
                 </div>
                 <div className="flex-1">
                   <h4 className="text-sm font-bold text-white mb-1">{evt.title}</h4>
                   <p className="text-xs text-muted-foreground">
-                    {formatDate(evt.date)}
-                    {evt.endDate && ` - ${formatDate(evt.endDate)}`}
+                    {formatDate(evt.startDate)}
+                    {evt.endDate !== evt.startDate && ` - ${formatDate(evt.endDate)}`}
                   </p>
                 </div>
-                <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-md border ${getTypeColor(evt.eventType)}`}>
-                  {evt.eventType}
+                <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-md border ${getTypeColor(evt)}`}>
+                  {evt.category}
                 </span>
               </div>
-            ))}
+            )})}
           </div>
         </div>
 

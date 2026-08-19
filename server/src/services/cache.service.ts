@@ -44,17 +44,14 @@ export class CacheService {
 
   static async invalidateUser(userId: string): Promise<void> {
     try {
-      // Find all keys for this user matching the cache pattern
-      const keys = await redisClient.keys(`cache:${userId}:*`);
-      
-      // Also grab any legacy tracked keys just in case
+      // Rely solely on tracked keys to avoid the KEYS command which is often disabled in production
       const trackedKeys = await redisClient.smembers(`user_keys:${userId}`);
       
-      const allKeys = Array.from(new Set([...keys, ...trackedKeys]));
-      
-      if (allKeys.length > 0) {
-        await redisClient.del(...allKeys);
+      if (trackedKeys && trackedKeys.length > 0) {
+        await redisClient.del(...trackedKeys);
       }
+      
+      // Clear the tracked keys set
       await redisClient.del(`user_keys:${userId}`);
     } catch (redisError) {
       console.warn(`Redis invalidateUser failed for ${userId}:`, redisError);

@@ -76,19 +76,55 @@ export class EventService {
   static async saveWizardEvents(userId: string, semesterId: string, events: any[]) {
     // Save the user confirmed events
     const createdEvents = await Promise.all(
-      events.map((evt) => 
-        prisma.event.create({
+      events.map((evt) => {
+        let mappedType: any = "other";
+        
+        const rawType = (evt.eventType || evt.category || "").toLowerCase();
+        const titleLower = (evt.title || "").toLowerCase();
+
+        if (rawType === "holiday") {
+          mappedType = "holiday";
+        } else if (rawType === "vacation") {
+          mappedType = "vacation";
+        } else if (rawType === "fest") {
+          mappedType = "fest";
+        } else if (rawType === "commencement" || rawType === "institute") {
+          mappedType = "institute";
+        } else if (rawType === "lab_exam" || titleLower.includes("lab") || titleLower.includes("practical")) {
+          mappedType = "lab_exam";
+        } else if (rawType === "exam" || rawType === "ct") {
+          if (titleLower.includes("mid")) {
+            mappedType = "midsem";
+          } else if (titleLower.includes("end") || titleLower.includes("theory")) {
+            mappedType = "endsem";
+          } else if (titleLower.includes("cycle") || titleLower.includes("ct")) {
+            mappedType = "ct";
+          } else {
+            mappedType = "exam";
+          }
+        } else {
+          // Fallback checks
+          if (titleLower.includes("holiday")) mappedType = "holiday";
+          else if (titleLower.includes("break") || titleLower.includes("vacation")) mappedType = "vacation";
+          else if (titleLower.includes("fest")) mappedType = "fest";
+          else if (titleLower.includes("commencement")) mappedType = "institute";
+          else if (titleLower.includes("mid semester")) mappedType = "midsem";
+          else if (titleLower.includes("end semester")) mappedType = "endsem";
+          else if (titleLower.includes("cycle test") || titleLower.includes("ct-")) mappedType = "ct";
+        }
+
+        return prisma.event.create({
           data: {
             userId,
             semesterId,
             title: evt.title,
-            eventType: evt.eventType,
-            date: new Date(evt.date),
+            eventType: mappedType,
+            date: new Date(evt.date || evt.startDate),
             endDate: evt.endDate ? new Date(evt.endDate) : null,
             allDay: true,
           }
-        })
-      )
+        });
+      })
     );
 
     return createdEvents;

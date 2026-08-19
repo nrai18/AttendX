@@ -1,6 +1,8 @@
 import { Response } from "express";
 import { EventService } from "../services/event.service";
 import { AuthenticatedRequest } from "../middleware/authenticate";
+import { CalendarRagService } from "../services/calendar_rag.service";
+import { CacheService } from "../services/cache.service";
 
 export class EventController {
   static async getEvents(req: AuthenticatedRequest, res: Response) {
@@ -28,14 +30,17 @@ export class EventController {
       return res.status(400).json({ error: "Missing semesterId" });
     }
     try {
-      const payload = await EventService.processCalendarOcr(
-        req.user!.userId, 
-        req.file.buffer, 
-        semesterId, 
-        req.file.originalname, 
+      // Use the fast Gemini-powered RAG service instead of the slow Python ML server
+      const events = await CalendarRagService.extractEventsFromDocument(
+        req.file.buffer,
         req.file.mimetype
       );
-      res.json(payload);
+      
+      // Return payload in the format expected by the frontend wizard
+      res.json({
+        status: "needs_setup",
+        rawEvents: events
+      });
     } catch (error) {
       console.error("OCR import failed:", error);
       res.status(500).json({ error: "Failed to process calendar file" });
@@ -49,6 +54,7 @@ export class EventController {
     }
     try {
       const created = await EventService.saveWizardEvents(req.user!.userId, semesterId, events);
+      await CacheService.invalidateUser(req.user!.userId);
       res.json({ message: "Events saved successfully", events: created });
     } catch (error) {
       console.error("Save wizard failed:", error);
@@ -73,6 +79,8 @@ export class EventController {
   static async clearAllEvents(req: AuthenticatedRequest, res: Response) {
     try {
       await EventService.clearAllEvents(req.user!.userId);
+      // Invalidate the cache so the Calendar page doesn't show old events
+      await CacheService.invalidateUser(req.user!.userId);
       res.json({ message: "All events removed successfully" });
     } catch (error) {
       console.error("Clear events failed:", error);

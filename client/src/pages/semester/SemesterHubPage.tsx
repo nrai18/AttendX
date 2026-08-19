@@ -6,6 +6,8 @@ import { EventWizardModal } from "./EventWizardModal";
 import { CreateSemesterModal } from "../../components/semester/CreateSemesterModal";
 import { Link } from "react-router-dom";
 import { useAuthStore } from "../../stores/authStore";
+import { DiscreteTabs } from "../../components/ui/discrete-tabs";
+import { toast } from "sonner";
 
 interface AppEvent {
   id: string;
@@ -117,9 +119,15 @@ export const SemesterHubPage = () => {
       setIsWizardOpen(false);
       fetchData();
       window.dispatchEvent(new Event("attendance-updated"));
+      toast.success("Calendar imported successfully!", {
+        action: {
+          label: "View Calendar",
+          onClick: () => window.location.href = "/calendar?promptSync=true",
+        }
+      });
     } catch (error) {
       console.error("Failed to save events:", error);
-      alert("Failed to save events.");
+      toast.error("Failed to save events.");
     }
   };
 
@@ -136,15 +144,32 @@ export const SemesterHubPage = () => {
     }
   };
 
-  const getEventColor = (type: string) => {
+  const getEventColor = (event: any) => {
+    const type = event?.eventType || "";
+    if (type === "fest" && event?.title) {
+      const hash = event.title.split('').reduce((acc: number, char: string) => acc + char.charCodeAt(0), 0);
+      const colors = [
+        "bg-fuchsia-500/20 text-fuchsia-400 border-fuchsia-500/30",
+        "bg-pink-500/20 text-pink-400 border-pink-500/30",
+        "bg-indigo-500/20 text-indigo-400 border-indigo-500/30",
+        "bg-cyan-500/20 text-cyan-400 border-cyan-500/30",
+        "bg-teal-500/20 text-teal-400 border-teal-500/30",
+        "bg-violet-500/20 text-violet-400 border-violet-500/30",
+        "bg-fuchsia-600/20 text-fuchsia-500 border-fuchsia-600/30",
+        "bg-purple-600/20 text-purple-400 border-purple-500/30"
+      ];
+      return colors[hash % colors.length];
+    }
+    
     switch (type) {
-      case "ct":
-      case "midsem":
+      case "midsem": return "bg-orange-500/20 text-orange-400 border-orange-500/30";
       case "endsem": return "bg-rose-500/20 text-rose-400 border-rose-500/30";
-      case "fest":
-      case "institute": return "bg-purple-500/20 text-purple-400 border-purple-500/30";
-      case "holiday":
-      case "vacation": return "bg-emerald-500/20 text-emerald-400 border-emerald-500/30";
+      case "ct": return "bg-amber-500/20 text-amber-400 border-amber-500/30";
+      case "exam": return "bg-red-500/20 text-red-400 border-red-500/30";
+      case "lab_exam": return "bg-yellow-500/20 text-yellow-400 border-yellow-500/30";
+      case "holiday": return "bg-emerald-500/20 text-emerald-400 border-emerald-500/30";
+      case "vacation": return "bg-lime-500/20 text-lime-400 border-lime-500/30";
+      case "institute": return "bg-sky-500/20 text-sky-400 border-sky-500/30";
       default: return "bg-blue-500/20 text-blue-400 border-blue-500/30";
     }
   };
@@ -178,7 +203,7 @@ export const SemesterHubPage = () => {
   const today = startOfDay(new Date());
   const upcomingEvents = events
     .filter(e => isAfter(new Date(e.date), today) || isSameDay(new Date(e.date), today))
-    .slice(0, 10);
+    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
   // Semester Progress
   let progress = 0;
@@ -313,12 +338,16 @@ export const SemesterHubPage = () => {
       )}
 
       {/* Tabs */}
-      <div className="flex overflow-x-auto hide-scrollbar gap-2 pb-1 border-b border-border">
-        <TabButton active={activeTab === "timeline"} onClick={() => setActiveTab("timeline")} icon={<AlignLeft className="w-4 h-4" />} label="Timeline" />
-        <TabButton active={activeTab === "calendar"} onClick={() => setActiveTab("calendar")} icon={<CalendarDays className="w-4 h-4" />} label="Calendar" />
-        <TabButton active={activeTab === "countdowns"} onClick={() => setActiveTab("countdowns")} icon={<Timer className="w-4 h-4" />} label="Countdowns" />
-        <TabButton active={activeTab === "events"} onClick={() => setActiveTab("events")} icon={<ListFilter className="w-4 h-4" />} label="Events" />
-      </div>
+      <DiscreteTabs
+        defaultTab={activeTab}
+        onTabChange={(id) => setActiveTab(id as any)}
+        tabs={[
+          { id: 'timeline', icon: <AlignLeft size={20} />, label: 'Timeline', activeColor: 'text-primary' },
+          { id: 'calendar', icon: <CalendarDays size={20} />, label: 'Calendar', activeColor: 'text-primary' },
+          { id: 'countdowns', icon: <Timer size={20} />, label: 'Countdowns', activeColor: 'text-primary' },
+          { id: 'events', icon: <ListFilter size={20} />, label: 'Events', activeColor: 'text-primary' }
+        ]}
+      />
 
       {/* Tab Content */}
       <div className="flex-1 bg-card border border-border rounded-3xl p-6 min-h-[500px]">
@@ -377,7 +406,7 @@ export const SemesterHubPage = () => {
                     </div>
                     <div className="space-y-1 mt-auto">
                       {dayEvents.slice(0, 2).map(e => (
-                        <div key={e.id} className={`text-[10px] px-1.5 py-0.5 rounded truncate border ${getEventColor(e.eventType)}`} title={e.title}>
+                        <div key={e.id} className={`text-[10px] px-1.5 py-0.5 rounded truncate border ${getEventColor(e)}`} title={e.title}>
                           {e.title}
                         </div>
                       ))}
@@ -488,7 +517,9 @@ export const SemesterHubPage = () => {
                       isCurrent ? 'bg-primary/5 border-primary/30' : 'bg-white/[0.02] border-white/5 group-hover:border-white/10'
                     }`}>
                       <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1">
-                        {format(new Date(event.date), "MMM d, yyyy")}
+                        {event.endDate && event.endDate !== event.date 
+                          ? `${format(new Date(event.date), "MMM d, yyyy")} - ${format(new Date(event.endDate), "MMM d, yyyy")}`
+                          : format(new Date(event.date), "MMM d, yyyy")}
                       </div>
                       <h3 className={`text-lg font-bold ${isCurrent ? 'text-primary' : 'text-white'}`}>{event.title}</h3>
                     </div>
@@ -505,7 +536,7 @@ export const SemesterHubPage = () => {
               const daysLeft = differenceInDays(new Date(event.date), today);
               return (
                 <div key={event.id} className="bg-white/[0.02] border border-white/5 hover:border-white/20 transition-colors rounded-2xl p-6 flex flex-col items-center text-center">
-                  <div className={`w-16 h-16 rounded-full flex items-center justify-center border-2 mb-4 ${getEventColor(event.eventType)}`}>
+                  <div className={`w-16 h-16 rounded-full flex items-center justify-center border-2 mb-4 ${getEventColor(event)}`}>
                     <span className="text-2xl font-bold">{daysLeft}</span>
                   </div>
                   <h3 className="text-lg font-bold text-white mb-1">{event.title}</h3>
@@ -522,9 +553,13 @@ export const SemesterHubPage = () => {
               <div key={event.id} className="flex items-center justify-between p-4 bg-white/[0.02] border border-white/5 rounded-xl">
                 <div>
                   <h4 className="font-bold text-white">{event.title}</h4>
-                  <p className="text-sm text-muted-foreground">{format(new Date(event.date), "MMMM d, yyyy")}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {event.endDate && event.endDate !== event.date 
+                      ? `${format(new Date(event.date), "MMMM d, yyyy")} - ${format(new Date(event.endDate), "MMMM d, yyyy")}`
+                      : format(new Date(event.date), "MMMM d, yyyy")}
+                  </p>
                 </div>
-                <span className={`px-3 py-1 rounded-md text-xs font-bold uppercase tracking-wider border ${getEventColor(event.eventType)}`}>
+                <span className={`px-3 py-1 rounded-md text-xs font-bold uppercase tracking-wider border ${getEventColor(event)}`}>
                   {event.eventType}
                 </span>
               </div>
@@ -550,15 +585,4 @@ export const SemesterHubPage = () => {
   );
 };
 
-const TabButton = ({ active, onClick, icon, label }: { active: boolean, onClick: () => void, icon: React.ReactNode, label: string }) => (
-  <button 
-    onClick={onClick}
-    className={`flex items-center gap-2 px-5 py-2.5 rounded-t-xl text-sm font-bold transition-all ${
-      active ? "bg-card text-foreground border-t border-l border-r border-border border-b-transparent -mb-[1px]" 
-      : "text-muted-foreground hover:text-foreground hover:bg-muted/50 border border-transparent"
-    }`}
-  >
-    {icon}
-    {label}
-  </button>
-);
+

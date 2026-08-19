@@ -2,6 +2,7 @@ import { Response } from "express";
 import { AuthenticatedRequest } from "../middleware/authenticate";
 import { CalendarRagService } from "../services/calendar_rag.service";
 import { EventService } from "../services/event.service";
+import { CacheService } from "../services/cache.service";
 
 export class CalendarRagController {
   static async parseDocument(req: AuthenticatedRequest, res: Response) {
@@ -30,6 +31,7 @@ export class CalendarRagController {
     try {
       // Re-use EventService to save the events. EventService.saveWizardEvents handles it!
       const created = await EventService.saveWizardEvents(req.user!.userId, semesterId, events);
+      await CacheService.invalidateUser(req.user!.userId);
       res.json({ message: "Events saved successfully", events: created });
     } catch (error: any) {
       console.error("Save RAG Events Error:", error);

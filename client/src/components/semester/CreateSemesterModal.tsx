@@ -107,6 +107,7 @@ export const CreateSemesterModal: React.FC<CreateSemesterModalProps> = ({
   const handleActivate = async (id: string) => {
     try {
       await api.patch(`/semesters/${id}/activate`);
+      toast.success("Semester activated successfully!");
       onSuccess();
       onClose();
     } catch (err) {

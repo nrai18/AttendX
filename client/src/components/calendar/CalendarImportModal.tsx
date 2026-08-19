@@ -15,8 +15,13 @@ interface ParsedEvent {
   title: string;
   startDate: string;
   endDate: string;
-  eventType: "holiday" | "vacation" | "exam" | "other";
-  isSemesterBased: boolean;
+  category: string;
+  isHoliday: boolean;
+}
+
+interface ParsedEventGroup {
+  targetSemester: string;
+  events: ParsedEvent[];
 }
 
 export const CalendarImportModal: React.FC<CalendarImportModalProps> = ({ isOpen, onClose, onSuccess }) => {
@@ -24,7 +29,8 @@ export const CalendarImportModal: React.FC<CalendarImportModalProps> = ({ isOpen
   const [file, setFile] = useState<File | null>(null);
   const [isParsing, setIsParsing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [parsedEvents, setParsedEvents] = useState<ParsedEvent[] | null>(null);
+  const [parsedGroups, setParsedGroups] = useState<ParsedEventGroup[] | null>(null);
+  const [selectedGroupIndex, setSelectedGroupIndex] = useState(0);
   const [selectedIndices, setSelectedIndices] = useState<Set<number>>(new Set());
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -48,9 +54,12 @@ export const CalendarImportModal: React.FC<CalendarImportModalProps> = ({ isOpen
         headers: { "Content-Type": "multipart/form-data" },
       });
 
-      const events: ParsedEvent[] = res.data.events;
-      setParsedEvents(events);
-      setSelectedIndices(new Set(events.map((_, i) => i)));
+      const groups: ParsedEventGroup[] = res.data.events;
+      setParsedGroups(groups);
+      if (groups.length > 0) {
+        setSelectedGroupIndex(0);
+        setSelectedIndices(new Set(groups[0].events.map((_, i) => i)));
+      }
     } catch (error: any) {
       console.error("Failed to parse calendar:", error);
       toast.error(error.response?.data?.error || "Failed to parse calendar document");
@@ -59,10 +68,21 @@ export const CalendarImportModal: React.FC<CalendarImportModalProps> = ({ isOpen
     }
   };
 
-  const handleSave = async () => {
-    if (!parsedEvents || !activeSemesterId) return;
+  const currentGroup = parsedGroups?.[selectedGroupIndex];
+  const currentEvents = currentGroup?.events || [];
 
-    const selectedEvents = parsedEvents.filter((_, i) => selectedIndices.has(i));
+  const handleGroupChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const newIdx = Number(e.target.value);
+    setSelectedGroupIndex(newIdx);
+    if (parsedGroups) {
+      setSelectedIndices(new Set(parsedGroups[newIdx].events.map((_, i) => i)));
+    }
+  };
+
+  const handleSave = async () => {
+    if (!currentGroup || !activeSemesterId) return;
+
+    const selectedEvents = currentEvents.filter((_, i) => selectedIndices.has(i));
     if (selectedEvents.length === 0) {
       toast.error("Please select at least one event to save");
       return;
@@ -74,33 +94,32 @@ export const CalendarImportModal: React.FC<CalendarImportModalProps> = ({ isOpen
         semesterId: activeSemesterId,
         events: selectedEvents.map(e => ({
           title: e.title,
-          startDate: new Date(e.startDate).toISOString(),
-          endDate: new Date(e.endDate).toISOString(),
-          eventType: e.eventType,
-          isGlobal: !e.isSemesterBased,
-        })),
+          date: e.startDate,
+          endDate: e.endDate,
+          eventType: e.category.toLowerCase(),
+          isHoliday: e.isHoliday
+        }))
       });
-
-      toast.success("Calendar events imported successfully!");
+      toast.success("Calendar events imported successfully");
       window.dispatchEvent(new Event("attendance-updated"));
       onSuccess();
       onClose();
     } catch (error: any) {
       console.error("Failed to save calendar events:", error);
-      toast.error(error.response?.data?.error || "Failed to save events");
+      toast.error(error.response?.data?.error || "Failed to save calendar events");
     } finally {
       setIsSaving(false);
     }
   };
 
-  const toggleSelection = (index: number) => {
-    const newSelection = new Set(selectedIndices);
-    if (newSelection.has(index)) {
-      newSelection.delete(index);
+  const toggleSelection = (idx: number) => {
+    const newSet = new Set(selectedIndices);
+    if (newSet.has(idx)) {
+      newSet.delete(idx);
     } else {
-      newSelection.add(index);
+      newSet.add(idx);
     }
-    setSelectedIndices(newSelection);
+    setSelectedIndices(newSet);
   };
 
   return (
@@ -112,29 +131,33 @@ export const CalendarImportModal: React.FC<CalendarImportModalProps> = ({ isOpen
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="absolute inset-0 bg-background/80 backdrop-blur-sm"
-            onClick={onClose}
+            onClick={() => !isSaving && !isParsing && onClose()}
           />
           <motion.div
             initial={{ opacity: 0, scale: 0.95, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
-            className="relative w-full max-w-2xl bg-card border border-border rounded-3xl shadow-xl overflow-hidden flex flex-col max-h-[85vh]"
+            className="relative w-full max-w-lg bg-card border shadow-xl rounded-3xl overflow-hidden flex flex-col max-h-[85vh]"
           >
-            <div className="flex items-center justify-between p-6 pb-4 border-b border-border/50">
-              <h2 className="text-xl font-bold text-foreground">Import Academic Calendar</h2>
+            <div className="flex items-center justify-between p-6 border-b">
+              <div>
+                <h2 className="text-xl font-bold text-foreground mb-1">AI Calendar Import</h2>
+                <p className="text-sm text-muted-foreground">Upload your academic calendar PDF</p>
+              </div>
               <button
                 onClick={onClose}
-                className="p-2 -mr-2 rounded-full text-muted-foreground hover:bg-muted transition-colors"
+                disabled={isParsing || isSaving}
+                className="p-2 hover:bg-muted rounded-full transition-colors disabled:opacity-50"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="p-6 overflow-y-auto space-y-6">
-              {!parsedEvents ? (
-                <div className="space-y-4">
+            <div className="p-6 overflow-y-auto">
+              {!parsedGroups ? (
+                <div className="space-y-6">
                   <p className="text-sm text-muted-foreground">
-                    Upload your university's academic calendar document (PDF, TXT) and our AI will automatically extract holidays, exams, and important dates using LangChain.
+                    Powered by Google Gemini 3.6 Flash. This tool will extract all academic events, holidays, and exams directly from your institution's PDF calendar.
                   </p>
                   
                   <div className="relative group cursor-pointer">
@@ -172,18 +195,32 @@ export const CalendarImportModal: React.FC<CalendarImportModalProps> = ({ isOpen
                 </div>
               ) : (
                 <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-semibold text-foreground">Extracted Events ({parsedEvents.length})</h3>
-                    <button 
-                      onClick={() => setSelectedIndices(new Set(parsedEvents.length === selectedIndices.size ? [] : parsedEvents.map((_, i) => i)))}
-                      className="text-xs text-primary hover:underline"
+                  <div className="flex flex-col gap-2">
+                    <label className="block text-sm font-medium text-foreground mb-1">Select Target Semester</label>
+                    <select
+                      value={selectedGroupIndex}
+                      onChange={handleGroupChange}
+                      className="w-full bg-muted border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary transition-colors mb-4"
                     >
-                      {parsedEvents.length === selectedIndices.size ? "Deselect All" : "Select All"}
-                    </button>
+                      {parsedGroups.map((g, i) => (
+                        <option key={i} value={i}>{g.targetSemester}</option>
+                      ))}
+                    </select>
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-sm font-semibold text-foreground">Extracted Events ({currentEvents.length})</h3>
+                      <div className="flex items-center gap-3">
+                        <button 
+                          onClick={() => setSelectedIndices(new Set(currentEvents.length === selectedIndices.size ? [] : currentEvents.map((_, i) => i)))}
+                          className="text-xs text-primary hover:underline font-medium"
+                        >
+                          {currentEvents.length === selectedIndices.size ? "Deselect All" : "Select All"}
+                        </button>
+                      </div>
+                    </div>
                   </div>
 
                   <div className="space-y-2">
-                    {parsedEvents.map((event, idx) => (
+                    {currentEvents.map((event, idx) => (
                       <div 
                         key={idx} 
                         onClick={() => toggleSelection(idx)}
@@ -195,8 +232,13 @@ export const CalendarImportModal: React.FC<CalendarImportModalProps> = ({ isOpen
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between gap-2 mb-1">
                             <h4 className="text-sm font-medium text-foreground truncate">{event.title}</h4>
-                            <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-muted text-muted-foreground capitalize">
-                              {event.eventType}
+                            <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full capitalize ${
+                              event.category === 'EXAM' || event.category === 'LAB_EXAM' ? 'bg-rose-500/15 text-rose-500 dark:text-rose-400' :
+                              event.category === 'FEST' ? 'bg-purple-500/15 text-purple-600 dark:text-purple-400' :
+                              event.isHoliday || event.category === 'HOLIDAY' || event.category === 'VACATION' ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400' :
+                              'bg-muted text-muted-foreground'
+                            }`}>
+                              {event.category.replace('_', ' ')}
                             </span>
                           </div>
                           <p className="text-xs text-muted-foreground flex items-center gap-1.5">
@@ -205,9 +247,6 @@ export const CalendarImportModal: React.FC<CalendarImportModalProps> = ({ isOpen
                               ? event.startDate 
                               : `${event.startDate} to ${event.endDate}`}
                           </p>
-                          <p className="text-[10px] text-muted-foreground mt-1.5">
-                            {event.isSemesterBased ? "Applies to this semester only" : "Global event (all students)"}
-                          </p>
                         </div>
                       </div>
                     ))}
@@ -215,7 +254,7 @@ export const CalendarImportModal: React.FC<CalendarImportModalProps> = ({ isOpen
 
                   <div className="flex gap-3 pt-4 border-t border-border/50">
                     <button
-                      onClick={() => setParsedEvents(null)}
+                      onClick={() => setParsedGroups(null)}
                       className="flex-1 py-3 px-4 bg-muted text-foreground font-semibold rounded-xl hover:bg-muted/80 transition-colors"
                     >
                       Back

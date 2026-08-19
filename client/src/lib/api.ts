@@ -97,7 +97,9 @@ api.interceptors.response.use(
                  status: error.response?.status,
                  message: error.response?.data?.message || error.message
               }, null, 2);
-              window.location.href = `mailto:dev@iiitu.ac.in?subject=AttendX API Error&body=Error Trace:%0D%0A${encodeURIComponent(trace)}`;
+              const subject = encodeURIComponent("AttendX API Error");
+              const body = encodeURIComponent(`Error Trace:\n${trace}`);
+              window.open(`https://mail.google.com/mail/?view=cm&fs=1&to=24247@iiitu.ac.in,rai18naman@gmail.com&su=${subject}&body=${body}`, '_blank');
             }
           }
         });

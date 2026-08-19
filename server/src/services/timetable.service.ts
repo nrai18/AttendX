@@ -263,15 +263,38 @@ export class TimetableService {
   static async processOcrImage(fileBuffer: Buffer, mimeType: string, fileName: string, semesterId: string, userId: string) {
     let extractedText = "";
 
+    let validMimeType = mimeType;
+    if (!validMimeType || validMimeType === "application/octet-stream") {
+      validMimeType = fileName.toLowerCase().endsWith(".pdf") ? "application/pdf" : "image/png";
+    }
+
+    // Fetch the target semester to guide the OCR and prevent it from parsing the entire university timetable
+    const targetSemester = await prisma.semester.findUnique({
+      where: { id: semesterId },
+      select: { name: true }
+    });
+    const targetSemName = targetSemester?.name || "the user's semester";
+
     // 1. If PDF file, extract text via pdf-parse first
-    if (mimeType.includes("pdf") || fileName.endsWith(".pdf")) {
+    if (validMimeType.includes("pdf") || fileName.endsWith(".pdf")) {
+      const originalWarn = console.warn;
+      const originalLog = console.log;
+      const filterMsg = (args: any[]) => {
+        if (typeof args[0] === 'string' && args[0].includes('Ran out of space in font private use area')) return true;
+        return false;
+      };
+      
       try {
-        // Lazy require to avoid module-level startup crash in production (pdf-parse loads test files at init)
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
         const pdfParse = require("pdf-parse");
+        console.warn = (...args) => { if (!filterMsg(args)) originalWarn.apply(console, args); };
+        console.log = (...args) => { if (!filterMsg(args)) originalLog.apply(console, args); };
         const parsed = await pdfParse(fileBuffer);
+        console.warn = originalWarn;
+        console.log = originalLog;
         extractedText = parsed.text || "";
       } catch (e) {
+        console.warn = originalWarn;
+        console.log = originalLog;
         console.warn("pdf-parse extraction warning:", e);
       }
     }
@@ -290,7 +313,10 @@ export class TimetableService {
         const prompt = `
 You are an expert academic timetable OCR parser for a technical university institute (such as IIIT Una).
 Parse this uploaded timetable document (${fileName}).
-Carefully extract all weekly class schedules, subjects, electives, rooms, sections, and practical lab batches present in the document.
+Carefully extract the weekly class schedule, subjects, electives, rooms, sections, and practical lab batches.
+
+CRITICAL INSTRUCTION: ONLY extract the timetable for the following specific branch and semester: "${targetSemName}".
+Ignore all other branches, semesters, or pages in the document to keep the output concise.
 
 ${extractedText ? `Extracted Document Raw Text:\n${extractedText.slice(0, 10000)}\n` : ""}
 
@@ -318,44 +344,31 @@ CRITICAL TIMING & PERIOD RULES:
    - "G1/G2" or "G1 / G2" or "G1, G2" or "Both": Set "group": "G1/G2" (indicates BOTH groups G1 and G2 have this lab together).
    - "G1": Set "group": "G1" (only group 1).
    - "G2": Set "group": "G2" (only group 2).
-   - If a cell contains parallel batches (e.g. "ECSE301 (P) VEK/TA5 104 G1" and "ECSE301 (P) VEK/TA8 104 G2"), generate TWO SEPARATE slot objects, one with group "G1" and one with group "G2".
+   - If a cell contains parallel batches, generate TWO SEPARATE slot objects.
    - Regular lectures without group specifications must have "group": "ALL".
 
 4. Electives & Multi-Subject Cells:
-   - If a slot cell lists multiple elective subjects stacked (e.g. ECSE303 in 125, ECSE304 in 328):
-     - Mark "isProgramElective": true for program electives (e.g. ECSE303, ECSE304, CSSE301, CSSE304, ITSE301, ITSE304).
-     - Mark "isMinorElective": true for minor/open electives (e.g. SCMS301, SEMS301, SCMS401, SEMS401).
-     - Add them to the "programElectives" or "minorElectives" array with their course codes and titles.
+   - Mark "isProgramElective": true for program electives (e.g. ECSE303, CSSE301).
+   - Mark "isMinorElective": true for minor/open electives (e.g. SCMS301).
 
 Task Instructions:
-1. Identify all branches / departments detected in the document (e.g. CSE, IT, ECE, CY, DS, ME, CE, EE, etc.).
-2. Identify all semester numbers detected in the document (e.g. 1, 2, 3, 4, 5, 6, 7, 8).
-3. For EVERY branch and semester combination found in the document, build its schedule object with:
-   - "hasSections": boolean (true if split into Section A, Section B, 3ECA, etc.)
-   - "sections": array of section names found (e.g. ["Section A", "Section B"] or ["3ECA"])
-   - "hasElectives": boolean (true if there are elective choices offered)
-   - "programElectives": array of elective group objects, each containing:
-       {
-         "id": "pe1",
-         "name": "Program Elective",
-         "options": [ { "code": "COURSE_CODE", "title": "Subject Title", "credits": 4 } ]
-       }
-   - "minorElectives": array of minor/open elective group objects, each containing:
-       {
-         "id": "me1",
-         "name": "Minor / Open Elective",
-         "options": [ { "code": "COURSE_CODE", "title": "Subject Title", "credits": 3 } ]
-       }
+1. Locate the schedule for "${targetSemName}".
+2. Build its schedule object with:
+   - "hasSections": boolean
+   - "sections": array of section names found
+   - "hasElectives": boolean
+   - "programElectives": array of elective group objects, each containing { "id", "name", "options": [{"code", "title", "credits"}] }
+   - "minorElectives": array of minor/open elective group objects
    - "labGroups": array of batch names found (e.g. ["G1", "G2"])
-   - "rawSlots": array of ALL class slots extracted for this branch and semester. Each slot must contain:
+   - "rawSlots": array of ALL class slots extracted for THIS branch/semester. Each slot must contain:
        {
-         "code": "Course Code or Subject Name (e.g. ECSE301, ECMC301, ICAE301)",
-         "faculty": "Faculty/Professor/Teacher initials or name (e.g. VEK, SAK, MAC, GUK, NIG)",
+         "code": "Course Code or Subject Name",
+         "faculty": "Faculty/Professor initials",
          "dayOfWeek": number (0=Mon, 1=Tue, 2=Wed, 3=Thu, 4=Fri, 5=Sat, 6=Sun),
-         "startTime": "HH:MM" in 24hr format (e.g. "09:00", "11:00", "14:00", "16:30"),
-         "endTime": "HH:MM" in 24hr format (e.g. "09:50", "12:40", "15:40", "17:20"),
+         "startTime": "HH:MM",
+         "endTime": "HH:MM",
          "type": "lecture" | "practical" | "tutorial",
-         "room": "Room or Lab number (e.g. 101, 104, 125, 226, 326, 5, or TBA)",
+         "room": "Room number",
          "group": "G1" | "G2" | "G1/G2" | "ALL",
          "section": "Section name or ALL",
          "isProgramElective": boolean,
@@ -368,13 +381,13 @@ ${JSON.stringify(COURSE_CURRICULUM, null, 2)}
 Return ONLY strict JSON matching this structure:
 {
   "status": "needs_setup",
-  "detectedBranches": ["<DetectedBranch1>", "<DetectedBranch2>"],
-  "detectedSemesters": [<DetectedSem1>, <DetectedSem2>],
+  "detectedBranches": ["<FoundBranch>"],
+  "detectedSemesters": [<FoundSemester>],
   "schedules": {
     "<BRANCH>": {
       "<SEMESTER>": {
         "hasSections": boolean,
-        "sections": ["Section A", "Section B"],
+        "sections": ["Section A"],
         "hasElectives": boolean,
         "programElectives": [...],
         "minorElectives": [...],
@@ -386,8 +399,8 @@ Return ONLY strict JSON matching this structure:
 }
         `;
 
-        const contents: any[] = [prompt];
-        if (mimeType.includes("pdf")) {
+        const contents: any[] = [{ text: prompt }];
+        if (validMimeType.includes("pdf")) {
           contents.push({
             inlineData: {
               mimeType: "application/pdf",
@@ -397,7 +410,7 @@ Return ONLY strict JSON matching this structure:
         } else {
           contents.push({
             inlineData: {
-              mimeType: mimeType || "image/png",
+              mimeType: validMimeType,
               data: fileBuffer.toString("base64")
             }
           });

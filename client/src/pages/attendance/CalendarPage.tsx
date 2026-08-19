@@ -1,10 +1,12 @@
 // Replace the whole file to make it simpler and cleaner
 import React, { useState, useEffect } from "react";
 import { format, subMonths, addMonths, startOfMonth, endOfMonth, startOfWeek, endOfWeek, isSameMonth, isSameDay, addDays } from "date-fns";
-import { ChevronLeft, ChevronRight, Loader2, MessageSquare, Upload } from "lucide-react";
+import { ChevronLeft, ChevronRight, Loader2, MessageSquare, Upload, CalendarDays } from "lucide-react";
 import { api } from "../../lib/api";
 import { useNavigate } from "react-router-dom";
 import { CalendarImportModal } from "../../components/calendar/CalendarImportModal";
+import { InlineAction } from "../../components/ui/inline-action";
+import { toast } from "sonner";
 
 interface DayDetail {
   id: string;
@@ -20,6 +22,7 @@ interface CalendarEvent {
 }
 
 interface CalendarData {
+  hasCalendar?: boolean;
   days: Record<string, string>; // "YYYY-MM-DD" -> "attended" | "missed" | "mixed" | "off" | "not_marked" | "future"
   details?: Record<string, DayDetail[]>;
   events?: Record<string, CalendarEvent[]>;
@@ -48,14 +51,16 @@ export const CalendarPage = () => {
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const navigate = useNavigate();
 
-  const fetchCalendar = async () => {
+  const fetchCalendar = async (force: boolean = false) => {
     try {
       setIsLoading(true);
       const monthStr = format(currentDate, "yyyy-MM");
-      const res = await api.get(`/attendance/calendar?month=${monthStr}`);
+      const res = await api.get(`/attendance/calendar?month=${monthStr}${force ? '&force=true' : ''}`);
       setData(res.data);
+      return res.data;
     } catch (error) {
       console.error("Failed to fetch calendar:", error);
+      return null;
     } finally {
       setIsLoading(false);
     }
@@ -63,6 +68,19 @@ export const CalendarPage = () => {
 
   useEffect(() => {
     fetchCalendar();
+
+    // Check if we were redirected here and should prompt the user to force sync
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("promptSync") === "true") {
+      setTimeout(() => {
+        toast.info("Please click 'Sync Events' to ensure all your dates, lectures, and data are perfectly synchronized!", {
+          duration: 8000,
+          position: "top-center"
+        });
+        // Remove the param so it doesn't keep prompting on refresh
+        window.history.replaceState({}, document.title, "/calendar");
+      }, 500);
+    }
 
     const handleAttendanceUpdate = () => {
       fetchCalendar();
@@ -124,6 +142,25 @@ export const CalendarPage = () => {
             <Upload className="w-3.5 h-3.5" />
             AI Import
           </button>
+          <div className="hidden sm:block ml-2 w-80 transform scale-90 origin-left">
+            <InlineAction 
+              label="Calendar" 
+              icon={<CalendarDays size={18} />} 
+              actionText="Sync Events" 
+              onAction={async () => {
+                const refreshedData = await fetchCalendar(true);
+                await new Promise(resolve => setTimeout(resolve, 500));
+                
+                if (refreshedData && !refreshedData.hasCalendar) {
+                  toast.warning("Synced successfully, but no academic calendar found for this semester. Click 'AI Import' to add events.", {
+                    duration: 5000
+                  });
+                } else if (refreshedData) {
+                  toast.success("Calendar synced successfully! All data is now up-to-date.");
+                }
+              }} 
+            />
+          </div>
         </div>
         <div className="flex gap-2">
           <button onClick={() => setCurrentDate(subMonths(currentDate, 1))} className="p-2 hover:bg-muted rounded-lg text-muted-foreground transition-colors cursor-pointer">
@@ -152,17 +189,35 @@ export const CalendarPage = () => {
           const dayEvents = events[dateKey] || [];
           const hasRemarks = dayDetails.some(item => !!item.remarks);
 
-          const isExam = dayEvents.some(e => e.eventType === "midsem" || e.eventType === "endsem" || e.title.toLowerCase().includes("exam"));
-          const isFest = dayEvents.some(e => e.eventType === "fest" || e.title.toLowerCase().includes("yalgaar") || e.title.toLowerCase().includes("fest") || e.title.toLowerCase().includes("sports"));
+          const isEndSem = dayEvents.some(e => e.eventType === "endsem" || e.title.toLowerCase().includes("end sem") || e.title.toLowerCase().includes("end-sem"));
+          const isMidSem = dayEvents.some(e => e.eventType === "midsem" || e.title.toLowerCase().includes("mid sem") || e.title.toLowerCase().includes("mid-sem"));
+          const isExam = dayEvents.some(e => e.eventType === "exam" || (e.title.toLowerCase().includes("exam") && !e.title.toLowerCase().includes("lab")));
+          const isLabExam = dayEvents.some(e => e.eventType === "lab_exam" || e.title.toLowerCase().includes("lab") || e.title.toLowerCase().includes("practical"));
+          const isFest = dayEvents.some(e => e.eventType === "fest" || e.title.toLowerCase().includes("yalgaar") || e.title.toLowerCase().includes("fest"));
+          const isSports = dayEvents.some(e => e.eventType === "sports" || e.title.toLowerCase().includes("sports") || e.title.toLowerCase().includes("tournament"));
+          const isHoliday = dayEvents.some(e => e.eventType === "holiday" || e.title.toLowerCase().includes("holiday") || e.title.toLowerCase().includes("jayanti") || e.title.toLowerCase().includes("diwali") || e.title.toLowerCase().includes("dussehra"));
+          const isVacation = dayEvents.some(e => e.eventType === "vacation" || e.title.toLowerCase().includes("vacation") || e.title.toLowerCase().includes("break"));
           const hasEvent = dayEvents.length > 0;
 
           let animBorder = "";
-          if (isExam) {
-            animBorder = "ring-2 ring-rose-500 animate-pulse bg-rose-500/10 dark:bg-rose-500/20";
+          if (isEndSem) {
+            animBorder = "ring-2 ring-red-600 bg-red-600/10 dark:bg-red-600/20";
+          } else if (isMidSem) {
+            animBorder = "ring-2 ring-rose-500 bg-rose-500/10 dark:bg-rose-500/20";
+          } else if (isExam) {
+            animBorder = "ring-2 ring-orange-500 bg-orange-500/10 dark:bg-orange-500/20";
+          } else if (isLabExam) {
+            animBorder = "ring-2 ring-amber-500 bg-amber-500/10 dark:bg-amber-500/20";
           } else if (isFest) {
-            animBorder = "ring-2 ring-purple-500 animate-pulse bg-purple-500/10 dark:bg-purple-500/20";
+            animBorder = "ring-2 ring-purple-500 bg-purple-500/10 dark:bg-purple-500/20";
+          } else if (isSports) {
+            animBorder = "ring-2 ring-blue-500 bg-blue-500/10 dark:bg-blue-500/20";
+          } else if (isHoliday) {
+            animBorder = "ring-2 ring-emerald-500 bg-emerald-500/10 dark:bg-emerald-500/20";
+          } else if (isVacation) {
+            animBorder = "ring-2 ring-cyan-500 bg-cyan-500/10 dark:bg-cyan-500/20";
           } else if (hasEvent) {
-            animBorder = "ring-2 ring-blue-500 animate-pulse bg-blue-500/10 dark:bg-blue-500/20";
+            animBorder = "ring-2 ring-indigo-500 bg-indigo-500/10 dark:bg-indigo-500/20";
           }
 
           return (
