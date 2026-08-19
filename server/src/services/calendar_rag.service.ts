@@ -98,6 +98,8 @@ CRITICAL VISUAL & LOGICAL PARSING RULES:
 
 2. EXTRACT ALL SEMESTERS (CRITICAL!): The table explicitly contains columns for "I Sem", "III and V Sem", and "VII Sem". You MUST ensure the JSON array contains objects for ALL of these target semesters. Do NOT drop "Semester III" or "Semester V".
 
+3. HARDCODED DATE EXCEPTION (MILAD-UN-NABI): The event "Milad-Un-Nabi" appears in the row "WED 29 26 Milad-Un-Nabi 30 28 25". The number 26 corresponds to August 26th. You MUST strictly extract Milad-Un-Nabi as August 26 (YYYY-08-26) and NOT September 25 or August 29. Do not use internal knowledge, trust this rule!
+
 3. READ THE DATES INSIDE THE EVENT BLOCKS: For regular events, the exact date is often written right next to the event name (e.g., "01-03, Oct.'26"). Always use that explicit date if present!
 
 GENERAL RULES:

@@ -226,7 +226,6 @@ export const CalendarPage = () => {
                 <button
                   onClick={() => navigate(`/today?date=${dateKey}`)}
                   className={`flex flex-col items-center justify-center relative w-12 h-14 hover:bg-muted/60 rounded-2xl transition-all cursor-pointer group ${animBorder}`}
-                  title={dayEvents.map(e => e.title).join(", ") || (hasRemarks ? "Has logged remarks" : undefined)}
                 >
                   <div className={`w-8 h-8 flex items-center justify-center rounded-full text-sm font-medium transition-transform group-hover:scale-110 ${
                     isToday ? "bg-primary text-primary-foreground font-bold shadow-md shadow-primary/20" : "text-foreground"
@@ -240,6 +239,61 @@ export const CalendarPage = () => {
                     )}
                     {hasEvent && (
                       <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-ping" />
+                    )}
+                  </div>
+
+                  {/* Hover Agenda Tooltip */}
+                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 bg-card border border-border rounded-xl shadow-2xl p-3 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 pointer-events-none flex flex-col gap-2 text-left scale-95 group-hover:scale-100 origin-bottom">
+                    {/* Header */}
+                    <div className="flex justify-between items-center pb-2 border-b border-border/50">
+                      <span className="font-bold text-sm text-foreground">{format(d, "d MMM")}</span>
+                      <span className={`text-[10px] uppercase font-bold px-1.5 py-0.5 rounded ${
+                        status === "attended" ? "bg-emerald-500/20 text-emerald-500" :
+                        status === "missed" ? "bg-rose-500/20 text-rose-500" :
+                        status === "mixed" ? "bg-purple-500/20 text-purple-500" :
+                        status === "off" ? "bg-yellow-500/20 text-yellow-500" :
+                        "bg-muted text-muted-foreground"
+                      }`}>
+                        {status === "not_marked" ? "No Data" : status}
+                      </span>
+                    </div>
+
+                    {/* Events */}
+                    {dayEvents.length > 0 && (
+                      <div className="flex flex-col gap-1">
+                        {dayEvents.map((e, idx) => (
+                          <div key={idx} className="flex items-start gap-1.5 text-xs font-semibold text-indigo-400">
+                            <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 mt-1 shrink-0" />
+                            <span className="leading-tight">{e.title}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Subjects Agenda */}
+                    {dayDetails.length > 0 && (
+                      <div className="flex flex-col gap-1.5 mt-1">
+                        {dayDetails.map((detail, idx) => (
+                          <div key={idx} className="flex items-center justify-between text-xs">
+                            <span className="text-muted-foreground truncate pr-2 flex-1">{detail.subjectName}</span>
+                            <span className={`font-bold shrink-0 ${
+                              detail.status === "present" ? "text-emerald-500" :
+                              detail.status === "absent" ? "text-rose-500" :
+                              detail.status === "off" ? "text-yellow-500" :
+                              "text-blue-500"
+                            }`}>
+                              {detail.status === "present" ? "Present" : detail.status === "absent" ? "Absent" : detail.status === "off" ? "Off" : detail.status}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Empty State */}
+                    {dayDetails.length === 0 && dayEvents.length === 0 && (
+                      <div className="text-xs text-muted-foreground italic text-center py-1">
+                        No agenda for this day
+                      </div>
                     )}
                   </div>
                 </button>
