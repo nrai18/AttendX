@@ -3,6 +3,8 @@ import { AttendanceService } from "../services/attendance.service";
 import { AuthenticatedRequest } from "../middleware/authenticate";
 import { CacheService } from "../services/cache.service";
 
+import { PredictiveRagService } from "../services/predictive_rag.service";
+
 export class AttendanceController {
   static async getTodayAgenda(req: AuthenticatedRequest, res: Response) {
     const { date } = req.query;
@@ -66,12 +68,16 @@ export class AttendanceController {
   }
 
   static async getMonthlyCalendar(req: AuthenticatedRequest, res: Response) {
-    const { month } = req.query; // YYYY-MM
+    const { month, force } = req.query; // YYYY-MM
     if (!month || typeof month !== "string") {
       return res.status(400).json({ message: "month is required (YYYY-MM)" });
     }
 
     try {
+      if (force === "true") {
+        await CacheService.invalidateUser(req.user!.userId);
+      }
+
       const calendar = await CacheService.getOrSet(
         req.user!.userId,
         `calendar:${month}`,
@@ -98,6 +104,26 @@ export class AttendanceController {
       res.json(logsData);
     } catch (error: any) {
       console.error("Get logs error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  }
+
+  static async getPredictiveInsights(req: AuthenticatedRequest, res: Response) {
+    try {
+      // Force refresh parameter if user wants a fresh AI insight instead of cache
+      const force = req.query.force === "true";
+      if (force) {
+        await CacheService.invalidateUser(req.user!.userId);
+      }
+      
+      const insights = await CacheService.getOrSet(
+        req.user!.userId,
+        `predictive_insights`,
+        () => PredictiveRagService.generateInsights(req.user!.userId)
+      );
+      res.json(insights);
+    } catch (error: any) {
+      console.error("Predictive insights error:", error);
       res.status(500).json({ message: "Internal server error" });
     }
   }

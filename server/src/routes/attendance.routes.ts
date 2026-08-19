@@ -12,5 +12,6 @@ router.get("/stats", AttendanceController.getSubjectStats);
 router.get("/stats/:subjectId", AttendanceController.getSingleSubjectStats);
 router.get("/calendar", AttendanceController.getMonthlyCalendar);
 router.get("/logs", AttendanceController.getAttendanceLogs);
+router.get("/insights", AttendanceController.getPredictiveInsights);
 
 export default router;

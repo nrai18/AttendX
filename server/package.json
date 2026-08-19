@@ -43,7 +43,7 @@
     "multer": "^2.2.0",
     "passport": "^0.7.0",
     "passport-google-oauth20": "^2.0.0",
-    "pdf-parse": "^2.4.5",
+    "pdf-parse": "^1.1.1",
     "pg": "^8.23.0",
     "tsup": "^8.5.1",
     "tsx": "^4.19.2",

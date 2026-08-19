@@ -54,6 +54,8 @@ enum EventType {
   ct
   midsem
   endsem
+  exam
+  lab_exam
   holiday
   vacation
   fest

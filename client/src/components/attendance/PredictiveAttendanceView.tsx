@@ -13,7 +13,10 @@ import {
   BookOpen,
   Sliders,
   ChevronRight,
-  Info
+  Info,
+  Loader2,
+  RefreshCw,
+  Brain
 } from "lucide-react";
 import { api } from "../../lib/api";
 import { useAuthStore } from "../../stores/authStore";
@@ -41,13 +44,33 @@ export const PredictiveAttendanceView: React.FC<PredictiveAttendanceViewProps> =
   const user = useAuthStore((state) => state.user);
   const subjects = useAttendanceStore((state) => state.subjects) as unknown as SubjectStat[];
   const isLoading = useAttendanceStore((state) => state.isLoading);
+  const hasActiveSemester = useAttendanceStore((state) => state.hasActiveSemester);
   const [globalTarget, setGlobalTarget] = useState<number>(user?.targetAttendance ?? 75);
+
+  const [aiInsights, setAiInsights] = useState<any>(null);
+  const [isAiLoading, setIsAiLoading] = useState(false);
 
   useEffect(() => {
     if (user?.targetAttendance !== undefined && user?.targetAttendance !== null) {
       setGlobalTarget(user.targetAttendance);
     }
   }, [user?.targetAttendance]);
+
+  const fetchAiInsights = async (force = false) => {
+    setIsAiLoading(true);
+    try {
+      const res = await api.get(`/attendance/insights${force ? '?force=true' : ''}`);
+      setAiInsights(res.data);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsAiLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchAiInsights();
+  }, []);
 
 
   // Custom simulation increments per subject: { [subjectId]: { addAttend: number, addMiss: number } }
@@ -125,6 +148,20 @@ export const PredictiveAttendanceView: React.FC<PredictiveAttendanceViewProps> =
     );
   }
 
+  if (!hasActiveSemester) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center p-8 text-center space-y-4 my-12">
+        <div className="w-16 h-16 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 mb-2">
+          <Calendar className="w-8 h-8" />
+        </div>
+        <h2 className="text-2xl font-bold text-foreground">No Active Semester</h2>
+        <p className="text-sm text-muted-foreground max-w-md">
+          Please create and activate a semester first to start generating attendance forecasts.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Top Banner & Target Selector */}
@@ -168,6 +205,74 @@ export const PredictiveAttendanceView: React.FC<PredictiveAttendanceViewProps> =
                 ))}
               </div>
             </div>
+          </div>
+
+          {/* AI Insights Panel */}
+          <div className="mt-4 bg-primary/5 border border-primary/20 rounded-2xl p-4 md:p-5 flex flex-col relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-primary/10 rounded-full blur-2xl" />
+            
+            <div className="flex items-center justify-between mb-3 z-10">
+              <div className="flex items-center gap-2">
+                <Brain className="w-5 h-5 text-primary" />
+                <h3 className="text-sm font-bold text-foreground">AI Attendance Analysis</h3>
+              </div>
+              <button 
+                onClick={() => fetchAiInsights(true)}
+                disabled={isAiLoading}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-primary/10 hover:bg-primary/20 text-primary text-xs font-semibold rounded-lg transition-colors"
+              >
+                {isAiLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                Refresh
+              </button>
+            </div>
+
+            {isAiLoading && !aiInsights ? (
+              <div className="flex items-center justify-center py-6">
+                <Loader2 className="w-6 h-6 text-primary animate-spin" />
+              </div>
+            ) : aiInsights ? (
+              <div className="space-y-4 z-10">
+                <p className="text-sm text-foreground/90 font-medium leading-relaxed bg-background/50 p-3 rounded-xl border border-border/50">
+                  {aiInsights.summary}
+                </p>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Key Absence Reasons</span>
+                    <ul className="space-y-1.5">
+                      {aiInsights.keyReasons.map((reason: string, i: number) => (
+                        <li key={i} className="flex items-start gap-2 text-xs text-foreground">
+                          <div className="w-1.5 h-1.5 rounded-full bg-rose-500 mt-1.5 shrink-0" />
+                          <span>{reason}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div className="space-y-2">
+                    <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Vulnerable Timings</span>
+                    <ul className="space-y-1.5">
+                      {aiInsights.vulnerableTimings.map((timing: string, i: number) => (
+                        <li key={i} className="flex items-start gap-2 text-xs text-foreground">
+                          <div className="w-1.5 h-1.5 rounded-full bg-amber-500 mt-1.5 shrink-0" />
+                          <span>{timing}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+
+                <div className="pt-2">
+                  <div className="flex items-start gap-2 bg-emerald-500/10 border border-emerald-500/20 p-3 rounded-xl">
+                    <Sparkles className="w-4 h-4 text-emerald-500 mt-0.5 shrink-0" />
+                    <p className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+                      {aiInsights.recommendation}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">Unable to load AI insights at the moment.</p>
+            )}
           </div>
 
           {/* Main Forecast Hero Box */}

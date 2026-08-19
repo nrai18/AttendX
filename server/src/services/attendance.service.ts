@@ -111,6 +111,49 @@ export class AttendanceService {
         attendanceId: existingAtt?.id || null,
       });
     }
+    
+    // Add manual attendance records (marked when no slot existed)
+    const matchedAttIds = agenda.filter(a => a.attendanceId).map(a => a.attendanceId);
+    let manualAtts = attendanceRecords.filter(a => !matchedAttIds.includes(a.id));
+
+    // Auto-map orphaned attendances to unmarked regular slots of the same subject
+    for (const slot of agenda) {
+      if (slot.type === "slot" && slot.status === null) {
+        const matchingIndex = manualAtts.findIndex(a => a.subjectId === slot.subject.id);
+        if (matchingIndex !== -1) {
+          const match = manualAtts[matchingIndex];
+          slot.status = match.status;
+          slot.remarks = match.remarks;
+          slot.attendanceId = match.id;
+          manualAtts.splice(matchingIndex, 1);
+        }
+      }
+    }
+    
+    if (manualAtts.length > 0) {
+      // Fetch subjects for these manual attendances
+      const manualSubjectIds = manualAtts.map(a => a.subjectId);
+      const manualSubjects = await prisma.subject.findMany({
+        where: { id: { in: Array.from(new Set(manualSubjectIds)) } },
+      });
+      
+      for (const att of manualAtts) {
+        const sub = manualSubjects.find(s => s.id === att.subjectId);
+        agenda.push({
+          id: att.id,
+          type: "manual",
+          isExtra: false,
+          subject: sub || { id: att.subjectId, name: "Unknown" },
+          startTime: "00:00",
+          endTime: "00:00",
+          room: null,
+          slotType: "Manual",
+          status: att.status,
+          remarks: att.remarks || "Manually marked",
+          attendanceId: att.id,
+        });
+      }
+    }
 
     // Sort by startTime
     return agenda.sort((a, b) => a.startTime.localeCompare(b.startTime));
@@ -291,8 +334,16 @@ export class AttendanceService {
             continue;
           }
 
-          const att = dateAttendance.find(a => a.timetableSlotId === slot.id || (override && a.overrideId === override.id));
+          let att = dateAttendance.find(a => a.timetableSlotId === slot.id || (override && a.overrideId === override.id));
           
+          if (!att) {
+            // Find an orphaned attendance for this date & subject
+            const orphaned = dateAttendance.find(a => !a.timetableSlotId && !a.overrideId && !logs.some(l => l.attendanceId === a.id));
+            if (orphaned) {
+              att = orphaned;
+            }
+          }
+
           logs.push({
             id: att?.id || `slot-${slot.id}-${dateKey}`,
             date: dateKey,
@@ -545,6 +596,13 @@ export class AttendanceService {
       }
     });
 
+    const totalEventsCount = await prisma.event.count({
+      where: {
+        userId,
+        semesterId: activeSemester.id
+      }
+    });
+
     const daysObj: Record<string, string> = {};
     const detailsObj: Record<string, Array<{ id: string; subjectName: string; status: string; remarks: string | null }>> = {};
     const eventsObj: Record<string, Array<{ id: string; title: string; eventType: string }>> = {};
@@ -577,13 +635,17 @@ export class AttendanceService {
       const dayOverrides = overrides.filter(o => o.date.toISOString().split("T")[0] === dateKey);
       
       let expectedClasses = 0;
+      const expectedSubjectIds = new Set<string>();
 
       for (const slot of daySlots) {
         const over = dayOverrides.find(o => o.originalSlotId === slot.id);
         if (over && (over.overrideType === "holiday" || over.overrideType === "cancelled")) {
           // skip
         } else {
-          if (!isGlobalOff) expectedClasses++;
+          if (!isGlobalOff) {
+            expectedClasses++;
+            expectedSubjectIds.add(slot.subjectId);
+          }
         }
       }
       
@@ -591,29 +653,39 @@ export class AttendanceService {
         const oDateStr = new Date(o.date).toISOString().split("T")[0];
         return o.overrideType === "extra_class" && oDateStr === dateKey;
       });
-      expectedClasses += extras.length;
+      for (const o of extras) {
+        if (o.subjectId) {
+          expectedClasses++;
+          expectedSubjectIds.add(o.subjectId);
+        }
+      }
 
-      const dayAtts = attendances.filter(a => {
-        const aDateStr = new Date(a.date).toISOString().split("T")[0];
-        return aDateStr === dateKey;
-      });
+      // Filter attendance records for this day
+      const dayAtts = attendances.filter(a => new Date(a.date).toISOString().split("T")[0] === dateKey);
+
+      // Add manual attendances (that don't match any expected slot/override) to expectedClasses
+      for (const a of dayAtts) {
+        if (!expectedSubjectIds.has(a.subjectId)) {
+          expectedClasses++;
+        }
+      }
 
       if (dateKey === "2026-08-18") {
         console.log("DEBUG 2026-08-18:");
         console.log("expectedClasses:", expectedClasses);
         console.log("dayAtts:", dayAtts.map(a => a.date));
-        console.log("all attendances:", attendances.map(a => a.date));
       }
 
       let status = "off";
 
       if (expectedClasses === 0) {
         status = "off";
-        // If there are attendances on an off day (e.g., extra class without override, or just manually marked)
-        if (dayAtts.length > 0) {
+        // Note: we still check unmapped attendances if someone manually marks an off day 
+        const allDayAtts = attendances.filter(a => new Date(a.date).toISOString().split("T")[0] === dateKey);
+        if (allDayAtts.length > 0) {
           let presentCount = 0;
           let absentCount = 0;
-          for (const a of dayAtts) {
+          for (const a of allDayAtts) {
             if (a.status === "present" || a.status === "medical" || a.status === "od") presentCount++;
             else if (a.status === "absent") absentCount++;
           }
@@ -678,13 +750,14 @@ export class AttendanceService {
     lectureStats.percentage = lectureStats.total > 0 ? (lectureStats.attended / lectureStats.total) * 100 : 0;
 
     return {
+      hasCalendar: totalEventsCount > 0,
       days: daysObj,
       details: detailsObj,
       events: eventsObj,
       stats: {
         days: dayStats,
-        lectures: lectureStats
-      }
+        lectures: lectureStats,
+      },
     };
   }
 }
