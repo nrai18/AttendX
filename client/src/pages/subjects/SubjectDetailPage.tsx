@@ -671,6 +671,18 @@ export const SubjectDetailPage = () => {
                                   </button>
                                 )}
                               </div>
+                              
+                              {/* Log Remarks Context */}
+                              {item.remarks && (
+                                <div className="mt-1 bg-muted/40 border border-border/60 rounded-xl px-3 py-2 flex items-start gap-2">
+                                  <span className="text-[10px] uppercase font-bold text-muted-foreground shrink-0 mt-0.5 opacity-70">
+                                    Remark:
+                                  </span>
+                                  <span className="text-xs text-foreground/80 leading-relaxed italic">
+                                    {item.remarks}
+                                  </span>
+                                </div>
+                              )}
                             </div>
                           </div>
                         );

@@ -301,7 +301,10 @@ export const SettingsPage: React.FC = () => {
         toast.success("Academic calendar events removed successfully!");
       } else if (resetModalType === "entire") {
         await api.post("/users/reset-data");
-        window.location.href = "/today";
+        toast.success("App data reset successfully! Reloading...");
+        setTimeout(() => {
+          window.location.href = "/today";
+        }, 1500);
         return;
       }
 
@@ -325,7 +328,7 @@ export const SettingsPage: React.FC = () => {
     e.preventDefault();
     const mailtoSubject = encodeURIComponent(`[${contactTopic}] ${contactSubject}`);
     const mailtoBody = encodeURIComponent(`Name: ${user?.name || "User"}\nEmail: ${user?.email || "User"}\n\nMessage:\n${contactMessage}`);
-    window.location.href = `mailto:rai18naman@gmail.com?subject=${mailtoSubject}&body=${mailtoBody}`;
+    window.open(`https://mail.google.com/mail/?view=cm&fs=1&to=24247@iiitu.ac.in,rai18naman@gmail.com&su=${mailtoSubject}&body=${mailtoBody}`, '_blank');
     setContactSubmitted(true);
   };
 
@@ -1134,7 +1137,9 @@ export const SettingsPage: React.FC = () => {
               </p>
               <div className="flex flex-wrap gap-2 pt-2 border-t border-border/40 text-xs">
                 <a
-                  href="mailto:rai18naman@gmail.com"
+                  href="https://mail.google.com/mail/?view=cm&fs=1&to=24247@iiitu.ac.in,rai18naman@gmail.com"
+                  target="_blank"
+                  rel="noreferrer"
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-background border border-border text-foreground hover:bg-muted transition-colors font-medium"
                 >
                   <Mail className="w-3.5 h-3.5 text-primary" />

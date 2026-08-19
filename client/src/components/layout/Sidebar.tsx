@@ -32,10 +32,8 @@ export const Sidebar: React.FC = () => {
     <aside className="hidden md:flex flex-col w-64 h-screen bg-card border-r border-border p-4 sticky top-0 transition-colors">
       {/* Brand Logo */}
       <div className="flex items-center gap-3 px-3 py-4 mb-4">
-        <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-500 flex items-center justify-center shadow-lg shadow-indigo-500/20">
-          <GraduationCap className="w-6 h-6 text-white" />
-        </div>
-        <div>
+        <img src="/attendx_logo.png" alt="AttendX Logo" className="h-10 w-auto object-contain" />
+        <div className="flex flex-col">
           <h2 className="font-bold text-lg text-foreground tracking-wide">AttendX</h2>
           <p className="text-[11px] text-muted-foreground">IIIT Una Academic</p>
         </div>

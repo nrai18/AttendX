@@ -16,7 +16,7 @@ export const TopBar: React.FC<TopBarProps> = ({
 }) => {
   const user = useAuthStore((state) => state.user);
   const logout = useAuthStore((state) => state.logout);
-  const { overallPercentage } = useAttendanceStore();
+  const { overallPercentage, hasActiveSemester } = useAttendanceStore();
   const targetPercentage = user?.targetAttendance ?? 75;
   const { theme, toggleTheme } = useThemeStore();
 
@@ -33,19 +33,21 @@ export const TopBar: React.FC<TopBarProps> = ({
         {/* Right Side Controls */}
         <div className="flex items-center gap-2">
           {/* Attendance Percentage Badge (e.g. 87.10 | 75) */}
-          <div className="flex items-center gap-1.5 bg-muted/60 border border-border rounded-xl px-3 py-1.5 text-xs font-mono font-semibold">
-            <span
-              className={
-                overallPercentage >= targetPercentage
-                  ? "text-emerald-500 dark:text-emerald-400 font-bold"
-                  : "text-rose-500 dark:text-rose-400 font-bold"
-              }
-            >
-              {(overallPercentage ?? 0).toFixed(2)}%
-            </span>
-            <span className="text-muted-foreground/40">|</span>
-            <span className="text-muted-foreground">{targetPercentage}%</span>
-          </div>
+          {hasActiveSemester && (
+            <div className="flex items-center gap-1.5 bg-muted/60 border border-border rounded-xl px-3 py-1.5 text-xs font-mono font-semibold">
+              <span
+                className={
+                  overallPercentage >= targetPercentage
+                    ? "text-emerald-500 dark:text-emerald-400 font-bold"
+                    : "text-rose-500 dark:text-rose-400 font-bold"
+                }
+              >
+                {(overallPercentage ?? 0).toFixed(2)}%
+              </span>
+              <span className="text-muted-foreground/40">|</span>
+              <span className="text-muted-foreground">{targetPercentage}%</span>
+            </div>
+          )}
 
           {/* Theme Toggle Button */}
           <Button

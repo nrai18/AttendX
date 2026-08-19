@@ -36,12 +36,20 @@ export const SignupPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#050508] text-white flex items-center justify-center p-4 antialiased">
+    <div className="min-h-screen bg-background text-foreground flex items-center justify-center p-4 antialiased relative">
+      <Button 
+        variant="ghost" 
+        onClick={() => navigate("/")}
+        className="absolute top-4 left-4 md:top-8 md:left-8 flex items-center gap-2 text-muted-foreground hover:text-foreground"
+      >
+        <ArrowRight className="w-4 h-4 rotate-180" />
+        Back
+      </Button>
       <div className="w-full max-w-md space-y-6">
         {/* Brand Header */}
         <div className="text-center space-y-2">
-          <div className="inline-flex p-3 rounded-2xl bg-gradient-to-tr from-indigo-600 to-violet-500 shadow-xl shadow-indigo-500/25 mb-2">
-            <GraduationCap className="w-8 h-8 text-white" />
+          <div className="inline-flex rounded-2xl bg-white p-2 shadow-xl shadow-indigo-500/25 mb-2 overflow-hidden">
+            <img src="/attendx_logo.png" alt="AttendX Logo" className="w-10 h-10 object-contain" />
           </div>
           <h1 className="text-3xl font-extrabold tracking-tight">Create Account</h1>
           <p className="text-sm text-muted-foreground">Join AttendX to organize your academic schedule</p>

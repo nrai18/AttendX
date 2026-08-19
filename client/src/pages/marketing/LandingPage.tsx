@@ -24,9 +24,7 @@ export const LandingPage: React.FC = () => {
       <nav className="fixed top-0 w-full z-50 border-b border-white/5 bg-[#050508]/80 backdrop-blur-md">
         <div className="container mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-primary/20 flex items-center justify-center">
-              <GraduationCap className="w-5 h-5 text-primary" />
-            </div>
+            <img src="/attendx_logo.png" alt="AttendX Logo" className="h-8 w-auto object-contain" />
             <span className="font-bold text-xl tracking-tight">AttendX</span>
           </div>
           <div className="hidden md:flex items-center gap-8 text-sm font-medium text-white/70">
@@ -83,6 +81,18 @@ export const LandingPage: React.FC = () => {
                 I already have an account
               </Button>
             </Link>
+          </div>
+
+          {/* Hero Video Animation */}
+          <div className="mt-16 relative rounded-2xl overflow-hidden shadow-2xl shadow-primary/10 max-w-4xl mx-auto flex justify-center">
+            <video 
+              src="/logo_animation.mp4" 
+              autoPlay 
+              loop 
+              muted 
+              playsInline
+              className="w-full max-w-2xl h-auto object-cover rounded-2xl"
+            />
           </div>
         </div>
       </section>
@@ -173,7 +183,7 @@ export const LandingPage: React.FC = () => {
                   <CardContent className="pt-0 relative px-8 pb-8 text-center">
                     <div className="w-24 h-24 rounded-full border-4 border-[#09090b] bg-[#1a1a24] mx-auto -mt-12 mb-4 flex items-center justify-center overflow-hidden shadow-xl">
                       <img
-                        src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=400"
+                        src="/developer-photo.jpg"
                         alt="Naman Rai"
                         referrerPolicy="no-referrer"
                         className="w-full h-full object-cover"
@@ -195,7 +205,7 @@ export const LandingPage: React.FC = () => {
                       <a href="https://github.com/nrai18" target="_blank" rel="noreferrer" className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center hover:bg-white/10 transition-colors text-white">
                         <Code2 className="w-5 h-5" />
                       </a>
-                      <a href="mailto:rai18naman@gmail.com" className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center hover:bg-white/10 transition-colors text-white">
+                      <a href="https://mail.google.com/mail/?view=cm&fs=1&to=24247@iiitu.ac.in,rai18naman@gmail.com" target="_blank" rel="noreferrer" className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center hover:bg-white/10 transition-colors text-white">
                         <Mail className="w-5 h-5" />
                       </a>
                     </div>
@@ -241,7 +251,7 @@ export const LandingPage: React.FC = () => {
                     </div>
                     <div>
                       <p className="text-sm text-white/50 font-medium mb-1">Email</p>
-                      <a href="mailto:rai18naman@gmail.com" className="text-lg text-white hover:text-blue-500 transition-colors">
+                      <a href="https://mail.google.com/mail/?view=cm&fs=1&to=24247@iiitu.ac.in,rai18naman@gmail.com" target="_blank" rel="noreferrer" className="text-lg text-white hover:text-blue-500 transition-colors">
                         rai18naman@gmail.com
                       </a>
                     </div>
@@ -298,7 +308,7 @@ export const LandingPage: React.FC = () => {
       <footer className="border-t border-white/5 py-12 bg-[#050508]">
         <div className="container mx-auto px-6 flex flex-col md:flex-row items-center justify-between gap-6">
           <div className="flex items-center gap-2 opacity-70">
-            <GraduationCap className="w-5 h-5 text-white" />
+            <img src="/attendx_logo.png" alt="AttendX Logo" className="w-5 h-5 object-contain" />
             <span className="font-bold text-lg tracking-tight text-white">AttendX</span>
           </div>
           <p className="text-white/40 text-sm text-center">
