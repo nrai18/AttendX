@@ -7,7 +7,7 @@ import { GoogleGenAI } from "@google/genai";
 // CommonJS import workaround is removed
 
 const eventSchema = z.array(z.object({
-  targetSemester: z.string().describe("String (e.g., 'Semester I', 'Semester III and V', 'Semester VII')"),
+  targetSemester: z.string().describe("String (e.g., 'Semester 1', 'Semester 2', 'B.Tech Year 3', etc.)"),
   events: z.array(z.object({
     title: z.string().describe("The name of the event"),
     startDate: z.string().describe("YYYY-MM-DD (e.g., '2026-10-01')"),
@@ -73,7 +73,7 @@ Categorize each event strictly into one of the following ENUM values:
 Return a JSON array of objects following this exact schema. If an event applies to all students, duplicate it into the array for every semester option.
 [
   {
-    "targetSemester": "String (e.g., 'Semester I', 'Semester III and V', 'Semester VII')",
+    "targetSemester": "String (e.g., 'Semester 1', 'Semester 2', 'B.Tech Year 3', etc.)",
     "events": [
       {
         "title": "String (The name of the event)",

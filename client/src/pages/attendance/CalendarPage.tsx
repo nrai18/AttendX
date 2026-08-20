@@ -5,6 +5,7 @@ import { ChevronLeft, ChevronRight, Loader2, MessageSquare, Upload, CalendarDays
 import { api } from "../../lib/api";
 import { useNavigate } from "react-router-dom";
 import { CalendarImportModal } from "../../components/calendar/CalendarImportModal";
+import { SyncEventsModal } from "../../components/calendar/SyncEventsModal";
 import { InlineAction } from "../../components/ui/inline-action";
 import { toast } from "sonner";
 
@@ -49,6 +50,7 @@ export const CalendarPage = () => {
   const [data, setData] = useState<CalendarData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
   const navigate = useNavigate();
 
   const fetchCalendar = async (force: boolean = false) => {
@@ -148,16 +150,7 @@ export const CalendarPage = () => {
               icon={<CalendarDays size={18} />} 
               actionText="Sync Events" 
               onAction={async () => {
-                const refreshedData = await fetchCalendar(true);
-                await new Promise(resolve => setTimeout(resolve, 500));
-                
-                if (refreshedData && !refreshedData.hasCalendar) {
-                  toast.warning("Synced successfully, but no academic calendar found for this semester. Click 'AI Import' to add events.", {
-                    duration: 5000
-                  });
-                } else if (refreshedData) {
-                  toast.success("Calendar synced successfully! All data is now up-to-date.");
-                }
+                setIsSyncModalOpen(true);
               }} 
             />
           </div>
@@ -195,7 +188,7 @@ export const CalendarPage = () => {
           const isLabExam = dayEvents.some(e => e.eventType === "lab_exam" || e.title.toLowerCase().includes("lab") || e.title.toLowerCase().includes("practical"));
           const isFest = dayEvents.some(e => e.eventType === "fest" || e.title.toLowerCase().includes("yalgaar") || e.title.toLowerCase().includes("fest"));
           const isSports = dayEvents.some(e => e.eventType === "sports" || e.title.toLowerCase().includes("sports") || e.title.toLowerCase().includes("tournament"));
-          const isHoliday = dayEvents.some(e => e.eventType === "holiday" || e.title.toLowerCase().includes("holiday") || e.title.toLowerCase().includes("jayanti") || e.title.toLowerCase().includes("diwali") || e.title.toLowerCase().includes("dussehra"));
+          const isHoliday = dayEvents.some(e => e.eventType === "holiday" || e.eventType === "restricted_holiday" || e.title.toLowerCase().includes("holiday") || e.title.toLowerCase().includes("jayanti") || e.title.toLowerCase().includes("diwali") || e.title.toLowerCase().includes("dussehra"));
           const isVacation = dayEvents.some(e => e.eventType === "vacation" || e.title.toLowerCase().includes("vacation") || e.title.toLowerCase().includes("break"));
           const hasEvent = dayEvents.length > 0;
 
@@ -386,6 +379,12 @@ export const CalendarPage = () => {
         isOpen={isImportModalOpen}
         onClose={() => setIsImportModalOpen(false)}
         onSuccess={fetchCalendar}
+      />
+
+      <SyncEventsModal 
+        isOpen={isSyncModalOpen}
+        onClose={() => setIsSyncModalOpen(false)}
+        onSuccess={() => fetchCalendar(true)}
       />
     </div>
   );

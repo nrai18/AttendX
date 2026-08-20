@@ -83,26 +83,44 @@ const DEFAULT_STEPS = [
   { id: 6, label: "Sharing Survey Report", icon: BsSendFill },
 ];
 
-type StepItem = {
-  id: number;
-  label: string;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  icon: React.ComponentType<any>;
-};
-
-type RunActionButtonProps = {
-  steps?: StepItem[];
-};
+export interface RunActionButtonProps {
+  steps?: {
+    id: number;
+    label: string;
+    icon: React.ElementType;
+  }[];
+  action?: () => Promise<void>;
+  disabled?: boolean;
+  idleLabel?: string;
+  doneLabel?: string;
+  idleIcon?: React.ReactNode;
+  widths?: { idle: number; running: number; done: number };
+}
 
 export function RunActionButton({
   steps = DEFAULT_STEPS,
+  action,
+  disabled,
+  idleLabel = "Run Action",
+  doneLabel = "Finalizing Data",
+  idleIcon = <Zap className="h-5 w-5 fill-current text-primary-foreground opacity-90" />,
+  widths = { idle: 180, running: 360, done: 200 }
 }: RunActionButtonProps) {
   const [status, setStatus] = useState<"idle" | "running" | "done">("idle");
   const [currentStep, setCurrentStep] = useState(0);
 
-  const startAction = () => {
+  const startAction = async () => {
     setStatus("running");
     setCurrentStep(0);
+    
+    if (action) {
+      try {
+        await action();
+        setStatus("done");
+      } catch (e) {
+        setStatus("idle");
+      }
+    }
   };
 
   const reset = () => {
@@ -116,49 +134,41 @@ export function RunActionButton({
     const interval = setInterval(() => {
       setCurrentStep((prev) => {
         if (prev < steps.length - 1) return prev + 1;
-        setStatus("done");
+        
+        // If there's an action, let the action's promise handle setting "done"
+        if (!action) {
+          setStatus("done");
+        }
         return prev;
       });
     }, 1200);
 
     return () => clearInterval(interval);
-  }, [status, steps.length]);
-
-  const widths = {
-    idle: 180,
-    running: 360,
-    done: 200,
-  };
-
+  }, [status, steps.length, action]);
   return (
     <div className="flex items-center justify-center">
       <motion.div
-        initial={{ width: 180 }}
+        initial={{ width: widths.idle }}
         animate={{ width: widths[status] }}
         transition={spring}
         className={`relative flex h-[64px] items-center justify-between overflow-hidden rounded-full ${
           status === "running"
             ? "border-2 border-dashed border-[#D6D6DD] dark:border-white/20"
             : "border-2 border-transparent"
-        } `}
+        } ${disabled ? "opacity-50 pointer-events-none" : ""}`}
       >
         <AnimatePresence mode="popLayout" initial={false}>
           {status === "idle" && (
             <motion.button
-              key="idle"
-              onClick={startAction}
-              initial={{ opacity: 0, scale: 0.8, filter: "blur(4px)" }}
-              animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
-              exit={{ opacity: 0, scale: 0.8, filter: "blur(4px)" }}
+              key="btn-start"
+              exit={{ y: -30, opacity: 0, filter: "blur(4px)" }}
               transition={spring}
-              className="flex flex-1 items-center gap-2 rounded-full bg-[#F4F4F9] px-5 py-3 whitespace-nowrap dark:bg-zinc-800"
+              className="flex h-full w-full items-center justify-center gap-2 bg-primary font-semibold text-primary-foreground hover:bg-primary/90 transition-colors"
+              onClick={startAction}
+              disabled={disabled}
             >
-              <Zap className="h-6 w-6 text-[#26262B] dark:text-zinc-100" />
-
-              <AnimatedText
-                text="Run Action"
-                className="text-[18px] font-medium text-[#26262B] dark:text-zinc-100"
-              />
+              {idleIcon}
+              <span>{idleLabel}</span>
             </motion.button>
           )}
 
@@ -217,7 +227,7 @@ export function RunActionButton({
               <HiBadgeCheck className="h-6 w-6 text-[#22c55e]" />
 
               <AnimatedText
-                text="Action Done"
+                text={doneLabel}
                 className="text-[18px] font-bold text-[#22c55e]"
               />
             </motion.button>

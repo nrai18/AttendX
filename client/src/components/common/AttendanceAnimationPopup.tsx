@@ -1,7 +1,24 @@
 import React, { useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { useAnimationPopupStore } from "../../stores/animationPopupStore";
+import { useAnimationPopupStore, AnimationType } from "../../stores/animationPopupStore";
 import { ThumbsUp, Target, Frown, Sparkles } from "lucide-react";
+
+export const HOLIDAY_ASSETS: Partial<Record<AnimationType, string>> = {
+  republic_day: "https://api.iconify.design/twemoji/flag-india.svg",
+  holi: "https://api.iconify.design/twemoji/artist-palette.svg",
+  eid: "https://api.iconify.design/twemoji/star-and-crescent.svg",
+  ram_navami: "https://api.iconify.design/twemoji/bow-and-arrow.svg",
+  mahavir_jayanti: "https://api.iconify.design/twemoji/lotus.svg",
+  good_friday: "https://api.iconify.design/twemoji/latin-cross.svg",
+  buddha_purnima: "https://api.iconify.design/twemoji/wheel-of-dharma.svg",
+  muharram: "https://api.iconify.design/twemoji/mosque.svg",
+  janmashtami: "https://api.iconify.design/twemoji/peacock.svg",
+  gandhi_jayanti: "https://api.iconify.design/twemoji/glasses.svg",
+  dussehra: "https://api.iconify.design/twemoji/crossed-swords.svg",
+  diwali: "https://api.iconify.design/twemoji/diya-lamp.svg",
+  guru_nanak: "https://api.iconify.design/twemoji/place-of-worship.svg",
+  christmas: "https://api.iconify.design/twemoji/christmas-tree.svg"
+};
 
 export const AttendanceAnimationPopup: React.FC = () => {
   const { isOpen, type, message, closeAnimation } = useAnimationPopupStore();
@@ -228,16 +245,57 @@ export const AttendanceAnimationPopup: React.FC = () => {
               </div>
             )}
 
+            {/* 6. GENERIC HOLIDAY SVG ANIMATION */}
+            {HOLIDAY_ASSETS[type as AnimationType] && (
+              <div className="relative flex flex-col items-center justify-center">
+                <motion.div
+                  initial={{ scale: 0.2, rotate: -10 }}
+                  animate={{ scale: [0.8, 1.15, 1], rotate: [0, 5, -5, 0] }}
+                  transition={{ duration: 0.8, type: "spring", bounce: 0.5 }}
+                  className="w-28 h-28 rounded-full bg-primary/10 border-2 border-primary/20 flex items-center justify-center shadow-xl shadow-primary/10 relative overflow-hidden"
+                >
+                  <motion.img 
+                    src={HOLIDAY_ASSETS[type as AnimationType]} 
+                    alt="Holiday Icon" 
+                    className="w-16 h-16 drop-shadow-md"
+                    initial={{ y: 20, opacity: 0 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    transition={{ delay: 0.2 }}
+                  />
+                </motion.div>
+                {/* Soft Sparkles */}
+                {[...Array(4)].map((_, i) => (
+                  <motion.div
+                    key={i}
+                    initial={{ opacity: 1, scale: 0, y: 0 }}
+                    animate={{
+                      opacity: [0, 1, 0],
+                      scale: [0.5, 1.2, 0],
+                      y: -40 - (i * 10),
+                      x: (i % 2 === 0 ? 1 : -1) * 35,
+                    }}
+                    transition={{ duration: 1.5, repeat: Infinity, delay: i * 0.3 }}
+                    className="absolute text-primary/60"
+                  >
+                    <Sparkles size={16} />
+                  </motion.div>
+                ))}
+              </div>
+            )}
+
             {/* Message Text */}
-            <div className="space-y-1 relative z-10">
-              <h3 className="text-lg font-black text-foreground tracking-tight">
+            <div className="space-y-1 relative z-10 text-center">
+              <h3 className="text-lg font-black text-foreground tracking-tight max-w-[200px] leading-tight mx-auto">
                 {type === "thumbs_up" && "Awesome Job!"}
                 {type === "crying" && "Attendance Dropped!"}
                 {type === "target_hit" && "Target Touched!"}
                 {type === "off_class" && "Yay! Off Class! 💃🕺"}
                 {type === "full_day_off" && "Full Day Off! 🥳"}
+                {HOLIDAY_ASSETS[type as AnimationType] && message}
               </h3>
-              <p className="text-xs font-bold text-muted-foreground">{message}</p>
+              {!HOLIDAY_ASSETS[type as AnimationType] && (
+                <p className="text-xs font-bold text-muted-foreground">{message}</p>
+              )}
             </div>
           </motion.div>
         </div>

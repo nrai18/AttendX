@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { api } from "../../lib/api";
 import { toast } from "sonner";
 import { useAuthStore } from "../../stores/authStore";
+import { Stepper } from "../ui/stepper";
 
 interface SubjectModalProps {
   isOpen: boolean;
@@ -159,15 +160,25 @@ export const SubjectModal: React.FC<SubjectModalProps> = ({ isOpen, onClose, onS
                     Global: {user?.targetAttendance ?? 75}%
                   </span>
                 </div>
-                <input
-                  type="number"
-                  min="0"
-                  max="100"
-                  value={targetAttendance}
-                  onChange={(e) => setTargetAttendance(e.target.value ? Number(e.target.value) : "")}
-                  placeholder="Leave empty for global target"
-                  className="w-full bg-background border border-border rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 transition-shadow"
-                />
+                <div className="flex items-center gap-3">
+                  <div className="flex-1">
+                    <Stepper 
+                      min={0} 
+                      max={100} 
+                      value={targetAttendance === "" ? (user?.targetAttendance ?? 75) : targetAttendance} 
+                      onChange={setTargetAttendance} 
+                    />
+                  </div>
+                  {targetAttendance !== "" && (
+                    <button
+                      type="button"
+                      onClick={() => setTargetAttendance("")}
+                      className="px-3 py-1.5 bg-muted hover:bg-muted/80 text-muted-foreground text-xs font-semibold rounded-lg transition-colors"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
                 <p className="text-xs text-muted-foreground">
                   Overrides the global target for this specific subject in the forecast engine.
                 </p>

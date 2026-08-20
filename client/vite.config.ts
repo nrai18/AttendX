@@ -21,6 +21,8 @@ export default defineConfig({
         target: "http://127.0.0.1:3000", // <-- Ensure this matches your Express backend port
         changeOrigin: true,
         secure: false,
+        timeout: 120000,
+        proxyTimeout: 120000,
       },
     },
   },

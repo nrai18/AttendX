@@ -51,15 +51,15 @@ export const DiscreteTabs: FC<DiscreteTabsProps> = ({ tabs, onTabChange, default
               {isActive && (
                 <motion.div
                   layoutId="activeBg"
-                  className="absolute inset-0 rounded-full bg-white dark:bg-zinc-800 shadow-md"
+                  className="absolute inset-0 rounded-full bg-card border border-border shadow-md"
                   transition={{ type: "spring", stiffness: 220, damping: 26 }}
                 />
               )}
               <div className="relative z-10 flex items-center gap-1 pr-3 cursor-pointer">
                 <motion.div
                   animate={{ scale: isActive ? 1.08 : 1 }}
-                  className={`flex h-14 w-14 items-center justify-center rounded-full ${
-                    isActive ? tab.activeColor : "bg-white dark:bg-zinc-900 text-gray-800"
+                  className={`flex h-14 w-14 items-center justify-center rounded-full transition-colors ${
+                    isActive ? tab.activeColor : "bg-muted/40 text-muted-foreground hover:bg-muted/80 hover:text-foreground"
                   }`}
                 >
                   {tab.icon}
@@ -67,7 +67,7 @@ export const DiscreteTabs: FC<DiscreteTabsProps> = ({ tabs, onTabChange, default
                 <motion.span
                   animate={{ width: isActive ? "auto" : 0, opacity: isActive ? 1 : 0 }}
                   className={`relative overflow-hidden whitespace-nowrap text-xl font-semibold ${
-                    isActive ? tab.activeColor : "text-black dark:text-white"
+                    isActive ? tab.activeColor : "text-foreground"
                   }`}
                 >
                   {tab.label}

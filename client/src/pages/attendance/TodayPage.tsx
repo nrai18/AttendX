@@ -52,6 +52,59 @@ export const TodayPage = () => {
 
   const [isMarkingFullDayOff, setIsMarkingFullDayOff] = useState(false);
 
+  const getHolidayAnimation = (activeEvent: any) => {
+    let animType: any = "full_day_off";
+    let animMsg = "Congratulations on a full day off! 🥳🎉";
+
+    if (activeEvent?.title) {
+      const title = activeEvent.title.toLowerCase();
+      if (title.includes("diwali") || title.includes("deepavali")) {
+        animType = "diwali";
+        animMsg = "Lighting candles & firecrackers for Diwali! 🪔🎆";
+      } else if (title.includes("republic") || title.includes("independence")) {
+        animType = "republic_day";
+        animMsg = "Saluting the Indian Flag! 🇮🇳🪖🫡";
+      } else if (title.includes("christmas")) {
+        animType = "christmas";
+        animMsg = "Santa Claus is here! Merry Christmas! 🎄🎅";
+      } else if (title.includes("eid") || title.includes("id-ul") || title.includes("id-e") || title.includes("fitr") || title.includes("zuha")) {
+        animType = "eid";
+        animMsg = "Eid special! Eid Mubarak! 🌙🕌";
+      } else if (title.includes("muharram")) {
+        animType = "muharram";
+        animMsg = "Muharram special 🤲";
+      } else if (title.includes("holi") || title.includes("dolyatra")) {
+        animType = "holi";
+        animMsg = "Happy Holi! 🎨";
+      } else if (title.includes("ram navami")) {
+        animType = "ram_navami";
+        animMsg = "Happy Ram Navami! 🏹";
+      } else if (title.includes("mahavir")) {
+        animType = "mahavir_jayanti";
+        animMsg = "Happy Mahavir Jayanti! 🪷";
+      } else if (title.includes("good friday")) {
+        animType = "good_friday";
+        animMsg = "Blessed Good Friday! ✝️";
+      } else if (title.includes("buddha")) {
+        animType = "buddha_purnima";
+        animMsg = "Happy Buddha Purnima! ☸️";
+      } else if (title.includes("janmashtami")) {
+        animType = "janmashtami";
+        animMsg = "Happy Krishna Janmashtami! 🦈";
+      } else if (title.includes("gandhi")) {
+        animType = "gandhi_jayanti";
+        animMsg = "Happy Gandhi Jayanti! 👓";
+      } else if (title.includes("dussehra")) {
+        animType = "dussehra";
+        animMsg = "Happy Dussehra! 🏹";
+      } else if (title.includes("nanak")) {
+        animType = "guru_nanak";
+        animMsg = "Happy Gurpurab! ੴ";
+      }
+    }
+    return { animType, animMsg };
+  };
+
   const fetchStats = useAttendanceStore((state) => state.fetchStats);
   const user = useAuthStore((state) => state.user);
   const targetPercentage = user?.targetAttendance ?? 75;
@@ -64,7 +117,8 @@ export const TodayPage = () => {
       setAgenda(prev => prev.map(a => ({ ...a, status: "off" as any })));
 
       // Trigger full day off celebration popup animation!
-      triggerAttendancePopup("full_day_off", "Congratulations on a full day off! 🥳🎉");
+      const { animType, animMsg } = getHolidayAnimation(activeEvent);
+      triggerAttendancePopup(animType, animMsg);
 
       // Save all to backend
       await Promise.all(
@@ -138,18 +192,32 @@ export const TodayPage = () => {
       setIsLoading(true);
       // Fetch active semester first
       const semRes = await api.get("/semesters/active");
+      
+      let statusPromise = Promise.resolve({ data: null });
       if (semRes.data) {
         setActiveSemester(semRes.data);
         const semesterId = semRes.data.id;
-        // Fetch today status based on active semester
-        const statusRes = await api.get(`/events/today-status?semesterId=${semesterId}&date=${targetDateStr}`);
-        setTodayStatus(statusRes.data);
+        statusPromise = api.get(`/events/today-status?semesterId=${semesterId}&date=${targetDateStr}`);
       } else {
         setActiveSemester(null);
       }
 
-      const res = await api.get(`/attendance/today?date=${targetDateStr}`);
-      setAgenda(Array.isArray(res.data) ? res.data : []);
+      // Fetch today status and attendance in parallel
+      const [statusRes, res] = await Promise.allSettled([
+        statusPromise,
+        api.get(`/attendance/today?date=${targetDateStr}`)
+      ]);
+
+      if (statusRes.status === 'fulfilled') {
+        setTodayStatus(statusRes.value.data);
+      }
+      
+      if (res.status === 'fulfilled') {
+        setAgenda(Array.isArray(res.value.data) ? res.value.data : []);
+      } else {
+        setAgenda([]);
+      }
+
     } catch (error) {
       console.error("Failed to fetch today data:", error);
     } finally {
@@ -188,9 +256,10 @@ export const TodayPage = () => {
     } else if (status === "off" || status === "cancelled") {
       const allOthersOff = updatedAgenda.every(a => a.status === "off" || a.status === "cancelled");
       if (allOthersOff && updatedAgenda.length > 0) {
-        triggerAttendancePopup("full_day_off", "Congratulations on a full day off! 🥳🎉");
+        const { animType, animMsg } = getHolidayAnimation(activeEvent);
+        triggerAttendancePopup(animType, animMsg);
       } else {
-        triggerAttendancePopup("off_class", "Yay! Off class today! 💃🕺");
+        triggerAttendancePopup("off_class", "Yay! Off class today! 🎈🛌");
       }
     }
 
@@ -248,7 +317,7 @@ export const TodayPage = () => {
 
   // Determine if we should show the holiday/exam state instead of classes
   const activeEvent = todayStatus?.activeEvent;
-  const isGlobalEventActive = activeEvent && ["holiday", "vacation", "fest", "midsem", "endsem", "institute"].includes(activeEvent.eventType);
+  const isGlobalEventActive = activeEvent && ["holiday", "restricted_holiday", "vacation", "fest", "midsem", "endsem", "institute"].includes(activeEvent.eventType);
 
   const getEventStateConfig = (type: string) => {
     switch(type) {
@@ -261,6 +330,9 @@ export const TodayPage = () => {
       case "vacation":
         return { icon: <Palmtree className="w-16 h-16 text-emerald-500 mb-4 mx-auto" />, color: "border-emerald-500/20 bg-emerald-500/5", title: "Vacation", msg: "You're officially on vacation. Recharge and relax!" };
       case "holiday":
+        return { icon: <Palmtree className="w-16 h-16 text-emerald-500 mb-4 mx-auto" />, color: "border-emerald-500/20 bg-emerald-500/5", title: "Holiday", msg: "Enjoy your day off!" };
+      case "restricted_holiday":
+        return { icon: <Palmtree className="w-16 h-16 text-cyan-500 mb-4 mx-auto" />, color: "border-cyan-500/20 bg-cyan-500/5", title: "Restricted Holiday", msg: "Enjoy your day off!" };
       default:
         return { icon: <Palmtree className="w-16 h-16 text-emerald-500 mb-4 mx-auto" />, color: "border-emerald-500/20 bg-emerald-500/5", title: "Holiday", msg: "Enjoy your day off!" };
     }
@@ -387,7 +459,14 @@ export const TodayPage = () => {
               title="Mark all today's classes as Off"
             >
               <Palmtree className="w-4 h-4 text-amber-500" />
-              <span>{isMarkingFullDayOff ? "Marking..." : "Mark Full Day Off"}</span>
+              <span>
+                {isMarkingFullDayOff 
+                  ? "Marking..." 
+                  : activeEvent 
+                    ? `Mark full day off for ${activeEvent.title}`
+                    : "Mark Full Day Off"
+                }
+              </span>
             </button>
           )}
           {activeSemester && (

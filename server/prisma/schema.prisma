@@ -57,6 +57,7 @@ enum EventType {
   exam
   lab_exam
   holiday
+  restricted_holiday
   vacation
   fest
   institute
@@ -341,6 +342,8 @@ model Event {
   endDate     DateTime? @db.Date
   eventType   EventType @default(other)
   allDay      Boolean   @default(true)
+  isHoliday   Boolean   @default(false)
+  isHolidayList Boolean @default(false)
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 

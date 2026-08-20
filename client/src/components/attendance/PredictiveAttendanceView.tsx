@@ -21,6 +21,7 @@ import {
 import { api } from "../../lib/api";
 import { useAuthStore } from "../../stores/authStore";
 import { useAttendanceStore } from "../../stores/attendanceStore";
+import { Stepper } from "../ui/stepper";
 
 interface SubjectStat {
   id: string;
@@ -444,43 +445,35 @@ export const PredictiveAttendanceView: React.FC<PredictiveAttendanceViewProps> =
 
                       <div className="flex items-center gap-4">
                         {/* + Attend button */}
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-[11px] text-emerald-500 font-semibold">Attend +</span>
-                          <button
-                            onClick={() => updateSim(sub.id, "addAttend", -1)}
-                            className="w-6 h-6 rounded-lg bg-card border border-border text-xs font-bold text-muted-foreground hover:text-foreground flex items-center justify-center"
-                          >
-                            -
-                          </button>
-                          <span className="text-xs font-bold text-foreground w-4 text-center">
-                            {sim.addAttend}
-                          </span>
-                          <button
-                            onClick={() => updateSim(sub.id, "addAttend", 1)}
-                            className="w-6 h-6 rounded-lg bg-emerald-500/20 border border-emerald-500/30 text-xs font-bold text-emerald-400 flex items-center justify-center"
-                          >
-                            +
-                          </button>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[11px] text-emerald-500 font-semibold w-[42px]">Attend +</span>
+                          <div className="w-[80px]">
+                            <Stepper 
+                              size="sm"
+                              min={0}
+                              max={100}
+                              value={sim.addAttend}
+                              onChange={(val) => {
+                                updateSim(sub.id, "addAttend", val - sim.addAttend);
+                              }}
+                            />
+                          </div>
                         </div>
 
                         {/* + Miss button */}
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-[11px] text-rose-500 font-semibold">Miss +</span>
-                          <button
-                            onClick={() => updateSim(sub.id, "addMiss", -1)}
-                            className="w-6 h-6 rounded-lg bg-card border border-border text-xs font-bold text-muted-foreground hover:text-foreground flex items-center justify-center"
-                          >
-                            -
-                          </button>
-                          <span className="text-xs font-bold text-foreground w-4 text-center">
-                            {sim.addMiss}
-                          </span>
-                          <button
-                            onClick={() => updateSim(sub.id, "addMiss", 1)}
-                            className="w-6 h-6 rounded-lg bg-rose-500/20 border border-rose-500/30 text-xs font-bold text-rose-400 flex items-center justify-center"
-                          >
-                            +
-                          </button>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[11px] text-rose-500 font-semibold w-[42px]">Miss +</span>
+                          <div className="w-[80px]">
+                            <Stepper 
+                              size="sm"
+                              min={0}
+                              max={100}
+                              value={sim.addMiss}
+                              onChange={(val) => {
+                                updateSim(sub.id, "addMiss", val - sim.addMiss);
+                              }}
+                            />
+                          </div>
                         </div>
 
                         {/* Projected Result */}

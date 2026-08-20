@@ -77,10 +77,15 @@ export const useAttendanceStore = create<AttendanceState>((set) => ({
         return;
       }
 
-      // 1. Fetch Subject Stats
-      const statsRes = await api.get(`/attendance/stats?semesterId=${activeSemRes.data.id}`);
-      const rawSubjects = Array.isArray(statsRes.data) ? statsRes.data : [];
-      
+      // Run independent queries in parallel
+      const [statsRes, logsRes, eventsRes] = await Promise.allSettled([
+        api.get(`/attendance/stats?semesterId=${activeSemRes.data.id}`),
+        api.get("/attendance/logs"),
+        api.get(`/events?semesterId=${activeSemRes.data.id}`)
+      ]);
+
+      // 1. Process Subject Stats
+      const rawSubjects = statsRes.status === 'fulfilled' && Array.isArray(statsRes.value.data) ? statsRes.value.data : [];
       let totalAttended = 0;
       let totalClasses = 0;
       
@@ -102,16 +107,14 @@ export const useAttendanceStore = create<AttendanceState>((set) => ({
           target: sub.target,
         };
       });
-      
       const overallPercentage = totalClasses > 0 ? (totalAttended / totalClasses) * 100 : 0;
 
-      // 2. Fetch Detailed Attendance History Logs
+      // 2. Process Detailed Attendance History Logs
       let historyLogs: AttendanceHistoryEntry[] = [];
-      try {
-        const logsRes = await api.get("/attendance/logs");
-        const rawLogs = Array.isArray(logsRes.data?.logs) 
-          ? logsRes.data.logs 
-          : (Array.isArray(logsRes.data) ? logsRes.data : []);
+      if (logsRes.status === 'fulfilled') {
+        const rawLogs = Array.isArray(logsRes.value.data?.logs) 
+          ? logsRes.value.data.logs 
+          : (Array.isArray(logsRes.value.data) ? logsRes.value.data : []);
 
         historyLogs = rawLogs.map((item: any) => {
           let time = "";
@@ -120,7 +123,6 @@ export const useAttendanceStore = create<AttendanceState>((set) => ({
           } else if (item.startTime && item.startTime !== "00:00") {
             time = item.startTime;
           }
-
           return {
             date: item.date || "",
             dateFormatted: item.dateFormatted || item.date || "",
@@ -129,23 +131,22 @@ export const useAttendanceStore = create<AttendanceState>((set) => ({
             time: time || undefined
           };
         });
-      } catch (err) {
-        console.warn("Could not fetch attendance logs for RAG context:", err);
+      } else {
+        console.warn("Could not fetch attendance logs for RAG context:", logsRes.reason);
       }
 
-      // 3. Fetch Calendar Events & Holidays
+      // 3. Process Calendar Events & Holidays
       let events: CalendarEventEntry[] = [];
-      try {
-        const eventsRes = await api.get(`/events?semesterId=${activeSemRes.data.id}`);
-        const rawEvents = Array.isArray(eventsRes.data) ? eventsRes.data : [];
+      if (eventsRes.status === 'fulfilled') {
+        const rawEvents = Array.isArray(eventsRes.value.data) ? eventsRes.value.data : [];
         events = rawEvents.map((ev: any) => ({
           title: ev.title || "Event",
           type: ev.eventType || "academic",
           date: ev.date || "",
           endDate: ev.endDate || undefined
         }));
-      } catch (err) {
-        console.warn("Could not fetch events for RAG context:", err);
+      } else {
+        console.warn("Could not fetch events for RAG context:", eventsRes.reason);
       }
       
       set({ 

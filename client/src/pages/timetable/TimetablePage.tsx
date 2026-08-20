@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Plus, Trash2, Loader2, CalendarPlus, Upload, Image as ImageIcon, X, Download, FileSpreadsheet, Edit3, ArrowLeft, CheckSquare, Square, CheckCircle2 } from "lucide-react";
+import { Plus, Trash2, Loader2, CalendarPlus, Upload, Image as ImageIcon, X, Download, FileSpreadsheet, Edit3, ArrowLeft, CheckSquare, Square, CheckCircle2, Zap } from "lucide-react";
 import { api } from "../../lib/api";
+import { RunActionButton } from "../../components/ui/run-action-button";
 import { TimetableWizardModal } from "./TimetableWizardModal";
 import { CreateSemesterModal } from "../../components/semester/CreateSemesterModal";
 import { SortableSlot } from "./SortableSlot";
@@ -646,20 +647,23 @@ export const TimetablePage = () => {
                 )}
               </div>
               
-              <button 
-                onClick={handleOcrUpload}
-                disabled={!selectedImage || isUploading}
-                className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold transition-colors flex items-center justify-center gap-2 shadow-md shadow-blue-500/20 cursor-pointer"
-              >
-                {isUploading ? (
-                  <>
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                    Extracting Master Schedule...
-                  </>
-                ) : (
-                  "Extract Schedule"
-                )}
-              </button>
+              <div className="w-full">
+                <RunActionButton 
+                  action={handleOcrUpload}
+                  disabled={!selectedImage || isUploading}
+                  idleLabel="Extract Schedule"
+                  doneLabel="Wizard Ready"
+                  idleIcon={<Upload className="h-5 w-5 fill-current text-primary-foreground opacity-90" />}
+                  steps={[
+                    { id: 1, label: 'Uploading Timetable', icon: Upload },
+                    { id: 2, label: 'Scanning Layout', icon: ImageIcon },
+                    { id: 3, label: 'Extracting Slots', icon: FileSpreadsheet },
+                    { id: 4, label: 'Classifying Subjects', icon: Zap },
+                    { id: 5, label: 'Preparing Wizard', icon: CheckCircle2 }
+                  ]}
+                  widths={{ idle: 220, running: 340, done: 220 }}
+                />
+              </div>
             </div>
           </div>
         </div>

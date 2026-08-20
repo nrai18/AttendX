@@ -63,12 +63,12 @@ export class EventController {
   }
 
   static async getTodayStatus(req: AuthenticatedRequest, res: Response) {
-    const { semesterId } = req.query;
+    const { semesterId, date } = req.query;
     if (!semesterId) {
       return res.status(400).json({ error: "Missing semesterId" });
     }
     try {
-      const status = await EventService.getTodayStatus(req.user!.userId, semesterId as string);
+      const status = await EventService.getTodayStatus(req.user!.userId, semesterId as string, date as string);
       res.json(status);
     } catch (error) {
       console.error("Get today status failed:", error);
@@ -78,10 +78,11 @@ export class EventController {
 
   static async clearAllEvents(req: AuthenticatedRequest, res: Response) {
     try {
-      await EventService.clearAllEvents(req.user!.userId);
+      const target = req.query.target as "holiday_list" | "academic_calendar" | "all" | undefined;
+      await EventService.clearAllEvents(req.user!.userId, target);
       // Invalidate the cache so the Calendar page doesn't show old events
       await CacheService.invalidateUser(req.user!.userId);
-      res.json({ message: "All events removed successfully" });
+      res.json({ message: "Events removed successfully" });
     } catch (error) {
       console.error("Clear events failed:", error);
       res.status(500).json({ error: "Failed to clear events" });

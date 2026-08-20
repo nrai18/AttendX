@@ -3,6 +3,8 @@ import { useAuthStore } from "../../stores/authStore";
 import { useAttendanceStore } from "../../stores/attendanceStore";
 import { api } from "../../lib/api";
 import { toast } from "sonner";
+import { Stepper } from "../../components/ui/stepper";
+import { RunActionButton } from "../../components/ui/run-action-button";
 import {
   Settings,
   Target,
@@ -36,7 +38,10 @@ import {
   Phone,
   HelpCircle,
   HardDrive,
-  X
+  X,
+  FileText,
+  Calendar,
+  FileArchive
 } from "lucide-react";
 
 import { useThemeStore } from "../../stores/themeStore";
@@ -625,32 +630,13 @@ export const SettingsPage: React.FC = () => {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <input
-                type="number"
-                min="1"
-                max="100"
-                placeholder="75"
-                value={targetAttendance}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  if (val === "") {
-                    setTargetAttendance("");
-                  } else {
-                    setTargetAttendance(val);
-                  }
-                }}
-                onBlur={() => {
-                  const num = Number(targetAttendance);
-                  if (targetAttendance === "" || isNaN(num) || num < 1) {
-                    setTargetAttendance(75);
-                  } else if (num > 100) {
-                    setTargetAttendance(100);
-                  } else {
-                    setTargetAttendance(num);
-                  }
-                }}
-                className="w-16 text-center py-1 rounded-lg bg-muted border border-border text-foreground text-xs font-bold focus:outline-none focus:ring-1 focus:ring-primary"
+              <Stepper 
+                min={1} 
+                max={100} 
+                value={Number(targetAttendance) || 75} 
+                onChange={setTargetAttendance} 
               />
+              <span className="text-sm font-semibold text-foreground">%</span>
               <button
                 onClick={handleSaveProfile}
                 disabled={isSaving}
@@ -720,10 +706,7 @@ export const SettingsPage: React.FC = () => {
         <h2 className="text-xs font-bold text-muted-foreground uppercase tracking-wider px-1">Data Management</h2>
         <div className="bg-card border border-border/70 rounded-2xl divide-y divide-border/50 shadow-md">
           {/* Export data to ZIP */}
-          <button
-            onClick={handleExportCSV}
-            className="w-full text-left p-4 hover:bg-muted/50 transition-colors flex items-center justify-between cursor-pointer group"
-          >
+          <div className="w-full text-left p-4 hover:bg-muted/50 transition-colors flex items-center justify-between cursor-pointer group">
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center">
                 <FileSpreadsheet className="w-5 h-5" />
@@ -733,30 +716,90 @@ export const SettingsPage: React.FC = () => {
                 <p className="text-xs text-muted-foreground">Downloads a ZIP archive of CSV files with your entire semester data.</p>
               </div>
             </div>
-            <Download className="w-4 h-4 text-muted-foreground shrink-0" />
-          </button>
+            <RunActionButton
+              action={handleExportCSV}
+              idleLabel="Export ZIP"
+              doneLabel="Saved"
+              idleIcon={<Download className="w-4 h-4 text-primary-foreground opacity-90" />}
+              widths={{ idle: 160, running: 280, done: 140 }}
+              steps={[
+                { id: 1, label: 'Gathering Records', icon: FileSpreadsheet },
+                { id: 2, label: 'Compressing', icon: FileArchive },
+                { id: 3, label: 'Downloading', icon: Download }
+              ]}
+            />
+          </div>
 
           {/* Import data from ZIP */}
-          <button
-            onClick={() => csvInputRef.current?.click()}
-            disabled={isImportingCSV}
-            className="w-full text-left p-4 hover:bg-muted/50 transition-colors flex items-center justify-between cursor-pointer group disabled:opacity-50"
-          >
+          <div className="w-full text-left p-4 hover:bg-muted/50 transition-colors flex items-center justify-between cursor-pointer group">
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 rounded-xl bg-blue-500/10 text-blue-500 flex items-center justify-center">
-                {isImportingCSV ? <Loader2 className="w-5 h-5 animate-spin" /> : <Upload className="w-5 h-5" />}
+                <Upload className="w-5 h-5" />
               </div>
               <div>
                 <h3 className="text-sm font-bold text-foreground group-hover:text-primary transition-colors">Import data from ZIP</h3>
                 <p className="text-xs text-muted-foreground">Restores an exported ZIP file. <span className="text-rose-500 font-bold">WARNING: Replaces current semester.</span></p>
               </div>
             </div>
-            {isImportingCSV ? <Loader2 className="w-4 h-4 text-muted-foreground shrink-0 animate-spin" /> : <Upload className="w-4 h-4 text-muted-foreground shrink-0" />}
-          </button>
+            <RunActionButton
+              action={async () => csvInputRef.current?.click()}
+              disabled={isImportingCSV}
+              idleLabel="Import ZIP"
+              doneLabel="Ready"
+              idleIcon={<Upload className="w-4 h-4 text-primary-foreground opacity-90" />}
+              widths={{ idle: 160, running: 280, done: 140 }}
+              steps={[
+                { id: 1, label: 'Awaiting File', icon: Upload }
+              ]}
+            />
+          </div>
         </div>
       </div>
 
-      {/* CATEGORY 3: App */}
+      {/* CATEGORY 4: Stored Documents */}
+      <div className="space-y-3">
+        <h2 className="text-xs font-bold text-muted-foreground uppercase tracking-wider px-1">Stored Documents</h2>
+        <div className="bg-card border border-border/70 rounded-2xl divide-y divide-border/50 shadow-md">
+          <div className="p-4 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-purple-500/10 text-purple-500 flex items-center justify-center">
+                <FileText className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-foreground">Timetable Documents</h3>
+                <p className="text-xs text-muted-foreground">PDFs and images uploaded for schedule AI extraction.</p>
+              </div>
+            </div>
+            <span className="text-xs font-bold bg-muted text-muted-foreground px-2 py-1 rounded-md">Empty</span>
+          </div>
+          <div className="p-4 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-indigo-500/10 text-indigo-500 flex items-center justify-center">
+                <Calendar className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-foreground">Academic Calendars</h3>
+                <p className="text-xs text-muted-foreground">PDFs uploaded for semester event AI extraction.</p>
+              </div>
+            </div>
+            <span className="text-xs font-bold bg-muted text-muted-foreground px-2 py-1 rounded-md">Empty</span>
+          </div>
+          <div className="p-4 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center">
+                <FileArchive className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-foreground">Data Backups</h3>
+                <p className="text-xs text-muted-foreground">ZIP files containing exported semester CSV data.</p>
+              </div>
+            </div>
+            <span className="text-xs font-bold bg-muted text-muted-foreground px-2 py-1 rounded-md">Empty</span>
+          </div>
+        </div>
+      </div>
+
+      {/* CATEGORY 5: App */}
       <div className="space-y-3">
         <h2 className="text-xs font-bold text-muted-foreground uppercase tracking-wider px-1">App</h2>
         <div className="bg-card border border-border/70 rounded-2xl divide-y divide-border/50 shadow-md">
@@ -1096,11 +1139,12 @@ export const SettingsPage: React.FC = () => {
               <X className="w-5 h-5" />
             </button>
 
-            {/* Header / App Logo */}
             <div className="flex items-center gap-4 border-b border-border/50 pb-5">
-              <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-primary to-blue-600 text-primary-foreground flex items-center justify-center font-black text-xl shadow-lg shadow-primary/25 shrink-0">
-                AX
-              </div>
+              <img 
+                src="/attendx_logo.png" 
+                alt="AttendX Logo" 
+                className="w-14 h-14 rounded-2xl object-cover shadow-lg shadow-primary/25 shrink-0 bg-white"
+              />
               <div>
                 <h2 className="text-xl font-extrabold text-foreground tracking-tight">AttendX</h2>
                 <p className="text-xs font-semibold text-primary">Smart Attendance Manager • v1.2.0</p>

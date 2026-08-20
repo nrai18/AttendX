@@ -4,6 +4,8 @@ import { motion, AnimatePresence } from "motion/react";
 import { api } from "../../lib/api";
 import { toast } from "sonner";
 import { useAttendanceStore } from "../../stores/attendanceStore";
+import { RunActionButton } from "../ui/run-action-button";
+import { FileText, Cpu, CheckCircle2, Tags } from "lucide-react";
 
 interface CalendarImportModalProps {
   isOpen: boolean;
@@ -71,11 +73,39 @@ export const CalendarImportModal: React.FC<CalendarImportModalProps> = ({ isOpen
   const currentGroup = parsedGroups?.[selectedGroupIndex];
   const currentEvents = currentGroup?.events || [];
 
-  const handleGroupChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const newIdx = Number(e.target.value);
+  const handleGroupChange = (newIdx: number) => {
     setSelectedGroupIndex(newIdx);
     if (parsedGroups) {
       setSelectedIndices(new Set(parsedGroups[newIdx].events.map((_, i) => i)));
+    }
+  };
+
+  const toggleSelection = (idx: number) => {
+    const event = currentEvents[idx];
+    if (event?.isHoliday || event?.category === 'HOLIDAY') return;
+    
+    const newSet = new Set(selectedIndices);
+    if (newSet.has(idx)) {
+      newSet.delete(idx);
+    } else {
+      newSet.add(idx);
+    }
+    setSelectedIndices(newSet);
+  };
+
+  const handleSelectAllToggle = () => {
+    if (selectedIndices.size === currentEvents.length) {
+      // Deselect all non-holidays
+      const holidayOnly = new Set<number>();
+      currentEvents.forEach((e, i) => {
+        if (e.isHoliday || e.category === 'HOLIDAY') {
+          holidayOnly.add(i);
+        }
+      });
+      setSelectedIndices(holidayOnly);
+    } else {
+      // Select all
+      setSelectedIndices(new Set(currentEvents.map((_, i) => i)));
     }
   };
 
@@ -112,15 +142,7 @@ export const CalendarImportModal: React.FC<CalendarImportModalProps> = ({ isOpen
     }
   };
 
-  const toggleSelection = (idx: number) => {
-    const newSet = new Set(selectedIndices);
-    if (newSet.has(idx)) {
-      newSet.delete(idx);
-    } else {
-      newSet.add(idx);
-    }
-    setSelectedIndices(newSet);
-  };
+
 
   return (
     <AnimatePresence>
@@ -178,78 +200,102 @@ export const CalendarImportModal: React.FC<CalendarImportModalProps> = ({ isOpen
                     </div>
                   </div>
 
-                  <button
-                    onClick={handleParse}
-                    disabled={!file || isParsing}
-                    className="w-full py-3 px-4 bg-primary text-primary-foreground font-semibold rounded-xl hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-                  >
-                    {isParsing ? (
-                      <>
-                        <Loader2 className="w-5 h-5 animate-spin" />
-                        Analyzing Document...
-                      </>
-                    ) : (
-                      "Extract Events"
-                    )}
-                  </button>
+                  <div className="pt-2">
+                    <RunActionButton 
+                      disabled={!file}
+                      action={handleParse}
+                      idleLabel="Extract Events"
+                      doneLabel="Data Finalized"
+                      idleIcon={<Upload className="h-5 w-5 fill-current text-primary-foreground opacity-90" />}
+                      widths={{ idle: 220, running: 340, done: 220 }}
+                      steps={[
+                        { id: 1, label: 'Uploading Document', icon: Upload },
+                        { id: 2, label: 'Extracting Text (OCR)', icon: FileText },
+                        { id: 3, label: 'Parsing AI Dates', icon: Cpu },
+                        { id: 4, label: 'Classifying Events', icon: Tags },
+                        { id: 5, label: 'Finalizing Data', icon: CheckCircle2 },
+                      ]}
+                    />
+                  </div>
                 </div>
               ) : (
                 <div className="space-y-4">
                   <div className="flex flex-col gap-2">
-                    <label className="block text-sm font-medium text-foreground mb-1">Select Target Semester</label>
-                    <select
-                      value={selectedGroupIndex}
-                      onChange={handleGroupChange}
-                      className="w-full bg-muted border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary transition-colors mb-4"
-                    >
+                    <label className="block text-sm font-medium text-foreground mb-2">Select Target Semester</label>
+                    <div className="flex flex-wrap gap-2 mb-4">
                       {parsedGroups.map((g, i) => (
-                        <option key={i} value={i}>{g.targetSemester}</option>
+                        <button
+                          key={i}
+                          onClick={() => handleGroupChange(i)}
+                          className={`flex-1 min-w-[100px] py-2 px-3 text-sm font-medium rounded-xl border transition-all ${
+                            selectedGroupIndex === i 
+                              ? 'bg-primary text-primary-foreground border-primary shadow-sm' 
+                              : 'bg-background border-border text-foreground hover:bg-muted/50 hover:border-border/80'
+                          }`}
+                        >
+                          {g.targetSemester}
+                        </button>
                       ))}
-                    </select>
+                    </div>
                     <div className="flex items-center justify-between">
                       <h3 className="text-sm font-semibold text-foreground">Extracted Events ({currentEvents.length})</h3>
                       <div className="flex items-center gap-3">
                         <button 
-                          onClick={() => setSelectedIndices(new Set(currentEvents.length === selectedIndices.size ? [] : currentEvents.map((_, i) => i)))}
+                          onClick={handleSelectAllToggle}
                           className="text-xs text-primary hover:underline font-medium"
                         >
-                          {currentEvents.length === selectedIndices.size ? "Deselect All" : "Select All"}
+                          {currentEvents.length === selectedIndices.size ? "Deselect Non-Holidays" : "Select All"}
                         </button>
                       </div>
                     </div>
                   </div>
 
                   <div className="space-y-2">
-                    {currentEvents.map((event, idx) => (
-                      <div 
-                        key={idx} 
-                        onClick={() => toggleSelection(idx)}
-                        className={`flex items-start gap-4 p-4 rounded-xl border cursor-pointer transition-colors ${selectedIndices.has(idx) ? 'bg-primary/5 border-primary/30' : 'bg-background border-border hover:border-border/80'}`}
-                      >
-                        <div className={`mt-0.5 flex-shrink-0 w-5 h-5 rounded border flex items-center justify-center ${selectedIndices.has(idx) ? 'bg-primary border-primary text-primary-foreground' : 'border-muted-foreground/30'}`}>
-                          {selectedIndices.has(idx) && <Check className="w-3.5 h-3.5" />}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between gap-2 mb-1">
-                            <h4 className="text-sm font-medium text-foreground truncate">{event.title}</h4>
-                            <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full capitalize ${
-                              event.category === 'EXAM' || event.category === 'LAB_EXAM' ? 'bg-rose-500/15 text-rose-500 dark:text-rose-400' :
-                              event.category === 'FEST' ? 'bg-purple-500/15 text-purple-600 dark:text-purple-400' :
-                              event.isHoliday || event.category === 'HOLIDAY' || event.category === 'VACATION' ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400' :
-                              'bg-muted text-muted-foreground'
-                            }`}>
-                              {event.category.replace('_', ' ')}
-                            </span>
+                    {currentEvents.map((event, idx) => {
+                      const isMandatory = event.isHoliday || event.category === 'HOLIDAY';
+                      return (
+                        <div 
+                          key={idx} 
+                          onClick={() => toggleSelection(idx)}
+                          className={`flex items-start gap-4 p-4 rounded-xl border transition-colors ${
+                            isMandatory 
+                              ? 'bg-background/50 border-border opacity-70 cursor-not-allowed'
+                              : selectedIndices.has(idx) 
+                                ? 'bg-primary/5 border-primary/30 cursor-pointer' 
+                                : 'bg-background border-border hover:border-border/80 cursor-pointer'
+                          }`}
+                        >
+                          <div className={`mt-0.5 flex-shrink-0 w-5 h-5 rounded border flex items-center justify-center ${
+                            isMandatory 
+                              ? 'bg-muted border-muted-foreground/30 text-muted-foreground'
+                              : selectedIndices.has(idx) 
+                                ? 'bg-primary border-primary text-primary-foreground' 
+                                : 'border-muted-foreground/30'
+                          }`}>
+                            {selectedIndices.has(idx) && <Check className="w-3.5 h-3.5" />}
                           </div>
-                          <p className="text-xs text-muted-foreground flex items-center gap-1.5">
-                            <Calendar className="w-3 h-3" />
-                            {event.startDate === event.endDate 
-                              ? event.startDate 
-                              : `${event.startDate} to ${event.endDate}`}
-                          </p>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between gap-2 mb-1">
+                              <h4 className="text-sm font-medium text-foreground truncate">{event.title}</h4>
+                              <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full capitalize ${
+                                event.category === 'EXAM' || event.category === 'LAB_EXAM' ? 'bg-rose-500/15 text-rose-500 dark:text-rose-400' :
+                                event.category === 'FEST' ? 'bg-purple-500/15 text-purple-600 dark:text-purple-400' :
+                                event.isHoliday || event.category === 'HOLIDAY' || event.category === 'VACATION' ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400' :
+                                'bg-muted text-muted-foreground'
+                              }`}>
+                                {event.category.replace('_', ' ')}
+                              </span>
+                            </div>
+                            <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+                              <Calendar className="w-3 h-3" />
+                              {event.startDate === event.endDate 
+                                ? event.startDate 
+                                : `${event.startDate} to ${event.endDate}`}
+                            </p>
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
 
                   <div className="flex gap-3 pt-4 border-t border-border/50">

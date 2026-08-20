@@ -1,13 +1,16 @@
 import React, { useState, useEffect, useRef } from "react";
 import { format, addMonths, subMonths, startOfMonth, endOfMonth, startOfWeek, endOfWeek, isSameMonth, isSameDay, addDays, isAfter, startOfDay, differenceInDays } from "date-fns";
-import { ChevronLeft, ChevronRight, Upload, Calendar as CalendarIcon, Loader2, Sparkles, AlertTriangle, ListFilter, AlignLeft, CalendarDays, Timer, CheckCircle2, Plus, Trash2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Upload, Calendar as CalendarIcon, Loader2, Sparkles, AlertTriangle, ListFilter, AlignLeft, CalendarDays, Timer, CheckCircle2, Plus, Trash2, Palmtree } from "lucide-react";
 import { api } from "../../lib/api";
 import { EventWizardModal } from "./EventWizardModal";
 import { CreateSemesterModal } from "../../components/semester/CreateSemesterModal";
+import { CalendarImportModal } from "../../components/calendar/CalendarImportModal";
+import { HolidayListTab } from "./HolidayListTab";
 import { Link } from "react-router-dom";
 import { useAuthStore } from "../../stores/authStore";
 import { DiscreteTabs } from "../../components/ui/discrete-tabs";
 import { toast } from "sonner";
+import { TimedUndoAction } from "../../components/ui/timed-undo-action";
 
 interface AppEvent {
   id: string;
@@ -15,8 +18,9 @@ interface AppEvent {
   description?: string;
   date: string;
   endDate?: string;
-  eventType: "ct" | "midsem" | "endsem" | "holiday" | "vacation" | "fest" | "institute" | "other";
+  eventType: "ct" | "midsem" | "endsem" | "holiday" | "restricted_holiday" | "vacation" | "fest" | "institute" | "other";
   allDay: boolean;
+  isHolidayList?: boolean;
 }
 
 interface Semester {
@@ -42,6 +46,7 @@ export const SemesterHubPage = () => {
   const [isWizardOpen, setIsWizardOpen] = useState(false);
   const [wizardPayload, setWizardPayload] = useState<any>(null);
   const [isCreateSemesterOpen, setIsCreateSemesterOpen] = useState(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
 
   const fetchData = async () => {
     try {
@@ -132,10 +137,9 @@ export const SemesterHubPage = () => {
   };
 
   const handleClearEvents = async () => {
-    if (!confirm("Are you sure you want to remove all academic calendar events? The calendar will render cleanly without event indicators.")) return;
     try {
-      await api.post("/events/clear");
-      setEvents([]);
+      await api.post("/events/clear?target=academic_calendar");
+      fetchData(); // re-fetch events
       fetchCalendar();
       window.dispatchEvent(new Event("attendance-updated"));
     } catch (error) {
@@ -161,13 +165,19 @@ export const SemesterHubPage = () => {
       return colors[hash % colors.length];
     }
     
+    if (type === "holiday") {
+      return "bg-emerald-500/20 text-emerald-400 border-emerald-500/30"; // Emerald for fixed
+    }
+    if (type === "restricted_holiday") {
+      return "bg-cyan-500/20 text-cyan-400 border-cyan-500/30"; // Cyan for restricted
+    }
+    
     switch (type) {
       case "midsem": return "bg-orange-500/20 text-orange-400 border-orange-500/30";
       case "endsem": return "bg-rose-500/20 text-rose-400 border-rose-500/30";
       case "ct": return "bg-amber-500/20 text-amber-400 border-amber-500/30";
       case "exam": return "bg-red-500/20 text-red-400 border-red-500/30";
       case "lab_exam": return "bg-yellow-500/20 text-yellow-400 border-yellow-500/30";
-      case "holiday": return "bg-emerald-500/20 text-emerald-400 border-emerald-500/30";
       case "vacation": return "bg-lime-500/20 text-lime-400 border-lime-500/30";
       case "institute": return "bg-sky-500/20 text-sky-400 border-sky-500/30";
       default: return "bg-blue-500/20 text-blue-400 border-blue-500/30";
@@ -202,6 +212,7 @@ export const SemesterHubPage = () => {
   // Upcoming Events logic
   const today = startOfDay(new Date());
   const upcomingEvents = events
+    .filter(e => !e.isHolidayList)
     .filter(e => isAfter(new Date(e.date), today) || isSameDay(new Date(e.date), today))
     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
@@ -257,31 +268,31 @@ export const SemesterHubPage = () => {
         
         <div className="flex items-center gap-3 w-full md:w-auto">
           {events.length > 0 && (
-            <button
-              onClick={handleClearEvents}
-              className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold bg-rose-500/10 text-rose-500 hover:bg-rose-500/20 border border-rose-500/20 transition-all cursor-pointer"
-              title="Remove academic events & calendar items"
-            >
-              <Trash2 className="w-4 h-4" />
-              <span className="hidden sm:inline">Remove Calendar</span>
-            </button>
+            <div className="flex h-[42px] items-center justify-center">
+              <TimedUndoAction 
+                initialSeconds={5} 
+                deleteLabel="Remove Calendar" 
+                undoLabel="Cancel Deletion"
+                onConfirm={handleClearEvents} 
+                icon={<Trash2 className="w-4 h-4 mr-2 inline-block" />}
+              />
+            </div>
           )}
-          <input 
-            type="file" 
-            ref={fileInputRef} 
-            onChange={handleFileUpload} 
-            accept=".jpg,.jpeg,.png,.pdf" 
-            className="hidden" 
-          />
           <button 
-            onClick={() => fileInputRef.current?.click()}
-            disabled={isUploading || !activeSemester}
+            onClick={() => setIsImportModalOpen(true)}
+            disabled={!activeSemester}
             className="flex-1 md:flex-none flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold bg-primary text-primary-foreground hover:bg-primary/90 transition-all disabled:opacity-50"
           >
-            {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-            {isUploading ? "Scanning..." : "Auto Import"}
+            <Sparkles className="w-4 h-4" />
+            AI Import
           </button>
         </div>
+        
+        <CalendarImportModal 
+          isOpen={isImportModalOpen}
+          onClose={() => setIsImportModalOpen(false)}
+          onSuccess={fetchData}
+        />
       </div>
 
       {activeSemester ? (
@@ -342,10 +353,11 @@ export const SemesterHubPage = () => {
         defaultTab={activeTab}
         onTabChange={(id) => setActiveTab(id as any)}
         tabs={[
-          { id: 'timeline', icon: <AlignLeft size={20} />, label: 'Timeline', activeColor: 'text-primary' },
-          { id: 'calendar', icon: <CalendarDays size={20} />, label: 'Calendar', activeColor: 'text-primary' },
-          { id: 'countdowns', icon: <Timer size={20} />, label: 'Countdowns', activeColor: 'text-primary' },
-          { id: 'events', icon: <ListFilter size={20} />, label: 'Events', activeColor: 'text-primary' }
+          { id: 'timeline', icon: <AlignLeft size={20} />, label: 'Timeline', activeColor: 'text-blue-500' },
+          { id: 'calendar', icon: <CalendarDays size={20} />, label: 'Calendar', activeColor: 'text-indigo-500' },
+          { id: 'countdowns', icon: <Timer size={20} />, label: 'Countdowns', activeColor: 'text-amber-500' },
+          { id: 'events', icon: <ListFilter size={20} />, label: 'Events', activeColor: 'text-rose-500' },
+          { id: 'holidays', icon: <Palmtree size={20} />, label: 'Holidays', activeColor: 'text-emerald-500' }
         ]}
       />
 
@@ -500,7 +512,7 @@ export const SemesterHubPage = () => {
           <div className="max-w-2xl mx-auto py-8">
             <h2 className="text-xl font-bold text-white mb-8">Semester Journey</h2>
             <div className="space-y-0 relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px before:h-full before:w-0.5 before:bg-white/10">
-              {events.map((event) => {
+              {events.filter(e => !e.isHolidayList).map((event) => {
                 const isPast = isAfter(today, new Date(event.endDate || event.date));
                 const isCurrent = isSameDay(today, new Date(event.date)) || (event.endDate && today >= new Date(event.date) && today <= new Date(event.endDate));
                 
@@ -549,7 +561,7 @@ export const SemesterHubPage = () => {
 
         {activeTab === "events" && (
           <div className="space-y-4">
-            {events.map(event => (
+            {events.filter(e => !e.isHolidayList).map(event => (
               <div key={event.id} className="flex items-center justify-between p-4 bg-white/[0.02] border border-white/5 rounded-xl">
                 <div>
                   <h4 className="font-bold text-white">{event.title}</h4>
@@ -564,6 +576,16 @@ export const SemesterHubPage = () => {
                 </span>
               </div>
             ))}
+          </div>
+        )}
+
+        {activeTab === "holidays" as any && (
+          <div className="py-2">
+            <HolidayListTab 
+              semesterId={activeSemester?.id} 
+              semesterStartDate={activeSemester?.startDate}
+              semesterEndDate={activeSemester?.endDate}
+            />
           </div>
         )}
 

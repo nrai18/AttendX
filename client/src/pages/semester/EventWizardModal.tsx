@@ -80,7 +80,7 @@ export const EventWizardModal: React.FC<WizardProps> = ({ isOpen, onClose, onSav
 
   const toggleEvent = (index: number) => {
     const evt = currentEvents[index];
-    const isHoliday = evt.isHoliday || evt.category.toUpperCase() === "HOLIDAY";
+    const isHoliday = evt.isHoliday || evt.category?.toUpperCase() === "HOLIDAY" || evt.category?.toUpperCase() === "RESTRICTED_HOLIDAY";
     if (isHoliday) return; // Cannot toggle holiday events
 
     const next = new Set(selectedEvents);
@@ -176,29 +176,40 @@ export const EventWizardModal: React.FC<WizardProps> = ({ isOpen, onClose, onSav
           <div className="pl-12 flex flex-col gap-4 mb-4">
              <div>
                <label className="block text-sm font-medium text-foreground mb-1.5">Parsed Target Semester</label>
-               <select
-                 value={selectedGroupIndex}
-                 onChange={(e) => setSelectedGroupIndex(Number(e.target.value))}
-                 className="w-full bg-black/20 border border-white/10 text-white rounded-xl px-4 py-2.5 outline-none focus:border-indigo-500 transition-colors"
-               >
+               <div className="flex flex-wrap gap-2">
                  {eventsPayload.map((g, i) => (
-                   <option key={i} value={i}>{g.targetSemester}</option>
+                   <button
+                     key={i}
+                     onClick={() => setSelectedGroupIndex(i)}
+                     className={`flex-1 min-w-[100px] py-2 px-3 text-sm font-medium rounded-xl border transition-all ${
+                       selectedGroupIndex === i 
+                         ? 'bg-indigo-500 text-white border-indigo-500 shadow-sm' 
+                         : 'bg-black/20 border-white/10 text-white hover:bg-white/5 hover:border-white/20'
+                     }`}
+                   >
+                     {g.targetSemester}
+                   </button>
                  ))}
-               </select>
+               </div>
              </div>
              
              <div>
                <label className="block text-sm font-medium text-foreground mb-1.5">Map to System Semester</label>
-               <select
-                 value={selectedSemester}
-                 onChange={(e) => setSelectedSemester(e.target.value)}
-                 className="w-full bg-black/20 border border-white/10 text-white rounded-xl px-4 py-2.5 outline-none focus:border-indigo-500 transition-colors"
-               >
-                 <option value="" disabled>Select Semester</option>
+               <div className="flex flex-wrap gap-2">
                  {semesters.map(s => (
-                   <option key={s.id} value={s.id}>{s.name}</option>
+                   <button
+                     key={s.id}
+                     onClick={() => setSelectedSemester(s.id)}
+                     className={`flex-1 min-w-[100px] py-2 px-3 text-sm font-medium rounded-xl border transition-all ${
+                       selectedSemester === s.id 
+                         ? 'bg-indigo-500 text-white border-indigo-500 shadow-sm' 
+                         : 'bg-black/20 border-white/10 text-white hover:bg-white/5 hover:border-white/20'
+                     }`}
+                   >
+                     {s.name}
+                   </button>
                  ))}
-               </select>
+               </div>
              </div>
           </div>
         </div>
