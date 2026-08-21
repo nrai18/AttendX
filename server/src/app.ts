@@ -99,9 +99,10 @@ export async function startServer() {
   }
 
   console.log("Calling app.listen...");
-  app.listen(Number(PORT), "0.0.0.0", () => {
+  const server = app.listen(Number(PORT), "0.0.0.0", () => {
     console.log(`🚀 Server ready at: http://0.0.0.0:${PORT}`);
   });
+  server.timeout = 300000; // 5 minutes
 }
 
 export default app;

@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { CheckCircle2, Info, RefreshCw } from "lucide-react";
 import { api } from "../../lib/api";
 import { toast } from "sonner";
+import { SaveToggle } from "../../components/ui/save-toggle";
 import { format, parse } from "date-fns";
 
 export const FIXED_HOLIDAYS = [
@@ -175,14 +176,12 @@ export const HolidayListTab = ({ semesterId, semesterStartDate, semesterEndDate 
               Clear All
             </button>
 
-            <button
+            <SaveToggle
               onClick={handleSyncHolidays}
-              disabled={isSyncing || !semesterId}
-              className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-all disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
-            >
-              <RefreshCw size={16} className={isSyncing ? "animate-spin" : ""} />
-              Sync to Calendar
-            </button>
+              idleText="Sync to Calendar"
+              savedText="Synced!"
+              size="sm"
+            />
           </div>
         </div>
       </div>

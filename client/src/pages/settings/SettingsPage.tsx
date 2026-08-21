@@ -5,6 +5,7 @@ import { api } from "../../lib/api";
 import { toast } from "sonner";
 import { Stepper } from "../../components/ui/stepper";
 import { RunActionButton } from "../../components/ui/run-action-button";
+import { SaveToggle } from "../../components/ui/save-toggle";
 import {
   Settings,
   Target,
@@ -110,8 +111,8 @@ export const SettingsPage: React.FC = () => {
     }
   }, [user?.targetAttendance]);
 
-  const handleSaveProfile = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSaveProfile = async (e?: React.FormEvent) => {
+    e?.preventDefault();
     setIsSaving(true);
     setSaveSuccess(false);
 
@@ -637,13 +638,10 @@ export const SettingsPage: React.FC = () => {
                 onChange={setTargetAttendance} 
               />
               <span className="text-sm font-semibold text-foreground">%</span>
-              <button
+              <SaveToggle
                 onClick={handleSaveProfile}
-                disabled={isSaving}
-                className="px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-bold hover:bg-primary/90 transition-colors cursor-pointer disabled:opacity-50"
-              >
-                {isSaving ? "Saving..." : "Save"}
-              </button>
+                size="sm"
+              />
             </div>
           </div>
 

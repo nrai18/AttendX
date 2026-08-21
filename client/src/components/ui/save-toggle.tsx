@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence, MotionConfig } from 'motion/react';
 import { BsCheckCircleFill } from 'react-icons/bs';
 import { cn } from '../../lib/utils';
-import { useTheme } from 'next-themes';
+import { useThemeStore } from '../../stores/themeStore';
 
 type ButtonStatus = 'idle' | 'loading' | 'success' | 'saved';
 type Size = 'sm' | 'md' | 'lg';
@@ -47,41 +47,47 @@ interface SaveToggleProps {
   size?: Size;
   idleText?: string;
   savedText?: string;
-  loadingDuration?: number;
   successDuration?: number;
   onStatusChange?: (status: ButtonStatus) => void;
+  onClick?: () => Promise<void> | void;
 }
 
 export const SaveToggle: React.FC<SaveToggleProps> = ({
   size = 'md',
   idleText = 'Save',
   savedText = 'Saved',
-  loadingDuration = 1000,
   successDuration = 800,
   onStatusChange,
+  onClick,
 }) => {
   const [status, setStatus] = useState<ButtonStatus>('idle');
-  const { theme } = useTheme();
+  const { theme } = useThemeStore();
 
   const cfg = SIZE_CONFIG[size];
-
   const stableWidth = Math.max(cfg.idleWidth, cfg.savedWidth);
 
   useEffect(() => {
     onStatusChange?.(status);
   }, [status, onStatusChange]);
 
-  const handleClick = () => {
+  const handleClick = async () => {
     if (status === 'idle') {
       setStatus('loading');
-
-      setTimeout(() => {
+      
+      try {
+        if (onClick) {
+          await onClick();
+        }
         setStatus('success');
-
         setTimeout(() => {
           setStatus('saved');
+          setTimeout(() => {
+            setStatus('idle');
+          }, 2500);
         }, successDuration);
-      }, loadingDuration);
+      } catch (error) {
+        setStatus('idle');
+      }
     } else if (status === 'saved') {
       setStatus('idle');
     }
@@ -114,7 +120,7 @@ export const SaveToggle: React.FC<SaveToggleProps> = ({
   };
 
   return (
-    <div className="flex items-center justify-center p-10">
+    <>
       <MotionConfig
         transition={{
           type: 'spring',
@@ -243,6 +249,6 @@ export const SaveToggle: React.FC<SaveToggleProps> = ({
           </AnimatePresence>
         </motion.button>
       </MotionConfig>
-    </div>
+    </>
   );
 };

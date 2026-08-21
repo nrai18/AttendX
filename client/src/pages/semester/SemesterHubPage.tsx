@@ -166,9 +166,12 @@ export const SemesterHubPage = () => {
     }
     
     if (type === "holiday") {
-      return "bg-emerald-500/20 text-emerald-400 border-emerald-500/30"; // Emerald for fixed
+      if (event?.isHolidayList) {
+        return "bg-blue-500/20 text-blue-400 border-blue-500/30"; // Blue for Holiday List
+      }
+      return "bg-emerald-500/20 text-emerald-400 border-emerald-500/30"; // Emerald for Academic Calendar
     }
-    if (type === "restricted_holiday") {
+    if (type === "restricted_holiday" || (type === "other" && event?.isHolidayList)) {
       return "bg-cyan-500/20 text-cyan-400 border-cyan-500/30"; // Cyan for restricted
     }
     

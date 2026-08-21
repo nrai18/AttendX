@@ -93,6 +93,7 @@ export function Stepper({
     <div className="flex w-full justify-center">
       <div className={`flex items-center rounded-full border-2 border-[#E6E6EF] bg-transparent shadow-sm dark:border-zinc-800 ${containerClasses}`}>
         <motion.button
+          type="button"
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.92 }}
           transition={{ type: "spring", stiffness: 300, damping: 22 }}
@@ -137,6 +138,7 @@ export function Stepper({
         </div>
 
         <motion.button
+          type="button"
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.92 }}
           transition={{ type: "spring", stiffness: 300, damping: 22 }}

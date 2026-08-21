@@ -11,6 +11,8 @@ router.use(authenticate);
 
 router.get("/", EventController.getEvents);
 router.post("/ocr-import", upload.single("file"), EventController.ocrImport);
+router.get("/import-rag/cache", CalendarRagController.getCache);
+router.delete("/import-rag/cache", CalendarRagController.clearCache);
 router.post("/import-rag", upload.single("file"), CalendarRagController.parseDocument);
 router.post("/import-rag/save", CalendarRagController.saveEvents);
 router.post("/save-wizard", EventController.saveWizard);

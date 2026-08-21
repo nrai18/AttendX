@@ -5,6 +5,7 @@ import { api } from "../../lib/api";
 import { toast } from "sonner";
 import { useAttendanceStore } from "../../stores/attendanceStore";
 import { RunActionButton } from "../ui/run-action-button";
+import { SaveToggle } from "../ui/save-toggle";
 import { FileText, Cpu, CheckCircle2, Tags } from "lucide-react";
 
 interface CalendarImportModalProps {
@@ -35,6 +36,24 @@ export const CalendarImportModal: React.FC<CalendarImportModalProps> = ({ isOpen
   const [selectedGroupIndex, setSelectedGroupIndex] = useState(0);
   const [selectedIndices, setSelectedIndices] = useState<Set<number>>(new Set());
 
+  React.useEffect(() => {
+    if (isOpen && !parsedGroups) {
+      api.get("/events/import-rag/cache").then(res => {
+        if (res.data.events) {
+          setParsedGroups(res.data.events);
+        }
+      }).catch(console.error);
+    }
+  }, [isOpen]);
+
+  const handleClearCache = async () => {
+    try {
+      await api.delete("/events/import-rag/cache");
+    } catch(e) {}
+    setParsedGroups(null);
+    setFile(null);
+  };
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       setFile(e.target.files[0]);
@@ -58,6 +77,7 @@ export const CalendarImportModal: React.FC<CalendarImportModalProps> = ({ isOpen
 
       const groups: ParsedEventGroup[] = res.data.events;
       setParsedGroups(groups);
+      
       if (groups.length > 0) {
         setSelectedGroupIndex(0);
         setSelectedIndices(new Set(groups[0].events.map((_, i) => i)));
@@ -221,7 +241,15 @@ export const CalendarImportModal: React.FC<CalendarImportModalProps> = ({ isOpen
               ) : (
                 <div className="space-y-4">
                   <div className="flex flex-col gap-2">
-                    <label className="block text-sm font-medium text-foreground mb-2">Select Target Semester</label>
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="text-sm font-medium text-foreground">Select Target Semester</label>
+                      <button 
+                        onClick={handleClearCache}
+                        className="text-xs text-rose-500 hover:text-rose-600 font-medium px-2 py-1 hover:bg-rose-500/10 rounded transition-colors"
+                      >
+                        Upload Different PDF
+                      </button>
+                    </div>
                     <div className="flex flex-wrap gap-2 mb-4">
                       {parsedGroups.map((g, i) => (
                         <button
@@ -305,20 +333,12 @@ export const CalendarImportModal: React.FC<CalendarImportModalProps> = ({ isOpen
                     >
                       Back
                     </button>
-                    <button
+                    <SaveToggle
                       onClick={handleSave}
-                      disabled={isSaving || selectedIndices.size === 0}
-                      className="flex-[2] py-3 px-4 bg-primary text-primary-foreground font-semibold rounded-xl hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-                    >
-                      {isSaving ? (
-                        <>
-                          <Loader2 className="w-5 h-5 animate-spin" />
-                          Saving...
-                        </>
-                      ) : (
-                        `Import ${selectedIndices.size} Events`
-                      )}
-                    </button>
+                      idleText={`Save ${selectedIndices.size} Events`}
+                      savedText="Imported!"
+                      size="sm"
+                    />
                   </div>
                 </div>
               )}

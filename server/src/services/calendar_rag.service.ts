@@ -98,9 +98,13 @@ CRITICAL VISUAL & LOGICAL PARSING RULES:
 
 2. EXTRACT ALL SEMESTERS (CRITICAL!): The table explicitly contains columns for "I Sem", "III and V Sem", and "VII Sem". You MUST ensure the JSON array contains objects for ALL of these target semesters. Do NOT drop "Semester III" or "Semester V".
 
-3. HARDCODED DATE EXCEPTION (MILAD-UN-NABI): The event "Milad-Un-Nabi" appears in the row "WED 29 26 Milad-Un-Nabi 30 28 25". The number 26 corresponds to August 26th. You MUST strictly extract Milad-Un-Nabi as August 26 (YYYY-08-26) and NOT September 25 or August 29. Do not use internal knowledge, trust this rule!
+3. HARDCODED HOLIDAY EXCEPTIONS (CRITICAL): Due to PDF formatting, the AI often misaligns these specific holidays. You MUST use these exact dates regardless of what the text formatting looks like:
+   - "Milad-Un-Nabi" is August 26, 2026 (YYYY-08-26)
+   - "Janmashtami" is September 4, 2026 (YYYY-09-04)
+   - "Muharram" is June 26, 2026 (YYYY-06-26)
+   Do not use internal knowledge, trust these rules!
 
-3. READ THE DATES INSIDE THE EVENT BLOCKS: For regular events, the exact date is often written right next to the event name (e.g., "01-03, Oct.'26"). Always use that explicit date if present!
+4. READ THE DATES INSIDE THE EVENT BLOCKS: For regular events, the exact date is often written right next to the event name (e.g., "01-03, Oct.'26"). Always use that explicit date if present!
 
 GENERAL RULES:
 1. DATE FORMATTING: Output all dates strictly as "YYYY-MM-DD". If an event block shows a range (e.g., "02-04, Nov"), startDate is "2026-11-02" and endDate is "2026-11-04".
@@ -182,15 +186,17 @@ Here is the raw extracted text from the PDF as a fallback reference to help you 
       result.forEach(group => {
         const name = (group.targetSemester || "");
         if (name.includes("and") || name.includes(",")) {
-          // split "Semester III and V" into ["Semester III", "Semester V"]
-          const matches = name.match(/[IVX]+/gi);
-          if (matches) {
-            matches.forEach((roman: string) => {
+          // split "Semester III and V" or "Semester 3 and 5"
+          const matches = name.match(/[IVX]+|\d+/gi);
+          if (matches && matches.length > 0) {
+            matches.forEach((sem: string) => {
               finalResult.push({
-                targetSemester: `Semester ${roman.toUpperCase()}`,
+                targetSemester: `Semester ${sem.toUpperCase()}`,
                 events: [...(group.events || [])]
               });
             });
+          } else {
+            finalResult.push(group);
           }
         } else {
           finalResult.push(group);

@@ -188,7 +188,8 @@ export const CalendarPage = () => {
           const isLabExam = dayEvents.some(e => e.eventType === "lab_exam" || e.title.toLowerCase().includes("lab") || e.title.toLowerCase().includes("practical"));
           const isFest = dayEvents.some(e => e.eventType === "fest" || e.title.toLowerCase().includes("yalgaar") || e.title.toLowerCase().includes("fest"));
           const isSports = dayEvents.some(e => e.eventType === "sports" || e.title.toLowerCase().includes("sports") || e.title.toLowerCase().includes("tournament"));
-          const isHoliday = dayEvents.some(e => e.eventType === "holiday" || e.eventType === "restricted_holiday" || e.title.toLowerCase().includes("holiday") || e.title.toLowerCase().includes("jayanti") || e.title.toLowerCase().includes("diwali") || e.title.toLowerCase().includes("dussehra"));
+          const isHolidayListHoliday = dayEvents.some(e => e.isHolidayList);
+          const isAcademicHoliday = dayEvents.some(e => !e.isHolidayList && (e.eventType === "holiday" || e.eventType === "restricted_holiday" || e.title.toLowerCase().includes("holiday") || e.title.toLowerCase().includes("jayanti") || e.title.toLowerCase().includes("diwali") || e.title.toLowerCase().includes("dussehra")));
           const isVacation = dayEvents.some(e => e.eventType === "vacation" || e.title.toLowerCase().includes("vacation") || e.title.toLowerCase().includes("break"));
           const hasEvent = dayEvents.length > 0;
 
@@ -204,8 +205,10 @@ export const CalendarPage = () => {
           } else if (isFest) {
             animBorder = "ring-2 ring-purple-500 bg-purple-500/10 dark:bg-purple-500/20";
           } else if (isSports) {
+            animBorder = "ring-2 ring-lime-500 bg-lime-500/10 dark:bg-lime-500/20";
+          } else if (isHolidayListHoliday) {
             animBorder = "ring-2 ring-blue-500 bg-blue-500/10 dark:bg-blue-500/20";
-          } else if (isHoliday) {
+          } else if (isAcademicHoliday) {
             animBorder = "ring-2 ring-emerald-500 bg-emerald-500/10 dark:bg-emerald-500/20";
           } else if (isVacation) {
             animBorder = "ring-2 ring-cyan-500 bg-cyan-500/10 dark:bg-cyan-500/20";

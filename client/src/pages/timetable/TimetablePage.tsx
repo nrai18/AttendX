@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { Plus, Trash2, Loader2, CalendarPlus, Upload, Image as ImageIcon, X, Download, FileSpreadsheet, Edit3, ArrowLeft, CheckSquare, Square, CheckCircle2, Zap } from "lucide-react";
 import { api } from "../../lib/api";
 import { RunActionButton } from "../../components/ui/run-action-button";
+import { SaveToggle } from "../../components/ui/save-toggle";
 import { TimetableWizardModal } from "./TimetableWizardModal";
 import { CreateSemesterModal } from "../../components/semester/CreateSemesterModal";
 import { SortableSlot } from "./SortableSlot";
@@ -177,8 +178,8 @@ export const TimetablePage = () => {
     setIsAdding(true);
   };
 
-  const handleAddSlot = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleAddSlot = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
     if (!subjectId || !activeSemester) return alert("Please select a subject and ensure you have an active semester.");
     try {
       const payload = {
@@ -777,7 +778,12 @@ export const TimetablePage = () => {
           </div>
           <div className="flex justify-end gap-3 pt-4 border-t border-border">
             <button type="button" onClick={resetForm} className="px-5 py-2 rounded-xl text-xs font-semibold text-muted-foreground hover:bg-muted transition-colors">Cancel</button>
-            <button type="submit" className="px-6 py-2 rounded-xl text-xs font-bold bg-primary text-primary-foreground hover:bg-primary/90 transition-all shadow-md shadow-primary/20">{editingSlotId ? "Save Changes" : "Save Slot"}</button>
+            <SaveToggle
+              onClick={() => handleAddSlot()}
+              idleText={editingSlotId ? "Save Changes" : "Save Slot"}
+              savedText="Saved!"
+              size="sm"
+            />
           </div>
         </form>
       )}

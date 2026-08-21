@@ -117,6 +117,7 @@ export function RunActionButton({
       try {
         await action();
         setStatus("done");
+        setTimeout(() => setStatus("idle"), 2500);
       } catch (e) {
         setStatus("idle");
       }
@@ -138,6 +139,7 @@ export function RunActionButton({
         // If there's an action, let the action's promise handle setting "done"
         if (!action) {
           setStatus("done");
+          setTimeout(() => setStatus("idle"), 2500);
         }
         return prev;
       });
