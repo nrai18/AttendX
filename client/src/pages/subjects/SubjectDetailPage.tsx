@@ -177,9 +177,22 @@ export const SubjectDetailPage = () => {
     if (newStatus === "absent") {
       triggerAttendancePopup("crying", "Attendance Dropped! 😭");
     } else if (newStatus === "present") {
-      const { overallPercentage } = useAttendanceStore.getState();
+      const { overallPercentage, totalAttended, totalClasses } = useAttendanceStore.getState();
       const targetPct = useAuthStore.getState().user?.targetAttendance ?? 75;
-      if (overallPercentage >= targetPct) {
+      
+      let newAttended = totalAttended;
+      let newClasses = totalClasses;
+      
+      if (item.status !== "present" && item.status !== "medical" && item.status !== "od") {
+         newAttended += 1;
+         if (item.status === null || item.status === "not_marked" || item.status === "off" || item.status === "cancelled") {
+            newClasses += 1;
+         }
+      }
+      
+      const newPercentage = newClasses > 0 ? (newAttended / newClasses) * 100 : 0;
+      
+      if (overallPercentage < targetPct && newPercentage >= targetPct) {
         triggerAttendancePopup("target_hit", `Target ${targetPct}% Touched! 🎯`);
       } else {
         triggerAttendancePopup("thumbs_up", "Awesome! Marked Present 👍");

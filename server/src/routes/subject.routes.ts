@@ -8,6 +8,7 @@ router.use(authenticate);
 
 router.get("/", SubjectController.list);
 router.post("/", SubjectController.create);
+router.post("/merge", SubjectController.merge);
 router.patch("/:id", SubjectController.update);
 router.delete("/:id", SubjectController.remove);
 

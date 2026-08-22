@@ -31,6 +31,20 @@ export class SubjectController {
     res.json(updated);
   }
 
+  static async merge(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { merges } = req.body;
+      if (!Array.isArray(merges)) {
+        return res.status(400).json({ error: "Invalid payload: merges must be an array" });
+      }
+      const results = await SubjectService.mergeSubjects(req.user!.userId, merges);
+      await CacheService.invalidateUser(req.user!.userId);
+      res.json({ message: "Subjects merged successfully", results });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  }
+
   static async remove(req: AuthenticatedRequest, res: Response) {
     const preserveHistory = req.query.preserveHistory !== "false";
     await SubjectService.deleteSubject(req.user!.userId, String(req.params.id), preserveHistory);
