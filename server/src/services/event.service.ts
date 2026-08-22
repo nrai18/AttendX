@@ -74,6 +74,18 @@ export class EventService {
   }
 
   static async saveWizardEvents(userId: string, semesterId: string, events: any[]) {
+    // Validate semesterId to prevent foreign key constraint violations
+    const logLine = `[saveWizardEvents] Received semesterId: ${semesterId} | userId: ${userId}\n`;
+    require('fs').appendFileSync('C:/Users/Raina/.gemini/antigravity/brain/165d151c-ed5b-4a55-a080-98f4ec317c30/scratch/backend_logs.txt', logLine);
+    if (semesterId) {
+      const semesterExists = await prisma.semester.findUnique({
+        where: { id: semesterId }
+      });
+      require('fs').appendFileSync('C:/Users/Raina/.gemini/antigravity/brain/165d151c-ed5b-4a55-a080-98f4ec317c30/scratch/backend_logs.txt', `[saveWizardEvents] semesterExists in DB: ${JSON.stringify(semesterExists)}\n`);
+      if (!semesterExists) {
+        throw new Error("The specified semester does not exist or was deleted. Please refresh the page.");
+      }
+    }
     // Save the user confirmed events, avoiding duplicates by title and date
     const createdEvents = [];
     for (const evt of events) {
@@ -99,6 +111,8 @@ export class EventService {
 
       if (rawType === "holiday") {
         mappedType = "holiday";
+      } else if (rawType === "restricted_holiday") {
+        mappedType = "restricted_holiday";
       } else if (rawType === "vacation") {
         mappedType = "vacation";
       } else if (rawType === "fest") {

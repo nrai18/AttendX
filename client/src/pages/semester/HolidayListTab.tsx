@@ -82,6 +82,7 @@ export const HolidayListTab = ({ semesterId, semesterStartDate, semesterEndDate 
           eventType: "restricted_holiday",
           date: `${yyyyMmDd}T00:00:00Z`,
           allDay: true,
+          isHolidayList: true,
         };
       });
 
@@ -93,6 +94,7 @@ export const HolidayListTab = ({ semesterId, semesterStartDate, semesterEndDate 
           eventType: "holiday",
           date: `${yyyyMmDd}T00:00:00Z`,
           allDay: true,
+          isHolidayList: true,
         };
       });
 

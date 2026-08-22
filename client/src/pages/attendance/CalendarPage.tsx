@@ -20,6 +20,7 @@ interface CalendarEvent {
   id: string;
   title: string;
   eventType: string;
+  isHolidayList?: boolean;
 }
 
 interface CalendarData {
@@ -188,8 +189,9 @@ export const CalendarPage = () => {
           const isLabExam = dayEvents.some(e => e.eventType === "lab_exam" || e.title.toLowerCase().includes("lab") || e.title.toLowerCase().includes("practical"));
           const isFest = dayEvents.some(e => e.eventType === "fest" || e.title.toLowerCase().includes("yalgaar") || e.title.toLowerCase().includes("fest"));
           const isSports = dayEvents.some(e => e.eventType === "sports" || e.title.toLowerCase().includes("sports") || e.title.toLowerCase().includes("tournament"));
-          const isHolidayListHoliday = dayEvents.some(e => e.isHolidayList);
-          const isAcademicHoliday = dayEvents.some(e => !e.isHolidayList && (e.eventType === "holiday" || e.eventType === "restricted_holiday" || e.title.toLowerCase().includes("holiday") || e.title.toLowerCase().includes("jayanti") || e.title.toLowerCase().includes("diwali") || e.title.toLowerCase().includes("dussehra")));
+          const isRestrictedHoliday = dayEvents.some(e => e.eventType === "restricted_holiday");
+          const isHolidayListHoliday = dayEvents.some(e => e.isHolidayList && e.eventType !== "restricted_holiday");
+          const isAcademicHoliday = dayEvents.some(e => !e.isHolidayList && (e.eventType === "holiday" || e.title.toLowerCase().includes("holiday") || e.title.toLowerCase().includes("jayanti") || e.title.toLowerCase().includes("diwali") || e.title.toLowerCase().includes("dussehra")));
           const isVacation = dayEvents.some(e => e.eventType === "vacation" || e.title.toLowerCase().includes("vacation") || e.title.toLowerCase().includes("break"));
           const hasEvent = dayEvents.length > 0;
 
@@ -206,6 +208,8 @@ export const CalendarPage = () => {
             animBorder = "ring-2 ring-purple-500 bg-purple-500/10 dark:bg-purple-500/20";
           } else if (isSports) {
             animBorder = "ring-2 ring-lime-500 bg-lime-500/10 dark:bg-lime-500/20";
+          } else if (isRestrictedHoliday) {
+            animBorder = "ring-2 ring-cyan-500 bg-cyan-500/10 dark:bg-cyan-500/20";
           } else if (isHolidayListHoliday) {
             animBorder = "ring-2 ring-blue-500 bg-blue-500/10 dark:bg-blue-500/20";
           } else if (isAcademicHoliday) {
@@ -250,7 +254,9 @@ export const CalendarPage = () => {
                         status === "off" ? "bg-yellow-500/20 text-yellow-500" :
                         "bg-muted text-muted-foreground"
                       }`}>
-                        {status === "not_marked" ? "No Data" : status}
+                        {status === "not_marked" 
+                          ? (dayDetails.length > 0 ? "Incomplete" : "No Data") 
+                          : status}
                       </span>
                     </div>
 

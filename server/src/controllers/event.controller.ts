@@ -56,9 +56,11 @@ export class EventController {
       const created = await EventService.saveWizardEvents(req.user!.userId, semesterId, events);
       await CacheService.invalidateUser(req.user!.userId);
       res.json({ message: "Events saved successfully", events: created });
-    } catch (error) {
+    } catch (error: any) {
       console.error("Save wizard failed:", error);
-      res.status(500).json({ error: "Failed to save events" });
+      const msg = error.message || "Failed to save events";
+      const status = msg.includes("does not exist") ? 400 : 500;
+      res.status(status).json({ error: msg });
     }
   }
 
