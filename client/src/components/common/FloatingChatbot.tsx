@@ -1,7 +1,9 @@
 import React, { useState, useRef, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import { api } from "../../lib/api";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
-  Bot, 
+  Bot, Loader2, 
   X, 
   Send, 
   BookOpen, 
@@ -22,12 +24,42 @@ import {
   ArrowLeft,
   ChevronRight,
   Search,
-  Compass
+  Compass,
+  Activity,
+  AlertTriangle
 } from "lucide-react";
 import { FormattedChatMessage } from "./FormattedChatMessage";
 import { VoiceModeOverlay } from "./VoiceModeOverlay";
 import { useAttendanceStore } from "../../stores/attendanceStore";
 import { useAuthStore } from "../../stores/authStore";
+
+interface ActionPayload {
+  type: string;
+  payload: any;
+  requiresConfirmation?: boolean;
+}
+
+interface SimulationPayload {
+  subjectId: string;
+  subjectName: string;
+  skipCount: number;
+  currentAttended: number;
+  currentTotal: number;
+  projectedPercentage: number;
+  targetPercentage: number;
+}
+
+interface SemesterProjectionPayload {
+  skipCountPerSubject: number;
+  endDate: string;
+  subjects: {
+    subjectId: string;
+    subjectName: string;
+    remainingClasses: number;
+    projectedPercentage: number;
+    targetPercentage: number;
+  }[];
+}
 
 interface Message {
   id: string;
@@ -35,6 +67,11 @@ interface Message {
   content: string;
   citations?: string[];
   timestamp: string;
+  pendingActions?: ActionPayload[];
+  actionsExecuted?: boolean;
+  isExecutingAction?: boolean;
+  simulation?: SimulationPayload;
+  semesterProjection?: SemesterProjectionPayload;
 }
 
 const FEATURE_CARDS = [
@@ -91,6 +128,7 @@ const SEARCH_STAGES = [
 ];
 
 export const FloatingChatbot: React.FC = () => {
+  const navigate = useNavigate();
   const [isOpen, setIsOpen] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [isVoiceOpen, setIsVoiceOpen] = useState(false);
@@ -258,9 +296,13 @@ export const FloatingChatbot: React.FC = () => {
       const currentTotal = state.totalClasses || totalClasses;
       const currentLogs = state.historyLogs || [];
       const currentEvents = state.events || [];
+      const today = new Date();
+      const localTodayStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
 
       const studentContext = {
+        current_date: localTodayStr,
         has_active_semester: currentSubjects.length > 0 || currentLogs.length > 0 || currentTotal > 0,
+        active_semester_id: useAttendanceStore.getState().activeSemesterId,
         overall_percentage: currentOverall,
         target_percentage: currentTarget,
         total_attended: currentAttended,
@@ -285,15 +327,258 @@ export const FloatingChatbot: React.FC = () => {
       }
 
       const data = await res.json();
+      
+      const executeAction = async (action: any) => {
+        let refresh = false;
+        if (action.type === 'NAVIGATE' && action.payload?.path) {
+          navigate(action.payload.path);
+        } else if (action.type === 'MARK_ATTENDANCE') {
+          await api.post("/attendance/mark", action.payload);
+          navigate(`/today?date=${action.payload.date}`);
+          refresh = true;
+        } else if (action.type === 'ADD_EXTRA_CLASS') {
+          await api.post("/timetable/extra-class", action.payload);
+          navigate(`/today?date=${action.payload.date}`);
+          refresh = true;
+        } else if (action.type === 'REMOVE_ATTENDANCE') {
+          const startDate = new Date(action.payload.date);
+          const endDate = action.payload.endDate ? new Date(action.payload.endDate) : startDate;
+          let curr = new Date(startDate);
+          
+          while(curr <= endDate) {
+            const dateStr = `${curr.getFullYear()}-${String(curr.getMonth()+1).padStart(2,'0')}-${String(curr.getDate()).padStart(2,'0')}`;
+            if (action.payload.subjectId) {
+              await api.post("/attendance/mark", {
+                subjectId: action.payload.subjectId,
+                date: dateStr,
+                status: "not_marked"
+              });
+            } else {
+              const agendaRes = await api.get(`/attendance/today?date=${dateStr}`);
+              for (const item of agendaRes.data) {
+                if (item.status !== "not_marked" || item.type === "override" || item.isExtra) {
+                   await api.post("/attendance/mark", {
+                     subjectId: item.subject.id,
+                     date: dateStr,
+                     status: "not_marked"
+                   });
+                }
+              }
+            }
+            curr.setDate(curr.getDate() + 1);
+          }
+          navigate(`/today?date=${action.payload.date}`);
+          refresh = true;
+        } else if (action.type === 'MARK_FULL_DAY_OFF') {
+          const startDate = new Date(action.payload.date);
+          const endDate = action.payload.endDate ? new Date(action.payload.endDate) : startDate;
+          const excludeIds = action.payload.excludeSubjectIds || [];
+          
+          let curr = new Date(startDate);
+          while(curr <= endDate) {
+            const dateStr = `${curr.getFullYear()}-${String(curr.getMonth()+1).padStart(2,'0')}-${String(curr.getDate()).padStart(2,'0')}`;
+            const agendaRes = await api.get(`/attendance/today?date=${dateStr}`);
+            const agenda = agendaRes.data;
+            for (const item of agenda) {
+              if (!excludeIds.includes(item.subject.id) && item.status !== "off" && item.status !== "cancelled") {
+                await api.post("/attendance/mark", {
+                  subjectId: item.subject.id,
+                  date: dateStr,
+                  status: "off",
+                  timetableSlotId: item.type === "slot" ? item.id : undefined,
+                  overrideId: item.type === "override" ? item.id : undefined,
+                });
+              }
+            }
+            curr.setDate(curr.getDate() + 1);
+          }
+          navigate(`/today?date=${action.payload.date}`);
+          refresh = true;
+        } else if (action.type === 'CHANGE_TARGET') {
+          await api.patch(`/subjects/${action.payload.subjectId}`, { targetAttendance: action.payload.target });
+          refresh = true;
+        } else if (action.type === 'CHANGE_GLOBAL_TARGET') {
+          const res = await api.patch(`/users/me`, { targetAttendance: action.payload.target });
+          useAuthStore.getState().setUser(res.data);
+          refresh = true;
+        } else if (action.type === 'ADD_SUBJECT') {
+          await api.post("/subjects", action.payload);
+          refresh = true;
+        } else if (action.type === 'REMOVE_SUBJECT') {
+          await api.delete(`/subjects/${action.payload.subjectId}`);
+          refresh = true;
+        } else if (action.type === 'DROP_SUBJECT_FROM_TIMETABLE') {
+          await api.delete(`/timetable/semester/${action.payload.semesterId}/subject/${action.payload.subjectId}/slots`);
+          refresh = true;
+        } else if (action.type === 'SHIFT_TIMETABLE_SLOT') {
+          // Fetch timetable to find the slot
+          const ttRes = await api.get(`/timetable/${action.payload.semesterId}`);
+          const timetable = ttRes.data;
+          // Find the slot matching subjectId and dayOfWeek
+          let targetSlotId = null;
+          for (const day of Object.values(timetable.weeklySchedule) as any[]) {
+            const slot = day.find((s: any) => s.subject.id === action.payload.subjectId && s.dayOfWeek === action.payload.dayOfWeek);
+            if (slot) {
+              targetSlotId = slot.id;
+              break;
+            }
+          }
+          if (targetSlotId) {
+            await api.patch(`/timetable/slots/${targetSlotId}`, {
+              startTime: action.payload.newStartTime,
+              endTime: action.payload.newEndTime
+            });
+            refresh = true;
+          } else {
+            console.error("Could not find timetable slot to shift.");
+          }
+        }
+        return refresh;
+      };
+      
+      let shouldRefresh = false;
+      const pendingActions: ActionPayload[] = [];
+      let simulation: SimulationPayload | undefined = undefined;
+      let semesterProjection: SemesterProjectionPayload | undefined = undefined;
+      const botResponseId = String(Date.now() + 1);
+      
+      if (data.actions && Array.isArray(data.actions)) {
+        for (const action of data.actions) {
+          if (action.type === 'RUN_SIMULATION') {
+             // Calculate on client side
+             const targetSub = studentContext.subjects.find((s: any) => s.id === action.payload.subjectId);
+             if (targetSub) {
+                 const skipCount = action.payload.skipCount;
+                 const proj = (targetSub.attended / (targetSub.total + skipCount)) * 100;
+                 simulation = {
+                     subjectId: targetSub.id,
+                     subjectName: targetSub.name,
+                     skipCount,
+                     currentAttended: targetSub.attended,
+                     currentTotal: targetSub.total,
+                     projectedPercentage: proj,
+                     targetPercentage: targetSub.target || 75
+                 };
+             }
+          } else if (action.type === 'RUN_SEMESTER_PROJECTION') {
+            try {
+              const skipCount = action.payload.skipCountPerSubject || 0;
+              let endDateStr = action.payload.endDate;
+              
+              if (!endDateStr) {
+                const sems = await api.get('/semesters');
+                const activeSem = sems.data.find((s: any) => s.isCurrent);
+                if (activeSem) endDateStr = activeSem.endDate;
+              }
+              
+              if (endDateStr) {
+                const timetableRes = await api.get('/timetable');
+                const timetable = timetableRes.data;
+                const events = useAttendanceStore.getState().events;
+                
+                const startDate = new Date();
+                const endDate = new Date(endDateStr);
+                
+                let current = new Date(startDate);
+                current.setDate(current.getDate() + 1); // Start projecting from tomorrow
+                
+                const remainingBySubject: Record<string, number> = {};
+                studentContext.subjects.forEach((s: any) => remainingBySubject[s.id] = 0);
+                
+                while (current <= endDate) {
+                  const dayOfWeek = current.getDay();
+                  const dateStr = `${current.getFullYear()}-${String(current.getMonth()+1).padStart(2,'0')}-${String(current.getDate()).padStart(2,'0')}`;
+                  
+                  // Check if it's a holiday (not restricted)
+                  const isHoliday = events.some(e => {
+                    if (e.date !== dateStr) return false;
+                    return e.isHolidayList === true || ['holiday', 'vacation', 'midsem', 'endsem'].includes(e.eventType || '');
+                  });
+                  
+                  if (!isHoliday) {
+                    const slots = timetable.filter((t: any) => t.dayOfWeek === dayOfWeek);
+                    slots.forEach((slot: any) => {
+                      if (remainingBySubject[slot.subject.id] !== undefined) {
+                        remainingBySubject[slot.subject.id]++;
+                      }
+                    });
+                  }
+                  current.setDate(current.getDate() + 1);
+                }
+                
+                const projectedSubjects = studentContext.subjects.map((s: any) => {
+                  const rem = remainingBySubject[s.id] || 0;
+                  const finalTotal = s.total + rem - skipCount;
+                  const finalAttended = s.attended + rem - skipCount;
+                  const pct = finalTotal > 0 ? (finalAttended / finalTotal) * 100 : 0;
+                  return {
+                    subjectId: s.id,
+                    subjectName: s.name,
+                    remainingClasses: rem,
+                    projectedPercentage: pct,
+                    targetPercentage: s.target || 75
+                  };
+                });
+                
+                semesterProjection = {
+                  skipCountPerSubject: skipCount,
+                  endDate: endDateStr,
+                  subjects: projectedSubjects
+                };
+              }
+            } catch (err) {
+              console.error("Failed to run semester projection", err);
+            }
+          } else if (action.requiresConfirmation) {
+            pendingActions.push(action);
+          } else {
+            try {
+              const refreshed = await executeAction(action);
+              if (refreshed) shouldRefresh = true;
+            } catch (actionErr) {
+              console.error(`Error executing AI action ${action.type}:`, actionErr);
+            }
+          }
+        }
+      }
+
+      if (shouldRefresh) {
+        window.dispatchEvent(new Event("attendance-updated"));
+        window.dispatchEvent(new Event("subject-updated"));
+      }
+
       const botResponse: Message = {
-        id: String(Date.now() + 1),
+        id: botResponseId,
         role: "assistant",
         content: data.response || "No response received from ordinance model.",
         citations: data.citations || [],
-        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        pendingActions: pendingActions.length > 0 ? pendingActions : undefined,
+        actionsExecuted: false,
+        simulation,
+        semesterProjection
       };
 
       setMessages(prev => [...prev, botResponse]);
+      
+      // Expose execute function to global window so the UI button can call it
+      (window as any)._executePendingActions = async (msgId: string) => {
+        setMessages(prev => prev.map(m => m.id === msgId ? { ...m, isExecutingAction: true } : m));
+        let globalRefresh = false;
+        const msg = pendingActions; // closure
+        for(const action of msg) {
+           try {
+             const refreshed = await executeAction(action);
+             if (refreshed) globalRefresh = true;
+           } catch(e) { console.error(e); }
+        }
+        if (globalRefresh) {
+           window.dispatchEvent(new Event("attendance-updated"));
+           window.dispatchEvent(new Event("subject-updated"));
+        }
+        setMessages(prev => prev.map(m => m.id === msgId ? { ...m, isExecutingAction: false, actionsExecuted: true } : m));
+      };
+
       return data.response;
     } catch (err: any) {
       console.error("AI Chat error:", err);
@@ -580,6 +865,104 @@ export const FloatingChatbot: React.FC = () => {
                                     {cite}
                                   </span>
                                 ))}
+                              </div>
+                            )}
+
+                            {/* Simulation Sandbox Card */}
+                            {msg.simulation && (
+                              <div className="mt-3.5 pt-3 border-t border-blue-500/30">
+                                <div className="p-3 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-900 dark:text-blue-100">
+                                  <div className="flex items-center gap-2 mb-2">
+                                    <Activity className="w-4 h-4 text-blue-500" />
+                                    <span className="text-xs font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400">Simulation Complete</span>
+                                  </div>
+                                  <p className="text-[13px] font-medium mb-3">
+                                    If you skip <span className="font-bold">{msg.simulation.skipCount}</span> class(es) of <span className="font-bold">{msg.simulation.subjectName}</span>:
+                                  </p>
+                                  <div className="flex items-center justify-between p-2 rounded-lg bg-white/50 dark:bg-black/20 text-xs">
+                                    <div>
+                                      <div className="text-muted-foreground mb-1">New Attendance</div>
+                                      <div className="font-mono">{msg.simulation.currentAttended} / {msg.simulation.currentTotal + msg.simulation.skipCount}</div>
+                                    </div>
+                                    <div className="text-right">
+                                      <div className="text-muted-foreground mb-1">Projected %</div>
+                                      <div className={`font-bold text-lg ${msg.simulation.projectedPercentage < msg.simulation.targetPercentage ? 'text-rose-500' : 'text-emerald-500'}`}>
+                                        {msg.simulation.projectedPercentage.toFixed(2)}%
+                                      </div>
+                                    </div>
+                                  </div>
+                                  {msg.simulation.projectedPercentage < msg.simulation.targetPercentage && (
+                                    <div className="mt-2 text-[11px] text-rose-600 dark:text-rose-400 font-medium flex items-center gap-1.5">
+                                      <AlertTriangle className="w-3.5 h-3.5" /> This will drop you below your {msg.simulation.targetPercentage}% target!
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                            
+                            {/* Semester Projection Sandbox Card */}
+                            {msg.semesterProjection && (
+                              <div className="mt-3.5 pt-3 border-t border-purple-500/30">
+                                <div className="p-3 rounded-xl bg-purple-500/10 border border-purple-500/20 text-purple-900 dark:text-purple-100">
+                                  <div className="flex items-center gap-2 mb-2">
+                                    <Activity className="w-4 h-4 text-purple-500" />
+                                    <span className="text-xs font-bold uppercase tracking-wider text-purple-600 dark:text-purple-400">Semester Projection</span>
+                                  </div>
+                                  <p className="text-[13px] font-medium mb-3">
+                                    If you {msg.semesterProjection.skipCountPerSubject > 0 ? `skip ${msg.semesterProjection.skipCountPerSubject} classes` : 'attend all remaining classes'} per subject until {msg.semesterProjection.endDate}:
+                                  </p>
+                                  <div className="space-y-2">
+                                    {msg.semesterProjection.subjects.map((sub, idx) => (
+                                      <div key={idx} className="flex items-center justify-between p-2 rounded-lg bg-white/50 dark:bg-black/20 text-xs">
+                                        <div className="flex-1 truncate pr-2">
+                                          <div className="font-bold truncate" title={sub.subjectName}>{sub.subjectName}</div>
+                                          <div className="text-muted-foreground text-[10px]">{sub.remainingClasses} classes left</div>
+                                        </div>
+                                        <div className="text-right whitespace-nowrap">
+                                          <div className={`font-bold text-sm ${sub.projectedPercentage < sub.targetPercentage ? 'text-rose-500' : 'text-emerald-500'}`}>
+                                            {sub.projectedPercentage.toFixed(1)}%
+                                          </div>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Action Confirmation Card */}
+                            {msg.pendingActions && !msg.actionsExecuted && (
+                              <div className="mt-3.5 pt-3 border-t border-rose-500/30">
+                                <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-600 dark:text-rose-400">
+                                  <div className="flex items-center gap-2 mb-2">
+                                    <span className="text-xs font-bold uppercase tracking-wider">Action Required</span>
+                                  </div>
+                                  <p className="text-xs font-medium mb-3">The AI wants to execute a destructive action. Are you sure you want to proceed?</p>
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      onClick={() => {
+                                        if ((window as any)._executePendingActions) {
+                                          (window as any)._executePendingActions(msg.id);
+                                        }
+                                      }}
+                                      disabled={msg.isExecutingAction}
+                                      className={`px-3 py-1.5 text-white rounded-lg text-xs font-bold shadow-sm transition-colors flex items-center gap-2 ${msg.isExecutingAction ? "bg-rose-500/50 cursor-not-allowed" : "bg-rose-500 hover:bg-rose-600"}`}
+                                    >
+                                      {msg.isExecutingAction ? (
+                                        <><Loader2 className="w-3 h-3 animate-spin" /> Executing...</>
+                                      ) : (
+                                        "Confirm Action"
+                                      )}
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                            {msg.pendingActions && msg.actionsExecuted && (
+                              <div className="mt-3.5 pt-3 border-t border-emerald-500/30">
+                                <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center gap-2 text-xs font-bold">
+                                  <Check className="w-4 h-4" /> Action Executed Successfully
+                                </div>
                               </div>
                             )}
 

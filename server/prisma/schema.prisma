@@ -143,6 +143,7 @@ model User {
   assignmentCompletions   AssignmentCompletion[]
   notes                   Note[]
   exports                 Export[]
+  storedDocuments         StoredDocument[]
   refreshTokens           RefreshToken[]
   notificationPreferences NotificationPreferences?
 
@@ -332,20 +333,20 @@ model ClassroomMember {
 // ─────────────────────────────────────────────────────────
 
 model Event {
-  id          String    @id @default(uuid())
-  classroomId String? // null = personal event
-  userId      String?
-  semesterId  String?
-  title       String
-  description String?
-  date        DateTime  @db.Date
-  endDate     DateTime? @db.Date
-  eventType   EventType @default(other)
-  allDay      Boolean   @default(true)
-  isHoliday   Boolean   @default(false)
-  isHolidayList Boolean @default(false)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id            String    @id @default(uuid())
+  classroomId   String? // null = personal event
+  userId        String?
+  semesterId    String?
+  title         String
+  description   String?
+  date          DateTime  @db.Date
+  endDate       DateTime? @db.Date
+  eventType     EventType @default(other)
+  allDay        Boolean   @default(true)
+  isHoliday     Boolean   @default(false)
+  isHolidayList Boolean   @default(false)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   classroom Classroom? @relation(fields: [classroomId], references: [id], onDelete: Cascade)
   user      User?      @relation(fields: [userId], references: [id])
@@ -477,4 +478,17 @@ model NotificationPreferences {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("notification_preferences")
+}
+
+model StoredDocument {
+  id        String   @id @default(uuid())
+  userId    String
+  name      String
+  type      String // "TIMETABLE", "CALENDAR", "BACKUP"
+  mimeType  String
+  size      Int
+  fileUrl   String // Path to file
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
