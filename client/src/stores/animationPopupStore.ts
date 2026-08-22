@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-export type AnimationType = "thumbs_up" | "crying" | "target_hit" | "off_class" | "full_day_off" | "diwali" | "republic_day" | "christmas" | "eid" | "muharram" | "holi" | "ram_navami" | "mahavir_jayanti" | "good_friday" | "buddha_purnima" | "janmashtami" | "gandhi_jayanti" | "dussehra" | "guru_nanak";
+export type AnimationType = "thumbs_up" | "crying" | "target_hit" | "off_class" | "full_day_off" | "diwali" | "republic_day" | "christmas" | "eid" | "muharram" | "holi" | "ram_navami" | "mahavir_jayanti" | "good_friday" | "buddha_purnima" | "janmashtami" | "gandhi_jayanti" | "dussehra" | "guru_nanak" | "bakrid" | "bhai_duj" | "independence_day" | "makar_sankranti" | "new_year" | "pongal" | "maha_shivaratri" | "milad_un_nabi" | "rakshabandhan" | "christmas_eve" | "ganesh_chaturthi";
 
 interface AnimationPopupState {
   isOpen: boolean;

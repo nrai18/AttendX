@@ -21,7 +21,7 @@ export class AttendanceController {
   }
 
   static async markAttendance(req: AuthenticatedRequest, res: Response) {
-    const { subjectId, date, status, timetableSlotId, overrideId } = req.body;
+    const { subjectId, date, status, remarks, timetableSlotId, overrideId, attendanceId } = req.body;
     
     if (!subjectId || !date || !status) {
       return res.status(400).json({ message: "subjectId, date, and status are required" });
@@ -31,8 +31,9 @@ export class AttendanceController {
       subjectId,
       date,
       status,
+      remarks,
       timetableSlotId,
-      overrideId,
+      overrideId, attendanceId,
     });
     
     await CacheService.invalidateUser(req.user!.userId);

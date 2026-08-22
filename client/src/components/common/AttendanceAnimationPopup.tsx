@@ -2,22 +2,33 @@ import React, { useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAnimationPopupStore, AnimationType } from "../../stores/animationPopupStore";
 import { ThumbsUp, Target, Frown, Sparkles } from "lucide-react";
+import { HolidayIconRenderer } from "./HolidayIconRenderer";
 
 export const HOLIDAY_ASSETS: Partial<Record<AnimationType, string>> = {
-  republic_day: "https://api.iconify.design/twemoji/flag-india.svg",
-  holi: "https://api.iconify.design/twemoji/artist-palette.svg",
-  eid: "https://api.iconify.design/twemoji/star-and-crescent.svg",
-  ram_navami: "https://api.iconify.design/twemoji/bow-and-arrow.svg",
-  mahavir_jayanti: "https://api.iconify.design/twemoji/lotus.svg",
-  good_friday: "https://api.iconify.design/twemoji/latin-cross.svg",
-  buddha_purnima: "https://api.iconify.design/twemoji/wheel-of-dharma.svg",
-  muharram: "https://api.iconify.design/twemoji/mosque.svg",
-  janmashtami: "https://api.iconify.design/twemoji/peacock.svg",
-  gandhi_jayanti: "https://api.iconify.design/twemoji/glasses.svg",
-  dussehra: "https://api.iconify.design/twemoji/crossed-swords.svg",
-  diwali: "https://api.iconify.design/twemoji/diya-lamp.svg",
-  guru_nanak: "https://api.iconify.design/twemoji/place-of-worship.svg",
-  christmas: "https://api.iconify.design/twemoji/christmas-tree.svg"
+  republic_day: "/lottie/republic_day.json",
+  holi: "/lottie/holi.json",
+  eid: "/lottie/eid_al_fitr.json",
+  ram_navami: "/lottie/ram_navami.json",
+  mahavir_jayanti: "/lottie/mahavir_jayanti.json",
+  good_friday: "/lottie/good_friday.json",
+  buddha_purnima: "/lottie/buddha_purnima.json",
+  muharram: "/lottie/muharram.json",
+  janmashtami: "/lottie/janmashtami.json",
+  gandhi_jayanti: "/lottie/gandhi_jayanti.json",
+  dussehra: "/lottie/dussehra.json",
+  diwali: "/lottie/diwali.json",
+  guru_nanak: "/lottie/guru_nanak_jayanti.json",
+  christmas: "/lottie/christmas.json",
+  bakrid: "/lottie/bakrid.json",
+  bhai_duj: "/lottie/bhai_duj.json",
+  independence_day: "/lottie/independence_day.json",
+  makar_sankranti: "/lottie/makar_sankranti.json",
+  new_year: "/lottie/new_year.json",
+  pongal: "/lottie/pongal.json",
+  maha_shivaratri: "/lottie/maha_shivaratri.json",
+  milad_un_nabi: "/lottie/milad_un_nabi.json",
+  rakshabandhan: "/lottie/rakshabandhan.json",
+  christmas_eve: "/lottie/christmas_eve.json"
 };
 
 export const AttendanceAnimationPopup: React.FC = () => {
@@ -35,14 +46,24 @@ export const AttendanceAnimationPopup: React.FC = () => {
   return (
     <AnimatePresence>
       {isOpen && type && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm pointer-events-none select-none">
+        <div 
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm cursor-pointer select-none"
+          onClick={closeAnimation}
+        >
           <motion.div
+            onClick={(e) => e.stopPropagation()}
             initial={{ scale: 0.3, opacity: 0, y: 30 }}
             animate={{ scale: 1, opacity: 1, y: 0 }}
             exit={{ scale: 0.5, opacity: 0, y: -20 }}
             transition={{ type: "spring", damping: 15, stiffness: 300 }}
             className="relative bg-card/95 border border-border/80 shadow-2xl rounded-3xl p-6 sm:p-8 max-w-sm w-full text-center flex flex-col items-center gap-4 overflow-hidden backdrop-blur-xl"
           >
+            <button 
+              onClick={closeAnimation} 
+              className="absolute top-4 right-4 p-1.5 text-muted-foreground hover:text-foreground rounded-full hover:bg-muted transition-colors z-10"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            </button>
             {/* Background Glow Effect */}
             <div
               className={`absolute -inset-10 opacity-20 blur-3xl rounded-full transition-colors ${
@@ -254,14 +275,17 @@ export const AttendanceAnimationPopup: React.FC = () => {
                   transition={{ duration: 0.8, type: "spring", bounce: 0.5 }}
                   className="w-28 h-28 rounded-full bg-primary/10 border-2 border-primary/20 flex items-center justify-center shadow-xl shadow-primary/10 relative overflow-hidden"
                 >
-                  <motion.img 
-                    src={HOLIDAY_ASSETS[type as AnimationType]} 
-                    alt="Holiday Icon" 
-                    className="w-16 h-16 drop-shadow-md"
+                  <motion.div
                     initial={{ y: 20, opacity: 0 }}
                     animate={{ y: 0, opacity: 1 }}
                     transition={{ delay: 0.2 }}
-                  />
+                  >
+                    <HolidayIconRenderer 
+                      src={HOLIDAY_ASSETS[type as AnimationType] as string} 
+                      alt="Holiday Icon" 
+                      className="w-16 h-16 drop-shadow-md"
+                    />
+                  </motion.div>
                 </motion.div>
                 {/* Soft Sparkles */}
                 {[...Array(4)].map((_, i) => (

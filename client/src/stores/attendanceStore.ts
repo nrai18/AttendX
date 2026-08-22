@@ -27,6 +27,8 @@ export interface CalendarEventEntry {
   type: string;
   date: string;
   endDate?: string;
+  isHolidayList?: boolean;
+  eventType?: string;
 }
 
 interface AttendanceState {

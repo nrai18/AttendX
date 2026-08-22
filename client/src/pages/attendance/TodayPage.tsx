@@ -6,7 +6,13 @@ import { CreateSemesterModal } from "../../components/semester/CreateSemesterMod
 
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { useAttendanceStore } from "../../stores/attendanceStore";
-import { triggerAttendancePopup } from "../../stores/animationPopupStore";
+import { triggerAttendancePopup, AnimationType } from "../../stores/animationPopupStore";
+import { HOLIDAY_ASSETS } from "../../components/common/AttendanceAnimationPopup";
+import { HolidayIconRenderer } from "../../components/common/HolidayIconRenderer";
+import { HolidayGreetingOverlay } from "../../components/common/HolidayGreetingOverlay";
+import { format } from "date-fns";
+import { FIXED_HOLIDAYS, RESTRICTED_HOLIDAYS } from "../semester/HolidayListTab";
+
 
 interface AgendaItem {
   id: string;
@@ -34,9 +40,28 @@ export const TodayPage = () => {
   const today = new Date();
   const localTodayStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
   const targetDateStr = dateParam || localTodayStr;
-  
+
+  const getHolidayFromList = (dateStr: string) => {
+    try {
+      const dateObj = new Date(dateStr);
+      const formattedForMatch = format(dateObj, "dd MMMM");
+      const altFormatted = format(dateObj, "d MMMM");
+      
+      const fixed = FIXED_HOLIDAYS.find(h => h.date === formattedForMatch || h.date === altFormatted);
+      if (fixed) return { title: fixed.name, eventType: "holiday" };
+      
+      const restricted = RESTRICTED_HOLIDAYS.find(h => h.date === formattedForMatch || h.date === altFormatted);
+      if (restricted) return { title: restricted.name, eventType: "restricted_holiday" };
+    } catch (e) {
+      // Ignore invalid dates
+    }
+    return null;
+  };
+
+  const syntheticHoliday = getHolidayFromList(targetDateStr);
   const [agenda, setAgenda] = useState<AgendaItem[]>([]);
   const [todayStatus, setTodayStatus] = useState<any>(null);
+  const activeEvent = syntheticHoliday || todayStatus?.activeEvent;
   const [activeSemester, setActiveSemester] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isCreateSemesterOpen, setIsCreateSemesterOpen] = useState(false);
@@ -52,54 +77,65 @@ export const TodayPage = () => {
 
   const [isMarkingFullDayOff, setIsMarkingFullDayOff] = useState(false);
 
+  // Overlay state
+  const [lastGreetedDate, setLastGreetedDate] = useState<string | null>(null);
+  const [showGreetingOverlay, setShowGreetingOverlay] = useState(false);
   const getHolidayAnimation = (activeEvent: any) => {
     let animType: any = "full_day_off";
-    let animMsg = "Congratulations on a full day off! 🥳🎉";
+    let animMsg = "Congratulations on a full day off! 🎉🥳";
 
     if (activeEvent?.title) {
       const title = activeEvent.title.toLowerCase();
       if (title.includes("diwali") || title.includes("deepavali")) {
-        animType = "diwali";
-        animMsg = "Lighting candles & firecrackers for Diwali! 🪔🎆";
-      } else if (title.includes("republic") || title.includes("independence")) {
-        animType = "republic_day";
-        animMsg = "Saluting the Indian Flag! 🇮🇳🪖🫡";
+        animType = "diwali"; animMsg = "Lighting candles & firecrackers for Diwali! 🪔✨";
+      } else if (title.includes("republic")) {
+        animType = "republic_day"; animMsg = "Happy Republic Day! 🇮🇳";
+      } else if (title.includes("independence")) {
+        animType = "independence_day"; animMsg = "Happy Independence Day! 🇮🇳✨";
+      } else if (title.includes("christmas eve")) {
+        animType = "christmas_eve"; animMsg = "Christmas Eve! 🎄✨";
       } else if (title.includes("christmas")) {
-        animType = "christmas";
-        animMsg = "Santa Claus is here! Merry Christmas! 🎄🎅";
-      } else if (title.includes("eid") || title.includes("id-ul") || title.includes("id-e") || title.includes("fitr") || title.includes("zuha")) {
-        animType = "eid";
-        animMsg = "Eid special! Eid Mubarak! 🌙🕌";
-      } else if (title.includes("muharram")) {
-        animType = "muharram";
-        animMsg = "Muharram special 🤲";
-      } else if (title.includes("holi") || title.includes("dolyatra")) {
-        animType = "holi";
-        animMsg = "Happy Holi! 🎨";
-      } else if (title.includes("ram navami")) {
-        animType = "ram_navami";
-        animMsg = "Happy Ram Navami! 🏹";
-      } else if (title.includes("mahavir")) {
-        animType = "mahavir_jayanti";
-        animMsg = "Happy Mahavir Jayanti! 🪷";
-      } else if (title.includes("good friday")) {
-        animType = "good_friday";
-        animMsg = "Blessed Good Friday! ✝️";
-      } else if (title.includes("buddha")) {
-        animType = "buddha_purnima";
-        animMsg = "Happy Buddha Purnima! ☸️";
-      } else if (title.includes("janmashtami")) {
-        animType = "janmashtami";
-        animMsg = "Happy Krishna Janmashtami! 🦈";
-      } else if (title.includes("gandhi")) {
-        animType = "gandhi_jayanti";
-        animMsg = "Happy Gandhi Jayanti! 👓";
+        animType = "christmas"; animMsg = "Santa Claus is here! Merry Christmas! 🎅🎄";
+      } else if (title.includes("bakrid") || title.includes("zuha")) {
+        animType = "bakrid"; animMsg = "Eid al-Adha Mubarak! 🌙✨";
+      } else if (title.includes("bhai duj")) {
+        animType = "bhai_duj"; animMsg = "Happy Bhai Duj! ✨";
+      } else if (title.includes("buddha") || title.includes("purnima")) {
+        animType = "buddha_purnima"; animMsg = "Happy Buddha Purnima! ☸️🕊️";
       } else if (title.includes("dussehra")) {
-        animType = "dussehra";
-        animMsg = "Happy Dussehra! 🏹";
-      } else if (title.includes("nanak")) {
-        animType = "guru_nanak";
-        animMsg = "Happy Gurpurab! ੴ";
+        animType = "dussehra"; animMsg = "Happy Dussehra! 🏹✨";
+      } else if (title.includes("eid") || title.includes("id-ul") || title.includes("id-e") || title.includes("fitr")) {
+        animType = "eid"; animMsg = "Eid special! Eid Mubarak! 🌙🕌";
+      } else if (title.includes("good friday")) {
+        animType = "good_friday"; animMsg = "Blessed Good Friday! ✝️🕊️";
+      } else if (title.includes("holi") || title.includes("dolyatra")) {
+        animType = "holi"; animMsg = "Happy Holi! 🎨";
+      } else if (title.includes("makar sankranti")) {
+        animType = "makar_sankranti"; animMsg = "Happy Makar Sankranti! 🪁✨";
+      } else if (title.includes("new year")) {
+        animType = "new_year"; animMsg = "Happy New Year! 🎉✨";
+      } else if (title.includes("pongal")) {
+        animType = "pongal"; animMsg = "Happy Pongal! 🌾✨";
+      } else if (title.includes("ram navami")) {
+        animType = "ram_navami"; animMsg = "Happy Ram Navami! 🏹";
+      } else if (title.includes("maha shivaratri") || title.includes("shivaratri")) {
+        animType = "maha_shivaratri"; animMsg = "Happy Maha Shivaratri! 🕉️✨";
+      } else if (title.includes("mahavir")) {
+        animType = "mahavir_jayanti"; animMsg = "Happy Mahavir Jayanti! 🪷";
+      } else if (title.includes("milad") || title.includes("nabi")) {
+        animType = "milad_un_nabi"; animMsg = "Milad-Un-Nabi Mubarak! 🌙✨";
+      } else if (title.includes("rakshabandhan") || title.includes("raksha bandhan")) {
+        animType = "rakshabandhan"; animMsg = "Happy Raksha Bandhan! ✨";
+      } else if (title.includes("gandhi")) {
+        animType = "gandhi_jayanti"; animMsg = "Happy Gandhi Jayanti! 👓";
+      } else if (title.includes("ganesh") || title.includes("vinayaka")) {
+        animType = "ganesh_chaturthi"; animMsg = "Happy Ganesh Chaturthi! 🐘✨";
+      } else if (title.includes("nanak") || title.includes("gurpurab")) {
+        animType = "guru_nanak"; animMsg = "Happy Gurpurab! 🛕";
+      } else if (title.includes("janmashtami")) {
+        animType = "janmashtami"; animMsg = "Happy Krishna Janmashtami! 🦚";
+      } else if (title.includes("muharram")) {
+        animType = "muharram"; animMsg = "Muharram special 🕌";
       }
     }
     return { animType, animMsg };
@@ -236,6 +272,23 @@ export const TodayPage = () => {
     return () => window.removeEventListener("attendance-updated", handleUpdate);
   }, [targetDateStr]);
 
+  // Greeting overlay effect
+  useEffect(() => {
+    if (!isLoading) {
+      if (activeEvent && ["holiday", "restricted_holiday"].includes(activeEvent.eventType || "")) {
+        if (lastGreetedDate !== targetDateStr) {
+          setShowGreetingOverlay(true);
+          setLastGreetedDate(targetDateStr);
+        }
+      } else {
+        setShowGreetingOverlay(false);
+        if (lastGreetedDate !== targetDateStr) {
+          setLastGreetedDate(targetDateStr); // Keeps track that we visited a non-holiday date so we can reset and re-trigger if we go back
+        }
+      }
+    }
+  }, [isLoading, activeEvent, targetDateStr, lastGreetedDate]);
+
   const markAttendance = async (item: AgendaItem, status: string, remarks?: string) => {
     const updatedAgenda = agenda.map(a => 
       a.id === item.id ? { ...a, status: status as any, remarks: remarks || a.remarks } : a
@@ -246,9 +299,22 @@ export const TodayPage = () => {
     if (status === "absent") {
       triggerAttendancePopup("crying", "Attendance Dropped! 😭");
     } else if (status === "present" || status === "medical" || status === "od") {
-      const { overallPercentage } = useAttendanceStore.getState();
+      const { overallPercentage, totalAttended, totalClasses } = useAttendanceStore.getState();
       const targetPct = useAuthStore.getState().user?.targetAttendance ?? 75;
-      if (overallPercentage >= targetPct) {
+      
+      let newAttended = totalAttended;
+      let newClasses = totalClasses;
+      
+      if (item.status !== "present" && item.status !== "medical" && item.status !== "od") {
+         newAttended += 1;
+         if (item.status === null || item.status === "off" || item.status === "cancelled") {
+            newClasses += 1;
+         }
+      }
+      
+      const newPercentage = newClasses > 0 ? (newAttended / newClasses) * 100 : 0;
+      
+      if (overallPercentage < targetPct && newPercentage >= targetPct) {
         triggerAttendancePopup("target_hit", `Target ${targetPct}% Touched! 🎯`);
       } else {
         triggerAttendancePopup("thumbs_up", "Awesome! Marked Present 👍");
@@ -274,6 +340,7 @@ export const TodayPage = () => {
         remarks,
         timetableSlotId: item.type === "slot" ? item.id : undefined,
         overrideId: item.type === "override" ? item.id : undefined,
+        attendanceId: item.attendanceId,
       });
       fetchStats();
       window.dispatchEvent(new Event("attendance-updated"));
@@ -316,7 +383,6 @@ export const TodayPage = () => {
   }
 
   // Determine if we should show the holiday/exam state instead of classes
-  const activeEvent = todayStatus?.activeEvent;
   const isGlobalEventActive = activeEvent && ["holiday", "restricted_holiday", "vacation", "fest", "midsem", "endsem", "institute"].includes(activeEvent.eventType);
 
   const getEventStateConfig = (type: string) => {
@@ -330,9 +396,23 @@ export const TodayPage = () => {
       case "vacation":
         return { icon: <Palmtree className="w-16 h-16 text-emerald-500 mb-4 mx-auto" />, color: "border-emerald-500/20 bg-emerald-500/5", title: "Vacation", msg: "You're officially on vacation. Recharge and relax!" };
       case "holiday":
-        return { icon: <Palmtree className="w-16 h-16 text-emerald-500 mb-4 mx-auto" />, color: "border-emerald-500/20 bg-emerald-500/5", title: "Holiday", msg: "Enjoy your day off!" };
-      case "restricted_holiday":
-        return { icon: <Palmtree className="w-16 h-16 text-cyan-500 mb-4 mx-auto" />, color: "border-cyan-500/20 bg-cyan-500/5", title: "Restricted Holiday", msg: "Enjoy your day off!" };
+      case "restricted_holiday": {
+        const { animType } = getHolidayAnimation(activeEvent);
+        if (HOLIDAY_ASSETS[animType as AnimationType]) {
+          return {
+            icon: <HolidayIconRenderer src={HOLIDAY_ASSETS[animType as AnimationType] as string} alt="Holiday Icon" className="w-16 h-16 drop-shadow-md mb-4 mx-auto" />,
+            color: type === "holiday" ? "border-emerald-500/20 bg-emerald-500/5" : "border-cyan-500/20 bg-cyan-500/5",
+            title: type === "holiday" ? "Holiday" : "Restricted Holiday",
+            msg: "Enjoy your day off!"
+          };
+        }
+        return { 
+          icon: <Palmtree className={`w-16 h-16 mb-4 mx-auto ${type === 'holiday' ? 'text-emerald-500' : 'text-cyan-500'}`} />, 
+          color: type === "holiday" ? "border-emerald-500/20 bg-emerald-500/5" : "border-cyan-500/20 bg-cyan-500/5", 
+          title: type === "holiday" ? "Holiday" : "Restricted Holiday", 
+          msg: "Enjoy your day off!" 
+        };
+      }
       default:
         return { icon: <Palmtree className="w-16 h-16 text-emerald-500 mb-4 mx-auto" />, color: "border-emerald-500/20 bg-emerald-500/5", title: "Holiday", msg: "Enjoy your day off!" };
     }
@@ -344,6 +424,15 @@ export const TodayPage = () => {
 
   return (
     <div className="p-4 md:p-8 space-y-6 max-w-4xl mx-auto w-full pb-24 md:pb-8">
+      
+      <HolidayGreetingOverlay
+        isOpen={showGreetingOverlay}
+        holidayName={activeEvent?.title || "Holiday"}
+        holidayAssetSrc={activeEvent ? HOLIDAY_ASSETS[getHolidayAnimation(activeEvent).animType as AnimationType] : undefined}
+        hasClasses={agenda.some(item => !item.status)}
+        onMarkOff={handleMarkFullDayOff}
+        onClose={() => setShowGreetingOverlay(false)}
+      />
       
       {todayStatus?.nextEvent && !activeEvent && (
         <div className="bg-primary/10 border border-primary/20 rounded-2xl p-4 flex items-center justify-between">
@@ -495,8 +584,14 @@ export const TodayPage = () => {
             : "bg-amber-500/10 border-amber-500/30"
         }`}>
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-card border border-border flex items-center justify-center text-xl shadow-xs shrink-0">
-              {["midsem", "endsem", "exam"].includes((activeEvent.eventType || "").toLowerCase()) ? "📝" : "🎉"}
+            <div className="w-10 h-10 rounded-xl bg-card border border-border flex items-center justify-center text-xl shadow-xs shrink-0 overflow-hidden">
+              {(() => {
+                const { animType } = getHolidayAnimation(activeEvent);
+                if (HOLIDAY_ASSETS[animType as AnimationType]) {
+                  return <HolidayIconRenderer src={HOLIDAY_ASSETS[animType as AnimationType] as string} alt="Holiday Icon" className="w-7 h-7 drop-shadow-sm" />;
+                }
+                return ["midsem", "endsem", "exam"].includes((activeEvent.eventType || "").toLowerCase()) ? "📝" : "🎉";
+              })()}
             </div>
             <div>
               <div className="flex items-center gap-2">
@@ -612,7 +707,7 @@ export const TodayPage = () => {
                   Off
                 </button>
                 {/* Delete Extra Class Button */}
-                {(item.type === "override" || item.isExtra || item.slotType === "Extra") && (
+                {(item.type === "override" && item.isExtra) && (
                   <button
                     onClick={() => handleDeleteExtraClass(item.id)}
                     className="flex items-center justify-center p-2 rounded-xl bg-rose-500/10 text-rose-500 hover:bg-rose-500 hover:text-white transition-colors cursor-pointer ml-2"
