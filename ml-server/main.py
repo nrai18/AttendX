@@ -89,7 +89,7 @@ async def upload_zip(user_id: str, file: UploadFile = File(...)):
     file_b64 = base64.b64encode(file_bytes).decode('utf-8')
     
     # Trigger Celery task
-    task = celery_app.send_task("process_zip_upload", args=[file_b64, user_id])
+    task = celery_app.send_task("process_zip_upload", args=[file_b64, user_id, file.filename])
     
     return {"status": "accepted", "message": "ZIP upload processing in background", "task_id": task.id}
 

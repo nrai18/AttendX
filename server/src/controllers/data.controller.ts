@@ -9,8 +9,14 @@ export class DataController {
     try {
       const zipBuffer = await DataService.exportData(req.user!.userId);
       
+      const { prisma } = require("../lib/prisma");
+      const activeSem = await prisma.semester.findFirst({
+        where: { userId: req.user!.userId, isActive: true }
+      });
+      
+      const semName = activeSem ? activeSem.name.replace(/[^a-zA-Z0-9]/g, '_') : "Semester";
       const dateStr = new Date().toISOString().split('T')[0];
-      const filename = `attendx_export_${dateStr}.zip`;
+      const filename = `AttendX_${semName}_Export_${dateStr}.zip`;
       
       try {
         await DocumentService.storeDocument(req.user!.userId, zipBuffer, filename, "application/zip", "BACKUP");

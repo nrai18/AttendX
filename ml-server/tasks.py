@@ -27,8 +27,8 @@ def get_db_connection():
 import csv
 import datetime
 
-@celery_app.task(bind=True, name="process_zip_upload")
-def process_zip_upload(self, file_b64: str, user_id: str):
+@celery_app.task(bind=True)
+def process_zip_upload(self, file_b64: str, user_id: str, filename: str = "imported_backup.zip"):
     try:
         self.update_state(state='PROGRESS', meta={'progress': 10, 'status': 'Extracting ZIP'})
         import base64
@@ -178,6 +178,23 @@ def process_zip_upload(self, file_b64: str, user_id: str):
             r.delete(*keys)
         r.delete(f"user_keys:{user_id}")
         
+        # Save ZIP document to DB
+        doc_id = str(uuid.uuid4())
+        cursor.execute(
+            'INSERT INTO documents (id, "userId", name, type, format, "fileSize", url, "createdAt", "updatedAt") VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)',
+            (doc_id, user_id, filename, 'BACKUP', 'application/zip', len(zip_bytes), '', now, now)
+        )
+        
+        # Save file to server/uploads
+        server_uploads_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'server', 'uploads')
+        os.makedirs(server_uploads_dir, exist_ok=True)
+        file_path = os.path.join(server_uploads_dir, f"{doc_id}.zip")
+        with open(file_path, 'wb') as df:
+            df.write(zip_bytes)
+            
+        cursor.execute('UPDATE documents SET url = %s WHERE id = %s', (f"/uploads/{doc_id}.zip", doc_id))
+        conn.commit()
+
         # Clean up
         import shutil
         shutil.rmtree(extract_dir, ignore_errors=True)

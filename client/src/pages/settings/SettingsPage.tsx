@@ -318,15 +318,19 @@ const renderDocuments = (type: string) => {
   const handleExportCSV = async () => {
     try {
       const res = await api.get("/data/export", { responseType: "blob" });
+      
+      let filename = `AttendX_Backup_${new Date().toISOString().slice(0, 10)}.zip`;
+      const disposition = res.headers["content-disposition"];
+      if (disposition && disposition.indexOf("filename=") !== -1) {
+        const matches = /filename="([^"]+)"/.exec(disposition);
+        if (matches != null && matches[1]) filename = matches[1];
+      }
 
       const blob = new Blob([res.data], { type: "application/zip" });
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.setAttribute(
-        "download",
-        `attendx_export_${new Date().toISOString().slice(0, 10)}.zip`,
-      );
+      link.setAttribute("download", filename);
       document.body.appendChild(link);
       link.click();
       link.parentNode?.removeChild(link);
