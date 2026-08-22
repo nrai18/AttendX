@@ -60,7 +60,10 @@ export class DataService {
         "Sr. No.": idx + 1,
         "Day of Week": daysMap[slot.dayOfWeek],
         "Lecture No.": lectureNo,
-        "Subject": slot.subject.name
+        "Subject": slot.subject.name,
+        "Timing": `${slot.startTime} - ${slot.endTime}`,
+        "Room": slot.room || "",
+        "Type": slot.slotType === "practical" ? "Practical" : "Lecture"
       };
     });
 
@@ -134,9 +137,11 @@ export class DataService {
 
       // 2. Import Subjects
       const subjectMap = new Map<string, string>(); // Name -> ID
+      let subjectIndex = 0;
       for (const row of subjectData) {
         const criteriaMatch = row["Criteria"]?.match(/(\d+)/);
         const target = criteriaMatch ? parseInt(criteriaMatch[1]) : 75;
+        subjectIndex++;
         
         const sub = await tx.subject.create({
           data: {
@@ -144,7 +149,7 @@ export class DataService {
             semesterId: activeSem.id,
             userId,
             targetAttendance: target,
-            colorHex: "#3b82f6", // default blue
+            colorHex: row["Color"] || ["#ef4444", "#f97316", "#f59e0b", "#84cc16", "#22c55e", "#06b6d4", "#3b82f6", "#6366f1", "#8b5cf6", "#d946ef", "#f43f5e"][subjectIndex % 11],
           }
         });
         subjectMap.set(row["Subject"], sub.id);

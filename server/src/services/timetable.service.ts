@@ -854,6 +854,8 @@ Return ONLY strict JSON matching this structure:
 
     const createdSlots = [];
     const subjectsMap = new Map<string, string>(); // code -> subjectId
+    const newSubjectIds = new Set<string>();
+    const timetableSubjectIds = new Set<string>();
 
     for (const slot of filteredSlots) {
       const isLab = slot.type === "practical";
@@ -885,6 +887,7 @@ Return ONLY strict JSON matching this structure:
               colorHex: colors[colorIndex % colors.length],
             }
           });
+          newSubjectIds.add(subject.id);
           colorIndex++;
         } else {
           const updateData: any = {};
@@ -901,6 +904,8 @@ Return ONLY strict JSON matching this structure:
         subjectsMap.set(actualCode, subjectId);
       }
 
+      timetableSubjectIds.add(subjectId);
+
       const newSlot = await prisma.timetableSlot.create({
         data: {
           semesterId,
@@ -916,7 +921,45 @@ Return ONLY strict JSON matching this structure:
       createdSlots.push(newSlot);
     }
 
-    return createdSlots;
+    // Find existing subjects in the semester that were not part of this timetable
+    const allSemesterSubjects = await prisma.subject.findMany({
+      where: { semesterId, userId },
+      select: { 
+        id: true,
+        _count: {
+          select: { attendance: true }
+        }
+      }
+    });
+    
+    // An existing subject can be mapped if it's unused in the timetable and has records,
+    // OR it's used in the timetable but has NO records (meaning it's essentially new)
+    const ghostSubjectIds = allSemesterSubjects
+      .filter(s => !timetableSubjectIds.has(s.id) && s._count.attendance === 0)
+      .map(s => s.id);
+      
+    if (ghostSubjectIds.length > 0) {
+      await prisma.subject.deleteMany({
+        where: { id: { in: ghostSubjectIds } }
+      });
+    }
+
+    const existingSubjectIds = allSemesterSubjects
+      .filter(s => !timetableSubjectIds.has(s.id) && s._count.attendance > 0)
+      .map(s => s.id);
+
+    const zeroAttendanceTimetableSubjects = allSemesterSubjects
+      .filter(s => timetableSubjectIds.has(s.id) && s._count.attendance === 0)
+      .map(s => s.id);
+
+    // Merge genuinely new subjects with zero-attendance subjects
+    const finalNewSubjectIds = Array.from(new Set([...Array.from(newSubjectIds), ...zeroAttendanceTimetableSubjects]));
+
+    return { 
+      slots: createdSlots, 
+      newSubjectIds: finalNewSubjectIds,
+      existingSubjectIds
+    };
   }
 
   static async safeDeleteTimetable(userId: string, semesterId?: string) {

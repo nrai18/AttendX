@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { TimetableService } from "../services/timetable.service";
+import { DocumentService } from "../services/document.service";
 import { SemesterService } from "../services/semester.service";
 import { UserService } from "../services/user.service";
 import { AuthenticatedRequest } from "../middleware/authenticate";
@@ -103,6 +104,14 @@ export class TimetableController {
       const mimeType = file.mimetype || "application/pdf";
       const fileName = file.originalname || "timetable.pdf";
       const ocrResult = await TimetableService.processOcrImage(file.buffer, mimeType, fileName, semesterId, userId);
+      
+      // Store document
+      try {
+        await DocumentService.storeDocument(userId, file.buffer, fileName, mimeType, "TIMETABLE");
+      } catch (e) {
+        console.error("Failed to store timetable document", e);
+      }
+      
       res.status(200).json(ocrResult);
     } catch (error: any) {
       console.error("OCR Import Error:", error);
@@ -119,9 +128,9 @@ export class TimetableController {
         return res.status(400).json({ error: "Missing required fields" });
       }
 
-      const slots = await TimetableService.saveWizardTimetable(userId, semesterId, selections, rawSlots);
+      const { slots, newSubjectIds, existingSubjectIds } = await TimetableService.saveWizardTimetable(userId, semesterId, selections, rawSlots);
       await CacheService.invalidateUser(userId);
-      res.status(201).json({ message: "Timetable generated successfully", slots });
+      res.status(201).json({ message: "Timetable generated successfully", slots, newSubjectIds, existingSubjectIds });
     } catch (error: any) {
       console.error("Wizard Save Error:", error);
       res.status(500).json({ error: "Failed to save personalized timetable" });
