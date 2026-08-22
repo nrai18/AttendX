@@ -66,7 +66,7 @@ def process_zip_upload(self, file_b64: str, user_id: str):
         cursor.execute('SELECT id FROM semesters WHERE "userId" = %s AND "isActive" = true LIMIT 1', (user_id,))
         sem_row = cursor.fetchone()
         if not sem_row:
-            raise Exception("No active semester found. Please create a semester first.")
+            raise ValueError("No active semester found. Please create a semester first.")
         sem_id = sem_row[0]
         
         now = datetime.datetime.now(datetime.timezone.utc)

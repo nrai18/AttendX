@@ -1,6 +1,7 @@
 import { Response } from "express";
 import { AuthenticatedRequest } from "../middleware/authenticate";
 import { CalendarRagService } from "../services/calendar_rag.service";
+import { DocumentService } from "../services/document.service";
 import { EventService } from "../services/event.service";
 import { CacheService } from "../services/cache.service";
 import { redisClient } from "../lib/redis";
@@ -38,6 +39,13 @@ export class CalendarRagController {
         req.file.buffer, 
         req.file.mimetype
       );
+      
+      try {
+        await DocumentService.storeDocument(req.user!.userId, req.file.buffer, req.file.originalname, req.file.mimetype, "CALENDAR");
+      } catch (e) {
+        console.error("Failed to store calendar document", e);
+      }
+
       await redisClient.set(`rag_cache:${req.user!.userId}`, JSON.stringify(events), 'EX', 24 * 60 * 60);
       res.json({ events });
     } catch (error: any) {

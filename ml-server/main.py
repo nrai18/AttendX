@@ -199,7 +199,8 @@ def ai_chat(req: ChatRequest):
         })
         response = final_state["messages"][-1].content
         citations = final_state.get("citations", [])
-        return {"response": response, "citations": citations}
+        actions = final_state.get("actions", [])
+        return {"response": response, "citations": citations, "actions": actions}
     except Exception as e:
         print("Chatbot invocation error:", e)
         raise HTTPException(status_code=500, detail=str(e))

@@ -13,6 +13,7 @@ class ChatState(TypedDict):
     standalone_query: str
     context: str
     citations: List[str]
+    actions: List[Dict[str, Any]]
     student_context: Optional[Dict[str, Any]]
 
 def get_message_role(m: Any) -> str:
@@ -116,6 +117,7 @@ def generate_policy_response(state: ChatState):
     # Build complete real-time in-app data block
     student_info_block = ""
     if student_context:
+        active_semester_id = student_context.get("active_semester_id", "current")
         overall = student_context.get("overall_percentage", 0)
         target = student_context.get("target_percentage", 75)
         attended = student_context.get("total_attended", 0)
@@ -128,26 +130,29 @@ def generate_policy_response(state: ChatState):
         for s in subjects:
             code = s.get('code', '')
             code_str = f" ({code})" if code else ""
-            sub_lines.append(f"  * {s.get('name', 'Course')}{code_str}: {s.get('attended', 0)}/{s.get('total', 0)} attended ({s.get('percentage', 0)}%)")
+            sub_lines.append(f"  * {s.get('name', 'Course')}{code_str}: {s.get('attended', 0)}/{s.get('total', 0)} attended ({s.get('percentage', 0)}%) [ID: {s.get('id')}]")
         subs_text = "\n".join(sub_lines) if sub_lines else "No courses registered in AttendX yet."
         
         log_lines = []
         for log in history_logs:
             d_str = log.get('dateFormatted') or log.get('date') or 'Unknown Date'
             sub = log.get('subject', 'Class')
-            status = log.get('status', 'UNMARKED')
-            time_str = f" at {log.get('time')}" if log.get('time') else ""
-            log_lines.append(f"  * {d_str}: {sub} -> {status}{time_str}")
-        logs_text = "\n".join(log_lines[:150]) if log_lines else "No attendance session logs recorded yet."
+            status = log.get('status', 'unknown')
+            log_lines.append(f"  * {d_str}: {sub} marked {status}")
+        logs_text = "\n".join(log_lines) if log_lines else "No attendance recorded yet."
         
         event_lines = []
         for ev in calendar_events:
-            event_lines.append(f"  * {ev.get('date', '')}: {ev.get('title', 'Event')} [{ev.get('type', 'academic').upper()}]")
-        events_text = "\n".join(event_lines[:50]) if event_lines else "No calendar events logged."
-
+            event_lines.append(f"  * {ev.get('date')}: {ev.get('title')} ({ev.get('type')})")
+        events_text = "\n".join(event_lines) if event_lines else "No upcoming events found."
+        
+        current_date_str = student_context.get("current_date", "Unknown Date")
+        
         student_info_block = f"""
 LIVE REAL-TIME STUDENT TELEMETRY (FROM ATTENDX IN-APP DATABASE):
 1. Overall Attendance & Goal:
+- EXACT SYSTEM DATE (TODAY): {current_date_str}
+- Active Semester ID: {active_semester_id}
 - Current Overall Attendance: {overall}% ({attended}/{total} classes attended)
 - Student Personal Target Goal Set in App: {target}%
 - Mandatory Institute Minimum Threshold: 75% (Section 6.1)
@@ -172,7 +177,44 @@ LIVE REAL-TIME STUDENT TELEMETRY (FROM ATTENDX IN-APP DATABASE):
         "   - If the student asks about their 'target' or 'goal', answer with their 'Student Personal Target Goal Set in App' (e.g. 53% or 80%).\n"
         "2. Institute Regulation Questions (e.g. '9-day leave rule', '30% pass mark', 'N-2 mess rebate'):\n"
         "   - Answer based on the Official Ordinance Context naturally, without explicitly citing section numbers or references like '(Section X.Y)'.\n"
-        "3. Tone: Concise, direct, accurate. 2 to 4 crisp bullet points without introductory fluff. Under 80 words."
+        "3. Tone: Concise, direct, accurate. 2 to 4 crisp bullet points without introductory fluff. Under 80 words.\n\n"
+        "ACTION EXECUTION ENGINE:\n"
+        "You are an Agentic Copilot. If the user asks you to perform an action (e.g. marking attendance, removing a subject, changing targets) or navigate to a specific page (e.g. calendar, timetable upload, holiday list), you MUST append a structured JSON block at the VERY END of your response.\n"
+        "The JSON block must be fenced with ```json and match exactly:\n"
+        "{\n"
+        "  \"actions\": [\n"
+        "    { \"type\": \"ACTION_TYPE\", \"payload\": { \"key\": \"value\" }, \"requiresConfirmation\": boolean }\n"
+        "  ]\n"
+        "}\n\n"
+        "Supported ACTION_TYPEs and payloads:\n"
+        "Supported ACTION_TYPEs and payloads:\n"
+        "1. \"NAVIGATE\": payload { \"path\": \"/timetable\" | \"/calendar\" | \"/settings\" | \"/subjects\" | \"/predictive\" | \"/today\" | \"/semester\" | \"/semester?tab=holidays\" }\n"
+        "   Use semantic understanding to route the user's intent to the correct app page:\n"
+        "   - `/timetable`: Weekly schedule, slot timing, room numbers.\n"
+        "   - `/semester?tab=calendar`: Traditional monthly calendar view.\n"
+        "   - `/semester`: Semester journey, timeline, countdowns, and academic progress.\n"
+        "   - `/semester?tab=holidays`: Institute holiday list, restricted holidays.\n"
+        "   - `/settings`: Global target settings, data export (zip files), import backups, UI theme.\n"
+        "   - `/subjects`: Managing enrolled subjects, adding/dropping courses, changing individual targets.\n"
+        "   - `/today`: Daily agenda, marking attendance for the current or specific date.\n"
+        "2. \"MARK_ATTENDANCE\": payload { \"subjectId\": string, \"date\": \"YYYY-MM-DD\", \"status\": \"present\"|\"absent\"|\"off\"|\"medical\"|\"od\"|\"cancelled\", \"remarks\": string }\n"
+        "3. \"REMOVE_ATTENDANCE\": payload { \"subjectId\": string (optional), \"date\": \"YYYY-MM-DD\", \"endDate\": \"YYYY-MM-DD\" (optional, for clearing a date range) }\n"
+        "4. \"ADD_EXTRA_CLASS\": payload { \"semesterId\": string, \"subjectId\": string, \"date\": \"YYYY-MM-DD\", \"startTime\": \"00:00\", \"endTime\": \"00:00\", \"reason\": string }\n"
+        "5. \"MARK_FULL_DAY_OFF\": payload { \"date\": \"YYYY-MM-DD\", \"endDate\": \"YYYY-MM-DD\" (optional, for batch leave), \"excludeSubjectIds\": [\"sub_123\"] (optional) }\n"
+        "6. \"CHANGE_TARGET\": payload { \"subjectId\": string, \"target\": number }\n"
+        "7. \"CHANGE_GLOBAL_TARGET\": payload { \"target\": number }\n"
+        "8. \"ADD_SUBJECT\": payload { \"name\": string, \"code\": string, \"type\": \"Theory\"|\"Lab\"|\"Project\", \"credits\": number }\n"
+        "9. \"REMOVE_SUBJECT\": payload { \"subjectId\": string }\n"
+        "10. \"DROP_SUBJECT_FROM_TIMETABLE\": payload { \"semesterId\": string, \"subjectId\": string }\n"
+        "11. \"SHIFT_TIMETABLE_SLOT\": payload { \"semesterId\": string, \"subjectId\": string, \"dayOfWeek\": number, \"newStartTime\": \"HH:MM\", \"newEndTime\": \"HH:MM\" } (dayOfWeek: 0=Sun, 1=Mon, ..., 6=Sat)\n"
+        "12. \"RUN_SIMULATION\": payload { \"subjectId\": string, \"skipCount\": number }\n"
+        "13. \"RUN_SEMESTER_PROJECTION\": payload { \"skipCountPerSubject\": number, \"endDate\": \"YYYY-MM-DD\" (optional) }\n\n"
+        "ACTION COMPOSITION & ORCHESTRATION: Do not assume one action fulfills a complex intent. If a user requests a compound operation (e.g., bulk leave but attending specific classes, dropping a subject and adding a new one, shifting a slot and marking it absent), you MUST emit an array of multiple, independent actions to orchestrate the full request (e.g., a MARK_FULL_DAY_OFF arrayed alongside specific MARK_ATTENDANCE actions).\n\n"
+        "PROACTIVE SAFETY ARCHITECTURE: You MUST set `\"requiresConfirmation\": true` for high-risk destructive actions (REMOVE_SUBJECT, DROP_SUBJECT_FROM_TIMETABLE, MARK_FULL_DAY_OFF, SHIFT_TIMETABLE_SLOT). Leave it false for others.\n"
+        "Match subject names to their exact `id` from the LIVE REAL-TIME STUDENT TELEMETRY. For actions requiring `semesterId`, use the `active_semester_id` from the telemetry. If multiple actions are requested, include them all. NEVER include the JSON block if no action or navigation is requested. Only include it when performing an action.\n\n"
+        "WHAT-IF SCENARIO SANDBOX (PREDICTIVE MATH):\n"
+        "If the user asks 'What happens if I skip X classes in Y subject?', do NOT compute the math yourself. Output the `RUN_SIMULATION` action with the exact `subjectId` and `skipCount`.\n"
+        "If the user asks to simulate their final percentage for all subjects until the end of the semester (e.g. 'simulate my final percentage if I attend all remaining classes vs skipping 2 classes per subject'), output `RUN_SEMESTER_PROJECTION` with the `skipCountPerSubject`. The React frontend will autonomously fetch the timetable, holidays, and active semester end date to render an ultra-accurate projection card."
     )
     
     prompt = (
@@ -205,6 +247,21 @@ LIVE REAL-TIME STUDENT TELEMETRY (FROM ATTENDX IN-APP DATABASE):
             f"{context}"
         )
     
+    parsed_actions = []
+    # Try to find and extract the JSON block
+    import json
+    json_match = re.search(r"```json\s*(\{.*?\})\s*```", answer_text, re.DOTALL)
+    if json_match:
+        try:
+            parsed_json = json.loads(json_match.group(1))
+            if "actions" in parsed_json and isinstance(parsed_json["actions"], list):
+                parsed_actions = parsed_json["actions"]
+            # Remove the JSON block from the text shown to the user
+            answer_text = answer_text[:json_match.start()] + answer_text[json_match.end():]
+            answer_text = answer_text.strip()
+        except Exception as e:
+            print(f"Error parsing action JSON: {e}")
+    
     # Filter citations: Only include sections that are actually mentioned or cited in the answer
     final_citations = []
     for cite in retrieved_citations:
@@ -218,7 +275,7 @@ LIVE REAL-TIME STUDENT TELEMETRY (FROM ATTENDX IN-APP DATABASE):
         elif cite in answer_text:
             final_citations.append(cite)
             
-    return {"messages": [{"role": "assistant", "content": answer_text}], "citations": final_citations}
+    return {"messages": [{"role": "assistant", "content": answer_text}], "citations": final_citations, "actions": parsed_actions}
 
 # Construct the Multi-Node LangGraph RAG Workflow
 graph_builder = StateGraph(ChatState)
