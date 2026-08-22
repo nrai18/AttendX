@@ -8,6 +8,8 @@ import { CreateSemesterModal } from "../../components/semester/CreateSemesterMod
 import { SortableSlot } from "./SortableSlot";
 import { DeleteSlotModal } from "./DeleteSlotModal";
 import { ClearTimetableModal } from "./ClearTimetableModal";
+import { SubjectReconciliationModal } from "../../components/subjects/SubjectReconciliationModal";
+import { Wand2 } from "lucide-react";
 import { DndContext, closestCenter, DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { normalizeTimeString } from "../../utils/timeUtils";
@@ -90,6 +92,9 @@ export const TimetablePage = () => {
 
   // Clear All Timetable Modal State & Toast
   const [isClearModalOpen, setIsClearModalOpen] = useState(false);
+  const [isReconciliationOpen, setIsReconciliationOpen] = useState(false);
+  const [newSubjectIds, setNewSubjectIds] = useState<string[]>([]);
+  const [existingSubjectIds, setExistingSubjectIds] = useState<string[]>([]);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const fetchData = async () => {
@@ -561,6 +566,27 @@ export const TimetablePage = () => {
               <Edit3 className="w-3.5 h-3.5 text-muted-foreground" />
               <span>Edit / Select</span>
             </button>
+
+            <button
+              onClick={() => {
+                api.get(`/subjects?semesterId=${activeSemester?.id}`).then(res => {
+                  const subs = res.data;
+                  if (subs.length >= 2) {
+                    const allIds = subs.map((s: any) => s.id);
+                    setNewSubjectIds(allIds);
+                    setExistingSubjectIds(allIds);
+                    setIsReconciliationOpen(true);
+                  } else {
+                    alert("No subjects to reconcile! You need at least two subjects in your semester to merge them.");
+                  }
+                });
+              }}
+              title="Manually map duplicate subjects"
+              className="flex items-center gap-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 px-3.5 py-2 rounded-xl text-xs font-semibold transition-colors cursor-pointer"
+            >
+              <Wand2 className="w-3.5 h-3.5" />
+              <span>Merge</span>
+            </button>
             <button
               onClick={handleSafeDeleteTimetable}
               title="Clear Timetable Schedule"
@@ -874,6 +900,20 @@ export const TimetablePage = () => {
           )}
         </div>
       </div>
+
+      {activeSemester && (
+        <SubjectReconciliationModal
+          isOpen={isReconciliationOpen}
+          onClose={() => setIsReconciliationOpen(false)}
+          semesterId={activeSemester.id}
+          newSubjectIds={newSubjectIds}
+          existingSubjectIds={existingSubjectIds}
+          onComplete={() => {
+            setIsReconciliationOpen(false);
+            fetchData();
+          }}
+        />
+      )}
     </div>
   );
 };

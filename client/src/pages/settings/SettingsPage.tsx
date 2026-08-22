@@ -42,39 +42,128 @@ import {
   X,
   FileText,
   Calendar,
-  FileArchive
+  FileArchive,
 } from "lucide-react";
 
 import { useThemeStore } from "../../stores/themeStore";
-import { FrequencySelector, type FrequencyData } from "../../components/ui/frequency-selector";
+import {
+  FrequencySelector,
+  type FrequencyData,
+} from "../../components/ui/frequency-selector";
 
 export const SettingsPage: React.FC = () => {
+const renderDocuments = (type: string) => {
+    // For backups, only show the most recent one (index 0 because it's sorted desc by createdAt on backend)
+    let docs = storedDocuments.filter((d: any) => d.type === type);
+    if (type === "BACKUP" && docs.length > 0) {
+      docs = [docs[0]];
+    }
+    
+    if (docs.length === 0) return null;
+    return (
+      <div className="flex flex-col gap-2 w-full mt-3">
+        {docs.map((doc: any) => (
+          <div
+            key={doc.id}
+            className="flex items-center justify-between bg-muted/30 p-2 rounded-lg border border-border"
+          >
+            <span className="text-xs font-medium truncate max-w-[200px] text-foreground">
+              {doc.name}
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={async () => {
+                  try {
+                    const res = await api.get(`/documents/${doc.id}/download`, { responseType: 'blob' });
+                    const url = window.URL.createObjectURL(new Blob([res.data]));
+                    const link = document.createElement('a');
+                    link.href = url;
+                    link.setAttribute('download', doc.name);
+                    document.body.appendChild(link);
+                    link.click();
+                    link.parentNode?.removeChild(link);
+                  } catch (e) {
+                    console.error(e);
+                    alert("Failed to download document.");
+                  }
+                }}
+                className="text-xs flex items-center gap-1 text-primary hover:underline cursor-pointer"
+              >
+                <Download className="w-3.5 h-3.5" /> Download
+              </button>
+              <button
+                onClick={async () => {
+                  if (confirm("Are you sure you want to delete this document?")) {
+                    try {
+                      await api.delete(`/documents/${doc.id}`);
+                      const { data } = await api.get("/documents");
+                      setStoredDocuments(data);
+                    } catch (e) {
+                      console.error(e);
+                      alert("Failed to delete document.");
+                    }
+                  }
+                }}
+                className="text-xs flex items-center gap-1 text-rose-500 hover:text-rose-600 hover:underline cursor-pointer ml-2"
+              >
+                <X className="w-3.5 h-3.5" /> Delete
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  };
   const { user, setUser } = useAuthStore();
-  const [activeView, setActiveView] = useState<"main" | "backup" | "contact">("main");
+  const [activeView, setActiveView] = useState<"main" | "backup" | "contact">(
+    "main",
+  );
 
   // Profile & Criteria
-  const [targetAttendance, setTargetAttendance] = useState<number | string>(user?.targetAttendance ?? 75);
+  const [targetAttendance, setTargetAttendance] = useState<number | string>(
+    user?.targetAttendance ?? 75,
+  );
   const { theme, setTheme } = useThemeStore();
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
-
   // App Info Modal State
   const [showAppInfoModal, setShowAppInfoModal] = useState(false);
+  const [storedDocuments, setStoredDocuments] = useState<any[]>([]);
+
+  useEffect(() => {
+    const fetchDocs = async () => {
+      try {
+        const { data } = await api.get("/documents");
+        setStoredDocuments(data);
+      } catch (err) {
+        console.error("Failed to fetch documents", err);
+      }
+    };
+    fetchDocs();
+  }, []);
 
   // Frequency Selector State (Demo / UI)
-  const [reminderFrequency, setReminderFrequency] = useState<FrequencyData>({ type: "Weekly", subValue: "Mon" });
+  const [reminderFrequency, setReminderFrequency] = useState<FrequencyData>({
+    type: "Weekly",
+    subValue: "Mon",
+  });
 
   // Reset Section Toggle
   const [enableReset, setEnableReset] = useState(false);
 
   // Reset Modals State
-  const [resetModalType, setResetModalType] = useState<"subject" | "attendance" | "timetable" | "events" | "entire" | null>(null);
+  const [resetModalType, setResetModalType] = useState<
+    "subject" | "attendance" | "timetable" | "events" | "entire" | null
+  >(null);
 
   const fetchSubjectsForReset = () => {
-    api.get("/subjects").then((res) => {
-      setSubjects(res.data || []);
-    }).catch((err) => console.error(err));
+    api
+      .get("/subjects")
+      .then((res) => {
+        setSubjects(res.data || []);
+      })
+      .catch((err) => console.error(err));
   };
   const [subjects, setSubjects] = useState<any[]>([]);
   const [selectedSubjectIds, setSelectedSubjectIds] = useState<string[]>([]);
@@ -100,13 +189,19 @@ export const SettingsPage: React.FC = () => {
 
   useEffect(() => {
     // Pre-fetch subjects for reset subject attendance modal
-    api.get("/subjects").then((res) => {
-      setSubjects(res.data || []);
-    }).catch((err) => console.error(err));
+    api
+      .get("/subjects")
+      .then((res) => {
+        setSubjects(res.data || []);
+      })
+      .catch((err) => console.error(err));
   }, []);
 
   useEffect(() => {
-    if (user?.targetAttendance !== undefined && user?.targetAttendance !== null) {
+    if (
+      user?.targetAttendance !== undefined &&
+      user?.targetAttendance !== null
+    ) {
       setTargetAttendance(user.targetAttendance);
     }
   }, [user?.targetAttendance]);
@@ -116,7 +211,10 @@ export const SettingsPage: React.FC = () => {
     setIsSaving(true);
     setSaveSuccess(false);
 
-    const numericTarget = Math.min(100, Math.max(1, Number(targetAttendance) || 75));
+    const numericTarget = Math.min(
+      100,
+      Math.max(1, Number(targetAttendance) || 75),
+    );
 
     try {
       await api.patch("/users/me", {
@@ -154,13 +252,21 @@ export const SettingsPage: React.FC = () => {
         exportData = res.data;
       } else {
         const subRes = await api.get("/subjects");
-        exportData = { subjects: subRes.data, exportedAt: new Date().toISOString() };
+        exportData = {
+          subjects: subRes.data,
+          exportedAt: new Date().toISOString(),
+        };
       }
 
-      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(exportData, null, 2));
+      const dataStr =
+        "data:text/json;charset=utf-8," +
+        encodeURIComponent(JSON.stringify(exportData, null, 2));
       const downloadAnchor = document.createElement("a");
       downloadAnchor.setAttribute("href", dataStr);
-      downloadAnchor.setAttribute("download", `attendance_backup_${new Date().toISOString().slice(0, 10)}.json`);
+      downloadAnchor.setAttribute(
+        "download",
+        `attendance_backup_${new Date().toISOString().slice(0, 10)}.json`,
+      );
       document.body.appendChild(downloadAnchor);
       downloadAnchor.click();
       downloadAnchor.remove();
@@ -185,11 +291,17 @@ export const SettingsPage: React.FC = () => {
         const activeSem = semRes.data;
 
         if (!activeSem) {
-          alert("Please create or select an active semester first before importing.");
+          alert(
+            "Please create or select an active semester first before importing.",
+          );
           return;
         }
 
-        if (confirm("Importing this backup will replace current schedule slots for your active semester. Proceed?")) {
+        if (
+          confirm(
+            "Importing this backup will replace current schedule slots for your active semester. Proceed?",
+          )
+        ) {
           await api.post(`/timetable/import/${activeSem.id}`, payload);
           setBackupStatusMessage("Backup imported successfully!");
           setTimeout(() => setBackupStatusMessage(""), 3000);
@@ -205,20 +317,29 @@ export const SettingsPage: React.FC = () => {
   // Export CSV
   const handleExportCSV = async () => {
     try {
-      const res = await api.get("/data/export", { responseType: 'blob' });
-      
-      const blob = new Blob([res.data], { type: 'application/zip' });
+      const res = await api.get("/data/export", { responseType: "blob" });
+
+      const blob = new Blob([res.data], { type: "application/zip" });
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.setAttribute("download", `attendx_export_${new Date().toISOString().slice(0, 10)}.zip`);
+      link.setAttribute(
+        "download",
+        `attendx_export_${new Date().toISOString().slice(0, 10)}.zip`,
+      );
       document.body.appendChild(link);
       link.click();
       link.parentNode?.removeChild(link);
       window.URL.revokeObjectURL(url);
-    } catch (err) {
+} catch (err) {
       console.error("CSV/ZIP export failed", err);
       alert("Failed to generate ZIP export.");
+    } finally {
+      // Refresh documents after export
+      try {
+        const { data } = await api.get("/documents");
+        setStoredDocuments(data);
+      } catch (e) {}
     }
   };
 
@@ -233,8 +354,9 @@ export const SettingsPage: React.FC = () => {
     setIsImportingCSV(true);
 
     try {
-      const mlApiUrl = import.meta.env.VITE_ML_API_URL || "http://localhost:8000";
-      
+      const mlApiUrl =
+        import.meta.env.VITE_ML_API_URL || "http://localhost:8000";
+
       const res = await fetch(`${mlApiUrl}/upload/zip?user_id=${user.id}`, {
         method: "POST",
         body: formData,
@@ -248,18 +370,22 @@ export const SettingsPage: React.FC = () => {
       const taskId = data.task_id;
 
       // Connect to WebSocket for progress
-      const wsUrl = mlApiUrl.replace(/^http/, 'ws');
+      const wsUrl = mlApiUrl.replace(/^http/, "ws");
       const ws = new WebSocket(`${wsUrl}/ws/progress/${taskId}`);
-      
+
       ws.onmessage = (event) => {
         const msg = JSON.parse(event.data);
-        toast.loading(`Importing: ${msg.status} (${msg.progress}%)`, { id: toastId });
-        
-        if (msg.progress === 100 || msg.status.includes('Error')) {
+        toast.loading(`Importing: ${msg.status} (${msg.progress}%)`, {
+          id: toastId,
+        });
+
+        if (msg.progress === 100 || msg.status.includes("Error")) {
           ws.close();
           if (msg.progress === 100) {
-            toast.success("Data imported successfully! Redirecting...", { id: toastId });
-            setTimeout(() => window.location.href = "/timetable", 1500);
+            toast.success("Data imported successfully! Redirecting...", {
+              id: toastId,
+            });
+            setTimeout(() => (window.location.href = "/timetable"), 1500);
           } else {
             toast.error(msg.status, { id: toastId });
             setIsImportingCSV(false);
@@ -268,10 +394,12 @@ export const SettingsPage: React.FC = () => {
       };
 
       ws.onerror = () => {
-        toast.error("Lost connection to progress tracker, but import may still be running.", { id: toastId });
+        toast.error(
+          "Lost connection to progress tracker, but import may still be running.",
+          { id: toastId },
+        );
         setIsImportingCSV(false);
       };
-
     } catch (err: any) {
       console.error("Failed to import ZIP", err);
       toast.error(err.message || "Failed to import ZIP file.", { id: toastId });
@@ -280,7 +408,6 @@ export const SettingsPage: React.FC = () => {
       if (e.target) e.target.value = "";
     }
   };
-
 
   // Trigger Resets
   const handlePerformReset = async () => {
@@ -294,11 +421,15 @@ export const SettingsPage: React.FC = () => {
           setIsResetting(false);
           return;
         }
-        await api.post("/users/reset-subject-attendance", { subjectIds: selectedSubjectIds });
+        await api.post("/users/reset-subject-attendance", {
+          subjectIds: selectedSubjectIds,
+        });
         toast.success("Attendance cleared for selected subjects!");
       } else if (resetModalType === "attendance") {
         await api.post("/users/reset-all-attendance");
-        toast.success("All attendance records and overrides deleted successfully!");
+        toast.success(
+          "All attendance records and overrides deleted successfully!",
+        );
       } else if (resetModalType === "timetable") {
         await api.post("/users/reset-timetable");
         toast.success("Timetable schedule slots cleared successfully!");
@@ -324,7 +455,9 @@ export const SettingsPage: React.FC = () => {
       fetchSubjectsForReset();
     } catch (err: any) {
       console.error("Reset failed", err);
-      setResetError(err?.response?.data?.message || "Reset action failed. Try again.");
+      setResetError(
+        err?.response?.data?.message || "Reset action failed. Try again.",
+      );
       setIsResetting(false);
     }
   };
@@ -332,9 +465,16 @@ export const SettingsPage: React.FC = () => {
   // Submit Contact Form
   const handleSendContact = (e: React.FormEvent) => {
     e.preventDefault();
-    const mailtoSubject = encodeURIComponent(`[${contactTopic}] ${contactSubject}`);
-    const mailtoBody = encodeURIComponent(`Name: ${user?.name || "User"}\nEmail: ${user?.email || "User"}\n\nMessage:\n${contactMessage}`);
-    window.open(`https://mail.google.com/mail/?view=cm&fs=1&to=24247@iiitu.ac.in,rai18naman@gmail.com&su=${mailtoSubject}&body=${mailtoBody}`, '_blank');
+    const mailtoSubject = encodeURIComponent(
+      `[${contactTopic}] ${contactSubject}`,
+    );
+    const mailtoBody = encodeURIComponent(
+      `Name: ${user?.name || "User"}\nEmail: ${user?.email || "User"}\n\nMessage:\n${contactMessage}`,
+    );
+    window.open(
+      `https://mail.google.com/mail/?view=cm&fs=1&to=24247@iiitu.ac.in,rai18naman@gmail.com&su=${mailtoSubject}&body=${mailtoBody}`,
+      "_blank",
+    );
     setContactSubmitted(true);
   };
 
@@ -364,7 +504,9 @@ export const SettingsPage: React.FC = () => {
           >
             <ArrowLeft className="w-5 h-5" />
           </button>
-          <h1 className="text-2xl font-extrabold text-foreground tracking-tight">Backup/Restore</h1>
+          <h1 className="text-2xl font-extrabold text-foreground tracking-tight">
+            Backup/Restore
+          </h1>
         </div>
 
         {backupStatusMessage && (
@@ -376,15 +518,20 @@ export const SettingsPage: React.FC = () => {
 
         {/* Manual Export/Import backup */}
         <div className="space-y-4">
-          <h2 className="text-base font-bold text-foreground">Manual Export/Import backup</h2>
+          <h2 className="text-base font-bold text-foreground">
+            Manual Export/Import backup
+          </h2>
           <div className="bg-card border border-border/70 rounded-2xl divide-y divide-border/50 shadow-md">
             <button
               onClick={handleExportBackup}
               className="w-full text-left p-4 hover:bg-muted/50 transition-colors flex flex-col gap-1 cursor-pointer"
             >
-              <span className="text-sm font-bold text-foreground">Export backup file</span>
+              <span className="text-sm font-bold text-foreground">
+                Export backup file
+              </span>
               <span className="text-xs text-muted-foreground leading-relaxed">
-                Generates a backup file that can be imported back. This file cannot be read externally.
+                Generates a backup file that can be imported back. This file
+                cannot be read externally.
               </span>
             </button>
 
@@ -392,7 +539,9 @@ export const SettingsPage: React.FC = () => {
               onClick={() => jsonInputRef.current?.click()}
               className="w-full text-left p-4 hover:bg-muted/50 transition-colors flex flex-col gap-1 cursor-pointer"
             >
-              <span className="text-sm font-bold text-foreground">Import backup file</span>
+              <span className="text-sm font-bold text-foreground">
+                Import backup file
+              </span>
               <span className="text-xs text-muted-foreground leading-relaxed">
                 Supports backups exported by this app.
               </span>
@@ -402,10 +551,14 @@ export const SettingsPage: React.FC = () => {
 
         {/* Automatic Google Drive backup */}
         <div className="space-y-4 pt-2">
-          <h2 className="text-base font-bold text-foreground">Automatic Google Drive backup</h2>
+          <h2 className="text-base font-bold text-foreground">
+            Automatic Google Drive backup
+          </h2>
           <div className="bg-card border border-border/70 rounded-2xl p-5 space-y-5 shadow-md">
             <p className="text-xs text-muted-foreground leading-relaxed">
-              Don't risk losing your data. Enable automatic backups to Google Drive. Up to 30 backups are saved in the "Ajack auto backup" folder and can be restored on a new phone.
+              Don't risk losing your data. Enable automatic backups to Google
+              Drive. Up to 30 backups are saved in the "Ajack auto backup"
+              folder and can be restored on a new phone.
             </p>
 
             <div className="text-xs font-semibold text-muted-foreground">
@@ -425,21 +578,31 @@ export const SettingsPage: React.FC = () => {
                 }}
                 className="px-5 py-2.5 rounded-full bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold transition-all shadow-md shadow-emerald-500/20 flex items-center gap-2 cursor-pointer disabled:opacity-50"
               >
-                {isBackupNowLoading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                {isBackupNowLoading && (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                )}
                 Backup Now
               </button>
             </div>
 
             <div className="space-y-4 pt-2 border-t border-border/50">
               <div className="flex flex-col gap-0.5">
-                <span className="text-xs font-bold text-foreground">Google Account</span>
-                <span className="text-xs text-muted-foreground">{user?.email || "rai18naman@gmail.com"}</span>
+                <span className="text-xs font-bold text-foreground">
+                  Google Account
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  {user?.email || "rai18naman@gmail.com"}
+                </span>
               </div>
 
               <div className="flex items-center justify-between">
                 <div className="flex flex-col gap-0.5">
-                  <span className="text-xs font-bold text-foreground">Enable automatic backups</span>
-                  <span className="text-xs text-muted-foreground">{autoBackupEnabled ? "On" : "Off"}</span>
+                  <span className="text-xs font-bold text-foreground">
+                    Enable automatic backups
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    {autoBackupEnabled ? "On" : "Off"}
+                  </span>
                 </div>
                 <button
                   type="button"
@@ -458,12 +621,18 @@ export const SettingsPage: React.FC = () => {
 
               <button
                 onClick={() => {
-                  alert("Restoring from Google Drive. Select backup version...");
+                  alert(
+                    "Restoring from Google Drive. Select backup version...",
+                  );
                 }}
                 className="w-full text-left pt-2 flex flex-col gap-0.5 group cursor-pointer"
               >
-                <span className="text-xs font-bold text-foreground group-hover:text-primary transition-colors">Restore backup</span>
-                <span className="text-xs text-muted-foreground">Choose and restore a backup from Google Drive.</span>
+                <span className="text-xs font-bold text-foreground group-hover:text-primary transition-colors">
+                  Restore backup
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  Choose and restore a backup from Google Drive.
+                </span>
               </button>
             </div>
           </div>
@@ -483,7 +652,9 @@ export const SettingsPage: React.FC = () => {
           >
             <ArrowLeft className="w-5 h-5" />
           </button>
-          <h1 className="text-2xl font-extrabold text-foreground tracking-tight">Contact us</h1>
+          <h1 className="text-2xl font-extrabold text-foreground tracking-tight">
+            Contact us
+          </h1>
         </div>
 
         {/* Developer Info Card */}
@@ -495,9 +666,11 @@ export const SettingsPage: React.FC = () => {
               referrerPolicy="no-referrer"
               className="w-12 h-12 rounded-full object-cover border-2 border-emerald-500/40 shadow-sm shrink-0"
               onError={(e) => {
-                e.currentTarget.style.display = 'none';
+                e.currentTarget.style.display = "none";
                 if (e.currentTarget.nextElementSibling) {
-                  (e.currentTarget.nextElementSibling as HTMLElement).style.display = 'flex';
+                  (
+                    e.currentTarget.nextElementSibling as HTMLElement
+                  ).style.display = "flex";
                 }
               }}
             />
@@ -506,7 +679,9 @@ export const SettingsPage: React.FC = () => {
             </div>
             <div>
               <h3 className="text-base font-bold text-foreground">Naman Rai</h3>
-              <p className="text-xs text-muted-foreground">App Developer & IIITU Student</p>
+              <p className="text-xs text-muted-foreground">
+                App Developer & IIITU Student
+              </p>
             </div>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs pt-1 border-t border-border/50 text-muted-foreground">
@@ -524,14 +699,19 @@ export const SettingsPage: React.FC = () => {
         {contactSubmitted && (
           <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-500 text-xs font-bold space-y-1">
             <p className="text-sm">Thank you for reaching out!</p>
-            <p className="text-muted-foreground font-normal">Your email client has been opened. You can also contact Naman Rai directly at rai18naman@gmail.com or 8076408958.</p>
+            <p className="text-muted-foreground font-normal">
+              Your email client has been opened. You can also contact Naman Rai
+              directly at rai18naman@gmail.com or 8076408958.
+            </p>
           </div>
         )}
 
         <form onSubmit={handleSendContact} className="space-y-5">
           {/* Topic Select */}
           <div className="space-y-1.5">
-            <label className="text-xs font-bold text-emerald-500 uppercase tracking-wider">Topic</label>
+            <label className="text-xs font-bold text-emerald-500 uppercase tracking-wider">
+              Topic
+            </label>
             <select
               value={contactTopic}
               onChange={(e) => setContactTopic(e.target.value)}
@@ -571,7 +751,11 @@ export const SettingsPage: React.FC = () => {
           <div className="text-center pt-2">
             <button
               type="button"
-              onClick={() => alert("FAQs:\n1. How to import timetable? Use OCR or JSON import in Settings/Timetable.\n2. How attendance criteria works? Keep above target % (e.g. 75%).")}
+              onClick={() =>
+                alert(
+                  "FAQs:\n1. How to import timetable? Use OCR or JSON import in Settings/Timetable.\n2. How attendance criteria works? Keep above target % (e.g. 75%).",
+                )
+              }
               className="text-xs text-emerald-500 hover:underline cursor-pointer"
             >
               Check out our FAQs for quick answers
@@ -609,13 +793,17 @@ export const SettingsPage: React.FC = () => {
           <ArrowLeft className="w-5 h-5" />
         </button>
         <div>
-          <h1 className="text-2xl md:text-3xl font-extrabold text-foreground tracking-tight">Settings</h1>
+          <h1 className="text-2xl md:text-3xl font-extrabold text-foreground tracking-tight">
+            Settings
+          </h1>
         </div>
       </div>
 
       {/* CATEGORY 1: General */}
       <div className="space-y-3">
-        <h2 className="text-xs font-bold text-muted-foreground uppercase tracking-wider px-1">General</h2>
+        <h2 className="text-xs font-bold text-muted-foreground uppercase tracking-wider px-1">
+          General
+        </h2>
         <div className="bg-card border border-border/70 rounded-2xl divide-y divide-border/50 shadow-md">
           {/* Set criteria */}
           <div className="p-4 flex items-center justify-between">
@@ -624,24 +812,27 @@ export const SettingsPage: React.FC = () => {
                 <Target className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="text-sm font-bold text-foreground">Set criteria</h3>
+                <h3 className="text-sm font-bold text-foreground">
+                  Set criteria
+                </h3>
                 <p className="text-xs text-muted-foreground">
-                  {targetAttendance !== "" && targetAttendance !== null && targetAttendance !== undefined ? `${targetAttendance}%` : "—"}
+                  {targetAttendance !== "" &&
+                  targetAttendance !== null &&
+                  targetAttendance !== undefined
+                    ? `${targetAttendance}%`
+                    : "—"}
                 </p>
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <Stepper 
-                min={1} 
-                max={100} 
-                value={Number(targetAttendance) || 75} 
-                onChange={setTargetAttendance} 
+              <Stepper
+                min={1}
+                max={100}
+                value={Number(targetAttendance) || 75}
+                onChange={setTargetAttendance}
               />
               <span className="text-sm font-semibold text-foreground">%</span>
-              <SaveToggle
-                onClick={handleSaveProfile}
-                size="sm"
-              />
+              <SaveToggle onClick={handleSaveProfile} size="sm" />
             </div>
           </div>
 
@@ -654,7 +845,11 @@ export const SettingsPage: React.FC = () => {
               <div>
                 <h3 className="text-sm font-bold text-foreground">Set theme</h3>
                 <p className="text-xs text-muted-foreground">
-                  {theme === "dark" ? "Dark Mode" : theme === "light" ? "Light Mode" : "System Default, using App colors"}
+                  {theme === "dark"
+                    ? "Dark Mode"
+                    : theme === "light"
+                      ? "Light Mode"
+                      : "System Default, using App colors"}
                 </p>
               </div>
             </div>
@@ -687,21 +882,32 @@ export const SettingsPage: React.FC = () => {
 
       {/* CATEGORY 2: Notifications & Reminders */}
       <div className="space-y-3">
-        <h2 className="text-xs font-bold text-muted-foreground uppercase tracking-wider px-1">Notifications & Reminders</h2>
+        <h2 className="text-xs font-bold text-muted-foreground uppercase tracking-wider px-1">
+          Notifications & Reminders
+        </h2>
         <div className="bg-card border border-border/70 rounded-2xl p-4 shadow-md space-y-4">
           <div>
-            <h3 className="text-sm font-bold text-foreground">Reminder Frequency</h3>
-            <p className="text-xs text-muted-foreground">Select how often you want to receive academic updates.</p>
+            <h3 className="text-sm font-bold text-foreground">
+              Reminder Frequency
+            </h3>
+            <p className="text-xs text-muted-foreground">
+              Select how often you want to receive academic updates.
+            </p>
           </div>
           <div className="w-full flex items-center justify-center bg-transparent transition-colors duration-500">
-            <FrequencySelector value={reminderFrequency} onChange={setReminderFrequency} />
+            <FrequencySelector
+              value={reminderFrequency}
+              onChange={setReminderFrequency}
+            />
           </div>
         </div>
       </div>
 
       {/* CATEGORY 3: Data Management */}
       <div className="space-y-3">
-        <h2 className="text-xs font-bold text-muted-foreground uppercase tracking-wider px-1">Data Management</h2>
+        <h2 className="text-xs font-bold text-muted-foreground uppercase tracking-wider px-1">
+          Data Management
+        </h2>
         <div className="bg-card border border-border/70 rounded-2xl divide-y divide-border/50 shadow-md">
           {/* Export data to ZIP */}
           <div className="w-full text-left p-4 hover:bg-muted/50 transition-colors flex items-center justify-between cursor-pointer group">
@@ -710,20 +916,27 @@ export const SettingsPage: React.FC = () => {
                 <FileSpreadsheet className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="text-sm font-bold text-foreground group-hover:text-primary transition-colors">Export data to ZIP</h3>
-                <p className="text-xs text-muted-foreground">Downloads a ZIP archive of CSV files with your entire semester data.</p>
+                <h3 className="text-sm font-bold text-foreground group-hover:text-primary transition-colors">
+                  Export data to ZIP
+                </h3>
+                <p className="text-xs text-muted-foreground">
+                  Downloads a ZIP archive of CSV files with your entire semester
+                  data.
+                </p>
               </div>
             </div>
             <RunActionButton
               action={handleExportCSV}
               idleLabel="Export ZIP"
               doneLabel="Saved"
-              idleIcon={<Download className="w-4 h-4 text-primary-foreground opacity-90" />}
+              idleIcon={
+                <Download className="w-4 h-4 text-primary-foreground opacity-90" />
+              }
               widths={{ idle: 160, running: 280, done: 140 }}
               steps={[
-                { id: 1, label: 'Gathering Records', icon: FileSpreadsheet },
-                { id: 2, label: 'Compressing', icon: FileArchive },
-                { id: 3, label: 'Downloading', icon: Download }
+                { id: 1, label: "Gathering Records", icon: FileSpreadsheet },
+                { id: 2, label: "Compressing", icon: FileArchive },
+                { id: 3, label: "Downloading", icon: Download },
               ]}
             />
           </div>
@@ -735,8 +948,15 @@ export const SettingsPage: React.FC = () => {
                 <Upload className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="text-sm font-bold text-foreground group-hover:text-primary transition-colors">Import data from ZIP</h3>
-                <p className="text-xs text-muted-foreground">Restores an exported ZIP file. <span className="text-rose-500 font-bold">WARNING: Replaces current semester.</span></p>
+                <h3 className="text-sm font-bold text-foreground group-hover:text-primary transition-colors">
+                  Import data from ZIP
+                </h3>
+                <p className="text-xs text-muted-foreground">
+                  Restores an exported ZIP file.{" "}
+                  <span className="text-rose-500 font-bold">
+                    WARNING: Replaces current semester.
+                  </span>
+                </p>
               </div>
             </div>
             <RunActionButton
@@ -744,11 +964,11 @@ export const SettingsPage: React.FC = () => {
               disabled={isImportingCSV}
               idleLabel="Import ZIP"
               doneLabel="Ready"
-              idleIcon={<Upload className="w-4 h-4 text-primary-foreground opacity-90" />}
+              idleIcon={
+                <Upload className="w-4 h-4 text-primary-foreground opacity-90" />
+              }
               widths={{ idle: 160, running: 280, done: 140 }}
-              steps={[
-                { id: 1, label: 'Awaiting File', icon: Upload }
-              ]}
+              steps={[{ id: 1, label: "Awaiting File", icon: Upload }]}
             />
           </div>
         </div>
@@ -756,56 +976,101 @@ export const SettingsPage: React.FC = () => {
 
       {/* CATEGORY 4: Stored Documents */}
       <div className="space-y-3">
-        <h2 className="text-xs font-bold text-muted-foreground uppercase tracking-wider px-1">Stored Documents</h2>
+        <h2 className="text-xs font-bold text-muted-foreground uppercase tracking-wider px-1">
+          Stored Documents
+        </h2>
         <div className="bg-card border border-border/70 rounded-2xl divide-y divide-border/50 shadow-md">
-          <div className="p-4 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-purple-500/10 text-purple-500 flex items-center justify-center">
-                <FileText className="w-5 h-5" />
+          <div className="p-4 flex flex-col">
+            <div className="flex items-center justify-between w-full">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-purple-500/10 text-purple-500 flex items-center justify-center">
+                  <FileText className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-foreground">
+                    Timetable Documents
+                  </h3>
+                  <p className="text-xs text-muted-foreground">
+                    PDFs and images uploaded for schedule AI extraction.
+                  </p>
+                </div>
               </div>
-              <div>
-                <h3 className="text-sm font-bold text-foreground">Timetable Documents</h3>
-                <p className="text-xs text-muted-foreground">PDFs and images uploaded for schedule AI extraction.</p>
-              </div>
+              {storedDocuments.filter((d) => d.type === "TIMETABLE").length ===
+                0 && (
+                <span className="text-xs font-bold bg-muted text-muted-foreground px-2 py-1 rounded-md">
+                  Empty
+                </span>
+              )}
             </div>
-            <span className="text-xs font-bold bg-muted text-muted-foreground px-2 py-1 rounded-md">Empty</span>
+            {renderDocuments("TIMETABLE")}
           </div>
-          <div className="p-4 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-indigo-500/10 text-indigo-500 flex items-center justify-center">
-                <Calendar className="w-5 h-5" />
+
+          <div className="p-4 flex flex-col">
+            <div className="flex items-center justify-between w-full">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-indigo-500/10 text-indigo-500 flex items-center justify-center">
+                  <Calendar className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-foreground">
+                    Academic Calendars
+                  </h3>
+                  <p className="text-xs text-muted-foreground">
+                    PDFs uploaded for semester event AI extraction.
+                  </p>
+                </div>
               </div>
-              <div>
-                <h3 className="text-sm font-bold text-foreground">Academic Calendars</h3>
-                <p className="text-xs text-muted-foreground">PDFs uploaded for semester event AI extraction.</p>
-              </div>
+              {storedDocuments.filter((d) => d.type === "CALENDAR").length ===
+                0 && (
+                <span className="text-xs font-bold bg-muted text-muted-foreground px-2 py-1 rounded-md">
+                  Empty
+                </span>
+              )}
             </div>
-            <span className="text-xs font-bold bg-muted text-muted-foreground px-2 py-1 rounded-md">Empty</span>
+            {renderDocuments("CALENDAR")}
           </div>
-          <div className="p-4 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center">
-                <FileArchive className="w-5 h-5" />
+
+          <div className="p-4 flex flex-col">
+            <div className="flex items-center justify-between w-full">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center">
+                  <FileArchive className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-foreground">
+                    Data Backups
+                  </h3>
+                  <p className="text-xs text-muted-foreground">
+                    ZIP files containing exported semester CSV data.
+                  </p>
+                </div>
               </div>
-              <div>
-                <h3 className="text-sm font-bold text-foreground">Data Backups</h3>
-                <p className="text-xs text-muted-foreground">ZIP files containing exported semester CSV data.</p>
-              </div>
+              {storedDocuments.filter((d) => d.type === "BACKUP").length ===
+                0 && (
+                <span className="text-xs font-bold bg-muted text-muted-foreground px-2 py-1 rounded-md">
+                  Empty
+                </span>
+              )}
             </div>
-            <span className="text-xs font-bold bg-muted text-muted-foreground px-2 py-1 rounded-md">Empty</span>
+            {renderDocuments("BACKUP")}
           </div>
         </div>
       </div>
 
       {/* CATEGORY 5: App */}
       <div className="space-y-3">
-        <h2 className="text-xs font-bold text-muted-foreground uppercase tracking-wider px-1">App</h2>
+        <h2 className="text-xs font-bold text-muted-foreground uppercase tracking-wider px-1">
+          App
+        </h2>
         <div className="bg-card border border-border/70 rounded-2xl divide-y divide-border/50 shadow-md">
           {/* Share App */}
           <button
             onClick={() => {
               if (navigator.share) {
-                navigator.share({ title: "Smart Attendance Manager", url: window.location.origin });
+                navigator.share({
+                  title: "Smart Attendance Manager",
+                  url: window.location.origin,
+                });
               } else {
                 navigator.clipboard.writeText(window.location.origin);
                 alert("App link copied to clipboard!");
@@ -829,8 +1094,12 @@ export const SettingsPage: React.FC = () => {
                 <Users className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="text-sm font-bold text-foreground group-hover:text-primary transition-colors">Contact us</h3>
-                <p className="text-xs text-muted-foreground">Suggestions, bugs, questions</p>
+                <h3 className="text-sm font-bold text-foreground group-hover:text-primary transition-colors">
+                  Contact us
+                </h3>
+                <p className="text-xs text-muted-foreground">
+                  Suggestions, bugs, questions
+                </p>
               </div>
             </div>
             <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
@@ -846,8 +1115,12 @@ export const SettingsPage: React.FC = () => {
                 <Info className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="text-sm font-bold text-foreground group-hover:text-primary transition-colors">App info</h3>
-                <p className="text-xs text-muted-foreground">Version v1.2.0 & Developer details</p>
+                <h3 className="text-sm font-bold text-foreground group-hover:text-primary transition-colors">
+                  App info
+                </h3>
+                <p className="text-xs text-muted-foreground">
+                  Version v1.2.0 & Developer details
+                </p>
               </div>
             </div>
             <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
@@ -857,15 +1130,22 @@ export const SettingsPage: React.FC = () => {
 
       {/* CATEGORY 4: Reset & Delete */}
       <div className="space-y-3">
-        <h2 className="text-xs font-bold text-muted-foreground uppercase tracking-wider px-1">Reset & Delete</h2>
+        <h2 className="text-xs font-bold text-muted-foreground uppercase tracking-wider px-1">
+          Reset & Delete
+        </h2>
         <div className="bg-card border border-border/70 rounded-2xl divide-y divide-border/50 shadow-md">
           {/* Enable reset options toggle switch */}
           <div className="p-4 flex items-center justify-between">
             <div className="flex items-center gap-3 pr-3">
               <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0" />
               <div>
-                <h3 className="text-sm font-bold text-foreground">Enable reset options</h3>
-                <p className="text-xs text-muted-foreground">Allows access to reset options below that permanently delete your data.</p>
+                <h3 className="text-sm font-bold text-foreground">
+                  Enable reset options
+                </h3>
+                <p className="text-xs text-muted-foreground">
+                  Allows access to reset options below that permanently delete
+                  your data.
+                </p>
               </div>
             </div>
             <button
@@ -893,14 +1173,20 @@ export const SettingsPage: React.FC = () => {
               setResetModalType("subject");
             }}
             className={`w-full text-left p-4 flex items-start gap-3 transition-colors cursor-pointer border-b border-border/50 ${
-              enableReset ? "hover:bg-muted/50 opacity-100" : "opacity-40 cursor-not-allowed"
+              enableReset
+                ? "hover:bg-muted/50 opacity-100"
+                : "opacity-40 cursor-not-allowed"
             }`}
           >
             <div className="w-3 h-3 rounded-full bg-amber-500 mt-1 shrink-0" />
             <div className="flex flex-col gap-0.5">
-              <span className="text-sm font-bold text-foreground">Reset subject attendance</span>
+              <span className="text-sm font-bold text-foreground">
+                Reset subject attendance
+              </span>
               <span className="text-xs text-muted-foreground leading-relaxed">
-                Clears attendance for selected subjects. Timetable slots remain intact, but all marked attendance logs for those subjects are removed.
+                Clears attendance for selected subjects. Timetable slots remain
+                intact, but all marked attendance logs for those subjects are
+                removed.
               </span>
             </div>
           </button>
@@ -914,14 +1200,19 @@ export const SettingsPage: React.FC = () => {
               setResetModalType("attendance");
             }}
             className={`w-full text-left p-4 flex items-start gap-3 transition-colors cursor-pointer border-b border-border/50 ${
-              enableReset ? "hover:bg-muted/50 opacity-100" : "opacity-40 cursor-not-allowed"
+              enableReset
+                ? "hover:bg-muted/50 opacity-100"
+                : "opacity-40 cursor-not-allowed"
             }`}
           >
             <div className="w-3 h-3 rounded-full bg-amber-500 mt-1 shrink-0" />
             <div className="flex flex-col gap-0.5">
-              <span className="text-sm font-bold text-foreground">Reset all attendance</span>
+              <span className="text-sm font-bold text-foreground">
+                Reset all attendance
+              </span>
               <span className="text-xs text-muted-foreground leading-relaxed">
-                Deletes all attendance records across all subjects. Subjects and timetable slots remain untouched.
+                Deletes all attendance records across all subjects. Subjects and
+                timetable slots remain untouched.
               </span>
             </div>
           </button>
@@ -935,14 +1226,20 @@ export const SettingsPage: React.FC = () => {
               setResetModalType("timetable");
             }}
             className={`w-full text-left p-4 flex items-start gap-3 transition-colors cursor-pointer border-b border-border/50 ${
-              enableReset ? "hover:bg-muted/50 opacity-100" : "opacity-40 cursor-not-allowed"
+              enableReset
+                ? "hover:bg-muted/50 opacity-100"
+                : "opacity-40 cursor-not-allowed"
             }`}
           >
             <div className="w-3 h-3 rounded-full bg-blue-500 mt-1 shrink-0" />
             <div className="flex flex-col gap-0.5">
-              <span className="text-sm font-bold text-foreground">Clear timetable schedule</span>
+              <span className="text-sm font-bold text-foreground">
+                Clear timetable schedule
+              </span>
               <span className="text-xs text-muted-foreground leading-relaxed">
-                Removes all weekly scheduled class slots and overrides across your active semester. Attendance logs and subjects will be safely preserved.
+                Removes all weekly scheduled class slots and overrides across
+                your active semester. Attendance logs and subjects will be
+                safely preserved.
               </span>
             </div>
           </button>
@@ -956,14 +1253,20 @@ export const SettingsPage: React.FC = () => {
               setResetModalType("events");
             }}
             className={`w-full text-left p-4 flex items-start gap-3 transition-colors cursor-pointer border-b border-border/50 ${
-              enableReset ? "hover:bg-muted/50 opacity-100" : "opacity-40 cursor-not-allowed"
+              enableReset
+                ? "hover:bg-muted/50 opacity-100"
+                : "opacity-40 cursor-not-allowed"
             }`}
           >
             <div className="w-3 h-3 rounded-full bg-purple-500 mt-1 shrink-0" />
             <div className="flex flex-col gap-0.5">
-              <span className="text-sm font-bold text-foreground">Remove Academic Calendar & Events</span>
+              <span className="text-sm font-bold text-foreground">
+                Remove Academic Calendar & Events
+              </span>
               <span className="text-xs text-muted-foreground leading-relaxed">
-                Deletes all imported academic events (midsems, endsems, fests, holidays). Event badges and banners disappear across the app and calendar.
+                Deletes all imported academic events (midsems, endsems, fests,
+                holidays). Event badges and banners disappear across the app and
+                calendar.
               </span>
             </div>
           </button>
@@ -977,14 +1280,20 @@ export const SettingsPage: React.FC = () => {
               setResetModalType("entire");
             }}
             className={`w-full text-left p-4 flex items-start gap-3 transition-colors cursor-pointer ${
-              enableReset ? "hover:bg-muted/50 opacity-100" : "opacity-40 cursor-not-allowed"
+              enableReset
+                ? "hover:bg-muted/50 opacity-100"
+                : "opacity-40 cursor-not-allowed"
             }`}
           >
             <div className="w-3 h-3 rounded-full bg-rose-500 mt-1 shrink-0" />
             <div className="flex flex-col gap-0.5">
-              <span className="text-sm font-bold text-rose-500">Reset entire app</span>
+              <span className="text-sm font-bold text-rose-500">
+                Reset entire app
+              </span>
               <span className="text-xs text-muted-foreground leading-relaxed">
-                Permanently wipes all semesters, subjects, timetable slots, attendance logs, and academic calendar events. Start completely fresh.
+                Permanently wipes all semesters, subjects, timetable slots,
+                attendance logs, and academic calendar events. Start completely
+                fresh.
               </span>
             </div>
           </button>
@@ -1004,10 +1313,13 @@ export const SettingsPage: React.FC = () => {
                   {resetModalType === "subject" && "Reset Subject Attendance"}
                   {resetModalType === "attendance" && "Reset All Attendance"}
                   {resetModalType === "timetable" && "Clear Timetable Schedule"}
-                  {resetModalType === "events" && "Remove Academic Calendar & Events"}
+                  {resetModalType === "events" &&
+                    "Remove Academic Calendar & Events"}
                   {resetModalType === "entire" && "Reset Entire App"}
                 </h3>
-                <p className="text-xs text-rose-500 font-semibold">Irreversible Action</p>
+                <p className="text-xs text-rose-500 font-semibold">
+                  Irreversible Action
+                </p>
               </div>
             </div>
 
@@ -1015,10 +1327,14 @@ export const SettingsPage: React.FC = () => {
               {/* Reset Subject Attendance Content */}
               {resetModalType === "subject" && (
                 <div className="space-y-3">
-                  <p className="text-xs text-muted-foreground">Select subjects to reset attendance history for:</p>
+                  <p className="text-xs text-muted-foreground">
+                    Select subjects to reset attendance history for:
+                  </p>
                   <div className="max-h-48 overflow-y-auto space-y-1.5 pr-1">
                     {subjects.length === 0 ? (
-                      <p className="text-xs text-muted-foreground py-4 text-center">No subjects found.</p>
+                      <p className="text-xs text-muted-foreground py-4 text-center">
+                        No subjects found.
+                      </p>
                     ) : (
                       subjects.map((sub) => {
                         const isChecked = selectedSubjectIds.includes(sub.id);
@@ -1028,9 +1344,16 @@ export const SettingsPage: React.FC = () => {
                             type="button"
                             onClick={() => {
                               if (isChecked) {
-                                setSelectedSubjectIds(selectedSubjectIds.filter((id) => id !== sub.id));
+                                setSelectedSubjectIds(
+                                  selectedSubjectIds.filter(
+                                    (id) => id !== sub.id,
+                                  ),
+                                );
                               } else {
-                                setSelectedSubjectIds([...selectedSubjectIds, sub.id]);
+                                setSelectedSubjectIds([
+                                  ...selectedSubjectIds,
+                                  sub.id,
+                                ]);
                               }
                             }}
                             className={`w-full text-left px-3.5 py-2.5 rounded-xl border text-xs font-semibold flex items-center justify-between transition-colors cursor-pointer ${
@@ -1040,7 +1363,9 @@ export const SettingsPage: React.FC = () => {
                             }`}
                           >
                             <span>{sub.name}</span>
-                            {isChecked && <Check className="w-4 h-4 text-primary" />}
+                            {isChecked && (
+                              <Check className="w-4 h-4 text-primary" />
+                            )}
                           </button>
                         );
                       })
@@ -1052,21 +1377,27 @@ export const SettingsPage: React.FC = () => {
               {/* Reset All Attendance Content */}
               {resetModalType === "attendance" && (
                 <p className="text-sm text-muted-foreground leading-relaxed">
-                  This will delete all attendance logs and timetable overrides across all subjects and semesters. Your subjects and timetable slots will remain untouched.
+                  This will delete all attendance logs and timetable overrides
+                  across all subjects and semesters. Your subjects and timetable
+                  slots will remain untouched.
                 </p>
               )}
 
               {/* Clear Timetable Schedule Content */}
               {resetModalType === "timetable" && (
                 <p className="text-sm text-muted-foreground leading-relaxed">
-                  This will clear all weekly schedule slots and overrides from your active timetable. Your subject records and past attendance history will remain safely intact.
+                  This will clear all weekly schedule slots and overrides from
+                  your active timetable. Your subject records and past
+                  attendance history will remain safely intact.
                 </p>
               )}
 
               {/* Remove Events Content */}
               {resetModalType === "events" && (
                 <p className="text-sm text-muted-foreground leading-relaxed">
-                  This will permanently remove all academic calendar events (exams, fests, holidays). Event rings and highlight banners will be removed across all calendar views.
+                  This will permanently remove all academic calendar events
+                  (exams, fests, holidays). Event rings and highlight banners
+                  will be removed across all calendar views.
                 </p>
               )}
 
@@ -1074,11 +1405,14 @@ export const SettingsPage: React.FC = () => {
               {resetModalType === "entire" && (
                 <div className="space-y-3">
                   <p className="text-sm text-muted-foreground leading-relaxed">
-                    This will permanently wipe your semesters, subjects, timetable slots, attendance logs, and academic events.
+                    This will permanently wipe your semesters, subjects,
+                    timetable slots, attendance logs, and academic events.
                   </p>
                   <div>
                     <label className="block text-xs text-muted-foreground font-medium mb-1.5">
-                      Type <span className="font-bold text-foreground">RESET</span> to confirm:
+                      Type{" "}
+                      <span className="font-bold text-foreground">RESET</span>{" "}
+                      to confirm:
                     </label>
                     <input
                       type="text"
@@ -1110,15 +1444,21 @@ export const SettingsPage: React.FC = () => {
                   type="button"
                   disabled={
                     isResetting ||
-                    (resetModalType === "entire" && resetConfirmText.trim() !== "RESET") ||
-                    (resetModalType === "subject" && selectedSubjectIds.length === 0)
+                    (resetModalType === "entire" &&
+                      resetConfirmText.trim() !== "RESET") ||
+                    (resetModalType === "subject" &&
+                      selectedSubjectIds.length === 0)
                   }
                   onClick={async () => {
                     await handlePerformReset();
                   }}
                   className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-500 text-white transition-all shadow-md shadow-rose-600/30 disabled:opacity-40 cursor-pointer"
                 >
-                  {isResetting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                  {isResetting ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Trash2 className="w-3.5 h-3.5" />
+                  )}
                   Confirm Reset
                 </button>
               </div>
@@ -1138,15 +1478,21 @@ export const SettingsPage: React.FC = () => {
             </button>
 
             <div className="flex items-center gap-4 border-b border-border/50 pb-5">
-              <img 
-                src="/attendx_logo.png" 
-                alt="AttendX Logo" 
+              <img
+                src="/attendx_logo.png"
+                alt="AttendX Logo"
                 className="w-14 h-14 rounded-2xl object-cover shadow-lg shadow-primary/25 shrink-0 bg-white"
               />
               <div>
-                <h2 className="text-xl font-extrabold text-foreground tracking-tight">AttendX</h2>
-                <p className="text-xs font-semibold text-primary">Smart Attendance Manager • v1.2.0</p>
-                <p className="text-xs text-muted-foreground">Built for IIITU Ecosystem</p>
+                <h2 className="text-xl font-extrabold text-foreground tracking-tight">
+                  AttendX
+                </h2>
+                <p className="text-xs font-semibold text-primary">
+                  Smart Attendance Manager • v1.2.0
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Built for IIITU Ecosystem
+                </p>
               </div>
             </div>
 
@@ -1159,9 +1505,11 @@ export const SettingsPage: React.FC = () => {
                   referrerPolicy="no-referrer"
                   className="w-14 h-14 rounded-full object-cover border-2 border-primary shadow-md shrink-0"
                   onError={(e) => {
-                    e.currentTarget.style.display = 'none';
+                    e.currentTarget.style.display = "none";
                     if (e.currentTarget.nextElementSibling) {
-                      (e.currentTarget.nextElementSibling as HTMLElement).style.display = 'flex';
+                      (
+                        e.currentTarget.nextElementSibling as HTMLElement
+                      ).style.display = "flex";
                     }
                   }}
                 />
@@ -1169,13 +1517,21 @@ export const SettingsPage: React.FC = () => {
                   NR
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-foreground">Naman Rai</h3>
-                  <p className="text-xs font-medium text-primary">Founder & Developer</p>
-                  <p className="text-xs text-muted-foreground">Student at IIITU</p>
+                  <h3 className="text-base font-bold text-foreground">
+                    Naman Rai
+                  </h3>
+                  <p className="text-xs font-medium text-primary">
+                    Founder & Developer
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Student at IIITU
+                  </p>
                 </div>
               </div>
               <p className="text-xs text-muted-foreground leading-relaxed pt-1">
-                AttendX was developed to eliminate manual attendance calculations, criteria tracking anxiety, and timetable fragmentation for college students.
+                AttendX was developed to eliminate manual attendance
+                calculations, criteria tracking anxiety, and timetable
+                fragmentation for college students.
               </p>
               <div className="flex flex-wrap gap-2 pt-2 border-t border-border/40 text-xs">
                 <a
@@ -1199,7 +1555,9 @@ export const SettingsPage: React.FC = () => {
 
             {/* Key Features */}
             <div className="space-y-2 text-xs">
-              <h4 className="font-bold text-foreground text-xs uppercase tracking-wider">Key Capabilities</h4>
+              <h4 className="font-bold text-foreground text-xs uppercase tracking-wider">
+                Key Capabilities
+              </h4>
               <ul className="grid grid-cols-2 gap-2 text-muted-foreground font-medium">
                 <li className="flex items-center gap-1.5 bg-card p-2 rounded-xl border border-border/40">
                   <span className="w-2 h-2 rounded-full bg-emerald-500"></span>

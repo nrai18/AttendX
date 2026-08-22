@@ -6,7 +6,7 @@ import { EventWizardModal } from "./EventWizardModal";
 import { CreateSemesterModal } from "../../components/semester/CreateSemesterModal";
 import { CalendarImportModal } from "../../components/calendar/CalendarImportModal";
 import { HolidayListTab } from "./HolidayListTab";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useAuthStore } from "../../stores/authStore";
 import { DiscreteTabs } from "../../components/ui/discrete-tabs";
 import { toast } from "sonner";
@@ -32,7 +32,9 @@ interface Semester {
 }
 
 export const SemesterHubPage = () => {
-  const [activeTab, setActiveTab] = useState<"timeline" | "calendar" | "events" | "countdowns">("timeline");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const defaultTab = (searchParams.get("tab") as any) || "timeline";
+  const [activeTab, setActiveTab] = useState<"timeline" | "calendar" | "events" | "countdowns" | "holidays">(defaultTab);
   const [currentDate, setCurrentDate] = useState(new Date());
   const [events, setEvents] = useState<AppEvent[]>([]);
   const [activeSemester, setActiveSemester] = useState<Semester | null>(null);
