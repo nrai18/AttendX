@@ -14,8 +14,8 @@ passport.use(
     async (accessToken, refreshToken, profile, done) => {
       try {
         const email = profile.emails?.[0].value;
-        if (!email || !email.endsWith("@iiitu.ac.in")) {
-          return done(new Error("Only @iiitu.ac.in emails are allowed."), false);
+        if (!email || (!email.endsWith("@iiitu.ac.in") && !email.endsWith("@gmail.com"))) {
+          return done(new Error("Only @iiitu.ac.in or @gmail.com emails are allowed."), false);
         }
         
         // This is where you would lookup or create the user in the database

@@ -28,7 +28,7 @@ export class EventService {
 
     return prisma.event.findMany({
       where: {
-        userId,
+        OR: [{ userId }, { userId: null }],
         ...dateFilter,
         ...semesterFilter
       },

@@ -10,6 +10,7 @@ router.get("/today", AttendanceController.getTodayAgenda);
 router.post("/mark", AttendanceController.markAttendance);
 router.get("/stats", AttendanceController.getSubjectStats);
 router.get("/stats/:subjectId", AttendanceController.getSingleSubjectStats);
+router.post("/boundaries", AttendanceController.updateBoundaries);
 router.get("/calendar", AttendanceController.getMonthlyCalendar);
 router.get("/logs", AttendanceController.getAttendanceLogs);
 router.get("/insights", AttendanceController.getPredictiveInsights);

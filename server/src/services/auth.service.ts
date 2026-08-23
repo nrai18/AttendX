@@ -9,13 +9,14 @@ export class AuthService {
   }
 
   static async register(data: any) {
-    const existingUser = await prisma.user.findUnique({ where: { email: data.email } });
-    if (existingUser) throw new Error("Email already registered");
+    const normalizedEmail = data.email.toLowerCase().trim();
+    const existingUser = await prisma.user.findUnique({ where: { email: normalizedEmail } });
+    if (existingUser) throw new Error("Account already exists with this email. Please log in instead.");
 
     const passwordHash = await bcrypt.hash(data.password, 10);
     const user = await prisma.user.create({
       data: {
-        email: data.email,
+        email: normalizedEmail,
         passwordHash,
         name: data.name,
       },
@@ -37,11 +38,12 @@ export class AuthService {
   }
 
   static async login(data: any) {
-    const user = await prisma.user.findUnique({ where: { email: data.email } });
-    if (!user || !user.passwordHash) throw new Error("Invalid credentials");
+    const normalizedEmail = data.email.toLowerCase().trim();
+    const user = await prisma.user.findUnique({ where: { email: normalizedEmail } });
+    if (!user || !user.passwordHash) throw new Error("Account does not exist. Please sign up.");
 
     const isValid = await bcrypt.compare(data.password, user.passwordHash);
-    if (!isValid) throw new Error("Invalid credentials");
+    if (!isValid) throw new Error("Incorrect password. Please try again.");
 
     return this.generateTokensForOAuth(user);
   }

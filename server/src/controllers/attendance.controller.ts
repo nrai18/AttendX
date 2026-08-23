@@ -128,4 +128,23 @@ export class AttendanceController {
       res.status(500).json({ message: "Internal server error" });
     }
   }
+  static async updateBoundaries(req: AuthenticatedRequest, res: Response) {
+    const { semesterId, startDate, endDate } = req.body;
+    
+    if (!semesterId || !startDate || !endDate) {
+      return res.status(400).json({ message: "Missing required fields" });
+    }
+
+    try {
+      await AttendanceService.updateBoundaries(req.user!.userId, semesterId, startDate, endDate);
+      await CacheService.invalidateUser(req.user!.userId);
+      res.json({ message: "Boundaries updated successfully" });
+    } catch (error: any) {
+      if (error.message === "Semester not found or unauthorized") {
+        return res.status(404).json({ message: error.message });
+      }
+      console.error(error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  }
 }

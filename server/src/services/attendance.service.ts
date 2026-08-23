@@ -1,6 +1,11 @@
 import { prisma } from "../lib/prisma";
 
 export class AttendanceService {
+  private static toLocalIso(date: Date): string {
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+  }
+
   /**
    * Get the agenda for a specific date:
    * 1. Get all regular TimetableSlots for the dayOfWeek
@@ -343,10 +348,10 @@ export class AttendanceService {
 
         const regularSlots = sub.timetableSlots.filter(s => s.dayOfWeek === dayOfWeek);
         const dateOverrides = overrides.filter(
-          o => o.subjectId === sub.id && new Date(o.date).toISOString().split("T")[0] === dateKey
+          o => o.subjectId === sub.id && AttendanceService.toLocalIso(o.date) === dateKey
         );
         const dateAttendance = attendanceRecords.filter(
-          a => a.subjectId === sub.id && new Date(a.date).toISOString().split("T")[0] === dateKey
+          a => a.subjectId === sub.id && AttendanceService.toLocalIso(a.date) === dateKey
         );
 
         for (const slot of regularSlots) {
@@ -462,46 +467,172 @@ export class AttendanceService {
     };
   }
 
+  static async _calculateRemainingClasses(subject: any, events: any[], overrides: any[], today: Date) {
+    if (!subject.semester) {
+      return { remainingClasses: 0, maxRemainingClasses: 0, missingBoundaries: false };
+    }
+
+    let actualStartDate = subject.semester.startDate;
+    const commencement = events.find(e => e.title && e.title.toLowerCase().includes("commencement of classes"));
+    if (commencement && commencement.date) actualStartDate = new Date(commencement.date);
+
+    let actualEndDate = subject.semester.endDate;
+    const lastDay = events.find(e => e.title && (e.title.toLowerCase().includes("last teaching day") || e.title.toLowerCase().includes("last working day")));
+    if (lastDay && lastDay.date) actualEndDate = new Date(lastDay.date);
+
+    const missingBoundaries = !commencement || !lastDay;
+
+    if (actualEndDate < today) {
+      return { remainingClasses: 0, maxRemainingClasses: 0, missingBoundaries };
+    }
+
+    const startProjection = today > actualStartDate ? today : actualStartDate;
+    const tomorrow = new Date(startProjection);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    let remainingClasses = 0;
+    let maxRemainingClasses = 0;
+    
+    if (tomorrow <= actualEndDate) {
+      for (let d = new Date(tomorrow); d <= actualEndDate; d.setDate(d.getDate() + 1)) {
+        const dYear = d.getFullYear();
+        const dMonth = d.getMonth();
+        const dDate = d.getDate();
+        
+        const dateOverrides = overrides.filter(o => 
+          o.subjectId === subject.id && 
+          o.date.getFullYear() === dYear &&
+          o.date.getMonth() === dMonth &&
+          o.date.getDate() === dDate
+        );
+        
+        let daySlotsCount = 0;
+        let isHoliday = false;
+        let isRestrictedHoliday = false;
+
+        const dUTC = Date.UTC(dYear, dMonth, dDate);
+
+        const dateEvents = events.filter(e => {
+          const evStart = Date.UTC(e.date.getFullYear(), e.date.getMonth(), e.date.getDate());
+          const evEnd = e.endDate ? Date.UTC(e.endDate.getFullYear(), e.endDate.getMonth(), e.endDate.getDate()) : evStart;
+          return dUTC >= evStart && dUTC <= evEnd;
+        });
+
+        for (const ev of dateEvents) {
+           if ((ev.isHolidayList && ev.eventType !== "restricted_holiday") || ["holiday", "vacation", "midsem", "endsem", "exam", "lab_exam"].includes(ev.eventType)) {
+             isHoliday = true;
+           }
+           if (ev.eventType === "restricted_holiday") {
+             isRestrictedHoliday = true;
+           }
+        }
+
+        let dbDayOfWeek = d.getDay() === 0 ? 6 : d.getDay() - 1;
+        const slotsOnDay = (subject.timetableSlots || []).filter((s: any) => s.dayOfWeek === dbDayOfWeek).length;
+        
+        if (!isHoliday) {
+           daySlotsCount += slotsOnDay;
+           const extraClasses = dateOverrides.filter(o => o.overrideType === 'extra_class').length;
+           daySlotsCount += extraClasses;
+           const cancelledClasses = dateOverrides.filter(o => o.overrideType === 'cancelled' || o.overrideType === 'holiday').length;
+           daySlotsCount = Math.max(0, daySlotsCount - cancelledClasses);
+           
+           // Subtract any explicitly marked future classes (so they aren't double-counted)
+           if (subject.attendance) {
+             const markedClasses = subject.attendance.filter((a: any) => 
+               new Date(a.date).getFullYear() === dYear &&
+               new Date(a.date).getMonth() === dMonth &&
+               new Date(a.date).getDate() === dDate
+             ).length;
+             daySlotsCount = Math.max(0, daySlotsCount - markedClasses);
+           }
+           
+           if (isRestrictedHoliday) {
+             maxRemainingClasses += daySlotsCount;
+           } else {
+             remainingClasses += daySlotsCount;
+             maxRemainingClasses += daySlotsCount;
+           }
+        }
+      }
+    }
+    return { remainingClasses, maxRemainingClasses, missingBoundaries };
+  }
+
   static async getSubjectStats(userId: string, semesterId?: string) {
     const user = await prisma.user.findUnique({ where: { id: userId } });
     const globalTarget = user?.targetAttendance || 75;
 
+    let targetSemesterId = semesterId;
+    let activeSemester = null;
+
+    if (targetSemesterId) {
+      activeSemester = await prisma.semester.findUnique({ where: { id: targetSemesterId } });
+    } else {
+      activeSemester = await prisma.semester.findFirst({ where: { userId, isActive: true } });
+      if (activeSemester) targetSemesterId = activeSemester.id;
+    }
+
     const subjects = await prisma.subject.findMany({
       where: {
         userId,
-        ...(semesterId ? { semesterId } : {}),
+        ...(targetSemesterId ? { semesterId: targetSemesterId } : {}),
       },
       include: {
         attendance: true,
+        semester: true,
+        timetableSlots: true,
       },
     });
 
-    return subjects.map(sub => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    let allEvents: any[] = [];
+    let allOverrides: any[] = [];
+    if (activeSemester) {
+       allEvents = await prisma.event.findMany({
+         where: { 
+           OR: [
+             { semesterId: activeSemester.id },
+             { semesterId: null }
+           ]
+         }
+       });
+       allOverrides = await prisma.timetableOverride.findMany({
+         where: { semesterId: activeSemester.id }
+       });
+    }
+
+    const promises = subjects.map(async sub => {
       const allRecords = sub.attendance;
       const countableRecords = allRecords.filter(a => a.status === "present" || a.status === "absent" || a.status === "medical" || a.status === "od");
       const attended = countableRecords.filter(a => a.status === "present" || a.status === "medical" || a.status === "od").length;
       const missed = countableRecords.filter(a => a.status === "absent").length;
-      const off = allRecords.filter(a => a.status === "off" || a.status === "cancelled").length;
-      const total = countableRecords.length;
+      const off = allRecords.filter(a => a.status === "off").length;
+      const total = attended + missed;
+      const percentage = total > 0 ? (attended / total) * 100 : 0;
+      
+      const remainingData = await AttendanceService._calculateRemainingClasses(sub, allEvents, allOverrides, today);
+      const remainingClasses = remainingData.remainingClasses || 0;
+      const expectedTotal = total + remainingClasses;
+      
+      let canMiss = 0;
+      let needAttend = 0;
 
-      let percentage = total > 0 ? (attended / total) * 100 : 0;
-      const target = sub.targetAttendance !== null ? sub.targetAttendance : globalTarget;
-
-      // How many classes can still be missed while staying above target
-      // attended / (total + x) >= target/100  => x = (attended - target*total/100) / (target/100)
-      const canMiss = total > 0 ? Math.floor((attended - (target / 100) * total) / (target / 100)) : 0;
-      // How many classes need to be attended to reach target
-      // (attended + x) / (total + x) >= target/100 => x = (target*total - 100*attended) / (100 - target)
-      const needAttend = percentage < target && target < 100
-        ? Math.ceil(((target / 100) * total - attended) / (1 - target / 100))
-        : 0;
+      if (expectedTotal > 0) {
+        canMiss = Math.floor(attended - (globalTarget / 100) * total);
+        if (canMiss < 0) {
+          needAttend = Math.ceil(((globalTarget / 100) * total - attended) / (1 - (globalTarget / 100)));
+        }
+      }
 
       return {
         id: sub.id,
         name: sub.name,
         code: sub.code,
         colorHex: sub.colorHex,
-        target,
+        target: sub.targetAttendance,
         attended,
         missed,
         off,
@@ -509,8 +640,35 @@ export class AttendanceService {
         percentage,
         canMiss: canMiss > 0 ? canMiss : 0,
         needAttend: needAttend > 0 ? needAttend : 0,
+        ...remainingData
       };
     });
+    
+    const subjectsStats = await Promise.all(promises);
+    
+    let simulationBounds = null;
+    if (activeSemester) {
+      let actualStartDate = activeSemester.startDate;
+      const commencement = allEvents.find(e => e.title && e.title.toLowerCase().includes("commencement of classes"));
+      if (commencement && commencement.date) actualStartDate = new Date(commencement.date);
+
+      let actualEndDate = activeSemester.endDate;
+      const lastDay = allEvents.find(e => e.title && (e.title.toLowerCase().includes("last teaching day") || e.title.toLowerCase().includes("last working day")));
+      if (lastDay && lastDay.date) actualEndDate = new Date(lastDay.date);
+
+      simulationBounds = {
+        startDate: actualStartDate.toISOString(),
+        endDate: actualEndDate.toISOString(),
+        missingBoundaries: !commencement || !lastDay,
+        hasCommencement: !!commencement,
+        hasLastDay: !!lastDay
+      };
+    }
+
+    return {
+      subjects: subjectsStats,
+      simulationBounds
+    };
   }
 
   static async getSingleSubjectStats(userId: string, subjectId: string) {
@@ -526,57 +684,54 @@ export class AttendanceService {
       }
     });
 
-    if (!subject) throw new Error("Subject not found");
+    if (!subject) return null;
 
-    const records = subject.attendance.filter(a => a.status === "present" || a.status === "absent" || a.status === "medical" || a.status === "od");
-    const attended = records.filter(a => a.status === "present" || a.status === "medical" || a.status === "od").length;
-    const total = records.length;
-    let percentage = total > 0 ? (attended / total) * 100 : 0;
+    let attendedClasses = 0;
+    let totalClasses = 0;
+    subject.attendance.forEach((log) => {
+      if (log.status === "present") attendedClasses++;
+      if (log.status === "present" || log.status === "absent") totalClasses++;
+    });
 
-    // Calculate remaining classes in the semester
-    let remainingClasses = 0;
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     
-    // Only calculate if semester is active/future
-    if (subject.semester && subject.semester.endDate >= today) {
-      const startProjection = today > subject.semester.startDate ? today : subject.semester.startDate;
-      const endDate = subject.semester.endDate;
-      
-      const slots = subject.timetableSlots;
-      
-      // Basic projection: count occurrences of each dayOfWeek from tomorrow to endDate
-      // To avoid double counting today, we project from tomorrow.
-      const tomorrow = new Date(startProjection);
-      tomorrow.setDate(tomorrow.getDate() + 1);
-
-      if (tomorrow <= endDate) {
-        for (let d = new Date(tomorrow); d <= endDate; d.setDate(d.getDate() + 1)) {
-          // our DB uses 0=Mon, 6=Sun
-          let dbDayOfWeek = d.getDay() === 0 ? 6 : d.getDay() - 1;
-          const slotsOnDay = slots.filter(s => s.dayOfWeek === dbDayOfWeek).length;
-          remainingClasses += slotsOnDay;
-        }
-      }
+    let allEvents: any[] = [];
+    let allOverrides: any[] = [];
+    if (subject.semester) {
+       allEvents = await prisma.event.findMany({
+         where: { 
+           OR: [
+             { semesterId: subject.semester.id },
+             { semesterId: null }
+           ]
+         }
+       });
+       allOverrides = await prisma.timetableOverride.findMany({
+         where: { semesterId: subject.semester.id }
+       });
     }
+
+    const remainingData = await AttendanceService._calculateRemainingClasses(subject, allEvents, allOverrides, today);
 
     return {
       id: subject.id,
       name: subject.name,
       code: subject.code,
       colorHex: subject.colorHex,
-      target: subject.targetAttendance !== null ? subject.targetAttendance : globalTarget,
-      attended,
-      total,
-      percentage,
-      remainingClasses
+      attended: attendedClasses,
+      total: totalClasses,
+      target: subject.targetAttendance ?? globalTarget,
+      percentage: totalClasses > 0 ? (attendedClasses / totalClasses) * 100 : 0,
+      timetableSlots: subject.timetableSlots,
+      ...remainingData
     };
   }
 
   static async getMonthlyCalendar(userId: string, monthStr: string) {
     const [year, m] = monthStr.split("-").map(Number);
-    const startDate = new Date(Date.UTC(year, m - 1, 1));
-    const endDate = new Date(Date.UTC(year, m, 0, 23, 59, 59, 999)); 
+    const startDate = new Date(year, m - 1, 1);
+    const endDate = new Date(year, m, 0, 23, 59, 59, 999); 
 
     const activeSemester = await prisma.semester.findFirst({
       where: { userId, isActive: true },
@@ -639,15 +794,19 @@ export class AttendanceService {
     const dayStats = { not_marked: 0, off: 0, missed: 0, attended: 0, mixed: 0 };
     const lectureStats = { off: 0, missed: 0, attended: 0, total: 0, percentage: 0 };
 
-    for (let d = new Date(startDate); d <= endDate; d.setUTCDate(d.getUTCDate() + 1)) {
-      const dateKey = d.toISOString().split("T")[0]; // YYYY-MM-DD
-      const jsDayOfWeek = d.getUTCDay();
+    const numDays = new Date(year, m, 0).getDate();
+    for (let day = 1; day <= numDays; day++) {
+      const d = new Date(year, m - 1, day);
+      const dateKey = AttendanceService.toLocalIso(d);
+      const jsDayOfWeek = d.getDay();
       const dbDayOfWeek = jsDayOfWeek === 0 ? 6 : jsDayOfWeek - 1; // 0=Mon, 6=Sun
 
+      const dUTC = Date.UTC(year, m - 1, day);
+
       const dayEvents = globalEvents.filter(e => {
-        const start = new Date(e.date).setUTCHours(0,0,0,0);
-        const end = e.endDate ? new Date(e.endDate).setUTCHours(23,59,59,999) : new Date(e.date).setUTCHours(23,59,59,999);
-        return d.getTime() >= start && d.getTime() <= end;
+        const start = Date.UTC(e.date.getFullYear(), e.date.getMonth(), e.date.getDate());
+        const end = e.endDate ? Date.UTC(e.endDate.getFullYear(), e.endDate.getMonth(), e.endDate.getDate()) : start;
+        return dUTC >= start && dUTC <= end;
       });
 
       // ONLY actual holidays or vacations count as global off
@@ -663,7 +822,7 @@ export class AttendanceService {
       }
       
       const daySlots = regularSlots.filter(s => s.dayOfWeek === dbDayOfWeek);
-      const dayOverrides = overrides.filter(o => o.date.toISOString().split("T")[0] === dateKey);
+      const dayOverrides = overrides.filter(o => AttendanceService.toLocalIso(o.date) === dateKey);
       
       let expectedClasses = 0;
       const expectedSubjectIds = new Set<string>();
@@ -681,7 +840,7 @@ export class AttendanceService {
       }
       
       const extras = dayOverrides.filter(o => {
-        const oDateStr = new Date(o.date).toISOString().split("T")[0];
+        const oDateStr = AttendanceService.toLocalIso(o.date);
         return o.overrideType === "extra_class" && oDateStr === dateKey;
       });
       for (const o of extras) {
@@ -692,7 +851,7 @@ export class AttendanceService {
       }
 
       // Filter attendance records for this day
-      const dayAtts = attendances.filter(a => new Date(a.date).toISOString().split("T")[0] === dateKey);
+      const dayAtts = attendances.filter(a => AttendanceService.toLocalIso(a.date) === dateKey);
 
       // Add manual attendances (that don't match any expected slot/override) to expectedClasses
       for (const a of dayAtts) {
@@ -712,7 +871,7 @@ export class AttendanceService {
       if (expectedClasses === 0) {
         status = "off";
         // Note: we still check unmapped attendances if someone manually marks an off day 
-        const allDayAtts = attendances.filter(a => new Date(a.date).toISOString().split("T")[0] === dateKey);
+        const allDayAtts = attendances.filter(a => AttendanceService.toLocalIso(a.date) === dateKey);
         if (allDayAtts.length > 0) {
           let presentCount = 0;
           let absentCount = 0;
@@ -790,5 +949,47 @@ export class AttendanceService {
         lectures: lectureStats,
       },
     };
+  }
+  static async updateBoundaries(userId: string, semesterId: string, startDate: string, endDate: string) {
+    const semester = await prisma.semester.findFirst({
+      where: { id: semesterId, userId }
+    });
+    if (!semester) throw new Error("Semester not found or unauthorized");
+
+    // Helper to upsert a boundary event
+    const upsertBoundary = async (title: string, dateStr: string) => {
+      // Find existing event
+      const existing = await prisma.event.findFirst({
+        where: {
+          semesterId,
+          userId,
+          title: { contains: title, mode: 'insensitive' }
+        }
+      });
+      
+      if (existing) {
+        return prisma.event.update({
+          where: { id: existing.id },
+          data: { date: new Date(dateStr), endDate: new Date(dateStr) }
+        });
+      } else {
+        return prisma.event.create({
+          data: {
+            userId,
+            semesterId,
+            title,
+            date: new Date(dateStr),
+            endDate: new Date(dateStr),
+            eventType: "institute",
+            allDay: true,
+            isHoliday: false,
+            isHolidayList: false
+          }
+        });
+      }
+    };
+
+    await upsertBoundary("Commencement of Classes", startDate);
+    await upsertBoundary("Last Teaching Day", endDate);
   }
 }
