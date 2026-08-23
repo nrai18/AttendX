@@ -20,9 +20,19 @@ export const SignupPage: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
     setError(null);
 
+    // Frontend Validations
+    if (!email.endsWith("@iiitu.ac.in") && !email.endsWith("@gmail.com")) {
+      setError("Please use an @iiitu.ac.in or @gmail.com email address.");
+      return;
+    }
+    if (password.length < 6) {
+      setError("Password must be at least 6 characters long.");
+      return;
+    }
+
+    setLoading(true);
     try {
       const res = await api.post("/auth/register", { name, email, password });
       const { user, accessToken } = res.data;
@@ -36,7 +46,7 @@ export const SignupPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background text-foreground flex items-center justify-center p-4 antialiased relative">
+    <div className="min-h-screen bg-backgroundackground text-foreground flex items-center justify-center p-4 antialiased relative">
       <Button 
         variant="ghost" 
         onClick={() => navigate("/")}
@@ -56,7 +66,7 @@ export const SignupPage: React.FC = () => {
         </div>
 
         {/* Card Form */}
-        <Card className="bg-[#0c0d12]/90 border-white/10 shadow-2xl backdrop-blur-xl">
+        <Card className="bg-[#0c0d12]/90 border-border shadow-2xl backdrop-blur-xl">
           <form onSubmit={handleSubmit}>
             <CardHeader className="space-y-1">
               <CardTitle className="text-xl">Sign Up</CardTitle>
@@ -65,8 +75,13 @@ export const SignupPage: React.FC = () => {
 
             <CardContent className="space-y-4">
               {error && (
-                <div className="p-3 text-xs rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 font-medium">
-                  {error}
+                <div className="p-3 text-xs rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 font-medium flex items-center justify-between">
+                  <span>{error}</span>
+                  {error.includes("log in instead") && (
+                    <Link to="/login" className="text-rose-300 underline hover:text-rose-200 shrink-0 ml-2">
+                      Log In
+                    </Link>
+                  )}
                 </div>
               )}
 
@@ -77,11 +92,10 @@ export const SignupPage: React.FC = () => {
                   <Input
                     id="name"
                     type="text"
-                    placeholder="Raina"
                     value={name}
                     onChange={(e: React.ChangeEvent<HTMLInputElement>) => setName(e.target.value)}
                     required
-                    className="pl-9 bg-white/5 border-white/10 focus:border-primary text-white"
+                    className="pl-9 bg-white/5 border-border focus:border-primary text-white"
                   />
                 </div>
               </div>
@@ -93,11 +107,10 @@ export const SignupPage: React.FC = () => {
                   <Input
                     id="email"
                     type="email"
-                    placeholder="rollnumber@iiitu.ac.in"
                     value={email}
                     onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEmail(e.target.value)}
                     required
-                    className="pl-9 bg-white/5 border-white/10 focus:border-primary text-white"
+                    className="pl-9 bg-white/5 border-border focus:border-primary text-white"
                   />
                 </div>
               </div>
@@ -109,12 +122,11 @@ export const SignupPage: React.FC = () => {
                   <Input
                     id="password"
                     type="password"
-                    placeholder="Create a strong password"
                     value={password}
                     onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPassword(e.target.value)}
                     required
                     minLength={6}
-                    className="pl-9 bg-white/5 border-white/10 focus:border-primary text-white"
+                    className="pl-9 bg-white/5 border-border focus:border-primary text-white"
                   />
                 </div>
                 
@@ -144,7 +156,7 @@ export const SignupPage: React.FC = () => {
 
               <div className="relative w-full py-2">
                 <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-white/10"></div>
+                  <div className="w-full border-t border-border"></div>
                 </div>
                 <div className="relative flex justify-center text-xs uppercase">
                   <span className="bg-[#09090b] px-2 text-muted-foreground">Or continue with</span>
@@ -154,7 +166,7 @@ export const SignupPage: React.FC = () => {
               <Button
                 type="button"
                 variant="outline"
-                className="w-full h-11 rounded-xl border-white/10 hover:bg-white/5 font-semibold text-white bg-transparent"
+                className="w-full h-11 rounded-xl border-border hover:bg-white/5 font-semibold text-white bg-transparent"
                 onClick={() => window.location.href = `${API_BASE_URL}/auth/google`}
               >
                 <svg viewBox="0 0 24 24" className="w-5 h-5 mr-2">

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Plus, Pencil, Trash2, Loader2, AlertCircle, TrendingUp, TrendingDown, CheckCircle2, XCircle, Shield } from "lucide-react";
+import { toast } from "sonner";
 import { api } from "../../lib/api";
 import { CreateSemesterModal } from "../../components/semester/CreateSemesterModal";
 import { SubjectModal } from "../../components/subjects/SubjectModal";
@@ -163,7 +164,7 @@ export const SubjectsPage = () => {
       if (semester) {
         setActiveSemesterId(semester.id);
         const statsRes = await api.get(`/attendance/stats?semesterId=${semester.id}`);
-        setSubjectStats(Array.isArray(statsRes.data) ? statsRes.data : []);
+        setSubjectStats(Array.isArray(statsRes.data) ? statsRes.data : (statsRes.data?.subjects || []));
       }
     } catch (error) {
       console.error("Failed to fetch subjects:", error);
@@ -188,14 +189,23 @@ export const SubjectsPage = () => {
   };
 
   const handleDelete = async (id: string) => {
-    if (confirm("Are you sure you want to remove this subject? Past attendance will be safely preserved.")) {
-      try {
-        await api.delete(`/subjects/${id}?preserveHistory=true`);
-        fetchData();
-      } catch (error) {
-        console.error("Failed to delete subject:", error);
-      }
-    }
+    toast("Delete Subject", {
+      description: "Are you sure you want to remove this subject? Past attendance will be safely preserved.",
+      action: {
+        label: "Delete",
+        onClick: async () => {
+          try {
+            await api.delete(`/subjects/${id}?preserveHistory=true`);
+            fetchData();
+            toast.success("Subject deleted safely");
+          } catch (error) {
+            console.error("Failed to delete subject:", error);
+            toast.error("Failed to delete subject");
+          }
+        }
+      },
+      cancel: { label: "Cancel", onClick: () => {} }
+    });
   };
 
   // Compute overall stats across all subjects
@@ -424,11 +434,11 @@ export const SubjectsPage = () => {
           })()}
 
       {/* Per-subject cards */}
-          {mergedStats.map((stat) => {
+          {mergedStats.map((stat, idx) => {
             const sub = subjects.find(s => s.id === stat.id);
             return (
               <SubjectCard
-                key={stat.id}
+                key={stat.id || `fallback-${idx}`}
                 stat={stat}
                 onEdit={() => sub && handleEdit(sub)}
                 onDelete={() => handleDelete(stat.id)}

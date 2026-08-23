@@ -22,7 +22,7 @@ export const SubjectsOverviewPage = () => {
     const fetchStats = async () => {
       try {
         const res = await api.get("/attendance/stats");
-        setStats(res.data);
+        setStats(Array.isArray(res.data) ? res.data : (res.data?.subjects || []));
       } catch (error) {
         console.error("Failed to fetch subject stats:", error);
       } finally {
@@ -98,10 +98,10 @@ export const SubjectsOverviewPage = () => {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {stats.map(stat => {
+        {stats.map((stat, idx) => {
           const prediction = getForecastText(stat);
           return (
-            <Link to={`/subjects/${stat.id}`} key={stat.id} className="block group">
+            <Link to={`/subjects/${stat.id}`} key={stat.id || `fallback-${idx}`} className="block group">
               <div className="bg-card border border-border rounded-2xl p-5 group-hover:border-primary/30 group-hover:bg-muted/30 transition-all relative overflow-hidden h-full">
                 <div className="absolute top-0 left-0 w-1 h-full" style={{ backgroundColor: stat.colorHex || "#8b5cf6" }} />
                 

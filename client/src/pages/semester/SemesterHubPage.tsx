@@ -44,11 +44,28 @@ export const SemesterHubPage = () => {
   
   // OCR State
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const timelineNextEventRef = useRef<HTMLDivElement>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [isWizardOpen, setIsWizardOpen] = useState(false);
   const [wizardPayload, setWizardPayload] = useState<any>(null);
   const [isCreateSemesterOpen, setIsCreateSemesterOpen] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+
+  const nextEventId = React.useMemo(() => {
+    const _today = startOfDay(new Date());
+    return events.find(e => {
+      const isPast = isAfter(_today, new Date(e.endDate || e.date));
+      return !isPast;
+    })?.id;
+  }, [events]);
+
+  useEffect(() => {
+    if (activeTab === "timeline" && timelineNextEventRef.current) {
+      setTimeout(() => {
+        timelineNextEventRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      }, 100);
+    }
+  }, [activeTab, events]);
 
   const fetchData = async () => {
     try {
@@ -106,12 +123,12 @@ export const SemesterHubPage = () => {
         setWizardPayload(res.data.rawEvents);
         setIsWizardOpen(true);
       } else {
-        alert("Calendar imported successfully!");
+        toast.success("Calendar imported successfully!");
         fetchData();
       }
     } catch (error) {
       console.error("OCR import failed:", error);
-      alert("Failed to process calendar file.");
+      toast.error("Failed to process calendar file.");
     } finally {
       setIsUploading(false);
     }
@@ -146,7 +163,7 @@ export const SemesterHubPage = () => {
       window.dispatchEvent(new Event("attendance-updated"));
     } catch (error) {
       console.error("Failed to clear events:", error);
-      alert("Failed to clear events.");
+      toast.error("Failed to clear events.");
     }
   };
 
@@ -217,7 +234,7 @@ export const SemesterHubPage = () => {
   // Upcoming Events logic
   const today = startOfDay(new Date());
   const upcomingEvents = events
-    .filter(e => !e.isHolidayList)
+    
     .filter(e => isAfter(new Date(e.date), today) || isSameDay(new Date(e.date), today))
     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
@@ -513,39 +530,43 @@ export const SemesterHubPage = () => {
           </div>
         )}
 
-        {activeTab === "timeline" && (
-          <div className="max-w-2xl mx-auto py-8">
-            <h2 className="text-xl font-bold text-white mb-8">Semester Journey</h2>
-            <div className="space-y-0 relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px before:h-full before:w-0.5 before:bg-white/10">
-              {events.filter(e => !e.isHolidayList).map((event) => {
-                const isPast = isAfter(today, new Date(event.endDate || event.date));
-                const isCurrent = isSameDay(today, new Date(event.date)) || (event.endDate && today >= new Date(event.date) && today <= new Date(event.endDate));
-                
-                return (
-                  <div key={event.id} className="relative flex items-center mb-8 group">
-                    <div className={`flex items-center justify-center w-10 h-10 rounded-full border-4 border-[#0c0d12] z-10 shrink-0 ${
-                      isCurrent ? 'bg-primary shadow-[0_0_15px_rgba(var(--primary),0.5)]' : 
-                      isPast ? 'bg-emerald-500' : 'bg-white/10'
-                    }`}>
-                      {isPast ? <CheckCircle2 className="w-5 h-5 text-white" /> : <div className={`w-3 h-3 rounded-full ${isCurrent ? 'bg-white' : 'bg-white/50'}`} />}
-                    </div>
-                    
-                    <div className={`ml-6 p-5 rounded-2xl border flex-1 transition-colors ${
-                      isCurrent ? 'bg-primary/5 border-primary/30' : 'bg-white/[0.02] border-white/5 group-hover:border-white/10'
-                    }`}>
-                      <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1">
-                        {event.endDate && event.endDate !== event.date 
-                          ? `${format(new Date(event.date), "MMM d, yyyy")} - ${format(new Date(event.endDate), "MMM d, yyyy")}`
-                          : format(new Date(event.date), "MMM d, yyyy")}
+          {activeTab === "timeline" && (
+            <div className="max-w-2xl mx-auto py-8">
+              <h2 className="text-xl font-bold text-foreground mb-8">Semester Journey</h2>
+              <div className="space-y-0 relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px before:h-full before:w-0.5 before:bg-border">
+                {events.map((event) => {
+                  const isPast = isAfter(today, new Date(event.endDate || event.date));
+                  const isCurrent = isSameDay(today, new Date(event.date)) || (event.endDate && today >= new Date(event.date) && today <= new Date(event.endDate));
+                  
+                  return (
+                    <div 
+                      key={event.id} 
+                      ref={event.id === nextEventId ? timelineNextEventRef : null}
+                      className="relative flex items-center mb-8 group"
+                    >
+                      <div className={`flex items-center justify-center w-10 h-10 rounded-full border-4 border-background z-10 shrink-0 ${
+                        isCurrent ? 'bg-primary shadow-[0_0_15px_rgba(var(--primary),0.5)]' : 
+                        isPast ? 'bg-emerald-500' : 'bg-muted'
+                      }`}>
+                        {isPast ? <CheckCircle2 className="w-5 h-5 text-white" /> : <div className={`w-3 h-3 rounded-full ${isCurrent ? 'bg-white' : 'bg-foreground/20'}`} />}
                       </div>
-                      <h3 className={`text-lg font-bold ${isCurrent ? 'text-primary' : 'text-white'}`}>{event.title}</h3>
+                      
+                      <div className={`ml-6 p-5 rounded-2xl border flex-1 transition-colors ${
+                        isCurrent ? 'bg-primary/5 border-primary/30' : 'bg-card border-border group-hover:border-primary/30'
+                      }`}>
+                        <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1">
+                          {event.endDate && event.endDate !== event.date 
+                            ? `${format(new Date(event.date), "MMM d, yyyy")} - ${format(new Date(event.endDate), "MMM d, yyyy")}`
+                            : format(new Date(event.date), "MMM d, yyyy")}
+                        </div>
+                        <h3 className={`text-lg font-bold ${isCurrent ? 'text-primary' : 'text-foreground'}`}>{event.title}</h3>
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
         {activeTab === "countdowns" && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -566,7 +587,7 @@ export const SemesterHubPage = () => {
 
         {activeTab === "events" && (
           <div className="space-y-4">
-            {events.filter(e => !e.isHolidayList).map(event => (
+            {events.map(event => (
               <div key={event.id} className="flex items-center justify-between p-4 bg-white/[0.02] border border-white/5 rounded-xl">
                 <div>
                   <h4 className="font-bold text-white">{event.title}</h4>

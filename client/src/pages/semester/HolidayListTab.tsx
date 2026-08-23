@@ -68,7 +68,7 @@ export const HolidayListTab = ({ semesterId, semesterStartDate, semesterEndDate 
 
   const handleSyncHolidays = async () => {
     if (!semesterId) {
-      alert("No active semester to sync holidays to!");
+      toast.error("No active semester to sync holidays to!");
       return;
     }
     
@@ -119,27 +119,35 @@ export const HolidayListTab = ({ semesterId, semesterStartDate, semesterEndDate 
         events: payloadEvents,
       });
 
-      alert(`Successfully synced ${payloadEvents.length} holidays for this semester!`);
+      toast.success(`Successfully synced ${payloadEvents.length} holidays for this semester!`);
       // Reload page to reflect changes in UI
-      window.location.reload();
+      setTimeout(() => window.location.reload(), 1500);
     } catch (err) {
       console.error("Failed to sync holidays", err);
-      alert("Failed to sync holidays to calendar.");
+      toast.error("Failed to sync holidays to calendar.");
     } finally {
       setIsSyncing(false);
     }
   };
 
   const handleClearEvents = async () => {
-    if (!confirm("Are you sure you want to clear ALL synced holidays?")) return;
-    try {
-      await api.delete("/events/all?target=holiday_list");
-      alert("Holidays cleared successfully!");
-      window.location.reload();
-    } catch (err) {
-      console.error(err);
-      alert("Failed to clear holidays.");
-    }
+    toast("Clear Holidays", {
+      description: "Are you sure you want to clear ALL synced holidays?",
+      action: {
+        label: "Clear All",
+        onClick: async () => {
+          try {
+            await api.delete("/events/all?target=holiday_list");
+            toast.success("Holidays cleared successfully!");
+            setTimeout(() => window.location.reload(), 1500);
+          } catch (err) {
+            console.error(err);
+            toast.error("Failed to clear holidays.");
+          }
+        }
+      },
+      cancel: { label: "Cancel", onClick: () => {} }
+    });
   };
 
   return (

@@ -124,7 +124,7 @@ export const SubjectModal: React.FC<SubjectModalProps> = ({ isOpen, onClose, onS
                   type="text"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="e.g. Digital Design"
+                  
                   required
                   className="w-full bg-background border border-border rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 transition-shadow"
                 />
@@ -137,7 +137,7 @@ export const SubjectModal: React.FC<SubjectModalProps> = ({ isOpen, onClose, onS
                     type="text"
                     value={code}
                     onChange={(e) => setCode(e.target.value)}
-                    placeholder="e.g. ECSE303"
+                    
                     className="w-full bg-background border border-border rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 transition-shadow"
                   />
                 </div>
@@ -147,7 +147,7 @@ export const SubjectModal: React.FC<SubjectModalProps> = ({ isOpen, onClose, onS
                     type="text"
                     value={faculty}
                     onChange={(e) => setFaculty(e.target.value)}
-                    placeholder="e.g. SAK"
+                    
                     className="w-full bg-background border border-border rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 transition-shadow"
                   />
                 </div>

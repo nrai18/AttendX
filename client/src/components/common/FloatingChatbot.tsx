@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../../lib/api";
 import { motion, AnimatePresence } from "framer-motion";
+import { toast } from "sonner";
 import { 
   Bot, Loader2, 
   X, 
@@ -218,8 +219,8 @@ export const FloatingChatbot: React.FC = () => {
   }, []);
 
   const toggleMic = () => {
-    if (!recognitionRef.current) {
-      alert("Speech recognition is not supported in this browser. Please use Chrome or Edge.");
+    if (!("webkitSpeechRecognition" in window || "SpeechRecognition" in window)) {
+      toast.error("Speech recognition is not supported in this browser. Please use Chrome or Edge.");
       return;
     }
     if (isListeningMic) {
@@ -300,6 +301,7 @@ export const FloatingChatbot: React.FC = () => {
       const localTodayStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
 
       const studentContext = {
+        user_id: user?.id,
         current_date: localTodayStr,
         has_active_semester: currentSubjects.length > 0 || currentLogs.length > 0 || currentTotal > 0,
         active_semester_id: useAttendanceStore.getState().activeSemesterId,
@@ -444,92 +446,7 @@ export const FloatingChatbot: React.FC = () => {
       
       if (data.actions && Array.isArray(data.actions)) {
         for (const action of data.actions) {
-          if (action.type === 'RUN_SIMULATION') {
-             // Calculate on client side
-             const targetSub = studentContext.subjects.find((s: any) => s.id === action.payload.subjectId);
-             if (targetSub) {
-                 const skipCount = action.payload.skipCount;
-                 const proj = (targetSub.attended / (targetSub.total + skipCount)) * 100;
-                 simulation = {
-                     subjectId: targetSub.id,
-                     subjectName: targetSub.name,
-                     skipCount,
-                     currentAttended: targetSub.attended,
-                     currentTotal: targetSub.total,
-                     projectedPercentage: proj,
-                     targetPercentage: targetSub.target || 75
-                 };
-             }
-          } else if (action.type === 'RUN_SEMESTER_PROJECTION') {
-            try {
-              const skipCount = action.payload.skipCountPerSubject || 0;
-              let endDateStr = action.payload.endDate;
-              
-              if (!endDateStr) {
-                const sems = await api.get('/semesters');
-                const activeSem = sems.data.find((s: any) => s.isCurrent);
-                if (activeSem) endDateStr = activeSem.endDate;
-              }
-              
-              if (endDateStr) {
-                const timetableRes = await api.get('/timetable');
-                const timetable = timetableRes.data;
-                const events = useAttendanceStore.getState().events;
-                
-                const startDate = new Date();
-                const endDate = new Date(endDateStr);
-                
-                let current = new Date(startDate);
-                current.setDate(current.getDate() + 1); // Start projecting from tomorrow
-                
-                const remainingBySubject: Record<string, number> = {};
-                studentContext.subjects.forEach((s: any) => remainingBySubject[s.id] = 0);
-                
-                while (current <= endDate) {
-                  const dayOfWeek = current.getDay();
-                  const dateStr = `${current.getFullYear()}-${String(current.getMonth()+1).padStart(2,'0')}-${String(current.getDate()).padStart(2,'0')}`;
-                  
-                  // Check if it's a holiday (not restricted)
-                  const isHoliday = events.some(e => {
-                    if (e.date !== dateStr) return false;
-                    return e.isHolidayList === true || ['holiday', 'vacation', 'midsem', 'endsem'].includes(e.eventType || '');
-                  });
-                  
-                  if (!isHoliday) {
-                    const slots = timetable.filter((t: any) => t.dayOfWeek === dayOfWeek);
-                    slots.forEach((slot: any) => {
-                      if (remainingBySubject[slot.subject.id] !== undefined) {
-                        remainingBySubject[slot.subject.id]++;
-                      }
-                    });
-                  }
-                  current.setDate(current.getDate() + 1);
-                }
-                
-                const projectedSubjects = studentContext.subjects.map((s: any) => {
-                  const rem = remainingBySubject[s.id] || 0;
-                  const finalTotal = s.total + rem - skipCount;
-                  const finalAttended = s.attended + rem - skipCount;
-                  const pct = finalTotal > 0 ? (finalAttended / finalTotal) * 100 : 0;
-                  return {
-                    subjectId: s.id,
-                    subjectName: s.name,
-                    remainingClasses: rem,
-                    projectedPercentage: pct,
-                    targetPercentage: s.target || 75
-                  };
-                });
-                
-                semesterProjection = {
-                  skipCountPerSubject: skipCount,
-                  endDate: endDateStr,
-                  subjects: projectedSubjects
-                };
-              }
-            } catch (err) {
-              console.error("Failed to run semester projection", err);
-            }
-          } else if (action.requiresConfirmation) {
+          if (action.requiresConfirmation) {
             pendingActions.push(action);
           } else {
             try {
@@ -1068,7 +985,7 @@ export const FloatingChatbot: React.FC = () => {
                     type="text"
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
-                    placeholder=""
+                    
                     className="w-full bg-muted/50 border border-purple-500/20 focus:border-purple-500 focus:outline-none rounded-xl pl-3.5 pr-10 py-2.5 text-xs text-foreground transition-all shadow-inner"
                     disabled={isLoading}
                   />

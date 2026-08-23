@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { Loader2, Link2, X, ChevronRight, Wand2 } from "lucide-react";
+import { toast } from "sonner";
 import { api } from "../../lib/api";
 
 interface Subject {
@@ -136,7 +137,7 @@ export const SubjectReconciliationModal: React.FC<ReconciliationProps> = ({
       onComplete();
     } catch (error) {
       console.error("Failed to merge subjects", error);
-      alert("Merge failed.");
+      toast.error("Merge failed.");
     } finally {
       setIsSubmitting(false);
     }

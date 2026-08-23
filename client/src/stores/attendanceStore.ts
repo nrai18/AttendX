@@ -12,6 +12,9 @@ export interface SubjectStat {
   total: number;
   percentage: number;
   target?: number;
+  remainingClasses?: number;
+  maxRemainingClasses?: number;
+  missingBoundaries?: boolean;
 }
 
 export interface AttendanceHistoryEntry {
@@ -42,7 +45,9 @@ interface AttendanceState {
   hasActiveSemester: boolean;
   activeSemesterId: string | null;
   isLoading: boolean;
+  simulationBounds: { startDate: string, endDate: string, missingBoundaries: boolean, hasCommencement: boolean, hasLastDay: boolean } | null;
   fetchStats: () => Promise<void>;
+  updateSimulationBoundaries: (startDate: string, endDate: string) => Promise<void>;
 }
 
 export const useAttendanceStore = create<AttendanceState>((set) => ({
@@ -55,7 +60,8 @@ export const useAttendanceStore = create<AttendanceState>((set) => ({
   events: [],
   hasActiveSemester: false,
   activeSemesterId: null,
-  isLoading: false,
+  isLoading: true,
+  simulationBounds: null,
   fetchStats: async () => {
     set({ isLoading: true });
     try {
@@ -87,7 +93,17 @@ export const useAttendanceStore = create<AttendanceState>((set) => ({
       ]);
 
       // 1. Process Subject Stats
-      const rawSubjects = statsRes.status === 'fulfilled' && Array.isArray(statsRes.value.data) ? statsRes.value.data : [];
+      let rawSubjects = [];
+      let simulationBounds = null;
+      if (statsRes.status === 'fulfilled') {
+        if (Array.isArray(statsRes.value.data)) {
+          rawSubjects = statsRes.value.data;
+        } else if (statsRes.value.data && statsRes.value.data.subjects) {
+          rawSubjects = statsRes.value.data.subjects;
+          simulationBounds = statsRes.value.data.simulationBounds;
+        }
+      }
+      
       let totalAttended = 0;
       let totalClasses = 0;
       
@@ -107,6 +123,9 @@ export const useAttendanceStore = create<AttendanceState>((set) => ({
           total: tot,
           percentage: Number(pct.toFixed(1)),
           target: sub.target,
+          remainingClasses: sub.remainingClasses,
+          maxRemainingClasses: sub.maxRemainingClasses,
+          missingBoundaries: sub.missingBoundaries,
         };
       });
       const overallPercentage = totalClasses > 0 ? (totalAttended / totalClasses) * 100 : 0;
@@ -161,6 +180,7 @@ export const useAttendanceStore = create<AttendanceState>((set) => ({
         events,
         hasActiveSemester: true, 
         activeSemesterId: activeSemRes.data.id,
+        simulationBounds,
         isLoading: false 
       });
     } catch (error) {
@@ -176,6 +196,24 @@ export const useAttendanceStore = create<AttendanceState>((set) => ({
         activeSemesterId: null, 
         isLoading: false 
       });
+    }
+  },
+  updateSimulationBoundaries: async (startDate: string, endDate: string) => {
+    const { activeSemesterId, fetchStats } = useAttendanceStore.getState();
+    if (!activeSemesterId) return;
+    
+    set({ isLoading: true });
+    try {
+      await api.post("/attendance/boundaries", {
+        semesterId: activeSemesterId,
+        startDate,
+        endDate
+      });
+      // Re-fetch all stats to get the new simulation data
+      await fetchStats();
+    } catch (error) {
+      console.error("Failed to update boundaries:", error);
+      set({ isLoading: false });
     }
   }
 }));

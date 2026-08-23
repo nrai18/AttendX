@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { Loader2, Users, Plus, Hash, LogIn } from "lucide-react";
+import { toast } from "sonner";
 import { api } from "../../lib/api";
 
 interface Classroom {
@@ -50,7 +51,7 @@ export const ClassroomsPage = () => {
       setJoinCodeInput("");
       fetchClassrooms();
     } catch (error: any) {
-      alert(error.response?.data?.message || "Failed to join classroom");
+      toast.error(error.response?.data?.message || "Failed to join classroom");
     } finally {
       setIsSubmitting(false);
     }
@@ -66,7 +67,7 @@ export const ClassroomsPage = () => {
       setNewClassName("");
       fetchClassrooms();
     } catch (error: any) {
-      alert(error.response?.data?.message || "Failed to create classroom");
+      toast.error(error.response?.data?.message || "Failed to create classroom");
     } finally {
       setIsSubmitting(false);
     }
@@ -172,7 +173,7 @@ export const ClassroomsPage = () => {
                   onChange={(e) => setJoinCodeInput(e.target.value.toUpperCase())}
                   maxLength={6}
                   className="w-full bg-background border border-border rounded-xl p-3 text-foreground font-mono text-center tracking-widest text-xl focus:border-primary outline-none transition-colors uppercase"
-                  placeholder="ABC123"
+                  
                   required
                 />
               </div>
@@ -198,7 +199,7 @@ export const ClassroomsPage = () => {
                   value={newClassName}
                   onChange={(e) => setNewClassName(e.target.value)}
                   className="w-full bg-background border border-border rounded-xl p-3 text-foreground focus:border-primary outline-none transition-colors"
-                  placeholder="e.g. ECE-5A"
+                  
                   required
                 />
               </div>

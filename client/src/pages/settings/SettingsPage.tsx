@@ -84,7 +84,7 @@ const renderDocuments = (type: string) => {
                     link.parentNode?.removeChild(link);
                   } catch (e) {
                     console.error(e);
-                    alert("Failed to download document.");
+                    toast.error("Failed to download document.");
                   }
                 }}
                 className="text-xs flex items-center gap-1 text-primary hover:underline cursor-pointer"
@@ -92,17 +92,25 @@ const renderDocuments = (type: string) => {
                 <Download className="w-3.5 h-3.5" /> Download
               </button>
               <button
-                onClick={async () => {
-                  if (confirm("Are you sure you want to delete this document?")) {
-                    try {
-                      await api.delete(`/documents/${doc.id}`);
-                      const { data } = await api.get("/documents");
-                      setStoredDocuments(data);
-                    } catch (e) {
-                      console.error(e);
-                      alert("Failed to delete document.");
-                    }
-                  }
+                onClick={() => {
+                  toast("Delete Document", {
+                    description: "Are you sure you want to delete this document?",
+                    action: {
+                      label: "Delete",
+                      onClick: async () => {
+                        try {
+                          await api.delete(`/documents/${doc.id}`);
+                          const { data } = await api.get("/documents");
+                          setStoredDocuments(data);
+                          toast.success("Document deleted");
+                        } catch (e) {
+                          console.error(e);
+                          toast.error("Failed to delete document.");
+                        }
+                      }
+                    },
+                    cancel: { label: "Cancel", onClick: () => {} }
+                  });
                 }}
                 className="text-xs flex items-center gap-1 text-rose-500 hover:text-rose-600 hover:underline cursor-pointer ml-2"
               >
@@ -274,7 +282,7 @@ const renderDocuments = (type: string) => {
       setTimeout(() => setBackupStatusMessage(""), 3000);
     } catch (err) {
       console.error("Failed to export backup", err);
-      alert("Failed to export backup file.");
+      toast.error("Failed to export backup file.");
     }
   };
 
@@ -291,24 +299,29 @@ const renderDocuments = (type: string) => {
         const activeSem = semRes.data;
 
         if (!activeSem) {
-          alert(
-            "Please create or select an active semester first before importing.",
-          );
+          toast.error("Please create or select an active semester first before importing.");
           return;
         }
 
-        if (
-          confirm(
-            "Importing this backup will replace current schedule slots for your active semester. Proceed?",
-          )
-        ) {
-          await api.post(`/timetable/import/${activeSem.id}`, payload);
-          setBackupStatusMessage("Backup imported successfully!");
-          setTimeout(() => setBackupStatusMessage(""), 3000);
-        }
+        toast("Import Backup", {
+          description: "Importing this backup will replace current schedule slots for your active semester. Proceed?",
+          action: {
+            label: "Import",
+            onClick: async () => {
+              try {
+                await api.post(`/timetable/import/${activeSem.id}`, payload);
+                toast.success("Backup imported successfully!");
+              } catch (err) {
+                console.error(err);
+                toast.error("Failed to import backup.");
+              }
+            }
+          },
+          cancel: { label: "Cancel", onClick: () => {} }
+        });
       } catch (err) {
-        console.error("Failed to import backup file", err);
-        alert("Invalid backup JSON format.");
+        console.error(err);
+        toast.error("Invalid backup JSON format.");
       }
     };
     reader.readAsText(file);
@@ -337,7 +350,7 @@ const renderDocuments = (type: string) => {
       window.URL.revokeObjectURL(url);
 } catch (err) {
       console.error("CSV/ZIP export failed", err);
-      alert("Failed to generate ZIP export.");
+      toast.error("Failed to generate ZIP export.");
     } finally {
       // Refresh documents after export
       try {
@@ -625,9 +638,7 @@ const renderDocuments = (type: string) => {
 
               <button
                 onClick={() => {
-                  alert(
-                    "Restoring from Google Drive. Select backup version...",
-                  );
+                  toast.info("Restoring from Google Drive. Select backup version...");
                 }}
                 className="w-full text-left pt-2 flex flex-col gap-0.5 group cursor-pointer"
               >
@@ -733,7 +744,7 @@ const renderDocuments = (type: string) => {
             <input
               type="text"
               required
-              placeholder="Subject (required)"
+              
               value={contactSubject}
               onChange={(e) => setContactSubject(e.target.value)}
               className="w-full bg-card border border-border/80 rounded-xl px-4 py-3 text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm"
@@ -745,7 +756,7 @@ const renderDocuments = (type: string) => {
             <textarea
               required
               rows={6}
-              placeholder="Message (required)"
+              
               value={contactMessage}
               onChange={(e) => setContactMessage(e.target.value)}
               className="w-full bg-card border border-border/80 rounded-xl p-4 text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm resize-none"
@@ -756,9 +767,7 @@ const renderDocuments = (type: string) => {
             <button
               type="button"
               onClick={() =>
-                alert(
-                  "FAQs:\n1. How to import timetable? Use OCR or JSON import in Settings/Timetable.\n2. How attendance criteria works? Keep above target % (e.g. 75%).",
-                )
+                toast.info("FAQs:\n1. How to import timetable? Use OCR or JSON import in Settings/Timetable.\n2. How attendance criteria works? Keep above target % (e.g. 75%).")
               }
               className="text-xs text-emerald-500 hover:underline cursor-pointer"
             >
@@ -1077,7 +1086,7 @@ const renderDocuments = (type: string) => {
                 });
               } else {
                 navigator.clipboard.writeText(window.location.origin);
-                alert("App link copied to clipboard!");
+                toast.success("App link copied to clipboard!");
               }
             }}
             className="w-full text-left p-4 hover:bg-muted/50 transition-colors flex items-center gap-3 cursor-pointer"
@@ -1420,7 +1429,7 @@ const renderDocuments = (type: string) => {
                     </label>
                     <input
                       type="text"
-                      placeholder="RESET"
+                      
                       value={resetConfirmText}
                       onChange={(e) => setResetConfirmText(e.target.value)}
                       className="w-full px-4 py-2.5 rounded-xl bg-background border border-border text-foreground font-mono text-sm focus:outline-none focus:border-rose-500"

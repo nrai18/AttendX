@@ -22,6 +22,7 @@ import { api } from "../../lib/api";
 import { useAuthStore } from "../../stores/authStore";
 import { useAttendanceStore } from "../../stores/attendanceStore";
 import { Stepper } from "../ui/stepper";
+import { Input } from "../ui/input";
 
 interface SubjectStat {
   id: string;
@@ -32,6 +33,8 @@ interface SubjectStat {
   attended: number;
   total: number;
   percentage: number;
+  remainingClasses?: number;
+  maxRemainingClasses?: number;
 }
 
 interface PredictiveAttendanceViewProps {
@@ -46,10 +49,32 @@ export const PredictiveAttendanceView: React.FC<PredictiveAttendanceViewProps> =
   const subjects = useAttendanceStore((state) => state.subjects) as unknown as SubjectStat[];
   const isLoading = useAttendanceStore((state) => state.isLoading);
   const hasActiveSemester = useAttendanceStore((state) => state.hasActiveSemester);
+  const simulationBounds = useAttendanceStore((state) => state.simulationBounds);
+  const updateSimulationBoundaries = useAttendanceStore((state) => state.updateSimulationBoundaries);
   const [globalTarget, setGlobalTarget] = useState<number>(user?.targetAttendance ?? 75);
 
   const [aiInsights, setAiInsights] = useState<any>(null);
   const [isAiLoading, setIsAiLoading] = useState(false);
+
+  const [localStart, setLocalStart] = useState("");
+  const [localEnd, setLocalEnd] = useState("");
+  const [hasUnsavedBounds, setHasUnsavedBounds] = useState(false);
+
+  useEffect(() => {
+    if (simulationBounds) {
+      setLocalStart(simulationBounds.hasCommencement ? simulationBounds.startDate.split("T")[0] : "");
+      setLocalEnd(simulationBounds.hasLastDay ? simulationBounds.endDate.split("T")[0] : "");
+      setHasUnsavedBounds(false);
+    }
+  }, [simulationBounds]);
+
+  const handleSaveBounds = async () => {
+    if (!localStart || !localEnd) return;
+    await updateSimulationBoundaries(
+      new Date(localStart).toISOString(),
+      new Date(localEnd).toISOString()
+    );
+  };
 
   useEffect(() => {
     if (user?.targetAttendance !== undefined && user?.targetAttendance !== null) {
@@ -75,7 +100,7 @@ export const PredictiveAttendanceView: React.FC<PredictiveAttendanceViewProps> =
 
 
   // Custom simulation increments per subject: { [subjectId]: { addAttend: number, addMiss: number } }
-  const [simulations, setSimulations] = useState<Record<string, { addAttend: number; addMiss: number }>>({});
+  const [simulations, setSimulations] = useState<Record<string, { addAttend: number; addMiss: number; addOff: number }>>({});
 
   const handleTargetChange = async (newTarget: number) => {
     setGlobalTarget(newTarget);
@@ -126,16 +151,74 @@ export const PredictiveAttendanceView: React.FC<PredictiveAttendanceViewProps> =
   const overallSafeMisses = calculateSafeMisses(totalAttended, totalRecorded, globalTarget);
   const isOverallOnTrack = overallPercentage >= globalTarget;
 
-  const updateSim = (subjectId: string, field: "addAttend" | "addMiss", delta: number) => {
+  const updateSim = (subjectId: string, field: "addAttend" | "addMiss" | "addOff", delta: number) => {
     setSimulations((prev) => {
-      const current = prev[subjectId] || { addAttend: 0, addMiss: 0 };
-      const newVal = Math.max(0, current[field] + delta);
+      const subject = subjects.find((s: any) => s.id === subjectId);
+      const remaining = subject?.remainingClasses || 0;
+      const maxRemaining = subject?.maxRemainingClasses || remaining;
+      const defaultOff = maxRemaining - remaining;
+      
+      const current = prev[subjectId] || { addAttend: remaining, addMiss: 0, addOff: defaultOff };
+      
+      let { addAttend, addMiss, addOff } = current;
+
+      if (field === "addAttend") {
+        addAttend += delta;
+        // Balance by removing from addMiss then addOff, or adding to addMiss
+        if (delta > 0) {
+          if (addMiss > 0) {
+            const steal = Math.min(addMiss, delta);
+            addMiss -= steal;
+            delta -= steal;
+          }
+          if (delta > 0 && addOff > 0) {
+            const steal = Math.min(addOff, delta);
+            addOff -= steal;
+          }
+        } else {
+          // Decreased attend, so increase Miss by default
+          addMiss -= delta;
+        }
+      } else if (field === "addMiss") {
+        addMiss += delta;
+        if (delta > 0) {
+          if (addAttend > 0) {
+            const steal = Math.min(addAttend, delta);
+            addAttend -= steal;
+            delta -= steal;
+          }
+          if (delta > 0 && addOff > 0) {
+            const steal = Math.min(addOff, delta);
+            addOff -= steal;
+          }
+        } else {
+          addAttend -= delta;
+        }
+      } else if (field === "addOff") {
+        addOff += delta;
+        if (delta > 0) {
+          if (addAttend > 0) {
+            const steal = Math.min(addAttend, delta);
+            addAttend -= steal;
+            delta -= steal;
+          }
+          if (delta > 0 && addMiss > 0) {
+            const steal = Math.min(addMiss, delta);
+            addMiss -= steal;
+          }
+        } else {
+          addAttend -= delta;
+        }
+      }
+
+      // Clamp all to valid ranges just in case
+      addAttend = Math.max(0, Math.min(maxRemaining, addAttend));
+      addMiss = Math.max(0, Math.min(maxRemaining - addAttend, addMiss));
+      addOff = Math.max(0, Math.min(maxRemaining - addAttend - addMiss, addOff));
+
       return {
         ...prev,
-        [subjectId]: {
-          ...current,
-          [field]: newVal,
-        },
+        [subjectId]: { addAttend, addMiss, addOff },
       };
     });
   };
@@ -337,6 +420,69 @@ export const PredictiveAttendanceView: React.FC<PredictiveAttendanceViewProps> =
         </div>
       </div>
 
+      {/* Simulation Bounds Panel */}
+      {simulationBounds && (
+        <div className="bg-card border border-border rounded-2xl p-4 md:p-5 shadow-sm space-y-3 relative overflow-hidden">
+          {/* Gradient accent */}
+          <div className="absolute top-0 right-0 w-24 h-24 bg-amber-500/10 rounded-full blur-2xl pointer-events-none" />
+
+          <div className="flex items-center justify-between z-10 relative">
+            <div>
+              <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
+                <Calendar className="w-4 h-4 text-primary" />
+                Simulation Bounds
+              </h3>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                The precise dates used to calculate your remaining classes.
+              </p>
+            </div>
+            {simulationBounds.missingBoundaries && !hasUnsavedBounds && (
+              <span className="flex items-center gap-1.5 text-[10px] font-semibold text-rose-500 bg-rose-500/10 px-2.5 py-1 rounded-full whitespace-nowrap">
+                <AlertTriangle className="w-3 h-3" /> Action Required: Set Dates
+              </span>
+            )}
+            {hasUnsavedBounds && (
+              <button
+                onClick={handleSaveBounds}
+                disabled={!localStart || !localEnd}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground text-xs font-bold rounded-lg shadow-sm hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+              >
+                <CheckCircle2 className="w-3.5 h-3.5" /> Save Dates
+              </button>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 z-10 relative pt-2">
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-muted-foreground">Commencement of Classes</label>
+              <Input 
+                type="date"
+                value={localStart}
+                onChange={(e) => {
+                  setLocalStart(e.target.value);
+                  setHasUnsavedBounds(true);
+                }}
+                className="bg-background/50 h-9"
+                placeholder="Not set"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-muted-foreground">Last Teaching Day</label>
+              <Input 
+                type="date"
+                value={localEnd}
+                onChange={(e) => {
+                  setLocalEnd(e.target.value);
+                  setHasUnsavedBounds(true);
+                }}
+                className="bg-background/50 h-9"
+                placeholder="Not set"
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Per-Subject Forecast Breakdown & What-If Simulator */}
       <div className="space-y-4">
         <div className="flex items-center justify-between px-1">
@@ -358,15 +504,18 @@ export const PredictiveAttendanceView: React.FC<PredictiveAttendanceViewProps> =
           <div className="grid grid-cols-1 gap-3">
             {subjects.map((sub: any) => {
               const subTarget = sub.target ?? globalTarget;
-              const needed = calculateConsecutiveNeeded(sub.attended, sub.total, subTarget);
-              const safeMisses = calculateSafeMisses(sub.attended, sub.total, subTarget);
-              const isOnTrack = sub.percentage >= subTarget;
-
+              const remaining = sub.remainingClasses || 0;
+              const maxRemaining = sub.maxRemainingClasses || remaining;
+              const defaultOff = maxRemaining - remaining;
+              
               // What-If Simulation
-              const sim = simulations[sub.id] || { addAttend: 0, addMiss: 0 };
+              const sim = simulations[sub.id] || { addAttend: remaining, addMiss: 0, addOff: defaultOff };
+              
               const simAttended = sub.attended + sim.addAttend;
               const simTotal = sub.total + sim.addAttend + sim.addMiss;
               const simPct = simTotal > 0 ? (simAttended / simTotal) * 100 : 0;
+              
+              const remainingText = maxRemaining > remaining ? `${remaining} - ${maxRemaining} remaining` : `${remaining} remaining`;
 
               return (
                 <div
@@ -380,7 +529,6 @@ export const PredictiveAttendanceView: React.FC<PredictiveAttendanceViewProps> =
                   />
 
                   <div className="pl-2 space-y-3">
-                    {/* Header: Title + Recommendation Badge */}
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                       <div>
                         <div className="flex items-center gap-2">
@@ -392,66 +540,46 @@ export const PredictiveAttendanceView: React.FC<PredictiveAttendanceViewProps> =
                           )}
                         </div>
                         <p className="text-xs text-muted-foreground mt-0.5">
-                          Attended <span className="font-semibold text-foreground">{sub.attended}</span> of{" "}
-                          <span className="font-semibold text-foreground">{sub.total}</span> classes logged
+                          Forecasted attendance <span className="font-semibold text-foreground">{simAttended}</span> /{" "}
+                          <span className="font-semibold text-foreground">{simTotal}</span> classes (<span className={simPct >= subTarget ? "text-emerald-500 font-bold" : "text-amber-500 font-bold"}>{simPct.toFixed(1)}%</span>)
+                          <span className="ml-2 opacity-70">
+                            (Currently {sub.attended}/{sub.total})
+                          </span>
                         </p>
                       </div>
 
-                      {/* Prediction Badge */}
-                      <div className="shrink-0">
-                        {isOnTrack ? (
-                          <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
-                            <CheckCircle2 className="w-3.5 h-3.5" />
-                            <span>Can miss {safeMisses} class{safeMisses !== 1 ? "es" : ""}</span>
-                          </div>
-                        ) : (
-                          <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-500/10 text-amber-500 border border-amber-500/20 animate-pulse">
-                            <Zap className="w-3.5 h-3.5" />
-                            <span>Attend next {needed} consecutive class{needed !== 1 ? "es" : ""}</span>
-                          </div>
-                        )}
+                      <div className="shrink-0 text-right">
+                        <div className="text-xs font-bold text-muted-foreground mb-0.5">Expected Total Classes</div>
+                        <div className="text-xl font-black text-foreground">{sub.total + remaining}{maxRemaining > remaining ? ` - ${sub.total + maxRemaining}` : ''} <span className="text-xs text-muted-foreground font-medium">({remainingText})</span></div>
                       </div>
                     </div>
 
-                    {/* Progress Bar & Percentage Comparison */}
-                    <div className="space-y-1.5">
-                      <div className="flex justify-between items-center text-xs font-semibold">
-                        <span className={isOnTrack ? "text-emerald-500" : "text-amber-500"}>
-                          Current: {sub.percentage.toFixed(1)}%
+                    {/* Progress Bar */}
+                    <div className="h-1.5 bg-muted rounded-full overflow-hidden relative mt-2">
+                      <div className="absolute top-0 bottom-0 w-0.5 bg-foreground/60 z-10" style={{ left: `${subTarget}%` }} />
+                      <div
+                        className={`h-full rounded-full transition-all duration-500 ${simPct >= subTarget ? "bg-emerald-500" : "bg-amber-500"}`}
+                        style={{ width: `${Math.min(simPct, 100)}%` }}
+                      />
+                    </div>
+
+                    <div className="pt-3 border-t border-border/50 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                      <div className="flex flex-col">
+                        <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                          <Calendar className="w-3.5 h-3.5" /> End of Semester Simulator
                         </span>
-                        <span className="text-emerald-700">Safe to miss {safeMisses} classes and stay ≥{subTarget}%</span>
+                        <span className="text-[11px] text-muted-foreground">Mark the {maxRemaining} remaining classes</span>
                       </div>
 
-                      <div className="h-2 bg-muted rounded-full overflow-hidden relative">
-                        {/* Target Line */}
-                        <div
-                          className="absolute top-0 bottom-0 w-0.5 bg-foreground/60 z-10"
-                          style={{ left: `${subTarget}%` }}
-                        />
-                        <div
-                          className={`h-full rounded-full transition-all duration-500 ${
-                            isOnTrack ? "bg-emerald-500" : "bg-amber-500"
-                          }`}
-                          style={{ width: `${Math.min(sub.percentage, 100)}%` }}
-                        />
-                      </div>
-                    </div>
-
-                    {/* Quick Simulator Controls: "Simulate Future Attendance" */}
-                    <div className="pt-2 border-t border-border/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-muted/30 p-2.5 rounded-xl">
-                      <span className="text-xs font-bold text-muted-foreground">
-                        Simulate Future Classes:
-                      </span>
-
-                      <div className="flex items-center gap-4">
-                        {/* + Attend button */}
-                        <div className="flex items-center gap-2">
-                          <span className="text-[11px] text-emerald-500 font-semibold w-[42px]">Attend +</span>
-                          <div className="w-[80px]">
+                      <div className="flex flex-col sm:flex-row items-center gap-4 bg-muted/40 p-2.5 rounded-xl border border-border/50 overflow-x-auto w-full sm:w-auto">
+                        {/* Attend Stepper */}
+                        <div className="flex items-center gap-2.5">
+                          <span className="text-xs font-semibold text-emerald-500 whitespace-nowrap">Present:</span>
+                          <div className="w-[100px]">
                             <Stepper 
                               size="sm"
                               min={0}
-                              max={100}
+                              max={maxRemaining}
                               value={sim.addAttend}
                               onChange={(val) => {
                                 updateSim(sub.id, "addAttend", val - sim.addAttend);
@@ -460,14 +588,14 @@ export const PredictiveAttendanceView: React.FC<PredictiveAttendanceViewProps> =
                           </div>
                         </div>
 
-                        {/* + Miss button */}
-                        <div className="flex items-center gap-2">
-                          <span className="text-[11px] text-rose-500 font-semibold w-[42px]">Miss +</span>
-                          <div className="w-[80px]">
+                        {/* Miss Stepper */}
+                        <div className="flex items-center gap-2.5 border-l border-border/60 pl-4">
+                          <span className="text-xs font-semibold text-rose-500 whitespace-nowrap">Absent:</span>
+                          <div className="w-[100px]">
                             <Stepper 
                               size="sm"
                               min={0}
-                              max={100}
+                              max={maxRemaining}
                               value={sim.addMiss}
                               onChange={(val) => {
                                 updateSim(sub.id, "addMiss", val - sim.addMiss);
@@ -476,19 +604,21 @@ export const PredictiveAttendanceView: React.FC<PredictiveAttendanceViewProps> =
                           </div>
                         </div>
 
-                        {/* Projected Result */}
-                        {(sim.addAttend > 0 || sim.addMiss > 0) && (
-                          <div className="pl-2 border-l border-border flex items-center gap-1.5">
-                            <span className="text-[10px] text-muted-foreground">Simulated:</span>
-                            <span
-                              className={`text-xs font-extrabold ${
-                                simPct >= subTarget ? "text-emerald-400" : "text-rose-400"
-                              }`}
-                            >
-                              {simPct.toFixed(1)}% {simPct >= subTarget ? '✅' : '⚠️'}
-                            </span>
+                        {/* Off Stepper */}
+                        <div className="flex items-center gap-2.5 border-l border-border/60 pl-4">
+                          <span className="text-xs font-semibold text-amber-500 whitespace-nowrap">Off:</span>
+                          <div className="w-[100px]">
+                            <Stepper 
+                              size="sm"
+                              min={0}
+                              max={maxRemaining}
+                              value={sim.addOff}
+                              onChange={(val) => {
+                                updateSim(sub.id, "addOff", val - (sim.addOff || 0));
+                              }}
+                            />
                           </div>
-                        )}
+                        </div>
                       </div>
                     </div>
                   </div>

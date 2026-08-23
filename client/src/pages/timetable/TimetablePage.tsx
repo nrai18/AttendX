@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Plus, Trash2, Loader2, CalendarPlus, Upload, Image as ImageIcon, X, Download, FileSpreadsheet, Edit3, ArrowLeft, CheckSquare, Square, CheckCircle2, Zap } from "lucide-react";
+import { toast } from "sonner";
 import { api } from "../../lib/api";
 import { RunActionButton } from "../../components/ui/run-action-button";
 import { SaveToggle } from "../../components/ui/save-toggle";
@@ -185,7 +186,10 @@ export const TimetablePage = () => {
 
   const handleAddSlot = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (!subjectId || !activeSemester) return alert("Please select a subject and ensure you have an active semester.");
+    if (!subjectId || !activeSemester) {
+      toast.error("Please select a subject and ensure you have an active semester.");
+      return;
+    }
     try {
       const payload = {
         semesterId: activeSemester.id,
@@ -223,7 +227,7 @@ export const TimetablePage = () => {
       downloadAnchor.remove();
     } catch (error) {
       console.error("Export timetable failed:", error);
-      alert("Failed to export timetable.");
+      toast.error("Failed to export timetable.");
     }
   };
 
@@ -234,14 +238,26 @@ export const TimetablePage = () => {
     reader.onload = async (event) => {
       try {
         const payload = JSON.parse(event.target?.result as string);
-        if (confirm("Importing this timetable will replace scheduled classes in your active semester. Attendance records are safely preserved. Proceed?")) {
-          await api.post(`/timetable/import/${activeSemester.id}`, payload);
-          fetchData();
-          alert("Timetable imported successfully!");
-        }
+        toast("Import Timetable", {
+          description: "Importing this timetable will replace scheduled classes in your active semester. Attendance records are safely preserved. Proceed?",
+          action: {
+            label: "Import",
+            onClick: async () => {
+              try {
+                await api.post(`/timetable/import/${activeSemester.id}`, payload);
+                fetchData();
+                toast.success("Timetable imported successfully!");
+              } catch (err: any) {
+                console.error("Failed to import JSON:", err);
+                toast.error("Failed to import timetable: Invalid file format.");
+              }
+            }
+          },
+          cancel: { label: "Cancel", onClick: () => {} }
+        });
       } catch (err: any) {
-        console.error("Failed to parse or import JSON:", err);
-        alert("Failed to import timetable: Invalid file format.");
+        console.error("Failed to parse JSON:", err);
+        toast.error("Invalid file format.");
       }
     };
     reader.readAsText(file);
@@ -351,7 +367,7 @@ export const TimetablePage = () => {
       window.dispatchEvent(new Event("attendance-updated"));
     } catch (error) {
       console.error("Failed to delete slot(s):", error);
-      alert("Failed to delete the selected lecture(s). Please try again.");
+      toast.error("Failed to delete the selected lecture(s). Please try again.");
     }
   };
 
@@ -372,7 +388,7 @@ export const TimetablePage = () => {
       setTimeout(() => setToastMessage(null), 4000);
     } catch (error) {
       console.error("Failed to clear timetable:", error);
-      alert("Failed to clear timetable. Please try again.");
+      toast.error("Failed to clear timetable. Please try again.");
     }
   };
 
@@ -411,13 +427,13 @@ export const TimetablePage = () => {
         setIsOcrModalOpen(false);
         setIsWizardOpen(true);
       } else {
-        alert("Timetable imported successfully!");
+        toast.error("Timetable imported successfully!");
         setIsOcrModalOpen(false);
         fetchData();
       }
     } catch (error) {
       console.error("OCR Import failed:", error);
-      alert("Failed to import timetable. Please try again.");
+      toast.error("Failed to import timetable. Please try again.");
     } finally {
       setIsUploading(false);
       setSelectedImage(null);
@@ -439,7 +455,7 @@ export const TimetablePage = () => {
       fetchData();
     } catch (error) {
       console.error("Failed to generate timetable:", error);
-      alert("Failed to generate timetable.");
+      toast.error("Failed to generate timetable.");
     }
   };
 
@@ -577,7 +593,7 @@ export const TimetablePage = () => {
                     setExistingSubjectIds(allIds);
                     setIsReconciliationOpen(true);
                   } else {
-                    alert("No subjects to reconcile! You need at least two subjects in your semester to merge them.");
+                    toast.error("No subjects to reconcile! You need at least two subjects in your semester to merge them.");
                   }
                 });
               }}
@@ -765,7 +781,7 @@ export const TimetablePage = () => {
                 type="text"
                 value={room}
                 onChange={(e) => setRoom(e.target.value)}
-                placeholder="e.g. L-101"
+                
                 className="w-full bg-background border border-border rounded-xl px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 text-sm"
               />
             </div>

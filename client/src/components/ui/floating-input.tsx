@@ -17,7 +17,7 @@ export function FloatingInput({ label, className, ...props }: FloatingInputProps
           "border-border focus:border-primary transition-colors",
           className
         )}
-        placeholder=" "
+        
         onFocus={() => setFocused(true)}
         onBlur={(e) => {
           setFocused(false);

@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { GraduationCap, Mail, Lock, Loader2, ArrowRight } from "lucide-react";
+import { Mail, Lock, Loader2, ArrowRight } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
@@ -11,12 +11,20 @@ export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
   const setAuth = useAuthStore((state) => state.setAuth);
 
-  const [email, setEmail] = useState("dev@iiitu.ac.in");
-  const [password, setPassword] = useState("password");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError(null);
+
+    if (!email.endsWith("@iiitu.ac.in") && !email.endsWith("@gmail.com")) {
+      setError("Please use an @iiitu.ac.in or @gmail.com email address.");
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -27,7 +35,7 @@ export const LoginPage: React.FC = () => {
       navigate("/today");
     } catch (err: any) {
       console.error("Login Failed:", err);
-      // The global API interceptor will display the detailed toast error.
+      setError(err.response?.data?.message || "Invalid credentials.");
     } finally {
       setLoading(false);
     }
@@ -49,19 +57,30 @@ export const LoginPage: React.FC = () => {
           <div className="inline-flex rounded-2xl bg-white p-2 shadow-xl shadow-indigo-500/25 mb-2 overflow-hidden">
             <img src="/attendx_logo.png" alt="AttendX Logo" className="w-10 h-10 object-contain" />
           </div>
-          <h1 className="text-3xl font-extrabold tracking-tight">AttendX Dev Mode</h1>
-          <p className="text-sm text-muted-foreground">Log in directly to access the dashboard</p>
+          <h1 className="text-3xl font-extrabold tracking-tight">Welcome Back</h1>
+          <p className="text-sm text-muted-foreground">Log in to manage your attendance</p>
         </div>
 
         {/* Card Form */}
-        <Card className="bg-[#0c0d12]/90 border-white/10 shadow-2xl backdrop-blur-xl">
+        <Card className="bg-[#0c0d12]/90 border-border shadow-2xl backdrop-blur-xl">
           <form onSubmit={handleSubmit}>
             <CardHeader className="space-y-1">
-              <CardTitle className="text-xl">Dev Sign In</CardTitle>
-              <CardDescription>Bypass backend authentication credentials for quick feature testing</CardDescription>
+              <CardTitle className="text-xl">Sign In</CardTitle>
+              <CardDescription>Enter your credentials to access your account</CardDescription>
             </CardHeader>
 
             <CardContent className="space-y-4">
+              {error && (
+                <div className="p-3 text-xs rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 font-medium flex items-center justify-between">
+                  <span>{error}</span>
+                  {error.includes("Account does not exist") && (
+                    <Link to="/signup" className="text-rose-300 underline hover:text-rose-200 shrink-0 ml-2">
+                      Sign Up Now
+                    </Link>
+                  )}
+                </div>
+              )}
+
               <div className="space-y-2">
                 <Label htmlFor="email">Email</Label>
                 <div className="relative">
@@ -69,11 +88,10 @@ export const LoginPage: React.FC = () => {
                   <Input
                     id="email"
                     type="email"
-                    placeholder="dev@iiitu.ac.in"
                     value={email}
                     onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEmail(e.target.value)}
                     required
-                    className="pl-9 bg-white/5 border-white/10 focus:border-primary text-white"
+                    className="pl-9 bg-white/5 border-border focus:border-primary text-white"
                   />
                 </div>
               </div>
@@ -85,11 +103,10 @@ export const LoginPage: React.FC = () => {
                   <Input
                     id="password"
                     type="password"
-                    placeholder="Enter your password"
                     value={password}
                     onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPassword(e.target.value)}
                     required
-                    className="pl-9 bg-white/5 border-white/10 focus:border-primary text-white"
+                    className="pl-9 bg-white/5 border-border focus:border-primary text-white"
                   />
                 </div>
               </div>
@@ -97,8 +114,14 @@ export const LoginPage: React.FC = () => {
 
             <CardFooter className="flex flex-col space-y-4 pt-4">
               <Button type="submit" disabled={loading} className="w-full bg-primary hover:bg-primary/90 font-semibold h-11 rounded-xl">
-                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <>Dev Login <ArrowRight className="w-4 h-4 ml-2" /></>}
+                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <>Log In <ArrowRight className="w-4 h-4 ml-2" /></>}
               </Button>
+              <div className="text-center text-sm text-muted-foreground mt-4">
+                Don't have an account?{" "}
+                <Link to="/signup" className="text-primary hover:underline font-medium">
+                  Sign up
+                </Link>
+              </div>
             </CardFooter>
           </form>
         </Card>

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Loader2, CheckCircle2, XCircle, AlertCircle, PartyPopper, BookOpen, Palmtree, Timer, TrendingUp, TrendingDown, Plus, MessageSquare, Sparkles, ChevronRight, ChevronLeft, X, Trash2 } from "lucide-react";
 import { api } from "../../lib/api";
+import { toast } from "sonner";
 import { useAuthStore } from "../../stores/authStore";
 import { CreateSemesterModal } from "../../components/semester/CreateSemesterModal";
 
@@ -212,15 +213,25 @@ export const TodayPage = () => {
   };
 
   const handleDeleteExtraClass = async (overrideId: string) => {
-    if (!window.confirm("Are you sure you want to delete this extra class?")) return;
-    try {
-      await api.delete(`/timetable/extra-class/${overrideId}`);
-      fetchData();
-      fetchStats();
-      window.dispatchEvent(new Event("attendance-updated"));
-    } catch (err) {
-      console.error("Failed to delete extra class:", err);
-    }
+    toast("Delete Extra Class", {
+      description: "Are you sure you want to delete this extra class?",
+      action: {
+        label: "Delete",
+        onClick: async () => {
+          try {
+            await api.delete(`/timetable/extra-class/${overrideId}`);
+            fetchData();
+            fetchStats();
+            window.dispatchEvent(new Event("attendance-updated"));
+            toast.success("Extra class deleted");
+          } catch (err) {
+            toast.error("Failed to delete extra class");
+            console.error("Failed to delete extra class:", err);
+          }
+        }
+      },
+      cancel: { label: "Cancel", onClick: () => {} }
+    });
   };
 
   const fetchData = async () => {
@@ -737,7 +748,7 @@ export const TodayPage = () => {
               <label className="text-xs font-semibold text-muted-foreground mb-1 block">Remark / Reason</label>
               <input
                 type="text"
-                placeholder="e.g. Medical, Event, Fever, Travel..."
+                
                 value={remarkInput}
                 onChange={(e) => setRemarkInput(e.target.value)}
                 className="w-full px-3 py-2 bg-background border border-border rounded-xl text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
