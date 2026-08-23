@@ -65,9 +65,16 @@ async def websocket_endpoint(websocket: WebSocket, task_id: str):
                 await websocket.send_json({"progress": 0, "status": "Pending"})
             elif res.state != 'FAILURE':
                 meta = res.info or {}
+                if isinstance(meta, Exception):
+                    await websocket.send_json({"progress": 0, "status": f"Error: {str(meta)}"})
+                    break
+                
+                progress = meta.get('progress', 0) if isinstance(meta, dict) else 0
+                status_msg = meta.get('status', 'Processing') if isinstance(meta, dict) else str(meta)
+                
                 await websocket.send_json({
-                    "progress": meta.get('progress', 0),
-                    "status": meta.get('status', 'Processing')
+                    "progress": progress,
+                    "status": status_msg
                 })
                 if res.state == 'SUCCESS':
                     break

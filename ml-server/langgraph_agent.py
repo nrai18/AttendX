@@ -105,6 +105,10 @@ def generate_policy_response(state: ChatState):
     Synthesizes a precise response using gemini-3.6-flash, combining live in-app
     student telemetry (attendance logs, calendar events, courses, target goal) and retrieved ordinances.
     """
+    import os
+    import re
+    from inject_simulation import inject_simulation_if_needed
+    
     api_key = os.environ.get("GEMINI_API_KEY", "")
     client = genai.Client(api_key=api_key or "dummy")
     
@@ -113,6 +117,8 @@ def generate_policy_response(state: ChatState):
     student_context = state.get("student_context")
     user_message = get_message_content(state["messages"][-1])
     standalone_query = state.get("standalone_query", user_message)
+    
+    simulation_text = inject_simulation_if_needed(standalone_query, student_context)
     
     # Build complete real-time in-app data block
     student_info_block = ""
@@ -165,6 +171,7 @@ LIVE REAL-TIME STUDENT TELEMETRY (FROM ATTENDX IN-APP DATABASE):
 
 4. Academic Calendar Events & Holidays:
 {events_text}
+{simulation_text}
 """
 
     system_instruction = (
@@ -206,15 +213,12 @@ LIVE REAL-TIME STUDENT TELEMETRY (FROM ATTENDX IN-APP DATABASE):
         "8. \"ADD_SUBJECT\": payload { \"name\": string, \"code\": string, \"type\": \"Theory\"|\"Lab\"|\"Project\", \"credits\": number }\n"
         "9. \"REMOVE_SUBJECT\": payload { \"subjectId\": string }\n"
         "10. \"DROP_SUBJECT_FROM_TIMETABLE\": payload { \"semesterId\": string, \"subjectId\": string }\n"
-        "11. \"SHIFT_TIMETABLE_SLOT\": payload { \"semesterId\": string, \"subjectId\": string, \"dayOfWeek\": number, \"newStartTime\": \"HH:MM\", \"newEndTime\": \"HH:MM\" } (dayOfWeek: 0=Sun, 1=Mon, ..., 6=Sat)\n"
-        "12. \"RUN_SIMULATION\": payload { \"subjectId\": string, \"skipCount\": number }\n"
-        "13. \"RUN_SEMESTER_PROJECTION\": payload { \"skipCountPerSubject\": number, \"endDate\": \"YYYY-MM-DD\" (optional) }\n\n"
+        "11. \"SHIFT_TIMETABLE_SLOT\": payload { \"semesterId\": string, \"subjectId\": string, \"dayOfWeek\": number, \"newStartTime\": \"HH:MM\", \"newEndTime\": \"HH:MM\" } (dayOfWeek: 0=Sun, 1=Mon, ..., 6=Sat)\n\n"
         "ACTION COMPOSITION & ORCHESTRATION: Do not assume one action fulfills a complex intent. If a user requests a compound operation (e.g., bulk leave but attending specific classes, dropping a subject and adding a new one, shifting a slot and marking it absent), you MUST emit an array of multiple, independent actions to orchestrate the full request (e.g., a MARK_FULL_DAY_OFF arrayed alongside specific MARK_ATTENDANCE actions).\n\n"
         "PROACTIVE SAFETY ARCHITECTURE: You MUST set `\"requiresConfirmation\": true` for high-risk destructive actions (REMOVE_SUBJECT, DROP_SUBJECT_FROM_TIMETABLE, MARK_FULL_DAY_OFF, SHIFT_TIMETABLE_SLOT). Leave it false for others.\n"
         "Match subject names to their exact `id` from the LIVE REAL-TIME STUDENT TELEMETRY. For actions requiring `semesterId`, use the `active_semester_id` from the telemetry. If multiple actions are requested, include them all. NEVER include the JSON block if no action or navigation is requested. Only include it when performing an action.\n\n"
         "WHAT-IF SCENARIO SANDBOX (PREDICTIVE MATH):\n"
-        "If the user asks 'What happens if I skip X classes in Y subject?', do NOT compute the math yourself. Output the `RUN_SIMULATION` action with the exact `subjectId` and `skipCount`.\n"
-        "If the user asks to simulate their final percentage for all subjects until the end of the semester (e.g. 'simulate my final percentage if I attend all remaining classes vs skipping 2 classes per subject'), output `RUN_SEMESTER_PROJECTION` with the `skipCountPerSubject`. The React frontend will autonomously fetch the timetable, holidays, and active semester end date to render an ultra-accurate projection card."
+        "If the user asks 'What happens if I skip X classes in Y subject?' or 'simulate my final percentage', use the REAL-TIME FORECAST SIMULATOR RESULTS provided in the context to construct a highly accurate, analytical response. Explain the math based on the actual semester dates and holidays, and do NOT emit any JSON actions for simulation."
     )
     
     prompt = (
