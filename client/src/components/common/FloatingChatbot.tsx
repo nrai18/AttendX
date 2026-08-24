@@ -282,7 +282,6 @@ export const FloatingChatbot: React.FC = () => {
 
     try {
       const mlApiUrl = import.meta.env.VITE_ML_API_URL || "http://localhost:8000";
-      
       const history = messages.slice(-4).map(m => ({
         role: m.role,
         content: m.content

@@ -9,8 +9,8 @@ export function useFocusMode(userId: string | null) {
   useEffect(() => {
     if (!userId) return;
 
-    // Connect to WebSocket server for real-time FOCUS_MODE events
-    const ws = new WebSocket(`ws://localhost:3000/ws?userId=${userId}`);
+    const wsUrl = import.meta.env.VITE_WS_URL || `ws://localhost:3000/ws?userId=${userId}`;
+    const ws = new WebSocket(wsUrl.includes('?') ? wsUrl : `${wsUrl}?userId=${userId}`);
 
     ws.onmessage = async (event) => {
       const data = JSON.parse(event.data);

@@ -8,10 +8,61 @@ export const api = axios.create({
   withCredentials: true, // Send httpOnly refresh cookies automatically
 });
 
-// Request interceptor: Attach in-memory Access Token
+// Helper to check token expiration
+const isTokenExpired = (token: string) => {
+  if (!token) return true;
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    // 10 second buffer
+    return payload.exp * 1000 < Date.now() + 10000;
+  } catch (e) {
+    return true;
+  }
+};
+
+// Request interceptor: Attach in-memory Access Token and proactively refresh if expired
 api.interceptors.request.use(
-  (config) => {
-    const token = useAuthStore.getState().accessToken;
+  async (config) => {
+    if (
+      config.url?.includes("/auth/login") ||
+      config.url?.includes("/auth/register") ||
+      config.url?.includes("/auth/refresh")
+    ) {
+      return config;
+    }
+
+    let token = useAuthStore.getState().accessToken;
+
+    if (token && isTokenExpired(token)) {
+      if (!isRefreshing) {
+        isRefreshing = true;
+        try {
+          const response = await axios.post(
+            `${API_BASE_URL}/auth/refresh`,
+            {},
+            { withCredentials: true }
+          );
+          token = response.data.accessToken;
+          useAuthStore.getState().setAccessToken(token);
+          processQueue(null, token);
+        } catch (error) {
+          processQueue(error, null);
+          useAuthStore.getState().logout();
+          token = null;
+        } finally {
+          isRefreshing = false;
+        }
+      } else {
+        try {
+          token = await new Promise<string>((resolve, reject) => {
+            failedQueue.push({ resolve, reject });
+          });
+        } catch (error) {
+          token = null;
+        }
+      }
+    }
+
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -84,8 +135,8 @@ api.interceptors.response.use(
       }
     }
 
-    // Global Error Interceptor for non-401s
-    if (error.response?.status !== 401) {
+    // Global Error Interceptor for non-401s and non-429s (Peer Sync recovery)
+    if (error.response?.status !== 401 && error.response?.status !== 429) {
       import("sonner").then(({ toast }) => {
         toast.error(`API Error: ${error.response?.data?.message || error.message}`, {
           duration: 10000,

@@ -46,7 +46,8 @@ export class EventService {
       const blob = new Blob([fileBuffer as any], { type: mimeType || 'application/pdf' });
       form.append('file', blob, fileName || 'calendar.pdf');
 
-      const response = await fetch('http://127.0.0.1:8000/upload/calendar-ocr', {
+      const mlServerUrl = process.env.ML_SERVER_URL || "https://attendx-ml-server.onrender.com";
+      const response = await fetch(`${mlServerUrl}/upload/calendar-ocr`, {
         method: 'POST',
         body: form
       });

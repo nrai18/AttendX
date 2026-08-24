@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { Stepper } from "../../components/ui/stepper";
 import { RunActionButton } from "../../components/ui/run-action-button";
 import { SaveToggle } from "../../components/ui/save-toggle";
+import { TimedUndoAction } from "../../components/ui/timed-undo-action";
 import {
   Settings,
   Target,
@@ -50,6 +51,7 @@ import {
   FrequencySelector,
   type FrequencyData,
 } from "../../components/ui/frequency-selector";
+import { PeerSyncModal } from "../../components/sync/PeerSyncModal";
 
 export const SettingsPage: React.FC = () => {
 const renderDocuments = (type: string) => {
@@ -123,7 +125,7 @@ const renderDocuments = (type: string) => {
     );
   };
   const { user, setUser } = useAuthStore();
-  const [activeView, setActiveView] = useState<"main" | "backup" | "contact">(
+  const [activeView, setActiveView] = useState<"main" | "backup" | "contact" | "sync">(
     "main",
   );
 
@@ -371,8 +373,7 @@ const renderDocuments = (type: string) => {
     setIsImportingCSV(true);
 
     try {
-      const mlApiUrl =
-        import.meta.env.VITE_ML_API_URL || "http://localhost:8000";
+      const mlApiUrl = import.meta.env.VITE_ML_API_URL || "http://localhost:8000";
 
       const res = await fetch(`${mlApiUrl}/upload/zip?user_id=${user.id}`, {
         method: "POST",
@@ -496,6 +497,26 @@ const renderDocuments = (type: string) => {
   };
 
   // ------------------ SUB-VIEW: BACKUP / RESTORE ------------------
+  if (activeView === "sync") {
+    return (
+      <div className="p-4 md:p-8 max-w-2xl mx-auto w-full pb-24 md:pb-8 space-y-6 animate-in fade-in duration-200">
+        <div className="flex items-center gap-3 mb-6">
+          <button
+            onClick={() => setActiveView("main")}
+            className="p-2 rounded-xl bg-card border border-border text-foreground hover:bg-muted transition-colors cursor-pointer"
+          >
+            <ArrowLeft className="w-5 h-5" />
+          </button>
+          <h1 className="text-2xl font-extrabold text-foreground tracking-tight">
+            Peer Sync
+          </h1>
+        </div>
+        
+        <PeerSyncModal />
+      </div>
+    );
+  }
+
   if (activeView === "backup") {
     return (
       <div className="p-4 md:p-8 max-w-2xl mx-auto w-full pb-24 md:pb-8 space-y-6 animate-in fade-in duration-200">
@@ -984,6 +1005,27 @@ const renderDocuments = (type: string) => {
               steps={[{ id: 1, label: "Awaiting File", icon: Upload }]}
             />
           </div>
+
+          {/* Peer Sync */}
+          <button
+            onClick={() => setActiveView("sync")}
+            className="w-full text-left p-4 hover:bg-muted/50 transition-colors flex items-center justify-between cursor-pointer group"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-purple-500/10 text-purple-500 flex items-center justify-center">
+                <RefreshCw className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-foreground group-hover:text-primary transition-colors">
+                  Peer Sync
+                </h3>
+                <p className="text-xs text-muted-foreground">
+                  Transfer schedule securely via 6-digit code.
+                </p>
+              </div>
+            </div>
+            <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
+          </button>
         </div>
       </div>
 
@@ -1138,6 +1180,28 @@ const renderDocuments = (type: string) => {
             </div>
             <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
           </button>
+
+          {/* Install APK */}
+          <a
+            href="/AttendX.apk"
+            download
+            className="w-full text-left p-4 hover:bg-muted/50 transition-colors flex items-center justify-between gap-3 cursor-pointer group"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl overflow-hidden shrink-0 group-hover:scale-105 transition-transform flex items-center justify-center bg-card">
+                <img src="/attendx_logo.png" alt="AttendX Logo" className="w-full h-full object-cover" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-foreground group-hover:text-primary transition-colors">
+                  Install AttendX
+                </h3>
+                <p className="text-xs text-muted-foreground">
+                  Download the latest APK for Android
+                </p>
+              </div>
+            </div>
+            <Download className="w-4 h-4 text-muted-foreground shrink-0" />
+          </a>
         </div>
       </div>
 
@@ -1453,27 +1517,22 @@ const renderDocuments = (type: string) => {
                 >
                   Cancel
                 </button>
-                <button
-                  type="button"
-                  disabled={
-                    isResetting ||
-                    (resetModalType === "entire" &&
-                      resetConfirmText.trim() !== "RESET") ||
-                    (resetModalType === "subject" &&
-                      selectedSubjectIds.length === 0)
-                  }
-                  onClick={async () => {
-                    await handlePerformReset();
-                  }}
-                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-500 text-white transition-all shadow-md shadow-rose-600/30 disabled:opacity-40 cursor-pointer"
-                >
-                  {isResetting ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  ) : (
-                    <Trash2 className="w-3.5 h-3.5" />
-                  )}
-                  Confirm Reset
-                </button>
+                  <TimedUndoAction
+                    initialSeconds={5}
+                    deleteLabel="Confirm Reset"
+                    undoLabel="Cancel Reset"
+                    icon={<Trash2 className="w-4 h-4 mr-1 inline-block" />}
+                    onConfirm={async () => {
+                      await handlePerformReset();
+                    }}
+                    disabled={
+                      isResetting ||
+                      (resetModalType === "entire" &&
+                        resetConfirmText.trim() !== "RESET") ||
+                      (resetModalType === "subject" &&
+                        selectedSubjectIds.length === 0)
+                    }
+                  />
               </div>
             </>
           </div>

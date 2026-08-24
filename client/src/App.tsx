@@ -16,6 +16,7 @@ import { CalendarPage } from "./pages/attendance/CalendarPage";
 import { ClassroomsPage } from "./pages/social/ClassroomsPage";
 import { ClassroomFeedPage } from "./pages/social/ClassroomFeedPage";
 import { Loader2 } from "lucide-react";
+import { ErrorBoundary } from "./components/common/ErrorBoundary";
 
 // Protected Route Guard Component
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -42,9 +43,11 @@ import { LandingPage } from "./pages/marketing/LandingPage";
 
 
 
+import { WebSplashScreen } from "./components/common/WebSplashScreen";
 import { SettingsPage } from "./pages/settings/SettingsPage";
 import { PredictiveAttendancePage } from "./pages/attendance/PredictiveAttendancePage";
 import { Toaster } from "sonner";
+import { useState } from 'react';
 
 const RootRoute: React.FC = () => {
   const { isAuthenticated, isLoading } = useAuthStore();
@@ -56,11 +59,14 @@ export function App() {
   useSilentRefresh();
   useTheme();
   const theme = useThemeStore(state => state.theme);
+  const [splashFinished, setSplashFinished] = useState(false);
 
   return (
     <>
+      {!splashFinished && <WebSplashScreen onComplete={() => setSplashFinished(true)} />}
       <Toaster position="bottom-center" theme={theme as any} toastOptions={{ className: 'rounded-xl border border-border shadow-lg' }} />
-      <BrowserRouter>
+      {splashFinished && (
+        <BrowserRouter>
         <Routes>
           {/* Public Landing Page */}
           <Route path="/" element={<RootRoute />} />
@@ -73,7 +79,9 @@ export function App() {
           <Route
             element={
               <ProtectedRoute>
-                <AppShell />
+                <ErrorBoundary>
+                  <AppShell />
+                </ErrorBoundary>
               </ProtectedRoute>
             }
           >
@@ -94,6 +102,7 @@ export function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>
+      )}
     </>
   );
 }

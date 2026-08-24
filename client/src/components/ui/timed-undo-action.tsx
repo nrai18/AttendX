@@ -12,6 +12,7 @@ export interface TimedUndoActionProps {
   undoLabel?: string;
   icon?: ReactNode;
   onConfirm?: () => void;
+  disabled?: boolean;
 }
 
 export const TimedUndoAction: FC<TimedUndoActionProps> = ({
@@ -20,6 +21,7 @@ export const TimedUndoAction: FC<TimedUndoActionProps> = ({
   undoLabel = "Cancel Delete",
   icon,
   onConfirm,
+  disabled = false,
 }) => {
   const [isDeleting, setIsDeleting] = useState(false);
   const [countDown, setCountDown] = useState(initialSeconds);
@@ -68,13 +70,14 @@ export const TimedUndoAction: FC<TimedUndoActionProps> = ({
         >
           <motion.div
             className={cn(
-              "relative flex cursor-pointer items-center justify-start overflow-hidden rounded-full bg-red-500 transition-colors duration-300 dark:bg-red-500",
-              isDeleting && "bg-red-500/10 dark:bg-red-500/20"
+              "relative flex items-center justify-start overflow-hidden rounded-full bg-red-500 transition-colors duration-300 dark:bg-red-500",
+              isDeleting ? "bg-red-500/10 dark:bg-red-500/20" : "",
+              disabled ? "opacity-50 cursor-not-allowed pointer-events-none" : "cursor-pointer"
             )}
             animate={{
               width: bounds.width > 0 ? bounds.width : "auto",
             }}
-            onClick={handleDelete}
+            onClick={disabled ? undefined : handleDelete}
           >
             <div
               className={cn(

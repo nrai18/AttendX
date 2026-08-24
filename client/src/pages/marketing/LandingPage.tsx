@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import { 
   Moon,
@@ -14,6 +14,7 @@ import {
   CheckCircle2,
   Send
 } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
 import { Input } from "../../components/ui/input";
@@ -22,6 +23,30 @@ import { useThemeStore } from "../../stores/themeStore";
 
 export const LandingPage: React.FC = () => {
   const { theme, toggleTheme } = useThemeStore();
+  
+  const [contactName, setContactName] = useState("");
+  const [contactEmail, setContactEmail] = useState("");
+  const [contactMessage, setContactMessage] = useState("");
+
+  const handleContactSubmit = () => {
+    if (!contactName || !contactEmail || !contactMessage) {
+      toast.error("Please fill out all fields before sending.");
+      return;
+    }
+    
+    // Open user's default email client
+    const subject = encodeURIComponent("AttendX Contact Form Inquiry");
+    const body = encodeURIComponent(`Name: ${contactName}\nEmail: ${contactEmail}\n\nMessage:\n${contactMessage}`);
+    window.location.href = `mailto:rai18naman@gmail.com?subject=${subject}&body=${body}`;
+    
+    toast.success("Message drafted! Opening your email client...");
+    
+    // Clear form
+    setContactName("");
+    setContactEmail("");
+    setContactMessage("");
+  };
+
   return (
     <div className="min-h-screen bg-background text-foreground selection:bg-primary/30">
       {/* Navigation */}
@@ -286,21 +311,37 @@ export const LandingPage: React.FC = () => {
                   <div className="grid sm:grid-cols-2 gap-6">
                     <div className="space-y-2">
                       <Label htmlFor="name" className="text-muted-foreground">Your Name</Label>
-                      <Input id="name" className="bg-muted/50 border-border h-12 rounded-xl focus-visible:ring-primary text-foreground placeholder:text-muted-foreground" />
+                      <Input 
+                        id="name" 
+                        value={contactName}
+                        onChange={(e) => setContactName(e.target.value)}
+                        className="bg-muted/50 border-border h-12 rounded-xl focus-visible:ring-primary text-foreground placeholder:text-muted-foreground" 
+                      />
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="email" className="text-muted-foreground">Email Address</Label>
-                      <Input id="email" type="email" className="bg-muted/50 border-border h-12 rounded-xl focus-visible:ring-primary text-foreground placeholder:text-muted-foreground" />
+                      <Input 
+                        id="email" 
+                        type="email" 
+                        value={contactEmail}
+                        onChange={(e) => setContactEmail(e.target.value)}
+                        className="bg-muted/50 border-border h-12 rounded-xl focus-visible:ring-primary text-foreground placeholder:text-muted-foreground" 
+                      />
                     </div>
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="message" className="text-muted-foreground">Message</Label>
                     <textarea 
                       id="message" 
+                      value={contactMessage}
+                      onChange={(e) => setContactMessage(e.target.value)}
                       className="w-full bg-muted/50 border border-border rounded-xl p-4 min-h-[150px] focus:outline-none focus:ring-2 focus:ring-primary/50 text-foreground placeholder:text-muted-foreground resize-none" 
                     />
                   </div>
-                  <Button className="w-full h-12 rounded-xl bg-primary hover:bg-primary/90 text-white font-semibold text-base shadow-lg shadow-primary/20">
+                  <Button 
+                    onClick={handleContactSubmit}
+                    className="w-full h-12 rounded-xl bg-primary hover:bg-primary/90 text-white font-semibold text-base shadow-lg shadow-primary/20"
+                  >
                     Send Message <Send className="w-4 h-4 ml-2" />
                   </Button>
                 </CardContent>

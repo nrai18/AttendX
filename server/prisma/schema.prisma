@@ -492,3 +492,20 @@ model StoredDocument {
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
+
+// ─────────────────────────────────────────────────────────
+// PEER SYNC (CODE-BASED TRANSFER)
+// ─────────────────────────────────────────────────────────
+
+model ShareTransfer {
+  code          String   @id @db.Char(6)
+  senderUserId  String   @map("sender_user_id") @db.VarChar(64)
+  contextType   String   @map("context_type") @db.VarChar(32)
+  payload       Json     @db.JsonB
+  createdAt     DateTime @default(now()) @map("created_at")
+  expiresAt     DateTime @map("expires_at")
+
+  @@index([senderUserId, expiresAt], name: "idx_transfers_user_active")
+  @@map("share_transfers")
+}
+

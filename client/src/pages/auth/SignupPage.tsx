@@ -91,6 +91,8 @@ export const SignupPage: React.FC = () => {
                   <UserIcon className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
                   <Input
                     id="name"
+                    name="name"
+                    autoComplete="name"
                     type="text"
                     value={name}
                     onChange={(e: React.ChangeEvent<HTMLInputElement>) => setName(e.target.value)}
@@ -106,6 +108,8 @@ export const SignupPage: React.FC = () => {
                   <Mail className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
                   <Input
                     id="email"
+                    name="email"
+                    autoComplete="username email"
                     type="email"
                     value={email}
                     onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEmail(e.target.value)}
@@ -121,6 +125,8 @@ export const SignupPage: React.FC = () => {
                   <Lock className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
                   <Input
                     id="password"
+                    name="password"
+                    autoComplete="new-password"
                     type="password"
                     value={password}
                     onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPassword(e.target.value)}
