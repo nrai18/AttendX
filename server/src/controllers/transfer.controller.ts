@@ -1,37 +1,32 @@
 import { Response, Request } from "express";
 import { AuthenticatedRequest } from "../middleware/authenticate";
 import { prisma } from "../lib/prisma";
+import { TransferService } from "../services/transfer.service";
 
 export class TransferController {
   
   // POST /api/transfer/send
   static async sendTransfer(req: AuthenticatedRequest, res: Response) {
-    const { contextType, payload } = req.body;
+    const { contextType, dateRange } = req.body;
+    let payload = req.body.payload;
     const senderUserId = req.user!.userId;
 
     try {
-      if (!contextType || !payload) {
-        return res.status(400).json({ message: "contextType and payload are required." });
+      if (!contextType) {
+        return res.status(400).json({ message: "contextType is required." });
       }
 
-      // 1. Prevent spam: Check if sender already has an active code
-      const activeCheck = await prisma.shareTransfer.findFirst({
+      // If payload is not provided, build it automatically based on context
+      if (!payload || Object.keys(payload).length === 0) {
+        payload = await TransferService.buildPayload(senderUserId, contextType, dateRange);
+      }
+
+      // 1. Prevent spam/stale codes: Delete any existing active code for this user
+      await prisma.shareTransfer.deleteMany({
         where: {
-          senderUserId: senderUserId,
-          expiresAt: {
-            gt: new Date()
-          }
+          senderUserId: senderUserId
         }
       });
-      
-      if (activeCheck) {
-        const remainingMs = activeCheck.expiresAt.getTime() - Date.now();
-        return res.status(429).json({ 
-          message: "You already have an active transfer code.",
-          code: activeCheck.code,
-          expiresIn: Math.floor(remainingMs / 1000)
-        });
-      }
 
       // 2. Generate cryptographically secure 6-digit code
       const generateCode = () => Math.floor(100000 + Math.random() * 900000).toString();

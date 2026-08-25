@@ -34,7 +34,7 @@ export const DiscreteTabs: FC<DiscreteTabsProps> = ({ tabs, onTabChange, default
   }, [activeTab]);
 
   return (
-<div className="flex items-center justify-center gap-2 rounded-full py-6 overflow-hidden w-fit mx-auto">
+    <div className="flex items-center justify-start sm:justify-center gap-2 py-6 overflow-x-auto w-full max-w-full px-2 sm:px-0" style={{ scrollbarWidth: 'none' }}>
       {tabs.map((tab) => {
         const isActive = tab.id === activeTab;
         return (
