@@ -492,6 +492,7 @@ export class AttendanceService {
 
     let remainingClasses = 0;
     let maxRemainingClasses = 0;
+    const futureBreakdown: any[] = [];
     
     if (tomorrow <= actualEndDate) {
       for (let d = new Date(tomorrow); d <= actualEndDate; d.setDate(d.getDate() + 1)) {
@@ -509,6 +510,7 @@ export class AttendanceService {
         let daySlotsCount = 0;
         let isHoliday = false;
         let isRestrictedHoliday = false;
+        let holidayReason = "Holiday";
 
         const dUTC = Date.UTC(dYear, dMonth, dDate);
 
@@ -521,42 +523,90 @@ export class AttendanceService {
         for (const ev of dateEvents) {
            if ((ev.isHolidayList && ev.eventType !== "restricted_holiday") || ["holiday", "vacation", "midsem", "endsem", "exam", "lab_exam"].includes(ev.eventType)) {
              isHoliday = true;
+             holidayReason = ev.title || "Holiday";
            }
            if (ev.eventType === "restricted_holiday") {
              isRestrictedHoliday = true;
+             if (!isHoliday) holidayReason = ev.title || "Restricted Holiday";
            }
         }
 
         let dbDayOfWeek = d.getDay() === 0 ? 6 : d.getDay() - 1;
         const slotsOnDay = (subject.timetableSlots || []).filter((s: any) => s.dayOfWeek === dbDayOfWeek).length;
+        const extraClasses = dateOverrides.filter(o => o.overrideType === 'extra_class').length;
+        const cancelledClasses = dateOverrides.filter(o => o.overrideType === 'cancelled' || o.overrideType === 'holiday').length;
         
-        if (!isHoliday) {
-           daySlotsCount += slotsOnDay;
-           const extraClasses = dateOverrides.filter(o => o.overrideType === 'extra_class').length;
-           daySlotsCount += extraClasses;
-           const cancelledClasses = dateOverrides.filter(o => o.overrideType === 'cancelled' || o.overrideType === 'holiday').length;
-           daySlotsCount = Math.max(0, daySlotsCount - cancelledClasses);
-           
-           // Subtract any explicitly marked future classes (so they aren't double-counted)
-           if (subject.attendance) {
-             const markedClasses = subject.attendance.filter((a: any) => 
-               new Date(a.date).getFullYear() === dYear &&
-               new Date(a.date).getMonth() === dMonth &&
-               new Date(a.date).getDate() === dDate
-             ).length;
-             daySlotsCount = Math.max(0, daySlotsCount - markedClasses);
-           }
-           
-           if (isRestrictedHoliday) {
-             maxRemainingClasses += daySlotsCount;
-           } else {
-             remainingClasses += daySlotsCount;
-             maxRemainingClasses += daySlotsCount;
-           }
+        let markedLogs: any[] = [];
+        if (subject.attendance) {
+          markedLogs = subject.attendance.filter((a: any) => 
+            new Date(a.date).getFullYear() === dYear &&
+            new Date(a.date).getMonth() === dMonth &&
+            new Date(a.date).getDate() === dDate
+          );
+        }
+        const markedClasses = markedLogs.length;
+
+        const baseSlots = slotsOnDay + extraClasses;
+
+        if (baseSlots > 0 || markedClasses > 0) {
+             // 1. Push any explicitly marked logs
+             if (markedClasses > 0) {
+               markedLogs.forEach((log: any) => {
+                 futureBreakdown.push({
+                   date: new Date(d).toISOString(),
+                   type: 'LOGGED',
+                   reason: `Already Logged (${log.status})`,
+                   count: 1,
+                   status: log.status
+                 });
+               });
+             }
+
+             // 2. Calculate remaining slots
+             let daySlotsCount = baseSlots - cancelledClasses - markedClasses;
+             daySlotsCount = Math.max(0, daySlotsCount);
+
+             // 3. Push cancelled classes
+             if (cancelledClasses > 0) {
+               futureBreakdown.push({
+                 date: new Date(d).toISOString(),
+                 type: 'OFF',
+                 reason: "Cancelled/Off Class",
+                 count: cancelledClasses
+               });
+             }
+
+             // 4. Handle remaining slots based on holiday or regular
+             if (daySlotsCount > 0) {
+               if (isHoliday) {
+                 futureBreakdown.push({
+                   date: new Date(d).toISOString(),
+                   type: 'OFF',
+                   reason: holidayReason,
+                   count: daySlotsCount
+                 });
+               } else if (isRestrictedHoliday) {
+                 futureBreakdown.push({
+                   date: new Date(d).toISOString(),
+                   type: 'OFF',
+                   reason: holidayReason,
+                   count: daySlotsCount
+                 });
+                 maxRemainingClasses += daySlotsCount;
+               } else {
+                 futureBreakdown.push({
+                   date: new Date(d).toISOString(),
+                   type: 'HELD',
+                   count: daySlotsCount
+                 });
+                 remainingClasses += daySlotsCount;
+                 maxRemainingClasses += daySlotsCount;
+               }
+             }
         }
       }
     }
-    return { remainingClasses, maxRemainingClasses, missingBoundaries };
+    return { remainingClasses, maxRemainingClasses, missingBoundaries, futureBreakdown };
   }
 
   static async getSubjectStats(userId: string, semesterId?: string) {
@@ -640,6 +690,7 @@ export class AttendanceService {
         percentage,
         canMiss: canMiss > 0 ? canMiss : 0,
         needAttend: needAttend > 0 ? needAttend : 0,
+        attendance: sub.attendance,
         ...remainingData
       };
     });
@@ -724,6 +775,7 @@ export class AttendanceService {
       target: subject.targetAttendance ?? globalTarget,
       percentage: totalClasses > 0 ? (attendedClasses / totalClasses) * 100 : 0,
       timetableSlots: subject.timetableSlots,
+      attendance: subject.attendance,
       ...remainingData
     };
   }

@@ -1,40 +1,21 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { Player as Lottie } from '@lottiefiles/react-lottie-player';
 
-const videos = [
-  '/logo_animation.mp4',
-  '/logo_animation_2.mp4',
-  '/logo_animation_3.mp4',
-  '/logo_animation_4.mp4'
+const animations = [
+  '/logo_animation.json',
+  '/logo_animation_2.json'
 ];
 
 export function WebSplashScreen({ onComplete }: { onComplete: () => void }) {
-  const [videoSrc, setVideoSrc] = useState('');
+  const [animPath] = useState(() => animations[Math.floor(Math.random() * animations.length)]);
   const [isFading, setIsFading] = useState(false);
-  const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
-    // If it's a laptop/desktop (>= 768px wide), skip the animation entirely
     if (window.innerWidth >= 768) {
       onComplete();
-      return;
     }
-
-    const randomVideo = videos[Math.floor(Math.random() * videos.length)];
-    setVideoSrc(randomVideo);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
-    if (videoSrc && videoRef.current) {
-      // Ensure the video plays
-      videoRef.current.play().catch(e => {
-        console.error('Autoplay prevented:', e);
-        // If autoplay fails (e.g. strict browser policy), just skip the splash screen
-        handleEnd();
-      });
-    }
-  }, [videoSrc]);
+  }, [onComplete]);
 
   const handleEnd = () => {
     setIsFading(true);
@@ -43,7 +24,7 @@ export function WebSplashScreen({ onComplete }: { onComplete: () => void }) {
     }, 500); // 500ms fade out duration
   };
 
-  if (!videoSrc) return null;
+  if (!animPath) return null;
 
   return (
     <AnimatePresence>
@@ -52,16 +33,20 @@ export function WebSplashScreen({ onComplete }: { onComplete: () => void }) {
           initial={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.5 }}
-          className="fixed inset-0 z-[9999] bg-[#050508] flex items-center justify-center overflow-hidden"
+          className="fixed inset-0 z-[9999] bg-background flex items-center justify-center overflow-hidden"
         >
-          <video
-            ref={videoRef}
-            src={videoSrc}
-            autoPlay
-            playsInline
-            onEnded={handleEnd}
-            className="w-full h-full object-cover"
-          />
+          <div className="absolute inset-0 w-full h-full">
+            <Lottie 
+              src={animPath} 
+              loop={false}
+              autoplay={true}
+              onEvent={(event) => {
+                if (event === 'complete') handleEnd();
+              }}
+              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              rendererSettings={{ preserveAspectRatio: 'xMidYMid slice' }}
+            />
+          </div>
         </motion.div>
       )}
     </AnimatePresence>

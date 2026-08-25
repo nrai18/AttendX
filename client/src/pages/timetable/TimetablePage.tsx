@@ -15,6 +15,7 @@ import { DndContext, closestCenter, DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { normalizeTimeString } from "../../utils/timeUtils";
 import { useAttendanceStore } from "../../stores/attendanceStore";
+import { useCacheStore } from "../../stores/cacheStore";
 
 interface Subject {
   id: string;
@@ -47,10 +48,13 @@ const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"
 
 
 export const TimetablePage = () => {
-  const [slots, setSlots] = useState<TimetableSlot[]>([]);
-  const [subjects, setSubjects] = useState<Subject[]>([]);
-  const [activeSemester, setActiveSemester] = useState<Semester | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const cachedData = useCacheStore((state) => state.timetable);
+  const setCache = useCacheStore((state) => state.setCache);
+
+  const [slots, setSlots] = useState<TimetableSlot[]>(cachedData?.slots || []);
+  const [subjects, setSubjects] = useState<Subject[]>(cachedData?.subjects || []);
+  const [activeSemester, setActiveSemester] = useState<Semester | null>(cachedData?.activeSemester || null);
+  const [isLoading, setIsLoading] = useState(!cachedData);
   const [activeTab, setActiveTab] = useState<number>(new Date().getDay() === 0 ? 6 : new Date().getDay() - 1);
 
 
@@ -100,7 +104,7 @@ export const TimetablePage = () => {
 
   const fetchData = async () => {
     try {
-      setIsLoading(true);
+      if (!cachedData) setIsLoading(true);
       
       const semRes = await api.get("/semesters/active");
       const semester = semRes.data;
@@ -130,6 +134,13 @@ export const TimetablePage = () => {
       }));
 
       setSlots(normalizedSlots);
+      
+      setCache('timetable', {
+        activeSemester: semester,
+        subjects: activeSubjects,
+        slots: normalizedSlots
+      });
+      
       fetchStats();
     } catch (error) {
       console.error("Failed to fetch timetable data:", error);

@@ -1,0 +1,16 @@
+{
+  "name": "AttendX",
+  "short_name": "AttendX",
+  "start_url": "/",
+  "display": "standalone",
+  "theme_color": "#050508",
+  "background_color": "#050508",
+  "icons": [
+    {
+      "src": "/attendx_app_icon.png",
+      "type": "image/png",
+      "sizes": "192x192 512x512",
+      "purpose": "any maskable"
+    }
+  ]
+}

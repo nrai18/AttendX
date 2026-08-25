@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Plus, Pencil, Trash2, Loader2, AlertCircle, TrendingUp, TrendingDown, CheckCircle2, XCircle, Shield } from "lucide-react";
+import { Plus, Pencil, Trash2, Loader2, AlertCircle, TrendingUp, TrendingDown, CheckCircle2, XCircle, Shield, LayoutDashboard, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "../../lib/api";
 import { CreateSemesterModal } from "../../components/semester/CreateSemesterModal";
@@ -262,21 +262,49 @@ export const SubjectsPage = () => {
 
   return (
     <div className="p-4 md:p-8 space-y-5 max-w-4xl mx-auto w-full pb-24 md:pb-8">
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Subjects</h1>
-          <p className="text-sm text-muted-foreground">Your semester attendance overview.</p>
+        <div className="flex justify-between items-center">
+          <div>
+            <h1 className="text-2xl font-bold text-foreground">Subjects</h1>
+            <p className="text-sm text-muted-foreground">Your semester attendance overview.</p>
+          </div>
+          <button
+            onClick={() => { setEditingSubject(null); setIsAdding(true); }}
+            className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-primary-foreground px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            <span className="hidden sm:inline">Add Subject</span>
+          </button>
         </div>
-        <button
-          onClick={() => { setEditingSubject(null); setIsAdding(true); }}
-          className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-primary-foreground px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          <span className="hidden sm:inline">Add Subject</span>
-        </button>
-      </div>
 
-      {!activeSemesterId && (
+        {/* Quick Actions (Moved from MobileNav) */}
+        <div className="grid grid-cols-2 gap-3 mb-2">
+          <div 
+            onClick={() => navigate("/semester")}
+            className="bg-card border border-border/70 hover:border-primary/40 rounded-xl p-3 flex items-center gap-3 cursor-pointer transition-all active:scale-[0.98]"
+          >
+            <div className="p-2 rounded-lg bg-indigo-500/10 text-indigo-500">
+              <LayoutDashboard className="w-5 h-5" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-foreground leading-tight">Semester</p>
+              <p className="text-[10px] text-muted-foreground">Overview</p>
+            </div>
+          </div>
+          <div 
+            onClick={() => navigate("/predictive")}
+            className="bg-card border border-border/70 hover:border-primary/40 rounded-xl p-3 flex items-center gap-3 cursor-pointer transition-all active:scale-[0.98]"
+          >
+            <div className="p-2 rounded-lg bg-purple-500/10 text-purple-500">
+              <Sparkles className="w-5 h-5" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-foreground leading-tight">Forecast</p>
+              <p className="text-[10px] text-muted-foreground">Predictive</p>
+            </div>
+          </div>
+        </div>
+
+        {!activeSemesterId && (
         <div className="bg-indigo-950/20 border border-indigo-500/30 rounded-2xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h3 className="text-base font-bold text-white">No Active Semester</h3>

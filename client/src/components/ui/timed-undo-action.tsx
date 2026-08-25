@@ -44,19 +44,23 @@ export const TimedUndoAction: FC<TimedUndoActionProps> = ({
 
     const interval = setInterval(() => {
       setCountDown((prev) => {
-        if (prev < 1) {
-          setIsDeleting(false);
-          onConfirm?.();
-          return initialSeconds;
+        if (prev <= 1) {
+          return 0; // Stop at 0
         }
         return prev - 1;
       });
     }, 1000);
 
-    return () => {
-      clearInterval(interval);
-    };
-  }, [isDeleting, initialSeconds]);
+    return () => clearInterval(interval);
+  }, [isDeleting]);
+
+  // Handle side-effects in a separate effect when countDown reaches 0
+  useEffect(() => {
+    if (isDeleting && countDown === 0) {
+      setIsDeleting(false);
+      onConfirm?.();
+    }
+  }, [countDown, isDeleting, onConfirm]);
 
   return (
     <div className="flex w-full items-center justify-center font-sans">

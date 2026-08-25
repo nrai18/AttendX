@@ -1,5 +1,6 @@
 import { prisma } from "../lib/prisma";
 import { TimetableService } from "./timetable.service";
+import bcrypt from "bcryptjs";
 
 export class UserService {
   static async getProfile(userId: string) {
@@ -16,24 +17,44 @@ export class UserService {
         batch: true,
         targetAttendance: true,
         theme: true,
+        gender: true,
+        birthday: true,
+        passwordHash: true,
+        googleId: true,
         createdAt: true,
       },
     });
     if (!user) throw new Error("User not found");
-    return user;
+    const { passwordHash, ...rest } = user;
+    return { ...rest, hasPassword: !!passwordHash };
   }
 
   static async updateProfile(userId: string, data: any) {
-    if (data.targetAttendance !== undefined) {
+    const { newPassword, oldPassword, ...updateData } = data;
+
+    if (newPassword) {
+      const user = await prisma.user.findUnique({ where: { id: userId } });
+      if (!user) throw new Error("User not found");
+      
+      if (user.passwordHash) {
+        if (!oldPassword) throw new Error("Current password is required to set a new password");
+        const isValid = await bcrypt.compare(oldPassword, user.passwordHash);
+        if (!isValid) throw new Error("Incorrect current password");
+      }
+      
+      updateData.passwordHash = await bcrypt.hash(newPassword, 10);
+    }
+
+    if (updateData.targetAttendance !== undefined) {
       await prisma.subject.updateMany({
         where: { userId },
         data: { targetAttendance: null }
       });
     }
 
-    return prisma.user.update({
+    const updatedUser = await prisma.user.update({
       where: { id: userId },
-      data,
+      data: updateData,
       select: {
         id: true,
         email: true,
@@ -45,8 +66,14 @@ export class UserService {
         batch: true,
         targetAttendance: true,
         theme: true,
+        gender: true,
+        birthday: true,
+        passwordHash: true,
       },
     });
+
+    const { passwordHash, ...rest } = updatedUser;
+    return { ...rest, hasPassword: !!passwordHash };
   }
 
   static async resetTimetable(userId: string) {

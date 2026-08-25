@@ -8,6 +8,7 @@ import { CalendarImportModal } from "../../components/calendar/CalendarImportMod
 import { SyncEventsModal } from "../../components/calendar/SyncEventsModal";
 import { InlineAction } from "../../components/ui/inline-action";
 import { toast } from "sonner";
+import { useCacheStore } from "../../stores/cacheStore";
 
 interface DayDetail {
   id: string;
@@ -47,19 +48,26 @@ interface CalendarData {
 }
 
 export const CalendarPage = () => {
+  const cachedData = useCacheStore((state) => state.calendar);
+  const setCache = useCacheStore((state) => state.setCache);
+  
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [data, setData] = useState<CalendarData | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [data, setData] = useState<CalendarData | null>(cachedData?.data || null);
+  const [isLoading, setIsLoading] = useState(!cachedData);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
   const navigate = useNavigate();
 
   const fetchCalendar = async (force: boolean = false) => {
     try {
-      setIsLoading(true);
+      if (!cachedData || force) setIsLoading(true);
       const monthStr = format(currentDate, "yyyy-MM");
       const res = await api.get(`/attendance/calendar?month=${monthStr}${force ? '&force=true' : ''}`);
       setData(res.data);
+      
+      setCache('calendar', {
+        data: res.data
+      });
       return res.data;
     } catch (error) {
       console.error("Failed to fetch calendar:", error);
@@ -242,8 +250,8 @@ export const CalendarPage = () => {
                     )}
                   </div>
 
-                  {/* Hover Agenda Tooltip */}
-                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 bg-card border border-border rounded-xl shadow-2xl p-3 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 pointer-events-none flex flex-col gap-2 text-left scale-95 group-hover:scale-100 origin-bottom">
+                  {/* Hover Agenda Tooltip (Hidden on Mobile) */}
+                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 bg-card border border-border rounded-xl shadow-2xl p-3 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 pointer-events-none hidden sm:flex flex-col gap-2 text-left scale-95 group-hover:scale-100 origin-bottom">
                     {/* Header */}
                     <div className="flex justify-between items-center pb-2 border-b border-border/50">
                       <span className="font-bold text-sm text-foreground">{format(d, "d MMM")}</span>

@@ -7,12 +7,12 @@ import { useThemeStore } from "./stores/themeStore";
 import { AppShell } from "./components/layout/AppShell";
 import { LoginPage } from "./pages/auth/LoginPage";
 import { SignupPage } from "./pages/auth/SignupPage";
-import { SemesterHubPage } from "./pages/semester/SemesterHubPage";
 import { SubjectsPage } from "./pages/subjects/SubjectsPage";
 import { SubjectDetailPage } from "./pages/subjects/SubjectDetailPage";
 import { TimetablePage } from "./pages/timetable/TimetablePage";
 import { TodayPage } from "./pages/attendance/TodayPage";
 import { CalendarPage } from "./pages/attendance/CalendarPage";
+import { SemesterHubPage } from "./pages/semester/SemesterHubPage";
 import { ClassroomsPage } from "./pages/social/ClassroomsPage";
 import { ClassroomFeedPage } from "./pages/social/ClassroomFeedPage";
 import { Loader2 } from "lucide-react";
@@ -55,16 +55,40 @@ const RootRoute: React.FC = () => {
   return isAuthenticated ? <Navigate to="/today" replace /> : <LandingPage />;
 };
 
+import { NotificationService } from './services/NotificationService';
+import { Capacitor } from '@capacitor/core';
+import { useEffect } from 'react';
+
+import { NotFoundPage } from "./pages/NotFoundPage";
+
 export function App() {
   useSilentRefresh();
   useTheme();
   const theme = useThemeStore(state => state.theme);
   const [splashFinished, setSplashFinished] = useState(false);
 
+  useEffect(() => {
+    const initServices = async () => {
+      try {
+        await NotificationService.init();
+        await NotificationService.autoScheduleFromTimetable();
+      } catch (e) {
+        console.error("Failed to init NotificationService", e);
+      }
+    };
+    initServices();
+  }, []);
+
   return (
     <>
       {!splashFinished && <WebSplashScreen onComplete={() => setSplashFinished(true)} />}
-      <Toaster position="bottom-center" theme={theme as any} toastOptions={{ className: 'rounded-xl border border-border shadow-lg' }} />
+      <Toaster 
+        position="top-center" 
+        theme={theme as any} 
+        duration={2500} 
+        visibleToasts={2} 
+        toastOptions={{ className: 'rounded-xl border border-border shadow-lg mt-4 md:mt-0' }} 
+      />
       {splashFinished && (
         <BrowserRouter>
         <Routes>
@@ -96,10 +120,11 @@ export function App() {
             <Route path="/classrooms" element={<ClassroomsPage />} />
             <Route path="/classrooms/:id" element={<ClassroomFeedPage />} />
             <Route path="/settings" element={<SettingsPage />} />
+            <Route path="*" element={<NotFoundPage />} />
           </Route>
 
-          {/* Default Redirect */}
-          <Route path="*" element={<Navigate to="/" replace />} />
+          {/* Default Redirect / 404 */}
+          <Route path="*" element={<NotFoundPage />} />
         </Routes>
       </BrowserRouter>
       )}

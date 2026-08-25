@@ -9,7 +9,9 @@ passport.use(
     {
       clientID: process.env.GOOGLE_CLIENT_ID || "mock-client-id",
       clientSecret: process.env.GOOGLE_CLIENT_SECRET || "mock-client-secret",
-      callbackURL: "/api/auth/google/callback",
+      callbackURL: process.env.NODE_ENV === "production" 
+        ? "/api/auth/google/callback" 
+        : "http://localhost:3000/api/auth/google/callback",
     },
     async (accessToken, refreshToken, profile, done) => {
       try {
@@ -18,9 +20,28 @@ passport.use(
           return done(new Error("Only @iiitu.ac.in or @gmail.com emails are allowed."), false);
         }
         
-        // This is where you would lookup or create the user in the database
-        // For now, we pass the profile
-        return done(null, profile as any);
+        // Import Prisma directly since passport runs standalone middleware
+        const { PrismaClient } = require("@prisma/client");
+        const prisma = new PrismaClient();
+        
+        // Upsert User
+        const user = await prisma.user.upsert({
+          where: { email },
+          update: {
+            googleId: profile.id,
+            name: profile.displayName || profile.name?.givenName || "Student",
+            avatarUrl: profile.photos?.[0]?.value || null,
+          },
+          create: {
+            email,
+            googleId: profile.id,
+            name: profile.displayName || profile.name?.givenName || "Student",
+            avatarUrl: profile.photos?.[0]?.value || null,
+            role: "student",
+          }
+        });
+
+        return done(null, user);
       } catch (error) {
         return done(error as Error, false);
       }

@@ -127,6 +127,8 @@ model User {
   targetAttendance Int       @default(75)
   theme            Theme     @default(system)
   fcmToken         String?
+  gender           String?   // "male" | "female" | "other"
+  birthday         DateTime?
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
   deletedAt        DateTime?

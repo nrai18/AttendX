@@ -1,4 +1,8 @@
 import React, { useState, useEffect, useRef } from "react";
+import { useSearchParams } from "react-router-dom";
+import { Capacitor } from "@capacitor/core";
+import { Filesystem, Directory } from "@capacitor/filesystem";
+import { Share } from "@capacitor/share";
 import { useAuthStore } from "../../stores/authStore";
 import { useAttendanceStore } from "../../stores/attendanceStore";
 import { api } from "../../lib/api";
@@ -7,6 +11,7 @@ import { Stepper } from "../../components/ui/stepper";
 import { RunActionButton } from "../../components/ui/run-action-button";
 import { SaveToggle } from "../../components/ui/save-toggle";
 import { TimedUndoAction } from "../../components/ui/timed-undo-action";
+import { EditProfile, ProfileData } from "../../components/ui/edit-profile";
 import {
   Settings,
   Target,
@@ -139,7 +144,19 @@ const renderDocuments = (type: string) => {
 
   // App Info Modal State
   const [showAppInfoModal, setShowAppInfoModal] = useState(false);
+  const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [storedDocuments, setStoredDocuments] = useState<any[]>([]);
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  useEffect(() => {
+    if (searchParams.get("action") === "edit-profile") {
+      setIsEditProfileOpen(true);
+      // Clean up the URL
+      searchParams.delete("action");
+      setSearchParams(searchParams, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
 
   useEffect(() => {
     const fetchDocs = async () => {
@@ -216,6 +233,45 @@ const renderDocuments = (type: string) => {
     }
   }, [user?.targetAttendance]);
 
+  const handleEditProfileSubmit = async (data: ProfileData, passwordData?: any) => {
+    setIsSavingProfile(true);
+    try {
+      const payload: any = {
+        name: data.fullName,
+        gender: data.gender === 'unspecified' ? null : data.gender,
+        birthday: data.birthday ? new Date(data.birthday).toISOString() : null,
+        avatarUrl: data.avatarUrl,
+      };
+      
+      if (passwordData && passwordData.newPassword) {
+        payload.newPassword = passwordData.newPassword;
+        if (passwordData.oldPassword) {
+          payload.oldPassword = passwordData.oldPassword;
+        }
+      }
+
+      await api.patch("/users/me", payload);
+      
+      if (setUser) {
+        setUser({
+          ...user!,
+          name: data.fullName,
+          gender: payload.gender,
+          birthday: payload.birthday,
+          avatarUrl: payload.avatarUrl,
+          hasPassword: user?.hasPassword || !!passwordData?.newPassword
+        });
+      }
+      
+      toast.success("Profile updated successfully!");
+      setIsEditProfileOpen(false);
+    } catch (err: any) {
+      toast.error(err.response?.data?.error || "Failed to update profile");
+    } finally {
+      setIsSavingProfile(false);
+    }
+  };
+
   const handleSaveProfile = async (e?: React.FormEvent) => {
     e?.preventDefault();
     setIsSaving(true);
@@ -268,20 +324,38 @@ const renderDocuments = (type: string) => {
         };
       }
 
-      const dataStr =
-        "data:text/json;charset=utf-8," +
-        encodeURIComponent(JSON.stringify(exportData, null, 2));
-      const downloadAnchor = document.createElement("a");
-      downloadAnchor.setAttribute("href", dataStr);
-      downloadAnchor.setAttribute(
-        "download",
-        `attendance_backup_${new Date().toISOString().slice(0, 10)}.json`,
-      );
-      document.body.appendChild(downloadAnchor);
-      downloadAnchor.click();
-      downloadAnchor.remove();
-      setBackupStatusMessage("Backup exported successfully!");
-      setTimeout(() => setBackupStatusMessage(""), 3000);
+      const fileName = `attendance_backup_${new Date().toISOString().slice(0, 10)}.json`;
+      const jsonString = JSON.stringify(exportData, null, 2);
+
+      if (Capacitor.isNativePlatform()) {
+        try {
+          const base64Content = btoa(unescape(encodeURIComponent(jsonString)));
+          const savedFile = await Filesystem.writeFile({
+            path: fileName,
+            data: base64Content,
+            directory: Directory.Cache,
+          });
+          await Share.share({
+            title: fileName,
+            url: savedFile.uri,
+          });
+          setBackupStatusMessage("Backup exported successfully!");
+          setTimeout(() => setBackupStatusMessage(""), 3000);
+        } catch (e) {
+          console.error("Filesystem save error:", e);
+          toast.error("Failed to save JSON to device.");
+        }
+      } else {
+        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(jsonString);
+        const downloadAnchor = document.createElement("a");
+        downloadAnchor.setAttribute("href", dataStr);
+        downloadAnchor.setAttribute("download", fileName);
+        document.body.appendChild(downloadAnchor);
+        downloadAnchor.click();
+        downloadAnchor.remove();
+        setBackupStatusMessage("Backup exported successfully!");
+        setTimeout(() => setBackupStatusMessage(""), 3000);
+      }
     } catch (err) {
       console.error("Failed to export backup", err);
       toast.error("Failed to export backup file.");
@@ -342,14 +416,42 @@ const renderDocuments = (type: string) => {
       }
 
       const blob = new Blob([res.data], { type: "application/zip" });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.setAttribute("download", filename);
-      document.body.appendChild(link);
-      link.click();
-      link.parentNode?.removeChild(link);
-      window.URL.revokeObjectURL(url);
+      
+      if (Capacitor.isNativePlatform()) {
+        const reader = new FileReader();
+        reader.readAsDataURL(blob);
+        reader.onloadend = async () => {
+          const base64data = reader.result as string;
+          const base64Content = base64data.split(',')[1];
+          try {
+            const savedFile = await Filesystem.writeFile({
+              path: filename,
+              data: base64Content,
+              directory: Directory.Cache,
+            });
+            await Share.share({
+              title: filename,
+              url: savedFile.uri,
+            });
+          } catch (e: any) {
+            // Capacitor throws an error if the user dismisses the share sheet
+            const errorMsg = e?.message?.toLowerCase() || "";
+            if (!errorMsg.includes("cancel") && !errorMsg.includes("dismiss")) {
+              console.error("Filesystem save/share error:", e);
+              toast.error("Failed to share file.");
+            }
+          }
+        };
+      } else {
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.setAttribute("download", filename);
+        document.body.appendChild(link);
+        link.click();
+        link.parentNode?.removeChild(link);
+        window.URL.revokeObjectURL(url);
+      }
 } catch (err) {
       console.error("CSV/ZIP export failed", err);
       toast.error("Failed to generate ZIP export.");
@@ -499,7 +601,7 @@ const renderDocuments = (type: string) => {
   // ------------------ SUB-VIEW: BACKUP / RESTORE ------------------
   if (activeView === "sync") {
     return (
-      <div className="p-4 md:p-8 max-w-2xl mx-auto w-full pb-24 md:pb-8 space-y-6 animate-in fade-in duration-200">
+      <div className="p-4 md:p-8 max-w-2xl mx-auto w-full pb-36 md:pb-8 space-y-6 animate-in fade-in duration-200">
         <div className="flex items-center gap-3 mb-6">
           <button
             onClick={() => setActiveView("main")}
@@ -519,7 +621,7 @@ const renderDocuments = (type: string) => {
 
   if (activeView === "backup") {
     return (
-      <div className="p-4 md:p-8 max-w-2xl mx-auto w-full pb-24 md:pb-8 space-y-6 animate-in fade-in duration-200">
+      <div className="p-4 md:p-8 max-w-2xl mx-auto w-full pb-36 md:pb-8 space-y-6 animate-in fade-in duration-200">
         <input
           type="file"
           accept=".json"
@@ -529,7 +631,7 @@ const renderDocuments = (type: string) => {
         />
         <input
           type="file"
-          accept=".zip"
+          accept=".zip,application/zip,application/x-zip-compressed,multipart/x-zip"
           ref={csvInputRef}
           onChange={handleImportCSV}
           className="hidden"
@@ -680,7 +782,7 @@ const renderDocuments = (type: string) => {
   // ------------------ SUB-VIEW: CONTACT US ------------------
   if (activeView === "contact") {
     return (
-      <div className="p-4 md:p-8 max-w-2xl mx-auto w-full pb-24 md:pb-8 space-y-6 animate-in fade-in duration-200">
+      <div className="p-4 md:p-8 max-w-2xl mx-auto w-full pb-36 md:pb-8 space-y-6 animate-in fade-in duration-200">
         <div className="flex items-center gap-3">
           <button
             onClick={() => setActiveView("main")}
@@ -810,7 +912,7 @@ const renderDocuments = (type: string) => {
 
   // ------------------ MAIN SETTINGS VIEW ------------------
   return (
-    <div className="p-4 md:p-8 max-w-3xl mx-auto w-full pb-24 md:pb-8 space-y-8 animate-in fade-in duration-200">
+    <div className="p-4 md:p-8 max-w-3xl mx-auto w-full pb-36 md:pb-8 space-y-8 animate-in fade-in duration-200">
       <input
         type="file"
         accept=".zip"
@@ -832,7 +934,50 @@ const renderDocuments = (type: string) => {
           </h1>
         </div>
       </div>
+      {/* CATEGORY 0: Account */}
+      <div className="space-y-3">
+        <h2 className="text-xs font-bold text-muted-foreground uppercase tracking-wider px-1">
+          Account
+        </h2>
+        <div className="bg-card border border-border/70 rounded-2xl shadow-md overflow-hidden">
+          <button 
+            onClick={() => setIsEditProfileOpen(true)}
+            className="w-full p-4 flex items-center justify-between hover:bg-muted/30 transition-colors"
+          >
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-full overflow-hidden bg-muted border-2 border-border/50 shadow-sm shrink-0">
+                <img 
+                  src={user?.avatarUrl || (user?.gender === 'female' ? 'https://api.dicebear.com/7.x/notionists/svg?seed=female&gender=female' : user?.gender === 'male' ? 'https://api.dicebear.com/7.x/notionists/svg?seed=male&gender=male' : 'https://api.dicebear.com/7.x/notionists/svg?seed=user')} 
+                  alt="Avatar" 
+                  className="w-full h-full object-cover" 
+                />
+              </div>
+              <div className="text-left">
+                <h3 className="text-base font-extrabold text-foreground">{user?.name || "User"}</h3>
+                <p className="text-xs text-muted-foreground font-medium">{user?.email}</p>
+              </div>
+            </div>
+            <div className="bg-primary/10 text-primary p-2 rounded-full">
+              <ChevronRight className="w-4 h-4" />
+            </div>
+          </button>
+        </div>
+      </div>
 
+      <EditProfile 
+        isOpen={isEditProfileOpen}
+        onClose={() => setIsEditProfileOpen(false)}
+        isLoading={isSavingProfile}
+        initialData={{
+          fullName: user?.name || "",
+          email: user?.email || "",
+          gender: user?.gender || "unspecified",
+          birthday: user?.birthday ? new Date(user?.birthday).toISOString().split('T')[0] : "",
+          avatarUrl: user?.avatarUrl || "",
+          hasPassword: user?.hasPassword
+        }}
+        onSave={handleEditProfileSubmit}
+      />
       {/* CATEGORY 1: General */}
       <div className="space-y-3">
         <h2 className="text-xs font-bold text-muted-foreground uppercase tracking-wider px-1">
@@ -858,14 +1003,15 @@ const renderDocuments = (type: string) => {
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1">
               <Stepper
+                size="sm"
                 min={1}
                 max={100}
                 value={Number(targetAttendance) || 75}
                 onChange={setTargetAttendance}
               />
-              <span className="text-sm font-semibold text-foreground">%</span>
+              <span className="text-xs font-semibold text-foreground">%</span>
               <SaveToggle onClick={handleSaveProfile} size="sm" />
             </div>
           </div>
@@ -938,13 +1084,13 @@ const renderDocuments = (type: string) => {
       </div>
 
       {/* CATEGORY 3: Data Management */}
-      <div className="space-y-3">
+          <div className="space-y-3">
         <h2 className="text-xs font-bold text-muted-foreground uppercase tracking-wider px-1">
           Data Management
         </h2>
         <div className="bg-card border border-border/70 rounded-2xl divide-y divide-border/50 shadow-md">
           {/* Export data to ZIP */}
-          <div className="w-full text-left p-4 hover:bg-muted/50 transition-colors flex items-center justify-between cursor-pointer group">
+          <div className="w-full text-left p-4 hover:bg-muted/50 transition-colors flex flex-col md:flex-row md:items-center justify-between gap-4 cursor-pointer group">
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center">
                 <FileSpreadsheet className="w-5 h-5" />
@@ -976,7 +1122,7 @@ const renderDocuments = (type: string) => {
           </div>
 
           {/* Import data from ZIP */}
-          <div className="w-full text-left p-4 hover:bg-muted/50 transition-colors flex items-center justify-between cursor-pointer group">
+          <div className="w-full text-left p-4 hover:bg-muted/50 transition-colors flex flex-col md:flex-row md:items-center justify-between gap-4 cursor-pointer group">
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 rounded-xl bg-blue-500/10 text-blue-500 flex items-center justify-center">
                 <Upload className="w-5 h-5" />
@@ -1189,7 +1335,7 @@ const renderDocuments = (type: string) => {
           >
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 rounded-xl overflow-hidden shrink-0 group-hover:scale-105 transition-transform flex items-center justify-center bg-card">
-                <img src="/attendx_logo.png" alt="AttendX Logo" className="w-full h-full object-cover" />
+                <img src="/attendx_app_icon.png" alt="AttendX Logo" className="w-full h-full object-cover" />
               </div>
               <div>
                 <h3 className="text-sm font-bold text-foreground group-hover:text-primary transition-colors">
@@ -1551,7 +1697,7 @@ const renderDocuments = (type: string) => {
 
             <div className="flex items-center gap-4 border-b border-border/50 pb-5">
               <img
-                src="/attendx_logo.png"
+                src="/attendx_app_icon.png"
                 alt="AttendX Logo"
                 className="w-14 h-14 rounded-2xl object-cover shadow-lg shadow-primary/25 shrink-0 bg-white"
               />

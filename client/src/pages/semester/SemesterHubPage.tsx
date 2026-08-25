@@ -8,6 +8,7 @@ import { CalendarImportModal } from "../../components/calendar/CalendarImportMod
 import { HolidayListTab } from "./HolidayListTab";
 import { Link, useSearchParams } from "react-router-dom";
 import { useAuthStore } from "../../stores/authStore";
+import { useCacheStore } from "../../stores/cacheStore";
 import { DiscreteTabs } from "../../components/ui/discrete-tabs";
 import { toast } from "sonner";
 import { TimedUndoAction } from "../../components/ui/timed-undo-action";
@@ -36,10 +37,13 @@ export const SemesterHubPage = () => {
   const defaultTab = (searchParams.get("tab") as any) || "timeline";
   const [activeTab, setActiveTab] = useState<"timeline" | "calendar" | "events" | "countdowns" | "holidays">(defaultTab);
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [events, setEvents] = useState<AppEvent[]>([]);
-  const [activeSemester, setActiveSemester] = useState<Semester | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [calendarData, setCalendarData] = useState<any>(null);
+  const cachedData = useCacheStore((state) => state.semester);
+  const setCache = useCacheStore((state) => state.setCache);
+
+  const [events, setEvents] = useState<AppEvent[]>(cachedData?.events || []);
+  const [activeSemester, setActiveSemester] = useState<Semester | null>(cachedData?.activeSemester || null);
+  const [calendarData, setCalendarData] = useState<any>(cachedData?.calendarData || null);
+  const [isLoading, setIsLoading] = useState(!cachedData);
   const user = useAuthStore((state) => state.user);
   
   // OCR State
@@ -69,17 +73,25 @@ export const SemesterHubPage = () => {
 
   const fetchData = async () => {
     try {
-      setIsLoading(true);
+      if (!cachedData) setIsLoading(true);
       const semRes = await api.get("/semesters/active");
       
       let eventsUrl = "/events";
+      let nextSemester = null;
       if (semRes.data) {
-        setActiveSemester(semRes.data);
+        nextSemester = semRes.data;
+        setActiveSemester(nextSemester);
         eventsUrl = `/events?semesterId=${semRes.data.id}`;
       }
 
       const eventsRes = await api.get(eventsUrl);
       setEvents(eventsRes.data);
+      
+      setCache('semester', {
+        ...useCacheStore.getState().semester,
+        activeSemester: nextSemester,
+        events: eventsRes.data
+      });
     } catch (error) {
       console.error("Failed to fetch academic data:", error);
     } finally {
@@ -92,6 +104,11 @@ export const SemesterHubPage = () => {
       const monthStr = format(currentDate, "yyyy-MM");
       const res = await api.get(`/attendance/calendar?month=${monthStr}`);
       setCalendarData(res.data);
+      
+      setCache('semester', {
+        ...useCacheStore.getState().semester,
+        calendarData: res.data
+      });
     } catch (error) {
       console.error("Failed to fetch calendar:", error);
     }
@@ -277,12 +294,12 @@ export const SemesterHubPage = () => {
   }
 
   return (
-    <div className="p-4 md:p-8 max-w-7xl mx-auto w-full pb-24 md:pb-8 flex flex-col min-h-full space-y-6">
+    <div className="p-4 md:p-8 max-w-7xl mx-auto w-full pb-24 md:pb-8 flex flex-col min-h-full space-y-6 overflow-x-hidden">
       
       {/* Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-white tracking-tight">Semester Overview</h1>
+          <h1 className="text-3xl font-bold text-foreground tracking-tight">Semester Overview</h1>
           <p className="text-muted-foreground mt-1">
             {activeSemester ? `Managing ${activeSemester.name}` : "Track events, exams, and holidays."}
           </p>
@@ -362,7 +379,7 @@ export const SemesterHubPage = () => {
           </div>
           <button
             onClick={() => setIsCreateSemesterOpen(true)}
-            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white px-5 py-2.5 rounded-xl text-xs font-bold transition-all shadow-lg shadow-indigo-600/30 shrink-0 cursor-pointer"
+            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-foreground px-5 py-2.5 rounded-xl text-xs font-bold transition-all shadow-lg shadow-indigo-600/30 shrink-0 cursor-pointer"
           >
             <Plus className="w-4 h-4" />
             <span>Create Semester</span>
@@ -409,7 +426,7 @@ export const SemesterHubPage = () => {
               ))}
             </div>
 
-            <div className="grid grid-cols-7 gap-2 flex-1 mb-8">
+            <div className="grid grid-cols-7 gap-1 sm:gap-2 mb-8">
               {calendarDays.map((day, i) => {
                 const dayEvents = events.filter(e => {
                   const s = startOfDay(new Date(e.date));
@@ -425,13 +442,13 @@ export const SemesterHubPage = () => {
                   <Link 
                     key={i} 
                     to={isCurrentMonth ? `/today?date=${dateKey}` : "#"} 
-                    className={`min-h-[80px] p-2 rounded-xl border ${
+                    className={`min-h-[70px] sm:min-h-[80px] p-1 sm:p-2 rounded-lg sm:rounded-xl border ${
                       !isCurrentMonth ? "opacity-30 border-transparent cursor-default pointer-events-none" : 
-                      isSameDay(day, new Date()) ? "border-primary/50 bg-primary/5 cursor-pointer" : "border-white/5 hover:border-white/10 bg-white/[0.02] cursor-pointer"
+                      isSameDay(day, new Date()) ? "border-primary/50 bg-primary/5 cursor-pointer" : "border-border/50 hover:border-border bg-card cursor-pointer"
                     } transition-colors flex flex-col`}
                   >
                     <div className="flex justify-between items-start mb-1">
-                      <span className={`text-sm font-medium ${isSameDay(day, new Date()) ? "text-primary bg-primary/10 w-6 h-6 rounded-full flex items-center justify-center -ml-1 -mt-1" : "text-white/80"}`}>
+                      <span className={`text-sm font-medium ${isSameDay(day, new Date()) ? "text-primary bg-primary/10 w-6 h-6 rounded-full flex items-center justify-center -ml-1 -mt-1" : "text-foreground/80"}`}>
                         {format(day, "d")}
                       </span>
                       {isCurrentMonth && status && (
@@ -517,11 +534,11 @@ export const SemesterHubPage = () => {
                       <div className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Total</div>
                     </div>
                     <div>
-                      <div className="text-lg font-bold text-white mb-0.5">{(calendarData?.stats?.lectures?.percentage ?? 0).toFixed(0)}%</div>
+                      <div className="text-lg font-bold text-foreground mb-0.5">{(calendarData?.stats?.lectures?.percentage ?? 0).toFixed(0)}%</div>
                       <div className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Percent</div>
                     </div>
                   </div>
-                  <div className="bg-white/[0.03] text-center py-2 text-xs font-semibold text-white/50 uppercase tracking-widest border-t border-white/5">
+                  <div className="bg-white/[0.03] text-center py-2 text-xs font-semibold text-foreground/50 uppercase tracking-widest border-t border-border/50">
                     Lectures Summary
                   </div>
                 </div>
@@ -548,7 +565,7 @@ export const SemesterHubPage = () => {
                         isCurrent ? 'bg-primary shadow-[0_0_15px_rgba(var(--primary),0.5)]' : 
                         isPast ? 'bg-emerald-500' : 'bg-muted'
                       }`}>
-                        {isPast ? <CheckCircle2 className="w-5 h-5 text-white" /> : <div className={`w-3 h-3 rounded-full ${isCurrent ? 'bg-white' : 'bg-foreground/20'}`} />}
+                        {isPast ? <CheckCircle2 className="w-5 h-5 text-foreground" /> : <div className={`w-3 h-3 rounded-full ${isCurrent ? 'bg-white' : 'bg-foreground/20'}`} />}
                       </div>
                       
                       <div className={`ml-6 p-5 rounded-2xl border flex-1 transition-colors ${
@@ -569,16 +586,27 @@ export const SemesterHubPage = () => {
           )}
 
         {activeTab === "countdowns" && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {upcomingEvents.map(event => {
               const daysLeft = differenceInDays(new Date(event.date), today);
               return (
-                <div key={event.id} className="bg-white/[0.02] border border-white/5 hover:border-white/20 transition-colors rounded-2xl p-6 flex flex-col items-center text-center">
-                  <div className={`w-16 h-16 rounded-full flex items-center justify-center border-2 mb-4 ${getEventColor(event)}`}>
-                    <span className="text-2xl font-bold">{daysLeft}</span>
+                <div key={event.id} className="bg-card border border-border/60 hover:border-border transition-colors rounded-2xl p-4 flex items-center gap-4 shadow-sm">
+                  <div className={`w-16 h-16 shrink-0 rounded-full flex flex-col items-center justify-center border-2 ${getEventColor(event)}`}>
+                    <span className="text-2xl font-black leading-none">{daysLeft}</span>
                   </div>
-                  <h3 className="text-lg font-bold text-white mb-1">{event.title}</h3>
-                  <p className="text-sm text-muted-foreground">Days Remaining</p>
+                  <div className="flex-1 text-left">
+                    <h3 className="text-sm sm:text-base font-bold text-foreground leading-tight line-clamp-2">{event.title}</h3>
+                    <div className="flex items-center gap-2 mt-1.5">
+                      <p className="text-xs text-muted-foreground flex items-center gap-1 font-medium">
+                        <CalendarIcon className="w-3.5 h-3.5" />
+                        {format(new Date(event.date), "MMM d")}
+                      </p>
+                      <span className="w-1 h-1 rounded-full bg-border" />
+                      <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+                        {daysLeft === 0 ? "Today" : daysLeft === 1 ? "Tomorrow" : `${daysLeft} Days`}
+                      </p>
+                    </div>
+                  </div>
                 </div>
               );
             })}
@@ -588,18 +616,21 @@ export const SemesterHubPage = () => {
         {activeTab === "events" && (
           <div className="space-y-4">
             {events.map(event => (
-              <div key={event.id} className="flex items-center justify-between p-4 bg-white/[0.02] border border-white/5 rounded-xl">
-                <div>
-                  <h4 className="font-bold text-white">{event.title}</h4>
-                  <p className="text-sm text-muted-foreground">
+              <div key={event.id} className="flex flex-col sm:flex-row sm:items-center justify-between p-5 bg-card border border-border/60 shadow-sm rounded-2xl gap-3 hover:border-border transition-colors">
+                <div className="space-y-1">
+                  <h4 className="font-bold text-foreground text-base">{event.title}</h4>
+                  <p className="text-sm text-muted-foreground flex items-center gap-1.5">
+                    <CalendarIcon className="w-3.5 h-3.5" />
                     {event.endDate && event.endDate !== event.date 
                       ? `${format(new Date(event.date), "MMMM d, yyyy")} - ${format(new Date(event.endDate), "MMMM d, yyyy")}`
                       : format(new Date(event.date), "MMMM d, yyyy")}
                   </p>
                 </div>
-                <span className={`px-3 py-1 rounded-md text-xs font-bold uppercase tracking-wider border ${getEventColor(event)}`}>
-                  {event.eventType}
-                </span>
+                <div className="flex justify-start">
+                  <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border ${getEventColor(event)}`}>
+                    {event.eventType.replace(/_/g, " ")}
+                  </span>
+                </div>
               </div>
             ))}
           </div>

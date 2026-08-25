@@ -513,7 +513,7 @@ export const FloatingChatbot: React.FC = () => {
   return (
     <>
       {/* Floating Trigger Dock with Ambient Glow */}
-      <div className="fixed bottom-20 md:bottom-6 right-6 z-40">
+      <div className="fixed bottom-[calc(5rem+env(safe-area-inset-bottom))] md:bottom-6 right-6 z-40">
         <motion.button
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}

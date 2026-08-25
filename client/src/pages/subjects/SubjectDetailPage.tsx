@@ -272,7 +272,7 @@ export const SubjectDetailPage = () => {
   const targetPct = headerStats ? headerStats.target : (useAuthStore.getState().user?.targetAttendance ?? 75);
 
   return (
-    <div className="min-h-screen bg-background text-foreground pb-28">
+    <div className="min-h-screen bg-background text-foreground pb-40 md:pb-28">
       {/* Top Header matching dark screenshot theme */}
       <div className="sticky top-0 z-30 bg-background/95 backdrop-blur-md border-b border-border px-4 py-3">
         <div className="max-w-3xl mx-auto flex items-center justify-between gap-3">
@@ -346,8 +346,20 @@ export const SubjectDetailPage = () => {
 
         {activeTab === "logs" ? (
           <>
+            {/* Click-away backdrop for dropdown menus */}
+            {(showDateMenu || showSubjectMenu || showStatusMenu) && (
+              <div 
+                className="fixed inset-0 z-30"
+                onClick={() => {
+                  setShowDateMenu(false);
+                  setShowSubjectMenu(false);
+                  setShowStatusMenu(false);
+                }}
+              />
+            )}
+
             {/* Filter Pills Bar */}
-            <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar text-xs">
+            <div className="flex flex-wrap items-center gap-2 pb-1 text-xs relative z-40">
               {/* Total Records Pill */}
               <span className="bg-emerald-900/30 text-emerald-400 border border-emerald-500/20 px-3 py-1.5 rounded-xl font-medium shrink-0">
                 {filteredLogs.length} record{filteredLogs.length !== 1 ? "s" : ""}
@@ -803,7 +815,7 @@ export const SubjectDetailPage = () => {
       </div>
 
       {/* Floating Bottom Pill Button: [ ✏️ Edit Attendance ] */}
-      <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40">
+      <div className="fixed bottom-[calc(6rem+env(safe-area-inset-bottom))] md:bottom-8 left-1/2 -translate-x-1/2 z-40">
         <button
           onClick={() => setIsEditMode(!isEditMode)}
           className={`flex items-center gap-2.5 px-6 py-3 rounded-full text-sm font-bold shadow-xl border transition-all transform active:scale-95 ${

@@ -72,9 +72,13 @@ export class DocumentController {
           const fsPromises = require('fs/promises');
           const pathModule = require('path');
           const filePath = pathModule.join(process.cwd(), doc.fileUrl);
-          await fsPromises.unlink(filePath);
-        } catch (e) {
-          console.error('Failed to delete physical file:', e);
+          await fsPromises.unlink(filePath).catch((e: any) => {
+            if (e.code !== 'ENOENT') console.error("Failed to delete physical file:", e);
+          });
+        } catch (fileErr: any) {
+          if (fileErr.code !== 'ENOENT') {
+            console.error("Failed to delete physical file:", fileErr);
+          }
         }
       }
       

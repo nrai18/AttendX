@@ -119,9 +119,9 @@ export const SortableSlot: React.FC<SortableSlotProps> = ({
             )}
           </div>
           <h3 className="text-sm font-bold text-foreground leading-tight mb-1 truncate" title={slot.subject?.name}>{slot.subject?.name}</h3>
-          <div className="flex items-center justify-between text-[10px] uppercase font-bold text-muted-foreground">
+          <div className="flex items-center justify-between text-[10px] uppercase font-bold text-muted-foreground mt-1">
             <span className="bg-muted px-1.5 py-0.5 rounded text-foreground/80">{slot.slotType}</span>
-            {slot.room && <span className="truncate max-w-[60px]">{slot.room}</span>}
+            <span className="truncate max-w-[80px] text-blue-500/80">Room: {slot.room || "TBA"}</span>
           </div>
         </div>
       </div>
@@ -177,7 +177,7 @@ export const SortableSlot: React.FC<SortableSlotProps> = ({
           <div className="flex flex-wrap items-center gap-2 mt-1 text-[11px] font-bold text-muted-foreground uppercase tracking-wider">
             <span className="bg-muted px-2 py-0.5 rounded-md text-foreground/90 font-semibold font-mono shadow-sm">{displayTimeRange}</span>
             <span>• {slot.slotType}</span>
-            {slot.room && <span className="truncate max-w-[80px]">• {slot.room}</span>}
+            <span className="truncate max-w-[100px] text-blue-500/80">• Room: {slot.room || "TBA"}</span>
           </div>
         </div>
       </div>

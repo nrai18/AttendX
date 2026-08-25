@@ -3,7 +3,9 @@ import { Loader2, CheckCircle2, XCircle, AlertCircle, PartyPopper, BookOpen, Pal
 import { api } from "../../lib/api";
 import { toast } from "sonner";
 import { useAuthStore } from "../../stores/authStore";
+import { useCacheStore } from "../../stores/cacheStore";
 import { CreateSemesterModal } from "../../components/semester/CreateSemesterModal";
+import { OnboardingChecklist } from "../../components/ui/onboarding-checklist";
 
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { useAttendanceStore } from "../../stores/attendanceStore";
@@ -60,11 +62,14 @@ export const TodayPage = () => {
   };
 
   const syntheticHoliday = getHolidayFromList(targetDateStr);
-  const [agenda, setAgenda] = useState<AgendaItem[]>([]);
-  const [todayStatus, setTodayStatus] = useState<any>(null);
+  const cachedData = useCacheStore(state => state.today);
+  const setCache = useCacheStore(state => state.setCache);
+
+  const [agenda, setAgenda] = useState<AgendaItem[]>(cachedData?.agenda || []);
+  const [todayStatus, setTodayStatus] = useState<any>(cachedData?.todayStatus || null);
   const activeEvent = syntheticHoliday || todayStatus?.activeEvent;
-  const [activeSemester, setActiveSemester] = useState<any>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [activeSemester, setActiveSemester] = useState<any>(cachedData?.activeSemester || null);
+  const [isLoading, setIsLoading] = useState(!cachedData);
   const [isCreateSemesterOpen, setIsCreateSemesterOpen] = useState(false);
 
   // Extra Lecture Modal State
@@ -236,7 +241,7 @@ export const TodayPage = () => {
 
   const fetchData = async () => {
     try {
-      setIsLoading(true);
+      if (!cachedData) setIsLoading(true);
       // Fetch active semester first
       const semRes = await api.get("/semesters/active");
       
@@ -255,15 +260,26 @@ export const TodayPage = () => {
         api.get(`/attendance/today?date=${targetDateStr}`)
       ]);
 
+      let nextTodayStatus = null;
+      let nextAgenda: AgendaItem[] = [];
+
       if (statusRes.status === 'fulfilled') {
-        setTodayStatus(statusRes.value.data);
+        nextTodayStatus = statusRes.value.data;
+        setTodayStatus(nextTodayStatus);
       }
       
       if (res.status === 'fulfilled') {
-        setAgenda(Array.isArray(res.value.data) ? res.value.data : []);
+        nextAgenda = Array.isArray(res.value.data) ? res.value.data : [];
+        setAgenda(nextAgenda);
       } else {
         setAgenda([]);
       }
+
+      setCache('today', { 
+        agenda: nextAgenda, 
+        todayStatus: nextTodayStatus, 
+        activeSemester: semRes.data || null 
+      });
 
     } catch (error) {
       console.error("Failed to fetch today data:", error);
@@ -621,18 +637,23 @@ export const TodayPage = () => {
       )}
 
       {!activeSemester ? (
-        <div className="text-center py-12 bg-card border border-border rounded-2xl p-6 space-y-4 shadow-sm">
-          <BookOpen className="w-12 h-12 text-primary mx-auto opacity-80" />
-          <h3 className="text-lg font-bold text-foreground">No Active Semester</h3>
-          <p className="text-xs text-muted-foreground max-w-sm mx-auto">
-            Please create and activate a semester to manage your timetable, subjects, and daily class attendance.
-          </p>
+        <div className="flex flex-col items-center justify-center py-6">
+          <OnboardingChecklist 
+            title="Getting Started"
+            steps={[
+              { id: 1, title: "Create an active semester", isCompleted: !!activeSemester },
+              { id: 2, title: "Add subjects and set targets", isCompleted: false },
+              { id: 3, title: "Set up weekly timetable", isCompleted: false },
+              { id: 4, title: "Sync your academic calendar", isCompleted: false },
+              { id: 5, title: "Log your first attendance", isCompleted: false }
+            ]} 
+          />
           <button
             onClick={() => setIsCreateSemesterOpen(true)}
-            className="inline-flex items-center gap-2 bg-primary hover:bg-primary/90 text-primary-foreground px-5 py-2.5 rounded-xl text-xs font-bold transition-all shadow-md shadow-primary/20 cursor-pointer"
+            className="mt-6 inline-flex items-center gap-2 bg-primary hover:bg-primary/90 text-primary-foreground px-6 py-3 rounded-xl text-sm font-bold transition-all shadow-md shadow-primary/20 cursor-pointer"
           >
             <Plus className="w-4 h-4" />
-            <span>Create Active Semester</span>
+            <span>Create Semester Now</span>
           </button>
         </div>
       ) : agenda.length === 0 ? (
@@ -654,36 +675,36 @@ export const TodayPage = () => {
                   : "bg-card border-border shadow-sm hover:shadow-md"
               }`}
             >
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-4 min-w-0 flex-1">
                 <div 
                   className="w-1.5 h-14 rounded-full flex-shrink-0" 
                   style={{ backgroundColor: item.subject?.colorHex || "#6366f1" }} 
                 />
-                <div>
+                <div className="min-w-0">
                   <h3 className="text-lg font-semibold text-foreground flex items-center gap-2 flex-wrap">
-                    <span>{item.subject?.name || "Unknown Subject"}</span>
+                    <span className="truncate">{item.subject?.name || "Unknown Subject"}</span>
                     {(item.isExtra || item.type === "override" || item.slotType === "Extra") && (
-                      <span className="bg-amber-500/20 text-amber-500 border border-amber-500/30 text-[10px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1 shadow-sm">
+                      <span className="bg-amber-500/20 text-amber-500 border border-amber-500/30 text-[10px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1 shadow-sm shrink-0">
                         <Sparkles className="w-3 h-3 text-amber-500" />
                         Extra
                       </span>
                     )}
                     {item.remarks && (
-                      <span className="text-xs font-normal text-muted-foreground bg-muted px-2 py-0.5 rounded-md flex items-center gap-1">
+                      <span className="text-xs font-normal text-muted-foreground bg-muted px-2 py-0.5 rounded-md flex items-center gap-1 shrink-0">
                         <MessageSquare className="w-3 h-3 text-primary" />
                         {item.remarks}
                       </span>
                     )}
                   </h3>
-                  <div className="flex items-center gap-3 mt-1.5 text-xs text-muted-foreground font-medium">
-                    <span className="bg-muted px-2 py-0.5 rounded text-foreground font-mono">{item.startTime} - {item.endTime}</span>
-                    <span className="uppercase tracking-wide font-semibold">{item.slotType}</span>
-                    {item.room && <span>• Room {item.room}</span>}
+                  <div className="flex items-center gap-3 mt-1.5 text-xs text-muted-foreground font-medium flex-wrap">
+                    <span className="bg-muted px-2 py-0.5 rounded text-foreground font-mono shrink-0">{item.startTime} - {item.endTime}</span>
+                    <span className="uppercase tracking-wide font-semibold shrink-0">{item.slotType}</span>
+                    {item.room && <span className="shrink-0">• Room {item.room}</span>}
                   </div>
                 </div>
               </div>
 
-              <div className="flex flex-wrap items-center gap-2 self-end md:self-auto">
+              <div className="flex flex-nowrap items-center gap-2 self-end md:self-auto shrink-0">
                 <button
                   onClick={() => handleStatusClick(item, "present")}
                   className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${

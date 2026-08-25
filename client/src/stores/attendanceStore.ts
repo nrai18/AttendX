@@ -15,6 +15,8 @@ export interface SubjectStat {
   remainingClasses?: number;
   maxRemainingClasses?: number;
   missingBoundaries?: boolean;
+  futureBreakdown?: { date: string; type: 'HELD' | 'OFF' | 'LOGGED'; reason?: string; count: number; status?: string }[];
+  attendance?: { date: string; status: string }[];
 }
 
 export interface AttendanceHistoryEntry {
@@ -126,6 +128,8 @@ export const useAttendanceStore = create<AttendanceState>((set) => ({
           remainingClasses: sub.remainingClasses,
           maxRemainingClasses: sub.maxRemainingClasses,
           missingBoundaries: sub.missingBoundaries,
+          futureBreakdown: sub.futureBreakdown,
+          attendance: sub.attendance,
         };
       });
       const overallPercentage = totalClasses > 0 ? (totalAttended / totalClasses) * 100 : 0;
