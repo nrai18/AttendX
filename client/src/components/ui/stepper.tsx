@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { motion, AnimatePresence } from "motion/react";
+import { motion, AnimatePresence } from "framer-motion";
 import { HiMinus, HiPlus } from "react-icons/hi";
 
 export interface StepperProps {

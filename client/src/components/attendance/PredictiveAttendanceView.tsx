@@ -23,6 +23,7 @@ import { useAuthStore } from "../../stores/authStore";
 import { useAttendanceStore } from "../../stores/attendanceStore";
 import { Stepper } from "../ui/stepper";
 import { Input } from "../ui/input";
+import { FutureClassesModal } from "./FutureClassesModal";
 
 interface SubjectStat {
   id: string;
@@ -35,6 +36,7 @@ interface SubjectStat {
   percentage: number;
   remainingClasses?: number;
   maxRemainingClasses?: number;
+  futureBreakdown?: { date: string; type: 'HELD' | 'OFF'; reason?: string; count: number }[];
 }
 
 interface PredictiveAttendanceViewProps {
@@ -101,6 +103,34 @@ export const PredictiveAttendanceView: React.FC<PredictiveAttendanceViewProps> =
 
   // Custom simulation increments per subject: { [subjectId]: { addAttend: number, addMiss: number } }
   const [simulations, setSimulations] = useState<Record<string, { addAttend: number; addMiss: number; addOff: number }>>({});
+  const [dateOverrides, setDateOverrides] = useState<Record<string, Record<string, 'PRESENT' | 'ABSENT' | 'OFF'>>>({});
+  const [breakdownModalSubject, setBreakdownModalSubject] = useState<{ id: string; name: string; breakdown: any[] } | null>(null);
+
+  const openModal = (sub: any) => {
+     let futureItems = [...(sub.futureBreakdown || [])];
+     let loggedItems: any[] = [];
+     
+     if (sub.attendance) {
+        sub.attendance.forEach((log: any) => {
+           loggedItems.push({
+              date: new Date(log.date).toISOString(),
+              type: 'LOGGED',
+              reason: `Already Logged`,
+              count: 1,
+              status: log.status
+           });
+        });
+     }
+
+     // Remove items from futureBreakdown if they are already in loggedItems
+     futureItems = futureItems.filter(fItem => {
+         const fDateStr = new Date(fItem.date).toLocaleDateString();
+         return !loggedItems.some(lItem => new Date(lItem.date).toLocaleDateString() === fDateStr);
+     });
+
+     const combined = [...loggedItems, ...futureItems].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+     setBreakdownModalSubject({ id: sub.id, name: sub.name, breakdown: combined });
+  };
 
   const handleTargetChange = async (newTarget: number) => {
     setGlobalTarget(newTarget);
@@ -151,76 +181,20 @@ export const PredictiveAttendanceView: React.FC<PredictiveAttendanceViewProps> =
   const overallSafeMisses = calculateSafeMisses(totalAttended, totalRecorded, globalTarget);
   const isOverallOnTrack = overallPercentage >= globalTarget;
 
-  const updateSim = (subjectId: string, field: "addAttend" | "addMiss" | "addOff", delta: number) => {
-    setSimulations((prev) => {
-      const subject = subjects.find((s: any) => s.id === subjectId);
-      const remaining = subject?.remainingClasses || 0;
-      const maxRemaining = subject?.maxRemainingClasses || remaining;
-      const defaultOff = maxRemaining - remaining;
-      
-      const current = prev[subjectId] || { addAttend: remaining, addMiss: 0, addOff: defaultOff };
-      
-      let { addAttend, addMiss, addOff } = current;
-
-      if (field === "addAttend") {
-        addAttend += delta;
-        // Balance by removing from addMiss then addOff, or adding to addMiss
-        if (delta > 0) {
-          if (addMiss > 0) {
-            const steal = Math.min(addMiss, delta);
-            addMiss -= steal;
-            delta -= steal;
-          }
-          if (delta > 0 && addOff > 0) {
-            const steal = Math.min(addOff, delta);
-            addOff -= steal;
-          }
-        } else {
-          // Decreased attend, so increase Miss by default
-          addMiss -= delta;
-        }
-      } else if (field === "addMiss") {
-        addMiss += delta;
-        if (delta > 0) {
-          if (addAttend > 0) {
-            const steal = Math.min(addAttend, delta);
-            addAttend -= steal;
-            delta -= steal;
-          }
-          if (delta > 0 && addOff > 0) {
-            const steal = Math.min(addOff, delta);
-            addOff -= steal;
-          }
-        } else {
-          addAttend -= delta;
-        }
-      } else if (field === "addOff") {
-        addOff += delta;
-        if (delta > 0) {
-          if (addAttend > 0) {
-            const steal = Math.min(addAttend, delta);
-            addAttend -= steal;
-            delta -= steal;
-          }
-          if (delta > 0 && addMiss > 0) {
-            const steal = Math.min(addMiss, delta);
-            addMiss -= steal;
-          }
-        } else {
-          addAttend -= delta;
-        }
+  const updateSim = (subjectId: string, addAttend: number, addMiss: number, addOff: number) => {
+    setDateOverrides((prev) => {
+      if (prev[subjectId]) {
+        const next = { ...prev };
+        delete next[subjectId];
+        return next;
       }
-
-      // Clamp all to valid ranges just in case
-      addAttend = Math.max(0, Math.min(maxRemaining, addAttend));
-      addMiss = Math.max(0, Math.min(maxRemaining - addAttend, addMiss));
-      addOff = Math.max(0, Math.min(maxRemaining - addAttend - addMiss, addOff));
-
-      return {
-        ...prev,
-        [subjectId]: { addAttend, addMiss, addOff },
-      };
+      return prev;
     });
+    
+    setSimulations((prev) => ({
+      ...prev,
+      [subjectId]: { addAttend, addMiss, addOff },
+    }));
   };
 
   if (isLoading) {
@@ -508,11 +482,30 @@ export const PredictiveAttendanceView: React.FC<PredictiveAttendanceViewProps> =
               const maxRemaining = sub.maxRemainingClasses || remaining;
               const defaultOff = maxRemaining - remaining;
               
-              // What-If Simulation
-              const sim = simulations[sub.id] || { addAttend: remaining, addMiss: 0, addOff: defaultOff };
+              let simAddAttend = remaining;
+              let simAddMiss = 0;
+              let simAddOff = defaultOff;
+              const overrides = dateOverrides[sub.id];
+
+              if (overrides && Object.keys(overrides).length > 0 && sub.futureBreakdown) {
+                 simAddAttend = 0;
+                 simAddMiss = 0;
+                 simAddOff = 0;
+                 sub.futureBreakdown.forEach((item: any) => {
+                    if (item.type === 'LOGGED') return;
+                    const status = overrides[item.date] || (item.type === 'HELD' ? 'PRESENT' : 'OFF');
+                    if (status === 'PRESENT') simAddAttend += item.count;
+                    else if (status === 'ABSENT') simAddMiss += item.count;
+                    else if (status === 'OFF') simAddOff += item.count;
+                 });
+              } else if (simulations[sub.id]) {
+                 simAddAttend = simulations[sub.id].addAttend;
+                 simAddMiss = simulations[sub.id].addMiss;
+                 simAddOff = simulations[sub.id].addOff;
+              }
               
-              const simAttended = sub.attended + sim.addAttend;
-              const simTotal = sub.total + sim.addAttend + sim.addMiss;
+              const simAttended = sub.attended + simAddAttend;
+              const simTotal = sub.total + simAddAttend + simAddMiss;
               const simPct = simTotal > 0 ? (simAttended / simTotal) * 100 : 0;
               
               const remainingText = maxRemaining > remaining ? `${remaining} - ${maxRemaining} remaining` : `${remaining} remaining`;
@@ -565,56 +558,84 @@ export const PredictiveAttendanceView: React.FC<PredictiveAttendanceViewProps> =
 
                     <div className="pt-3 border-t border-border/50 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                       <div className="flex flex-col">
-                        <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                        <span className="flex items-center gap-1.5 text-sm font-bold text-foreground">
                           <Calendar className="w-3.5 h-3.5" /> End of Semester Simulator
                         </span>
-                        <span className="text-[11px] text-muted-foreground">Mark the {maxRemaining} remaining classes</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[11px] text-muted-foreground">Mark the {maxRemaining} remaining classes</span>
+                          {sub.futureBreakdown && sub.futureBreakdown.length > 0 && (
+                            <button 
+                              onClick={() => openModal(sub)}
+                              className="text-[10px] bg-primary/10 text-primary hover:bg-primary/20 px-2 py-0.5 rounded-full font-semibold transition-colors flex items-center gap-1"
+                            >
+                              <Info className="w-3 h-3" /> View Logic
+                            </button>
+                          )}
+                        </div>
                       </div>
 
                       <div className="flex flex-col sm:flex-row items-center gap-4 bg-muted/40 p-2.5 rounded-xl border border-border/50 overflow-x-auto w-full sm:w-auto">
                         {/* Attend Stepper */}
-                        <div className="flex items-center gap-2.5">
-                          <span className="text-xs font-semibold text-emerald-500 whitespace-nowrap">Present:</span>
-                          <div className="w-[100px]">
+                        <div className="flex items-center gap-2.5 w-full sm:w-auto justify-between sm:justify-start">
+                          <button 
+                            type="button"
+                            onClick={() => openModal(sub)}
+                            className="text-xs font-semibold text-emerald-500 whitespace-nowrap hover:underline cursor-pointer"
+                          >
+                            Present:
+                          </button>
+                          <div className="w-[110px]">
                             <Stepper 
                               size="sm"
                               min={0}
-                              max={maxRemaining}
-                              value={sim.addAttend}
+                              max={Math.max(0, maxRemaining - simAddMiss - simAddOff)}
+                              value={simAddAttend}
                               onChange={(val) => {
-                                updateSim(sub.id, "addAttend", val - sim.addAttend);
+                                updateSim(sub.id, val, simAddMiss, simAddOff);
                               }}
                             />
                           </div>
                         </div>
 
                         {/* Miss Stepper */}
-                        <div className="flex items-center gap-2.5 border-l border-border/60 pl-4">
-                          <span className="text-xs font-semibold text-rose-500 whitespace-nowrap">Absent:</span>
-                          <div className="w-[100px]">
+                        <div className="flex items-center gap-2.5 w-full sm:w-auto justify-between sm:justify-start sm:border-l sm:border-border/60 sm:pl-4">
+                          <button 
+                            type="button"
+                            onClick={() => openModal(sub)}
+                            className="text-xs font-semibold text-rose-500 whitespace-nowrap hover:underline cursor-pointer"
+                          >
+                            Absent:
+                          </button>
+                          <div className="w-[110px]">
                             <Stepper 
                               size="sm"
                               min={0}
-                              max={maxRemaining}
-                              value={sim.addMiss}
+                              max={Math.max(0, maxRemaining - simAddAttend - simAddOff)}
+                              value={simAddMiss}
                               onChange={(val) => {
-                                updateSim(sub.id, "addMiss", val - sim.addMiss);
+                                updateSim(sub.id, simAddAttend, val, simAddOff);
                               }}
                             />
                           </div>
                         </div>
 
                         {/* Off Stepper */}
-                        <div className="flex items-center gap-2.5 border-l border-border/60 pl-4">
-                          <span className="text-xs font-semibold text-amber-500 whitespace-nowrap">Off:</span>
-                          <div className="w-[100px]">
+                        <div className="flex items-center gap-2.5 w-full sm:w-auto justify-between sm:justify-start sm:border-l sm:border-border/60 sm:pl-4">
+                          <button 
+                            type="button"
+                            onClick={() => openModal(sub)}
+                            className="text-xs font-semibold text-amber-500 whitespace-nowrap hover:underline cursor-pointer"
+                          >
+                            Off:
+                          </button>
+                          <div className="w-[110px]">
                             <Stepper 
                               size="sm"
                               min={0}
-                              max={maxRemaining}
-                              value={sim.addOff}
+                              max={Math.max(0, maxRemaining - simAddAttend - simAddMiss)}
+                              value={simAddOff}
                               onChange={(val) => {
-                                updateSim(sub.id, "addOff", val - (sim.addOff || 0));
+                                updateSim(sub.id, simAddAttend, simAddMiss, val);
                               }}
                             />
                           </div>
@@ -628,6 +649,24 @@ export const PredictiveAttendanceView: React.FC<PredictiveAttendanceViewProps> =
           </div>
         )}
       </div>
+
+      <FutureClassesModal 
+        isOpen={!!breakdownModalSubject}
+        onClose={() => setBreakdownModalSubject(null)}
+        subjectName={breakdownModalSubject?.name || ""}
+        breakdown={breakdownModalSubject?.breakdown || []}
+        dateOverrides={breakdownModalSubject ? dateOverrides[breakdownModalSubject.id] || {} : {}}
+        onOverrideChange={(date, status) => {
+          if (!breakdownModalSubject) return;
+          setDateOverrides(prev => ({
+             ...prev,
+             [breakdownModalSubject.id]: {
+                ...(prev[breakdownModalSubject.id] || {}),
+                [date]: status
+             }
+          }));
+        }}
+      />
     </div>
   );
 };
