@@ -31,11 +31,13 @@ export const Sidebar: React.FC = () => {
   return (
     <aside className="hidden md:flex flex-col w-64 h-screen bg-card border-r border-border p-4 sticky top-0 transition-colors">
       {/* Brand Logo */}
-      <div className="flex items-center gap-3 px-3 py-4 mb-4">
-        <img src="/attendx_logo.png" alt="AttendX Logo" className="h-10 w-auto object-contain" />
+      <div className="flex items-center gap-3 px-4 py-5 mb-2">
+        <div className="bg-white rounded overflow-hidden shadow-sm flex items-center justify-center">
+          <img src="/attendx_logo_lockup.png" alt="AttendX Logo" className="h-9 w-auto object-contain" />
+        </div>
         <div className="flex flex-col">
-          <h2 className="font-bold text-lg text-foreground tracking-wide">AttendX</h2>
-          <p className="text-[11px] text-muted-foreground">IIIT Una Academic</p>
+          <span className="text-xl font-bold tracking-tight text-foreground leading-tight">AttendX</span>
+          <p className="text-[11px] text-muted-foreground font-medium whitespace-nowrap leading-tight">IIIT Una Academic</p>
         </div>
       </div>
 
@@ -65,19 +67,26 @@ export const Sidebar: React.FC = () => {
 
       {/* User Profile Card Footer */}
       <div className="pt-4 border-t border-border">
-        <div className="flex items-center justify-between p-2 rounded-xl bg-muted/40 border border-border">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-8 h-8 rounded-full bg-primary/20 text-primary flex items-center justify-center font-bold text-xs">
-              {user?.name?.[0] || "U"}
+        <div className="flex items-center justify-between p-2 rounded-xl bg-muted/40 border border-border group">
+          <NavLink 
+            to="/settings?action=edit-profile" 
+            className="flex items-center gap-2.5 min-w-0 flex-1 hover:opacity-80 transition-opacity cursor-pointer"
+          >
+            <div className="w-8 h-8 rounded-full overflow-hidden bg-primary/20 text-primary flex items-center justify-center font-bold text-xs shrink-0">
+              {user?.avatarUrl ? (
+                <img src={user.avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
+              ) : (
+                user?.name?.[0] || "U"
+              )}
             </div>
-            <div className="min-w-0">
-              <p className="text-xs font-medium text-foreground truncate">{user?.name}</p>
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-medium text-foreground truncate group-hover:text-primary transition-colors">{user?.name}</p>
               <p className="text-[10px] text-muted-foreground truncate">{user?.email}</p>
             </div>
-          </div>
+          </NavLink>
           <button
             onClick={logout}
-            className="p-1.5 text-muted-foreground hover:text-rose-500 transition-colors cursor-pointer"
+            className="p-1.5 text-muted-foreground hover:text-rose-500 transition-colors cursor-pointer shrink-0 ml-1"
             title="Log Out"
           >
             <LogOut className="w-4 h-4" />

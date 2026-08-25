@@ -1,12 +1,12 @@
 import React from "react";
 import { NavLink } from "react-router-dom";
-import { CalendarDays, Table, BookOpen, Settings, Sparkles, LayoutDashboard } from "lucide-react";
+import { CalendarDays, Table, BookOpen, Settings, Calendar } from "lucide-react";
 import { cn } from "../../lib/utils";
 
 const navItems = [
-  { label: "Overview", path: "/semester", icon: LayoutDashboard },
-  { label: "Forecast", path: "/predictive", icon: Sparkles },
+  { label: "Today", path: "/today", icon: CalendarDays },
   { label: "Timetable", path: "/timetable", icon: Table },
+  { label: "Calendar", path: "/calendar", icon: Calendar },
   { label: "Subjects", path: "/subjects", icon: BookOpen },
   { label: "Settings", path: "/settings", icon: Settings },
 ];

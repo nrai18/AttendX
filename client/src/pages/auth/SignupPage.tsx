@@ -58,9 +58,7 @@ export const SignupPage: React.FC = () => {
       <div className="w-full max-w-md space-y-6">
         {/* Brand Header */}
         <div className="text-center space-y-2">
-          <div className="inline-flex rounded-2xl bg-white p-2 shadow-xl shadow-indigo-500/25 mb-2 overflow-hidden">
-            <img src="/attendx_logo.png" alt="AttendX Logo" className="w-10 h-10 object-contain" />
-          </div>
+          <img src="/attendx_logo_lockup.png" alt="AttendX Logo" className="h-10 w-auto object-contain mx-auto mb-6" />
           <h1 className="text-3xl font-extrabold tracking-tight">Create Account</h1>
           <p className="text-sm text-muted-foreground">Join AttendX to organize your academic schedule</p>
         </div>
@@ -109,7 +107,7 @@ export const SignupPage: React.FC = () => {
                   <Input
                     id="email"
                     name="email"
-                    autoComplete="username email"
+                    autoComplete="email"
                     type="email"
                     value={email}
                     onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEmail(e.target.value)}

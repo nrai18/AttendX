@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
+import { Preferences } from "@capacitor/preferences";
 
 export interface User {
   id: string;
@@ -12,6 +13,10 @@ export interface User {
   batch?: string;
   targetAttendance: number;
   theme?: "light" | "dark" | "system";
+  gender?: string;
+  birthday?: string;
+  googleId?: string;
+  hasPassword?: boolean;
 }
 
 interface AuthState {
@@ -25,6 +30,20 @@ interface AuthState {
   logout: () => void;
   setLoading: (loading: boolean) => void;
 }
+
+// Custom storage wrapper for Capacitor Preferences
+const capacitorStorage = {
+  getItem: async (name: string): Promise<string | null> => {
+    const { value } = await Preferences.get({ key: name });
+    return value;
+  },
+  setItem: async (name: string, value: string): Promise<void> => {
+    await Preferences.set({ key: name, value });
+  },
+  removeItem: async (name: string): Promise<void> => {
+    await Preferences.remove({ key: name });
+  },
+};
 
 export const useAuthStore = create<AuthState>()(
   persist(
@@ -46,6 +65,7 @@ export const useAuthStore = create<AuthState>()(
         }),
 
       logout: () => {
+        Preferences.remove({ key: "attendx-auth" });
         localStorage.removeItem("attendx-auth");
         set({
           user: null,
@@ -59,7 +79,7 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: "attendx-auth",
-      storage: createJSONStorage(() => localStorage),
+      storage: createJSONStorage(() => capacitorStorage),
     }
   )
 );
