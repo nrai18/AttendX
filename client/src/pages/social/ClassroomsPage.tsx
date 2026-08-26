@@ -111,7 +111,7 @@ export const ClassroomsPage = () => {
           <Users className="w-12 h-12 text-muted-foreground mx-auto mb-4 opacity-50" />
           <h3 className="text-lg font-medium text-foreground mb-2">No classrooms yet</h3>
           <p className="text-muted-foreground max-w-sm mx-auto mb-6">
-            Join your class group to get synced timetables, announcements, and shared assignments.
+            Join your class group to get synced timetables, and announcements.
           </p>
           <button 
             onClick={() => setShowJoinModal(true)}

@@ -184,6 +184,27 @@ export const SemesterHubPage = () => {
     }
   };
 
+  const getEventDotSolidColor = (event: any) => {
+    const type = event?.eventType || "";
+    if (type === "fest") return "bg-fuchsia-500";
+    if (type === "holiday") {
+      if (event?.isHolidayList) return "bg-blue-500";
+      return "bg-emerald-500";
+    }
+    if (type === "restricted_holiday" || (type === "other" && event?.isHolidayList)) return "bg-cyan-500";
+    
+    switch (type) {
+      case "midsem": return "bg-orange-500";
+      case "endsem": return "bg-rose-500";
+      case "ct": return "bg-amber-500";
+      case "exam": return "bg-red-500";
+      case "lab_exam": return "bg-yellow-500";
+      case "vacation": return "bg-lime-500";
+      case "institute": return "bg-sky-500";
+      default: return "bg-blue-500";
+    }
+  };
+
   const getEventColor = (event: any) => {
     const type = event?.eventType || "";
     if (type === "fest" && event?.title) {
@@ -455,7 +476,7 @@ export const SemesterHubPage = () => {
                         <div className={`w-2 h-2 rounded-full mt-1 ${getDotColor(status)}`} title={status.replace("_", " ")} />
                       )}
                     </div>
-                    <div className="space-y-1 mt-auto">
+                    <div className="space-y-1 mt-auto hidden sm:block">
                       {dayEvents.slice(0, 2).map(e => (
                         <div key={e.id} className={`text-[10px] px-1.5 py-0.5 rounded truncate border ${getEventColor(e)}`} title={e.title}>
                           {e.title}
@@ -463,6 +484,17 @@ export const SemesterHubPage = () => {
                       ))}
                       {dayEvents.length > 2 && <div className="text-[10px] text-muted-foreground pl-1">+{dayEvents.length - 2} more</div>}
                     </div>
+                    {/* Mobile event dots */}
+                    {dayEvents.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-auto sm:hidden pb-0.5 justify-center w-full">
+                        {dayEvents.slice(0, 3).map(e => (
+                          <div key={e.id} className={`w-1.5 h-1.5 rounded-full ${getEventDotSolidColor(e)}`} />
+                        ))}
+                        {dayEvents.length > 3 && (
+                           <div className="w-1.5 h-1.5 rounded-full bg-muted-foreground" />
+                        )}
+                      </div>
+                    )}
                   </Link>
                 );
               })}

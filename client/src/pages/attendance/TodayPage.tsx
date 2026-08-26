@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Loader2, CheckCircle2, XCircle, AlertCircle, PartyPopper, BookOpen, Palmtree, Timer, TrendingUp, TrendingDown, Plus, MessageSquare, Sparkles, ChevronRight, ChevronLeft, X, Trash2 } from "lucide-react";
+import { PageSkeleton } from "../../components/common/PageSkeleton";
 import { api } from "../../lib/api";
 import { toast } from "sonner";
 import { useAuthStore } from "../../stores/authStore";
@@ -401,12 +402,8 @@ export const TodayPage = () => {
 
   const pendingCount = agenda.filter(a => a.status === null).length;
 
-  if (isLoading) {
-    return (
-      <div className="flex-1 flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
-      </div>
-    );
+  if (isLoading || !agenda) {
+    return <PageSkeleton type="today" />;
   }
 
   // Determine if we should show the holiday/exam state instead of classes
@@ -661,7 +658,7 @@ export const TodayPage = () => {
           <CheckCircle2 className="w-12 h-12 text-emerald-500 mx-auto mb-4 opacity-80" />
           <h3 className="text-lg font-medium text-foreground mb-2">No classes scheduled today!</h3>
           <p className="text-muted-foreground max-w-sm mx-auto text-sm">
-            Enjoy your day off or catch up on assignments and self-study.
+            Enjoy your day off or catch up on reading and self-study.
           </p>
         </div>
       ) : (

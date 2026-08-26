@@ -371,12 +371,6 @@ export class AttendanceService {
 
           const status = att?.status || "not_marked";
           
-          // Apply future filtering rules
-          const isFuture = d > today;
-          if (isFuture && status === "not_marked") {
-             continue; // Hide unmarked regular future slots
-          }
-
           logs.push({
             id: att?.id || `slot-${slot.id}-${dateKey}`,
             date: dateKey,

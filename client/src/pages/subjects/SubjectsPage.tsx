@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Plus, Pencil, Trash2, Loader2, AlertCircle, TrendingUp, TrendingDown, CheckCircle2, XCircle, Shield, LayoutDashboard, Sparkles } from "lucide-react";
+import { PageSkeleton } from "../../components/common/PageSkeleton";
 import { toast } from "sonner";
 import { api } from "../../lib/api";
 import { CreateSemesterModal } from "../../components/semester/CreateSemesterModal";
@@ -233,11 +234,7 @@ export const SubjectsPage = () => {
   };
 
   if (isLoading) {
-    return (
-      <div className="flex-1 flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
-      </div>
-    );
+    return <PageSkeleton type="grid" />;
   }
 
   // Merge subjectStats with subject info (for subjects with no recorded attendance yet)

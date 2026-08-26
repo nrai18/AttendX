@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Plus, Trash2, Loader2, CalendarPlus, Upload, Image as ImageIcon, X, Download, FileSpreadsheet, Edit3, ArrowLeft, CheckSquare, Square, CheckCircle2, Zap } from "lucide-react";
+import { PageSkeleton } from "../../components/common/PageSkeleton";
 import { toast } from "sonner";
 import { api } from "../../lib/api";
 import { RunActionButton } from "../../components/ui/run-action-button";
@@ -471,11 +472,7 @@ export const TimetablePage = () => {
   };
 
   if (isLoading) {
-    return (
-      <div className="flex-1 flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
-      </div>
-    );
+    return <PageSkeleton type="list" />;
   }
   
   if (!activeSemester) {

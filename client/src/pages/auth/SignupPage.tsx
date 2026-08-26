@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+﻿import React, { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { GraduationCap, Mail, Lock, User as UserIcon, Loader2, ArrowRight, Check, X } from "lucide-react";
 import { Button } from "../../components/ui/button";
@@ -64,7 +64,7 @@ export const SignupPage: React.FC = () => {
         </div>
 
         {/* Card Form */}
-        <Card className="bg-[#0c0d12]/90 border-border shadow-2xl backdrop-blur-xl">
+        <Card className="bg-card/90 border-border shadow-2xl backdrop-blur-xl">
           <form onSubmit={handleSubmit}>
             <CardHeader className="space-y-1">
               <CardTitle className="text-xl">Sign Up</CardTitle>
@@ -95,7 +95,7 @@ export const SignupPage: React.FC = () => {
                     value={name}
                     onChange={(e: React.ChangeEvent<HTMLInputElement>) => setName(e.target.value)}
                     required
-                    className="pl-9 bg-white/5 border-border focus:border-primary text-white"
+                    className="pl-9 bg-background/50 border-border focus:border-primary text-foreground"
                   />
                 </div>
               </div>
@@ -112,7 +112,7 @@ export const SignupPage: React.FC = () => {
                     value={email}
                     onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEmail(e.target.value)}
                     required
-                    className="pl-9 bg-white/5 border-border focus:border-primary text-white"
+                    className="pl-9 bg-background/50 border-border focus:border-primary text-foreground"
                   />
                 </div>
               </div>
@@ -130,7 +130,7 @@ export const SignupPage: React.FC = () => {
                     onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPassword(e.target.value)}
                     required
                     minLength={6}
-                    className="pl-9 bg-white/5 border-border focus:border-primary text-white"
+                    className="pl-9 bg-background/50 border-border focus:border-primary text-foreground"
                   />
                 </div>
                 
@@ -163,14 +163,14 @@ export const SignupPage: React.FC = () => {
                   <div className="w-full border-t border-border"></div>
                 </div>
                 <div className="relative flex justify-center text-xs uppercase">
-                  <span className="bg-[#09090b] px-2 text-muted-foreground">Or continue with</span>
+                  <span className="bg-card px-2 text-muted-foreground">Or continue with</span>
                 </div>
               </div>
 
               <Button
                 type="button"
                 variant="outline"
-                className="w-full h-11 rounded-xl border-border hover:bg-white/5 font-semibold text-white bg-transparent"
+                className="w-full h-11 rounded-xl border-border hover:bg-background/50 font-semibold text-foreground bg-transparent"
                 onClick={() => window.location.href = `${API_BASE_URL}/auth/google`}
               >
                 <svg viewBox="0 0 24 24" className="w-5 h-5 mr-2">
@@ -195,3 +195,4 @@ export const SignupPage: React.FC = () => {
     </div>
   );
 };
+

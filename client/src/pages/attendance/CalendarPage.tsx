@@ -1,7 +1,8 @@
-// Replace the whole file to make it simpler and cleaner
 import React, { useState, useEffect } from "react";
 import { format, subMonths, addMonths, startOfMonth, endOfMonth, startOfWeek, endOfWeek, isSameMonth, isSameDay, addDays } from "date-fns";
+import { PageSkeleton } from "../../components/common/PageSkeleton";
 import { ChevronLeft, ChevronRight, Loader2, MessageSquare, Upload, CalendarDays } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
 import { api } from "../../lib/api";
 import { useNavigate } from "react-router-dom";
 import { CalendarImportModal } from "../../components/calendar/CalendarImportModal";
@@ -56,6 +57,7 @@ export const CalendarPage = () => {
   const [isLoading, setIsLoading] = useState(!cachedData);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
+  const [selectedMobileDate, setSelectedMobileDate] = useState<string | null>(null);
   const navigate = useNavigate();
 
   const fetchCalendar = async (force: boolean = false) => {
@@ -125,12 +127,8 @@ export const CalendarPage = () => {
     }
   };
 
-  if (isLoading && !data) {
-    return (
-      <div className="flex-1 flex items-center justify-center py-20">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
-      </div>
-    );
+  if (isLoading) {
+    return <PageSkeleton type="calendar" />;
   }
 
   const days: Record<string, string> = data?.days || {};
@@ -232,7 +230,13 @@ export const CalendarPage = () => {
             <div key={i} className="flex justify-center">
               {isCurrentMonth ? (
                 <button
-                  onClick={() => navigate(`/today?date=${dateKey}`)}
+                  onClick={() => {
+                    if (window.innerWidth < 640) {
+                      setSelectedMobileDate(dateKey);
+                    } else {
+                      navigate(`/today?date=${dateKey}`);
+                    }
+                  }}
                   className={`flex flex-col items-center justify-center relative w-12 h-14 hover:bg-muted/60 rounded-2xl transition-all cursor-pointer group ${animBorder}`}
                 >
                   <div className={`w-8 h-8 flex items-center justify-center rounded-full text-sm font-medium transition-transform group-hover:scale-110 ${
@@ -403,6 +407,112 @@ export const CalendarPage = () => {
         onClose={() => setIsSyncModalOpen(false)}
         onSuccess={() => fetchCalendar(true)}
       />
+
+      {/* Mobile Agenda Modal */}
+      <AnimatePresence>
+        {selectedMobileDate && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setSelectedMobileDate(null)}
+              className="fixed inset-0 bg-background/80 backdrop-blur-sm z-[100] sm:hidden"
+            />
+            <motion.div
+              initial={{ opacity: 0, y: 100 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 100 }}
+              className="fixed bottom-0 left-0 right-0 bg-card border-t border-border rounded-t-3xl p-6 z-[101] shadow-2xl sm:hidden flex flex-col max-h-[80vh]"
+            >
+              <div className="w-12 h-1.5 bg-muted rounded-full mx-auto mb-6" />
+              
+              {/* Agenda Content */}
+              {(() => {
+                const dayDetails = data?.details?.[selectedMobileDate] || [];
+                const dayEvents = data?.events?.[selectedMobileDate] || [];
+                const status = data?.days?.[selectedMobileDate] || "not_marked";
+                
+                return (
+                  <div className="flex flex-col gap-4 overflow-y-auto">
+                    {/* Header */}
+                    <div className="flex justify-between items-center pb-3 border-b border-border">
+                      <h3 className="text-xl font-bold text-foreground">
+                        {format(new Date(selectedMobileDate + "T00:00:00"), "MMMM d, yyyy")}
+                      </h3>
+                      <span className={`text-xs uppercase font-bold px-2 py-1 rounded ${
+                        status === "attended" ? "bg-emerald-500/20 text-emerald-500" :
+                        status === "missed" ? "bg-rose-500/20 text-rose-500" :
+                        status === "mixed" ? "bg-purple-500/20 text-purple-500" :
+                        status === "off" ? "bg-yellow-500/20 text-yellow-500" :
+                        "bg-muted text-muted-foreground"
+                      }`}>
+                        {status === "not_marked" 
+                          ? (dayDetails.length > 0 ? "Incomplete" : "No Data") 
+                          : status}
+                      </span>
+                    </div>
+
+                    {/* Events */}
+                    {dayEvents.length > 0 && (
+                      <div className="flex flex-col gap-2 mb-2">
+                        <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Events</h4>
+                        {dayEvents.map((e, idx) => (
+                          <div key={idx} className="flex items-start gap-2 text-sm font-semibold text-indigo-400 bg-indigo-500/10 p-2.5 rounded-xl border border-indigo-500/20">
+                            <span className="w-2 h-2 rounded-full bg-indigo-500 mt-1.5 shrink-0" />
+                            <span className="leading-tight">{e.title}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Subjects Agenda */}
+                    {dayDetails.length > 0 ? (
+                      <div className="flex flex-col gap-2">
+                        <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Classes</h4>
+                        {dayDetails.map((detail, idx) => (
+                          <div key={idx} className="flex items-center justify-between text-sm bg-muted/30 p-2.5 rounded-xl border border-border">
+                            <span className="text-foreground font-medium truncate pr-2 flex-1">{detail.subjectName}</span>
+                            <span className={`font-bold shrink-0 ${
+                              detail.status === "present" ? "text-emerald-500" :
+                              detail.status === "absent" ? "text-rose-500" :
+                              detail.status === "off" ? "text-yellow-500" :
+                              "text-blue-500"
+                            }`}>
+                              {detail.status === "present" ? "Present" :
+                               detail.status === "absent" ? "Absent" :
+                               detail.status === "off" ? "Off" : "Other"}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-sm text-muted-foreground italic text-center py-4 bg-muted/20 rounded-xl">
+                        No classes scheduled
+                      </div>
+                    )}
+
+                    <div className="flex gap-3 mt-4 pt-4 border-t border-border">
+                      <button 
+                        onClick={() => setSelectedMobileDate(null)}
+                        className="flex-1 py-3.5 rounded-xl font-bold text-sm bg-muted text-foreground hover:bg-muted/80 transition-colors"
+                      >
+                        Close
+                      </button>
+                      <button 
+                        onClick={() => navigate(`/today?date=${selectedMobileDate}`)}
+                        className="flex-[2] py-3.5 rounded-xl font-bold text-sm bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+                      >
+                        Open Day Details
+                      </button>
+                    </div>
+                  </div>
+                );
+              })()}
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

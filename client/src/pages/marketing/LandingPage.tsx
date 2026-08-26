@@ -15,6 +15,7 @@ import {
   Send
 } from "lucide-react";
 import { toast } from "sonner";
+import { Player as Lottie } from '@lottiefiles/react-lottie-player';
 import { Button } from "../../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
 import { Input } from "../../components/ui/input";
@@ -49,8 +50,8 @@ export const LandingPage: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-background text-foreground selection:bg-primary/30">
-      {/* Navigation */}
-      <nav className="fixed top-0 w-full z-50 border-b border-border bg-background/80 backdrop-blur-md">
+      {/* Navigation - Desktop */}
+      <nav className="hidden md:block fixed top-0 w-full z-50 border-b border-border bg-background/80 backdrop-blur-md">
         <div className="container mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <img src="/attendx_logo_lockup.png" alt="AttendX Logo" className="h-8 w-auto object-contain" />
@@ -70,7 +71,7 @@ export const LandingPage: React.FC = () => {
               </Button>
             </Link>
             <Link to="/signup">
-              <Button className="bg-primary hover:bg-primary/90 text-white rounded-xl shadow-lg shadow-primary/20 transition-all hover:scale-105 hidden sm:flex">
+              <Button className="bg-primary hover:bg-primary/90 text-white rounded-xl shadow-lg shadow-primary/20 transition-all hover:scale-105">
                 Get Started
               </Button>
             </Link>
@@ -78,12 +79,23 @@ export const LandingPage: React.FC = () => {
         </div>
       </nav>
 
+      {/* Navigation - Mobile (Floating Glassmorphic) */}
+      <nav className="md:hidden fixed top-4 inset-x-4 z-50 flex items-center justify-between px-5 py-3 rounded-full backdrop-blur-xl bg-background/80 border border-border/50 shadow-sm">
+        <img src="/attendx_logo_lockup.png" alt="AttendX" className="h-5 w-auto object-contain" />
+        <div className="flex items-center gap-4">
+          <button onClick={toggleTheme} className="text-muted-foreground hover:text-foreground">
+            {theme === "dark" ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+          </button>
+          <Link to="/login" className="text-sm font-semibold text-foreground">Log in</Link>
+        </div>
+      </nav>
+
       {/* Hero Section */}
       <section className="relative pt-32 pb-20 md:pt-48 md:pb-32 px-6 overflow-hidden">
-        {/* Background glow effects */}
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-primary/20 rounded-full blur-[120px] opacity-50 pointer-events-none" />
         
-        <div className="container mx-auto max-w-5xl text-center relative z-10">
+        {/* Desktop Hero Content (hidden on mobile) */}
+        <div className="hidden md:block container mx-auto max-w-5xl text-center relative z-10">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-muted/50 border border-border text-sm text-primary mb-8 animate-fade-in">
             <span className="relative flex h-2 w-2">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
@@ -93,40 +105,87 @@ export const LandingPage: React.FC = () => {
           </div>
           
           <h1 className="text-5xl md:text-7xl font-extrabold tracking-tight mb-8 bg-gradient-to-b from-foreground to-foreground/60 bg-clip-text text-transparent">
-            Take Control of Your <br className="hidden md:block" />
+            Take Control of Your <br />
             College Attendance.
           </h1>
           
-          <p className="text-lg md:text-xl text-muted-foreground mb-10 max-w-2xl mx-auto">
+          <p className="text-xl text-muted-foreground mb-10 max-w-2xl mx-auto">
             The ultimate smart attendance tracker designed exclusively for IIITU students. Never worry about falling below the 75% threshold again.
           </p>
           
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+          <div className="flex flex-row items-center justify-center gap-4">
             <Link to="/signup">
-              <Button size="lg" className="h-14 px-8 text-base bg-primary hover:bg-primary/90 text-white rounded-2xl shadow-xl shadow-primary/20 transition-all hover:-translate-y-1 w-full sm:w-auto">
+              <Button size="lg" className="h-14 px-8 text-base bg-primary hover:bg-primary/90 text-white rounded-2xl shadow-xl shadow-primary/20 transition-all hover:-translate-y-1 w-auto">
                 Join AttendX Now <ArrowRight className="ml-2 w-5 h-5" />
               </Button>
             </Link>
             <Link to="/login">
-              <Button size="lg" variant="outline" className="h-14 px-8 text-base border-border bg-muted/50 hover:bg-muted rounded-2xl transition-all w-full sm:w-auto text-foreground">
+              <Button size="lg" variant="outline" className="h-14 px-8 text-base border-border bg-muted/50 hover:bg-muted rounded-2xl transition-all w-auto text-foreground">
                 I already have an account
               </Button>
             </Link>
           </div>
+  
+          {/* Hero Lottie Animation Desktop */}
+          <div className="mt-16 relative rounded-2xl overflow-hidden shadow-2xl shadow-primary/10 max-w-2xl mx-auto bg-muted/20 flex justify-center aspect-[9/16] sm:aspect-[16/9] items-center">
+             <Lottie src="/logo_animation.json" loop={true} autoplay={true} className="w-full h-full object-cover scale-[1.3] opacity-90" />
+          </div>
+        </div>
 
-          {/* Hero Video Animation */}
-          <div className="mt-16 relative rounded-2xl overflow-hidden shadow-2xl shadow-primary/10 max-w-4xl mx-auto flex justify-center">
-            <video 
-              src="/logo_animation.mp4" 
-              autoPlay 
-              loop 
-              muted 
-              playsInline
-              className="w-full max-w-2xl h-auto object-cover rounded-2xl"
-            />
+        {/* Mobile Hero Content */}
+        <div className="md:hidden flex flex-col items-center text-center relative z-10 pt-4">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-muted/50 border border-border text-xs text-primary mb-6">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
+            </span>
+            AttendX 1.0 is live at IIITU
+          </div>
+          
+          <h1 className="text-[2.8rem] font-extrabold tracking-tight leading-[1.05] mb-4">
+            Your College<br/>
+            <span className="bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-indigo-500">
+              Attendance.
+            </span>
+          </h1>
+          
+          <p className="text-base text-muted-foreground mb-6 max-w-[280px] mx-auto leading-relaxed">
+            The smart tracker for IIITU. Never worry about the 75% threshold again.
+          </p>
+
+          <div className="flex flex-col items-center mb-8">
+            <div className="flex items-center -space-x-3 mb-2">
+              <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Felix" className="w-8 h-8 rounded-full border-2 border-background bg-muted" alt="user" />
+              <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Aneka" className="w-8 h-8 rounded-full border-2 border-background bg-muted" alt="user" />
+              <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Alex" className="w-8 h-8 rounded-full border-2 border-background bg-muted" alt="user" />
+              <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Raina" className="w-8 h-8 rounded-full border-2 border-background bg-muted" alt="user" />
+            </div>
+            <div className="flex items-center gap-1 text-yellow-500 text-sm">
+              <span>★</span><span>★</span><span>★</span><span>★</span><span>★</span>
+            </div>
+            <p className="text-xs text-muted-foreground font-medium mt-1">Loved by 500+ students</p>
+          </div>
+
+          {/* Hero Lottie Animation Mobile */}
+          <div className="w-full relative rounded-t-[2.5rem] overflow-hidden shadow-2xl mt-4 aspect-[9/16] bg-muted flex items-center justify-center">
+            <Lottie src="/logo_animation.json" loop={true} autoplay={true} className="w-full h-full scale-[1.3] transform origin-center" />
           </div>
         </div>
       </section>
+
+      {/* Sticky Bottom CTA (Mobile Only) */}
+      <div className="md:hidden fixed bottom-0 inset-x-0 p-4 pb-safe bg-gradient-to-t from-background via-background/90 to-transparent z-50">
+        <Link to="/signup" className="w-full block">
+          <Button className="w-full h-14 bg-foreground hover:bg-foreground/90 text-background rounded-2xl text-[17px] font-semibold active:scale-[0.98] transition-transform shadow-2xl flex justify-center items-center gap-2">
+            Join AttendX Now <ArrowRight className="w-5 h-5" />
+          </Button>
+        </Link>
+        <div className="text-center mt-3">
+          <Link to="/login" className="text-sm font-medium text-muted-foreground hover:text-foreground">
+            I already have an account
+          </Link>
+        </div>
+      </div>
 
       {/* Features Section */}
       <section id="features" className="py-24 bg-muted/30 relative">
@@ -170,7 +229,7 @@ export const LandingPage: React.FC = () => {
                 </div>
                 <CardTitle>Classrooms Hub</CardTitle>
                 <CardDescription className="text-muted-foreground text-base">
-                  Join your batch's classroom to get official announcements, assignments, and notes directly from your CR.
+                  Join your batch's classroom to get official announcements and notes directly from your CR.
                 </CardDescription>
               </CardHeader>
             </Card>
@@ -360,8 +419,8 @@ export const LandingPage: React.FC = () => {
             &copy; {new Date().getFullYear()} Naman Rai. Built for IIITU.
           </p>
           <div className="flex gap-6 text-sm text-muted-foreground">
-            <a href="#" className="hover:text-foreground transition-colors">Privacy</a>
-            <a href="#" className="hover:text-foreground transition-colors">Terms</a>
+            <a href="/404" className="hover:text-foreground transition-colors">Privacy</a>
+            <a href="/404" className="hover:text-foreground transition-colors">Terms</a>
           </div>
         </div>
       </footer>
