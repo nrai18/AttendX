@@ -58,13 +58,13 @@ export class AuthService {
   }
 
   static async generateTokensForOAuth(user: any) {
-    const accessToken = generateAccessToken(user.id, user.role);
+    const { v4: uuidv4 } = require("uuid"); const sessionId = uuidv4(); const accessToken = generateAccessToken(user.id, user.role, sessionId);
     const refreshToken = generateRefreshToken(user.id);
     const hashedRefresh = await this.hashToken(refreshToken);
 
     await prisma.refreshToken.create({
       data: {
-        userId: user.id,
+        id: sessionId, userId: user.id,
         token: hashedRefresh,
         expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
       },
@@ -97,13 +97,13 @@ export class AuthService {
     const user = await prisma.user.findUnique({ where: { id: payload.userId } });
     if (!user) throw new Error("User not found");
 
-    const accessToken = generateAccessToken(user.id, user.role);
+    const { v4: uuidv4 } = require("uuid"); const sessionId = uuidv4(); const accessToken = generateAccessToken(user.id, user.role, sessionId);
     const newRefreshToken = generateRefreshToken(user.id);
     const hashedNewRefresh = await this.hashToken(newRefreshToken);
 
     await prisma.refreshToken.create({
       data: {
-        userId: user.id,
+        id: sessionId, userId: user.id,
         token: hashedNewRefresh,
         expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
       },

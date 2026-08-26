@@ -9,7 +9,7 @@ export class AuthController {
       if (!email.endsWith("@iiitu.ac.in") && !email.endsWith("@gmail.com")) {
         return res.status(400).json({ message: "Only @iiitu.ac.in or @gmail.com emails are allowed." });
       }
-      const { user, accessToken, refreshToken } = await AuthService.register(req.body);
+      const { user, accessToken, refreshToken } = await AuthService.register(req.body, req);
       setRefreshCookie(res, refreshToken);
       res.status(201).json({ user, accessToken });
     } catch (error: any) {
@@ -23,7 +23,7 @@ export class AuthController {
       if (!email.endsWith("@iiitu.ac.in") && !email.endsWith("@gmail.com")) {
         return res.status(401).json({ message: "Only @iiitu.ac.in or @gmail.com emails are allowed." });
       }
-      const { user, accessToken, refreshToken } = await AuthService.login(req.body);
+      const { user, accessToken, refreshToken } = await AuthService.login(req.body, req);
       setRefreshCookie(res, refreshToken);
       res.status(200).json({ user, accessToken });
     } catch (error: any) {
@@ -38,7 +38,7 @@ export class AuthController {
         return res.status(401).json({ message: "No refresh token provided" });
       }
 
-      const { accessToken, refreshToken } = await AuthService.refresh(oldRefreshToken);
+      const { accessToken, refreshToken } = await AuthService.refresh(oldRefreshToken, req);
       setRefreshCookie(res, refreshToken);
       res.status(200).json({ accessToken });
     } catch (error: any) {
@@ -58,4 +58,17 @@ export class AuthController {
     }
   }
 
+  static async googleNative(req: Request, res: Response) {
+    try {
+      const { idToken } = req.body;
+      if (!idToken) return res.status(400).json({ message: "idToken is required" });
+
+      const { user, accessToken, refreshToken } = await AuthService.googleNativeLogin(idToken, req);
+      setRefreshCookie(res, refreshToken);
+      res.status(200).json({ user, accessToken });
+    } catch (error: any) {
+      console.error("Google Native Auth Error:", error);
+      res.status(401).json({ message: error.message || "Authentication failed" });
+    }
+  }
 }

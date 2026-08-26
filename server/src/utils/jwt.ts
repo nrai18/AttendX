@@ -6,8 +6,8 @@ const getSecret = (type: "access" | "refresh") => {
   return secret;
 };
 
-export const generateAccessToken = (userId: string, role: string) => {
-  return jwt.sign({ userId, role }, getSecret("access"), {
+export const generateAccessToken = (userId: string, role: string, sessionId?: string) => {
+  return jwt.sign({ userId, role, sessionId }, getSecret("access"), {
     expiresIn: "15m", // Short-lived access token
   });
 };
@@ -19,7 +19,7 @@ export const generateRefreshToken = (userId: string) => {
 };
 
 export const verifyAccessToken = (token: string) => {
-  return jwt.verify(token, getSecret("access")) as { userId: string; role: string };
+  return jwt.verify(token, getSecret("access")) as { userId: string; role: string; sessionId?: string };
 };
 
 export const verifyRefreshToken = (token: string) => {

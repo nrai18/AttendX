@@ -19,7 +19,9 @@ import { Loader2 } from "lucide-react";
 import { ErrorBoundary } from "./components/common/ErrorBoundary";
 
 // Protected Route Guard Component
-const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({
+  children,
+}) => {
   const { isAuthenticated, isLoading } = useAuthStore();
 
   if (isLoading) {
@@ -41,13 +43,11 @@ import { LandingPage } from "./pages/marketing/LandingPage";
 
 // ... [Keep existing placeholders] ...
 
-
-
 import { WebSplashScreen } from "./components/common/WebSplashScreen";
 import { SettingsPage } from "./pages/settings/SettingsPage";
 import { PredictiveAttendancePage } from "./pages/attendance/PredictiveAttendancePage";
 import { Toaster } from "sonner";
-import { useState } from 'react';
+import { useState } from "react";
 
 const RootRoute: React.FC = () => {
   const { isAuthenticated, isLoading } = useAuthStore();
@@ -55,16 +55,19 @@ const RootRoute: React.FC = () => {
   return isAuthenticated ? <Navigate to="/today" replace /> : <LandingPage />;
 };
 
-import { NotificationService } from './services/NotificationService';
-import { Capacitor } from '@capacitor/core';
-import { useEffect } from 'react';
+import { NotificationService } from "./services/NotificationService";
+import { OTAUpdateModal } from "./components/common/OTAUpdateModal";
+import { Capacitor } from "@capacitor/core";
+import { useEffect } from "react";
 
 import { NotFoundPage } from "./pages/NotFoundPage";
+
+import { HardwareBackButtonHandler } from "./components/common/HardwareBackButtonHandler";
 
 export function App() {
   useSilentRefresh();
   useTheme();
-  const theme = useThemeStore(state => state.theme);
+  const theme = useThemeStore((state) => state.theme);
   const [splashFinished, setSplashFinished] = useState(false);
 
   useEffect(() => {
@@ -81,52 +84,63 @@ export function App() {
 
   return (
     <>
-      {!splashFinished && <WebSplashScreen onComplete={() => setSplashFinished(true)} />}
-      <Toaster 
-        position="top-center" 
-        theme={theme as any} 
-        duration={2500} 
-        visibleToasts={2} 
-        toastOptions={{ className: 'rounded-xl border border-border shadow-lg mt-4 md:mt-0' }} 
+      {!splashFinished && (
+        <WebSplashScreen onComplete={() => setSplashFinished(true)} />
+      )}
+      <Toaster
+        position="top-center"
+        theme={theme as any}
+        duration={2500}
+        visibleToasts={2}
+        toastOptions={{
+          className: "rounded-xl border border-border shadow-lg mt-4 md:mt-0",
+        }}
+      />
+      <OTAUpdateModal
+        localVersion={localStorage.getItem("app_version") || "1.0.0"}
       />
       {splashFinished && (
         <BrowserRouter>
-        <Routes>
-          {/* Public Landing Page */}
-          <Route path="/" element={<RootRoute />} />
+          <HardwareBackButtonHandler />
+          <Routes>
+            {/* Public Landing Page */}
+            <Route path="/" element={<RootRoute />} />
 
-          {/* Auth Routes */}
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/signup" element={<SignupPage />} />
+            {/* Auth Routes */}
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/signup" element={<SignupPage />} />
 
-          {/* Protected App Routes */}
-          <Route
-            element={
-              <ProtectedRoute>
-                <ErrorBoundary>
-                  <AppShell />
-                </ErrorBoundary>
-              </ProtectedRoute>
-            }
-          >
-            <Route path="/today" element={<TodayPage />} />
-            <Route path="/predictive" element={<PredictiveAttendancePage />} />
-            <Route path="/timetable" element={<TimetablePage />} />
-            <Route path="/semester" element={<SemesterHubPage />} />
-            <Route path="/calendar" element={<CalendarPage />} />
-            <Route path="/subjects" element={<SubjectsPage />} />
-            <Route path="/subjects/manage" element={<SubjectsPage />} />
-            <Route path="/subjects/:id" element={<SubjectDetailPage />} />
-            <Route path="/classrooms" element={<ClassroomsPage />} />
-            <Route path="/classrooms/:id" element={<ClassroomFeedPage />} />
-            <Route path="/settings" element={<SettingsPage />} />
+            {/* Protected App Routes */}
+            <Route
+              element={
+                <ProtectedRoute>
+                  <ErrorBoundary>
+                    <AppShell />
+                  </ErrorBoundary>
+                </ProtectedRoute>
+              }
+            >
+              <Route path="/today" element={<TodayPage />} />
+              <Route
+                path="/predictive"
+                element={<PredictiveAttendancePage />}
+              />
+              <Route path="/timetable" element={<TimetablePage />} />
+              <Route path="/semester" element={<SemesterHubPage />} />
+              <Route path="/calendar" element={<CalendarPage />} />
+              <Route path="/subjects" element={<SubjectsPage />} />
+              <Route path="/subjects/manage" element={<SubjectsPage />} />
+              <Route path="/subjects/:id" element={<SubjectDetailPage />} />
+              <Route path="/classrooms" element={<ClassroomsPage />} />
+              <Route path="/classrooms/:id" element={<ClassroomFeedPage />} />
+              <Route path="/settings" element={<SettingsPage />} />
+              <Route path="*" element={<NotFoundPage />} />
+            </Route>
+
+            {/* Default Redirect / 404 */}
             <Route path="*" element={<NotFoundPage />} />
-          </Route>
-
-          {/* Default Redirect / 404 */}
-          <Route path="*" element={<NotFoundPage />} />
-        </Routes>
-      </BrowserRouter>
+          </Routes>
+        </BrowserRouter>
       )}
     </>
   );

@@ -8,6 +8,9 @@ router.post("/login", AuthController.login);
 router.post("/refresh", AuthController.refresh);
 router.post("/logout", AuthController.logout);
 
+// Google OAuth routes (Native Mobile)
+router.post("/google/native", AuthController.googleNative);
+
 // Google OAuth routes
 import passport from "../middleware/passport";
 import { AuthService } from "../services/auth.service";
@@ -22,7 +25,7 @@ router.get(
     try {
       if (!req.user) return res.redirect(process.env.FRONTEND_URL + "/login?error=oauth");
       
-      const { accessToken, refreshToken } = await AuthService.generateTokensForOAuth(req.user);
+      const { accessToken, refreshToken } = await AuthService.generateTokensForOAuth(req.user, req);
       setRefreshCookie(res, refreshToken);
       
       const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
