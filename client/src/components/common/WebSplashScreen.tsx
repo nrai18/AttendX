@@ -35,7 +35,7 @@ export function WebSplashScreen({ onComplete }: { onComplete: () => void }) {
           transition={{ duration: 0.5 }}
           className="fixed inset-0 z-[9999] bg-background flex items-center justify-center overflow-hidden"
         >
-          <div className="absolute inset-0 w-full h-full">
+          <div className="absolute inset-0 w-full h-full scale-[1.35] md:scale-100 origin-center">
             <Lottie 
               src={animPath} 
               loop={false}
