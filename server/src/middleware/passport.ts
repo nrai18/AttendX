@@ -20,9 +20,8 @@ passport.use(
           return done(new Error("Only @iiitu.ac.in or @gmail.com emails are allowed."), false);
         }
         
-        // Import Prisma directly since passport runs standalone middleware
-        const { PrismaClient } = require("@prisma/client");
-        const prisma = new PrismaClient();
+        // Import Prisma directly from our lib to ensure driver adapter is used
+        const { prisma } = require("../lib/prisma");
         
         // Upsert User
         const user = await prisma.user.upsert({

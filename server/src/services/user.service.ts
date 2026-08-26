@@ -76,6 +76,39 @@ export class UserService {
     return { ...rest, hasPassword: !!passwordHash };
   }
 
+  static async getSessions(userId: string, sessionId?: string) {
+    const sessions = await prisma.refreshToken.findMany({
+      where: { userId },
+      orderBy: { lastActive: "desc" },
+      select: {
+        id: true,
+        userAgent: true,
+        ipAddress: true,
+        location: true,
+        deviceType: true,
+        os: true,
+        browser: true,
+        lastActive: true,
+        createdAt: true
+      }
+    });
+
+    return sessions.map((s: any) => ({
+      ...s,
+      isCurrent: s.id === sessionId
+    }));
+  }
+
+  static async revokeSession(userId: string, sessionId: string) {
+    await prisma.refreshToken.deleteMany({ where: { userId, id: sessionId } });
+    return { success: true };
+  }
+
+  static async revokeAllOtherSessions(userId: string, currentSessionId: string) {
+    await prisma.refreshToken.deleteMany({ where: { userId, id: { not: currentSessionId } } });
+    return { success: true };
+  }
+
   static async resetTimetable(userId: string) {
     const semesters = await prisma.semester.findMany({
       where: { userId },

@@ -83,4 +83,38 @@ export class UserController {
       res.status(500).json({ message: error.message || "Failed to reset events" });
     }
   }
+
+  static async getSessions(req: AuthenticatedRequest, res: Response) { console.log("getSessions called!");
+    try {
+      const userId = req.user!.userId;
+      const sessionId = req.user!.sessionId;
+      const sessions = await UserService.getSessions(userId, sessionId);
+      res.status(200).json(sessions);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  }
+
+  static async revokeAllOtherSessions(req: AuthenticatedRequest, res: Response) {
+    try {
+      const userId = req.user!.userId;
+      const sessionId = req.user!.sessionId;
+      if (!sessionId) throw new Error("Current session missing");
+      const result = await UserService.revokeAllOtherSessions(userId, sessionId);
+      res.status(200).json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  }
+
+  static async revokeSession(req: AuthenticatedRequest, res: Response) {
+    try {
+      const userId = req.user!.userId;
+      const { sessionId } = req.params;
+      const result = await UserService.revokeSession(userId, sessionId);
+      res.status(200).json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  }
 }

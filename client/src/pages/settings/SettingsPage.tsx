@@ -12,6 +12,7 @@ import { RunActionButton } from "../../components/ui/run-action-button";
 import { SaveToggle } from "../../components/ui/save-toggle";
 import { TimedUndoAction } from "../../components/ui/timed-undo-action";
 import { EditProfile, ProfileData } from "../../components/ui/edit-profile";
+import { LinkedDevicesModal } from "../../components/ui/linked-devices";
 import {
   Settings,
   Target,
@@ -57,6 +58,8 @@ import {
   type FrequencyData,
 } from "../../components/ui/frequency-selector";
 import { PeerSyncModal } from "../../components/sync/PeerSyncModal";
+import { FeedbackModal } from "../../components/support/FeedbackModal";
+import { NotificationService } from "../../services/NotificationService";
 
 export const SettingsPage: React.FC = () => {
 const renderDocuments = (type: string) => {
@@ -144,8 +147,13 @@ const renderDocuments = (type: string) => {
 
   // App Info Modal State
   const [showAppInfoModal, setShowAppInfoModal] = useState(false);
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
+  const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
   const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
+  const [isLinkedDevicesOpen, setIsLinkedDevicesOpen] = useState(false);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
+
+  // Stored Documents State
   const [storedDocuments, setStoredDocuments] = useState<any[]>([]);
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -171,6 +179,12 @@ const renderDocuments = (type: string) => {
   }, []);
 
   // Frequency Selector State (Demo / UI)
+  const [classReminderTime, setClassReminderTime] = useState("5");
+  const [notifyHoliday, setNotifyHoliday] = useState(true);
+  const [notifyEvent, setNotifyEvent] = useState(true);
+  const [notifyBirthday, setNotifyBirthday] = useState(true);
+  const [dndEnabled, setDndEnabled] = useState(true);
+
   const [reminderFrequency, setReminderFrequency] = useState<FrequencyData>({
     type: "Weekly",
     subValue: "Mon",
@@ -961,6 +975,26 @@ const renderDocuments = (type: string) => {
               <ChevronRight className="w-4 h-4" />
             </div>
           </button>
+          <div className="h-px bg-border/50" />
+          <button 
+            onClick={() => setIsLinkedDevicesOpen(true)}
+            className="w-full p-4 flex items-center justify-between hover:bg-muted/30 transition-colors"
+          >
+            <div className="flex items-center gap-3">
+              <div className="bg-emerald-500/10 p-2.5 rounded-xl text-emerald-500 shrink-0">
+                <Laptop className="w-5 h-5" />
+              </div>
+              <div className="text-left">
+                <span className="text-sm font-semibold text-foreground block">
+                  Linked Devices
+                </span>
+                <span className="text-xs text-muted-foreground block mt-0.5">
+                  Manage active sessions
+                </span>
+              </div>
+            </div>
+            <ChevronRight className="w-4 h-4 text-muted-foreground" />
+          </button>
         </div>
       </div>
 
@@ -1079,6 +1113,18 @@ const renderDocuments = (type: string) => {
               value={reminderFrequency}
               onChange={setReminderFrequency}
             />
+          </div>
+
+          <hr className="border-border/50" />
+          <div className="pt-2 flex flex-col gap-2">
+            <div className="flex gap-2">
+              <button onClick={() => NotificationService.scheduleClassReminder("Data Structures", new Date(Date.now() + 60000), "Room 304")} className="flex-1 py-2 bg-primary/20 text-primary text-xs font-bold rounded-xl hover:bg-primary/30 transition-colors">Test Class Reminder</button>
+              <button onClick={() => NotificationService.triggerPinnedClassMute("Operating Systems", new Date(Date.now() + 60000))} className="flex-1 py-2 bg-amber-500/20 text-amber-500 text-xs font-bold rounded-xl hover:bg-amber-500/30 transition-colors">Test DND Active</button>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => NotificationService.scheduleHolidayNotification("Diwali", new Date())} className="flex-1 py-2 bg-emerald-500/20 text-emerald-500 text-xs font-bold rounded-xl hover:bg-emerald-500/30 transition-colors">Test Holiday</button>
+              <button onClick={() => NotificationService.scheduleBirthdayNotification("Naman", new Date())} className="flex-1 py-2 bg-pink-500/20 text-pink-500 text-xs font-bold rounded-xl hover:bg-pink-500/30 transition-colors">Test Birthday</button>
+            </div>
           </div>
         </div>
       </div>
@@ -1348,6 +1394,31 @@ const renderDocuments = (type: string) => {
             </div>
             <Download className="w-4 h-4 text-muted-foreground shrink-0" />
           </a>
+        </div>
+      </div>
+
+            {/* CATEGORY: Support */}
+      <div className="space-y-3">
+        <h2 className="text-xs font-bold text-muted-foreground uppercase tracking-wider px-1">
+          Support
+        </h2>
+        <div className="bg-card border border-border/70 rounded-2xl divide-y divide-border/50 shadow-md">
+          <div onClick={() => setIsFeedbackOpen(true)} className="w-full text-left p-4 hover:bg-muted/50 transition-colors flex items-center justify-between cursor-pointer group">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-foreground group-hover:text-primary transition-colors">
+                  Send feedback
+                </h3>
+                <p className="text-xs text-muted-foreground">
+                  Report an issue or suggest improvements.
+                </p>
+              </div>
+            </div>
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 text-muted-foreground"><polyline points="9 18 15 12 9 6"/></svg>
+          </div>
         </div>
       </div>
 
@@ -1807,6 +1878,15 @@ const renderDocuments = (type: string) => {
           </div>
         </div>
       )}
+
+      <FeedbackModal 
+        isOpen={isFeedbackOpen} 
+        onClose={() => setIsFeedbackOpen(false)} 
+      />
+      <LinkedDevicesModal 
+        isOpen={isLinkedDevicesOpen} 
+        onClose={() => setIsLinkedDevicesOpen(false)} 
+      />
     </div>
   );
 };

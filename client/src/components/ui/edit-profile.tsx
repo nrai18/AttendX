@@ -27,21 +27,26 @@ export const EditProfile: React.FC<EditProfileProps> = ({ isOpen, onClose, initi
   const [showPasswordSection, setShowPasswordSection] = useState(false);
   const [showAvatarPicker, setShowAvatarPicker] = useState(false);
 
-  const MALE_AVATARS = [
-    "https://api.dicebear.com/7.x/notionists/svg?seed=Felix&gender=male",
-    "https://api.dicebear.com/7.x/notionists/svg?seed=Oliver&gender=male",
-    "https://api.dicebear.com/7.x/notionists/svg?seed=Caleb&gender=male",
-    "https://api.dicebear.com/7.x/notionists/svg?seed=Jack&gender=male",
-    "https://api.dicebear.com/7.x/notionists/svg?seed=Max&gender=male",
+  const AVATARS = [
+    "https://api.dicebear.com/7.x/notionists/svg?seed=Felix",
+    "https://api.dicebear.com/7.x/notionists/svg?seed=Mia&beardProbability=0",
+    "https://api.dicebear.com/7.x/notionists/svg?seed=Oliver",
+    "https://api.dicebear.com/7.x/notionists/svg?seed=Lily&beardProbability=0",
+    "https://api.dicebear.com/7.x/notionists/svg?seed=Caleb",
+    "https://api.dicebear.com/7.x/notionists/svg?seed=Aneka&beardProbability=0",
+    "https://api.dicebear.com/7.x/notionists/svg?seed=Jack",
+    "https://api.dicebear.com/7.x/notionists/svg?seed=Jocelyn&beardProbability=0",
+    "https://api.dicebear.com/7.x/notionists/svg?seed=Max",
+    "https://api.dicebear.com/7.x/notionists/svg?seed=Sarah&beardProbability=0",
   ];
 
-  const FEMALE_AVATARS = [
-    "https://api.dicebear.com/7.x/notionists/svg?seed=Mia&gender=female",
-    "https://api.dicebear.com/7.x/notionists/svg?seed=Lily&gender=female",
-    "https://api.dicebear.com/7.x/notionists/svg?seed=Sophie&gender=female",
-    "https://api.dicebear.com/7.x/notionists/svg?seed=Jasmine&gender=female",
-    "https://api.dicebear.com/7.x/notionists/svg?seed=Zoe&gender=female",
-  ];
+  // Ensures Google profile picture and newly uploaded avatars stay in the grid
+  const selectableAvatars = Array.from(new Set([
+    formData.avatarUrl,
+    initialData.avatarUrl,
+    ...AVATARS
+  ].filter(Boolean)));
+
 
   useEffect(() => {
     if (isOpen) {
@@ -149,6 +154,61 @@ export const EditProfile: React.FC<EditProfileProps> = ({ isOpen, onClose, initi
 
                 <div className="p-6 space-y-5 overflow-y-auto max-h-[60vh] md:max-h-[70vh]">
                   
+                  {/* Mobile Avatar & Picker (Hidden on Desktop) */}
+                  <div className="flex md:hidden flex-col items-center pb-4 space-y-4">
+                    <div 
+                      className="relative group cursor-pointer"
+                      onClick={() => setShowAvatarPicker(!showAvatarPicker)}
+                    >
+                      <div className="w-24 h-24 rounded-full overflow-hidden border-4 border-primary/20 bg-muted">
+                        <img 
+                          src={formData.avatarUrl || "https://api.dicebear.com/7.x/notionists/svg?seed=Felix"} 
+                          alt="Avatar Preview" 
+                          className="w-full h-full object-cover" 
+                        />
+                      </div>
+                      <div className="absolute inset-0 bg-black/40 rounded-full opacity-0 active:opacity-100 transition-opacity flex items-center justify-center">
+                        <Pencil className="w-6 h-6 text-white" />
+                      </div>
+                      <button
+                        type="button"
+                        className="absolute bottom-0 right-0 p-2 bg-primary text-primary-foreground rounded-full shadow-lg hover:scale-110 transition-transform"
+                      >
+                        <Pencil size={14} />
+                      </button>
+                    </div>
+                    
+                    <AnimatePresence>
+                      {showAvatarPicker && (
+                        <motion.div
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: "auto" }}
+                          exit={{ opacity: 0, height: 0 }}
+                          className="w-full overflow-hidden"
+                        >
+                          <div className="grid grid-cols-5 gap-3 pt-2">
+                            {selectableAvatars.map((url, idx) => (
+                              <div 
+                                key={`m-avatar-${idx}`}
+                                onClick={() => { setFormData(prev => ({ ...prev, avatarUrl: url })); setShowAvatarPicker(false); }}
+                                className="aspect-square rounded-full overflow-hidden border-2 border-transparent hover:border-primary cursor-pointer bg-white transition-all shadow-sm"
+                              >
+                                <img src={url} alt={`Avatar ${idx + 1}`} className="w-full h-full object-cover" />
+                              </div>
+                            ))}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => fileInputRef.current?.click()}
+                            className="w-full mt-4 py-2.5 text-sm font-semibold rounded-xl bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
+                          >
+                            Upload Custom Picture
+                          </button>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+
                   <div className="space-y-1.5">
                     <label className="text-sm font-semibold text-muted-foreground">Full Name</label>
                     <input
@@ -299,29 +359,14 @@ export const EditProfile: React.FC<EditProfileProps> = ({ isOpen, onClose, initi
                     >
                       <div className="w-full px-2 mb-4 space-y-4 max-h-[300px] overflow-y-auto">
                         <div>
-                          <p className="text-xs font-bold text-muted-foreground mb-2 px-1">Male Avatars</p>
-                          <div className="grid grid-cols-5 gap-2">
-                            {MALE_AVATARS.map((url, idx) => (
+                          <div className="grid grid-cols-5 gap-3">
+                            {selectableAvatars.map((url, idx) => (
                               <div 
-                                key={`m-${idx}`}
+                                key={`avatar-${idx}`}
                                 onClick={() => { setFormData(prev => ({ ...prev, avatarUrl: url })); setShowAvatarPicker(false); }}
                                 className="aspect-square rounded-full overflow-hidden border-2 border-transparent hover:border-primary cursor-pointer bg-white transition-all hover:scale-105 shadow-sm"
                               >
-                                <img src={url} alt={`Male ${idx + 1}`} className="w-full h-full object-cover" />
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                        <div>
-                          <p className="text-xs font-bold text-muted-foreground mb-2 px-1">Female Avatars</p>
-                          <div className="grid grid-cols-5 gap-2">
-                            {FEMALE_AVATARS.map((url, idx) => (
-                              <div 
-                                key={`f-${idx}`}
-                                onClick={() => { setFormData(prev => ({ ...prev, avatarUrl: url })); setShowAvatarPicker(false); }}
-                                className="aspect-square rounded-full overflow-hidden border-2 border-transparent hover:border-primary cursor-pointer bg-white transition-all hover:scale-105 shadow-sm"
-                              >
-                                <img src={url} alt={`Female ${idx + 1}`} className="w-full h-full object-cover" />
+                                <img src={url} alt={`Avatar ${idx + 1}`} className="w-full h-full object-cover" />
                               </div>
                             ))}
                           </div>

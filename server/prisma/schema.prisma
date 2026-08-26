@@ -157,11 +157,20 @@ model User {
 // ─────────────────────────────────────────────────────────
 
 model RefreshToken {
-  id        String   @id @default(uuid())
-  userId    String
-  token     String   @unique // stored as hashed value
-  expiresAt DateTime
-  createdAt DateTime @default(now())
+  id          String   @id @default(uuid())
+  userId      String
+  token       String   @unique // stored as hashed value
+  expiresAt   DateTime
+  createdAt   DateTime @default(now())
+
+  // Device Tracking / Linked Devices
+  userAgent   String?
+  ipAddress   String?
+  location    String?
+  deviceType  String?  // e.g. "mobile", "tablet", "desktop"
+  os          String?  // e.g. "Windows", "Android", "iOS", "Mac OS"
+  browser     String?  // e.g. "Chrome", "Safari", "AttendX App"
+  lastActive  DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 

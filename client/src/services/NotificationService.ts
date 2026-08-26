@@ -69,9 +69,15 @@ export class NotificationService {
   }
 
   static async scheduleClassReminder(classTitle: string, startTime: Date, location?: string) {
-    if (!Capacitor.isNativePlatform()) return;
-    
     const timeStr = startTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    
+    if (!Capacitor.isNativePlatform()) {
+      toast("📚 Upcoming Class: " + classTitle, { 
+        description: "Starts at " + timeStr + (location ? " in " + location : ""),
+        style: { borderLeft: "4px solid #6366F1" }
+      });
+      return;
+    }
     
     await LocalNotifications.schedule({
       notifications: [
@@ -94,12 +100,18 @@ export class NotificationService {
   }
 
   static async triggerPinnedClassMute(className: string, endTime: Date) {
-    if (!Capacitor.isNativePlatform()) return;
+    const timeStr = endTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    if (!Capacitor.isNativePlatform()) {
+      toast("🔕 Class in Session: " + className, { 
+        description: "Phone silenced until " + timeStr + " (Pinned Overlay Mock)",
+        style: { borderLeft: "4px solid #F59E0B" }
+      });
+      return;
+    }
 
     // 1. Mute the phone natively
     await mutePhone();
-
-    const timeStr = endTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
     // 2. Show ongoing notification with premium styling
     await LocalNotifications.schedule({
@@ -131,6 +143,54 @@ export class NotificationService {
         toast.info("Class ended. Phone volume restored.");
       }, timeUntilEnd);
     }
+  }
+
+  static async scheduleHolidayNotification(holidayName: string, date: Date) {
+    if (!Capacitor.isNativePlatform()) {
+      toast("🌴 Holiday Tomorrow: " + holidayName, { 
+        description: "No classes scheduled! Enjoy your day off.",
+        style: { borderLeft: "4px solid #10B981" }
+      });
+      return;
+    }
+
+    await LocalNotifications.schedule({
+      notifications: [
+        {
+          id: Math.floor(Math.random() * 10000),
+          title: "Holiday Tomorrow: " + holidayName,
+          body: "No classes scheduled! Enjoy your day off.",
+          summaryText: "Holiday Event",
+          iconColor: "#10B981", // Emerald
+          channelId: "class_alerts",
+          schedule: { at: date, allowWhileIdle: true }
+        }
+      ]
+    });
+  }
+
+  static async scheduleBirthdayNotification(userName: string, date: Date) {
+    if (!Capacitor.isNativePlatform()) {
+      toast("🎉 Happy Birthday " + userName + "!", { 
+        description: "Have a fantastic day from the AttendX team.",
+        style: { borderLeft: "4px solid #EC4899" }
+      });
+      return;
+    }
+
+    await LocalNotifications.schedule({
+      notifications: [
+        {
+          id: Math.floor(Math.random() * 10000),
+          title: "Happy Birthday " + userName + "!",
+          body: "Have a fantastic day from the AttendX team.",
+          summaryText: "Birthday",
+          iconColor: "#EC4899", // Pink
+          channelId: "class_alerts",
+          schedule: { at: date, allowWhileIdle: true }
+        }
+      ]
+    });
   }
 
   static async autoScheduleFromTimetable() {

@@ -12,4 +12,9 @@ router.post("/reset-all-attendance", authenticate, UserController.resetAllAttend
 router.post("/reset-timetable", authenticate, UserController.resetTimetable);
 router.post("/reset-events", authenticate, UserController.resetEvents);
 
+// Linked Devices / Sessions
+router.get("/sessions", authenticate, UserController.getSessions);
+router.delete("/sessions/:sessionId", authenticate, UserController.revokeSession);
+router.delete("/sessions", authenticate, UserController.revokeAllOtherSessions);
+
 export default router;
