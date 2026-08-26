@@ -71,8 +71,9 @@ export function App() {
   useSilentRefresh();
   useTheme();
   const theme = useThemeStore((state) => state.theme);
-  // Skip WebSplashScreen on native platforms to avoid Lottie issues and use native splash instead
-  const [splashFinished, setSplashFinished] = useState(Capacitor.isNativePlatform());
+  // WebSplashScreen has been completely rebuilt using purely framer-motion and CSS.
+  // The user requested it to ONLY show up on the phone app (Native).
+  const [splashFinished, setSplashFinished] = useState(!Capacitor.isNativePlatform());
 
   useEffect(() => {
     const initServices = async () => {

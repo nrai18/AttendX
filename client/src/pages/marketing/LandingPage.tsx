@@ -55,7 +55,7 @@ export const LandingPage: React.FC = () => {
       <nav className="hidden md:block fixed top-0 w-full z-50 border-b border-border bg-background/80 backdrop-blur-md">
         <div className="container mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <img src="/attendx_logo_lockup.png" alt="AttendX Logo" className="h-8 w-auto object-contain" />
+            <img src="/attendx_logo_lockup.png" alt="AttendX Logo" className="h-8 w-auto object-contain transition-all dark:brightness-0 dark:invert" />
           </div>
           <div className="hidden md:flex items-center gap-8 text-sm font-medium text-muted-foreground">
             <a href="#features" className="hover:text-foreground transition-colors">Features</a>
@@ -82,7 +82,7 @@ export const LandingPage: React.FC = () => {
 
       {/* Navigation - Mobile (Floating Glassmorphic) */}
       <nav className="md:hidden fixed top-4 inset-x-4 z-50 flex items-center justify-between px-5 py-3 rounded-full backdrop-blur-xl bg-background/80 border border-border/50 shadow-sm">
-        <img src="/attendx_logo_lockup.png" alt="AttendX" className="h-5 w-auto object-contain" />
+        <img src="/attendx_logo_lockup.png" alt="AttendX" className="h-5 w-auto object-contain transition-all dark:brightness-0 dark:invert" />
         <div className="flex items-center gap-4">
           <button onClick={toggleTheme} className="text-muted-foreground hover:text-foreground">
             {theme === "dark" ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
@@ -97,7 +97,7 @@ export const LandingPage: React.FC = () => {
         
         {/* Desktop Hero Content (hidden on mobile) */}
         <div className="hidden md:block container mx-auto max-w-5xl text-center relative z-10">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-muted/50 border border-border text-sm text-primary mb-8 animate-fade-in">
+          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-primary/10 border border-primary/20 text-sm font-medium text-primary mb-8 animate-fade-in">
             <span className="relative flex h-2 w-2">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
@@ -139,7 +139,7 @@ export const LandingPage: React.FC = () => {
 
         {/* Mobile Hero Content */}
         <div className="md:hidden flex flex-col items-center text-center relative z-10 pt-4">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-muted/50 border border-border text-xs text-primary mb-6">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 border border-primary/20 text-xs font-medium text-primary mb-6">
             <span className="relative flex h-2 w-2">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
@@ -171,13 +171,14 @@ export const LandingPage: React.FC = () => {
             <p className="text-xs text-muted-foreground font-medium mt-1">Loved by 500+ students</p>
           </div>
 
-          {/* Hero Lottie Animation Mobile */}
-          <div className="w-full relative rounded-t-[2.5rem] overflow-hidden shadow-2xl mt-4 aspect-[9/16] bg-muted flex items-center justify-center">
-            {Capacitor.isNativePlatform() ? (
-              <img src="/attendx_logo_lockup.png" className="w-48 h-auto opacity-90 object-contain" alt="AttendX Logo" />
-            ) : (
-              <Lottie src="/logo_animation.json" loop={true} autoplay={true} className="w-full h-full scale-[1.3] transform origin-center" />
-            )}
+          {/* Hero Animation / App Preview Mobile */}
+          <div className="w-full relative rounded-t-[2.5rem] overflow-hidden shadow-2xl mt-4 aspect-[9/16] bg-primary/5 flex items-center justify-center border border-border/50">
+            <div className="absolute inset-0 bg-gradient-to-t from-background to-transparent z-10" />
+            <img 
+              src="/attendx_logo.png" 
+              className="w-48 h-48 drop-shadow-2xl object-contain animate-pulse z-0" 
+              alt="AttendX App Preview" 
+            />
           </div>
         </div>
       </section>
@@ -422,7 +423,7 @@ export const LandingPage: React.FC = () => {
       <footer className="border-t border-border py-12 bg-background">
         <div className="container mx-auto px-6 flex flex-col md:flex-row items-center justify-between gap-6">
           <div className="flex items-center gap-2 opacity-70">
-            <img src="/attendx_logo_lockup.png" alt="AttendX Logo" className="h-6 w-auto object-contain" />
+            <img src="/attendx_logo_lockup.png" alt="AttendX Logo" className="h-6 w-auto object-contain transition-all dark:brightness-0 dark:invert" />
           </div>
           <p className="text-muted-foreground text-sm text-center">
             &copy; {new Date().getFullYear()} Naman Rai. Built for IIITU.

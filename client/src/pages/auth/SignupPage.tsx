@@ -1,4 +1,4 @@
-﻿import React, { useState } from "react";
+import React, { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { GraduationCap, Mail, Lock, User as UserIcon, Loader2, ArrowRight, Check, X } from "lucide-react";
 import { Button } from "../../components/ui/button";
@@ -7,6 +7,8 @@ import { Label } from "../../components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "../../components/ui/card";
 import { api, API_BASE_URL } from "../../lib/api";
 import { useAuthStore } from "../../stores/authStore";
+import { Capacitor } from "@capacitor/core";
+import { GoogleSignIn } from "@capawesome/capacitor-google-sign-in";
 
 export const SignupPage: React.FC = () => {
   const navigate = useNavigate();
@@ -17,6 +19,43 @@ export const SignupPage: React.FC = () => {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  React.useEffect(() => {
+    // Initialize GoogleSignIn on native platforms
+    if (Capacitor.isNativePlatform()) {
+      GoogleSignIn.initialize({
+        clientId: import.meta.env.VITE_GOOGLE_CLIENT_ID || 'YOUR_WEB_CLIENT_ID_HERE.apps.googleusercontent.com', 
+      }).catch(console.error);
+    }
+  }, []);
+
+  const handleGoogleLogin = async () => {
+    if (Capacitor.isNativePlatform()) {
+      try {
+        setLoading(true);
+        setError(null);
+        const result = await GoogleSignIn.signIn();
+        
+        // Send the idToken to our backend to generate our own JWT
+        const res = await api.post("/auth/google/native", {
+          idToken: result.idToken
+        });
+        
+        setAuth(res.data.user, res.data.accessToken);
+        navigate("/today");
+      } catch (err: any) {
+        console.error("Native Google Login failed:", err);
+        // User canceled if err.message contains 'canceled'
+        if (err.message && !err.message.toLowerCase().includes("canceled")) {
+           setError("Google Sign-In failed.");
+        }
+      } finally {
+        setLoading(false);
+      }
+    } else {
+      window.location.href = `${API_BASE_URL}/auth/google`;
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -171,7 +210,8 @@ export const SignupPage: React.FC = () => {
                 type="button"
                 variant="outline"
                 className="w-full h-11 rounded-xl border-border hover:bg-background/50 font-semibold text-foreground bg-transparent"
-                onClick={() => window.location.href = `${API_BASE_URL}/auth/google`}
+                onClick={handleGoogleLogin}
+                disabled={loading}
               >
                 <svg viewBox="0 0 24 24" className="w-5 h-5 mr-2">
                   <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />

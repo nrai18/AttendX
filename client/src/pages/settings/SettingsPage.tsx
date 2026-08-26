@@ -50,6 +50,7 @@ import {
   FileText,
   Calendar,
   FileArchive,
+  History,
 } from "lucide-react";
 
 import { useThemeStore } from "../../stores/themeStore";
@@ -59,6 +60,7 @@ import {
 } from "../../components/ui/frequency-selector";
 import { PeerSyncModal } from "../../components/sync/PeerSyncModal";
 import { FeedbackModal } from "../../components/support/FeedbackModal";
+import { ChangelogModal } from "../../components/settings/ChangelogModal";
 import { NotificationService } from "../../services/NotificationService";
 
 export const SettingsPage: React.FC = () => {
@@ -149,6 +151,7 @@ const renderDocuments = (type: string) => {
   const [showAppInfoModal, setShowAppInfoModal] = useState(false);
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
   const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
+  const [isChangelogOpen, setIsChangelogOpen] = useState(false);
   const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
   const [isLinkedDevicesOpen, setIsLinkedDevicesOpen] = useState(false);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
@@ -1366,7 +1369,7 @@ const renderDocuments = (type: string) => {
                   App info
                 </h3>
                 <p className="text-xs text-muted-foreground">
-                  Version v1.2.0 & Developer details
+                  Version v1.3.2 & Developer details
                 </p>
               </div>
             </div>
@@ -1414,6 +1417,22 @@ const renderDocuments = (type: string) => {
                 </h3>
                 <p className="text-xs text-muted-foreground">
                   Report an issue or suggest improvements.
+                </p>
+              </div>
+            </div>
+            <ChevronRight className="w-5 h-5 text-muted-foreground/50 group-hover:text-primary transition-colors" />
+          </div>
+          <div onClick={() => setIsChangelogOpen(true)} className="w-full text-left p-4 hover:bg-muted/50 transition-colors flex items-center justify-between cursor-pointer group">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-purple-500/10 text-purple-500 flex items-center justify-center">
+                <History className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-foreground group-hover:text-purple-500 transition-colors">
+                  Update History
+                </h3>
+                <p className="text-xs text-muted-foreground">
+                  View changelogs and past release notes.
                 </p>
               </div>
             </div>
@@ -1777,7 +1796,7 @@ const renderDocuments = (type: string) => {
                   AttendX
                 </h2>
                 <p className="text-xs font-semibold text-primary">
-                  Smart Attendance Manager • v1.2.0
+                  Smart Attendance Manager • v1.3.2
                 </p>
                 <p className="text-xs text-muted-foreground">
                   Built for IIITU Ecosystem
@@ -1882,6 +1901,10 @@ const renderDocuments = (type: string) => {
       <FeedbackModal 
         isOpen={isFeedbackOpen} 
         onClose={() => setIsFeedbackOpen(false)} 
+      />
+      <ChangelogModal
+        isOpen={isChangelogOpen}
+        onClose={() => setIsChangelogOpen(false)}
       />
       <LinkedDevicesModal 
         isOpen={isLinkedDevicesOpen} 

@@ -178,12 +178,20 @@ export const OTAUpdateModal: React.FC<Props> = ({ localVersion }) => {
               </div>
             </div>
           ) : (
-            <button
-              onClick={handleDownload}
-              className="w-full py-3 bg-white hover:bg-white/90 active:scale-95 transition-all text-black text-sm font-bold rounded-full"
-            >
-              Download and install
-            </button>
+            <div className="flex flex-col gap-3">
+              <button
+                onClick={handleDownload}
+                className="w-full py-3 bg-white hover:bg-white/90 active:scale-95 transition-all text-black text-sm font-bold rounded-full"
+              >
+                Download and install
+              </button>
+              <button
+                onClick={() => setIsOpen(false)}
+                className="w-full py-3 bg-transparent hover:bg-white/5 active:scale-95 transition-all text-white/70 text-sm font-bold rounded-full"
+              >
+                Not right now
+              </button>
+            </div>
           )}
         </div>
       </div>

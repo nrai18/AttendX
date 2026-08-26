@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Lottie } from 'lottie-react';
+import { Player as LottiePlayer } from '@lottiefiles/react-lottie-player';
 
 interface HolidayIconRendererProps {
   src: string;
@@ -11,12 +11,17 @@ interface HolidayIconRendererProps {
 export const HolidayIconRenderer: React.FC<HolidayIconRendererProps> = ({ src, className, alt, onAnimationComplete }) => {
   if (src.endsWith('.json') || src.endsWith('.lottie')) {
     return (
-      <Lottie 
-        src={src} 
-        loop={true} 
-        autoplay={true} 
+      <LottiePlayer
+        src={src}
+        loop={true}
+        autoplay={true}
         className={className}
-        subscriptions={onAnimationComplete ? { loopCompleted: onAnimationComplete } : undefined}
+        onEvent={(event) => {
+          if (event === 'complete' || event === 'loop') {
+            onAnimationComplete?.();
+          }
+        }}
+        style={{ width: '100%', height: '100%' }}
       />
     );
   }
