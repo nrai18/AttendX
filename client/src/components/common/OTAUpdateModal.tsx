@@ -101,6 +101,9 @@ export const OTAUpdateModal: React.FC<Props> = ({ localVersion }) => {
         listener.remove();
       }
 
+      // Save the new version to localStorage so it doesn't prompt again!
+      localStorage.setItem("app_version", remoteData.latestVersion);
+
       await CapacitorUpdater.set({ id: bundle.id });
       // The app will restart automatically after set()
     } catch (error: any) {
@@ -112,7 +115,7 @@ export const OTAUpdateModal: React.FC<Props> = ({ localVersion }) => {
   if (!isOpen || !remoteData) return null;
 
   return (
-    <div className="fixed inset-0 z-[999] flex items-start justify-center overflow-y-auto bg-black/60 backdrop-blur-sm transition-opacity duration-300 opacity-100 p-0 sm:p-6">
+    <div className="fixed inset-0 z-[9999] flex items-start justify-center overflow-y-auto bg-black/95 backdrop-blur-md transition-opacity duration-300 opacity-100 p-0 sm:p-6">
       <div className="w-full min-h-screen sm:min-h-0 sm:h-auto sm:max-w-md bg-[#121212] sm:rounded-[2.5rem] flex flex-col shadow-2xl transition-transform duration-300 transform translate-y-0 scale-100 my-auto">
         {/* Header matching Nothing OS */}
         <div className="pt-12 pb-6 px-8 shrink-0">
