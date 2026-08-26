@@ -83,13 +83,23 @@ export const OTAUpdateModal: React.FC<Props> = ({ localVersion }) => {
 
     // Real Native Capacitor OTA
     try {
+      let listener: any = null;
+      if (Capacitor.isNativePlatform()) {
+        listener = await CapacitorUpdater.addListener('download', (info: any) => {
+          setDownloadProgress(info.percent);
+        });
+      }
+
       const bundle = await CapacitorUpdater.download({
         url: `${API_BASE_URL}/system/download-update`,
         version: remoteData.latestVersion,
       });
 
-      // We can listen to progress events if we added listener, but for now we'll simulate the UI loader while the background native thread does it
-      setDownloadProgress(99);
+      setDownloadProgress(100);
+
+      if (listener) {
+        listener.remove();
+      }
 
       await CapacitorUpdater.set({ id: bundle.id });
       // The app will restart automatically after set()
