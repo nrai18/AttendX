@@ -24,11 +24,13 @@ interface AuthState {
   accessToken: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
+  _hasHydrated: boolean;
   setUser: (user: User | null) => void;
   setAccessToken: (token: string | null) => void;
   setAuth: (user: User, accessToken: string) => void;
   logout: () => void;
   setLoading: (loading: boolean) => void;
+  setHasHydrated: (h: boolean) => void;
 }
 
 // Custom storage wrapper for Capacitor Preferences
@@ -52,6 +54,7 @@ export const useAuthStore = create<AuthState>()(
       accessToken: null,
       isAuthenticated: false,
       isLoading: false,
+      _hasHydrated: false,
 
       setUser: (user) => set({ user }),
       setAccessToken: (accessToken) => set({ accessToken }),
@@ -76,10 +79,14 @@ export const useAuthStore = create<AuthState>()(
       },
 
       setLoading: (isLoading) => set({ isLoading }),
+      setHasHydrated: (h) => set({ _hasHydrated: h }),
     }),
     {
       name: "attendx-auth",
       storage: createJSONStorage(() => capacitorStorage),
+      onRehydrateStorage: () => (state) => {
+        if (state) state.setHasHydrated(true);
+      },
     }
   )
 );

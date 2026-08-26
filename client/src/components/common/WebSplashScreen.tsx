@@ -14,7 +14,14 @@ export function WebSplashScreen({ onComplete }: { onComplete: () => void }) {
   useEffect(() => {
     if (window.innerWidth >= 768) {
       onComplete();
+      return;
     }
+    
+    const fallbackTimer = setTimeout(() => {
+      handleEnd();
+    }, 4000);
+    
+    return () => clearTimeout(fallbackTimer);
   }, [onComplete]);
 
   const handleEnd = () => {

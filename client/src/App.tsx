@@ -50,13 +50,16 @@ import { Toaster } from "sonner";
 import { useState } from "react";
 
 const RootRoute: React.FC = () => {
-  const { isAuthenticated, isLoading } = useAuthStore();
-  if (isLoading) return null;
+  const { isAuthenticated, isLoading, _hasHydrated } = useAuthStore();
+  if (!Capacitor.isNativePlatform() && !_hasHydrated) return null; // Wait for zustand to read Capacitor Preferences
+  // If native platform, we can wait too to avoid Lottie crash in LandingPage while resolving auth
+  if (!_hasHydrated || isLoading) return null;
   return isAuthenticated ? <Navigate to="/today" replace /> : <LandingPage />;
 };
 
 import { NotificationService } from "./services/NotificationService";
 import { OTAUpdateModal } from "./components/common/OTAUpdateModal";
+import { CapacitorUpdater } from "@capgo/capacitor-updater";
 import { Capacitor } from "@capacitor/core";
 import { useEffect } from "react";
 
@@ -68,11 +71,15 @@ export function App() {
   useSilentRefresh();
   useTheme();
   const theme = useThemeStore((state) => state.theme);
-  const [splashFinished, setSplashFinished] = useState(false);
+  // Skip WebSplashScreen on native platforms to avoid Lottie issues and use native splash instead
+  const [splashFinished, setSplashFinished] = useState(Capacitor.isNativePlatform());
 
   useEffect(() => {
     const initServices = async () => {
       try {
+        if (Capacitor.isNativePlatform()) {
+          await CapacitorUpdater.notifyAppReady();
+        }
         await NotificationService.init();
         await NotificationService.autoScheduleFromTimetable();
       } catch (e) {
@@ -83,7 +90,7 @@ export function App() {
   }, []);
 
   return (
-    <>
+    <ErrorBoundary>
       {!splashFinished && (
         <WebSplashScreen onComplete={() => setSplashFinished(true)} />
       )}
@@ -114,9 +121,7 @@ export function App() {
             <Route
               element={
                 <ProtectedRoute>
-                  <ErrorBoundary>
-                    <AppShell />
-                  </ErrorBoundary>
+                  <AppShell />
                 </ProtectedRoute>
               }
             >
@@ -142,7 +147,7 @@ export function App() {
           </Routes>
         </BrowserRouter>
       )}
-    </>
+    </ErrorBoundary>
   );
 }
 
