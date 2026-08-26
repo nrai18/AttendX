@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { api } from "../../lib/api";
+import { api, API_BASE_URL } from "../../lib/api";
 import { CapacitorUpdater } from '@capgo/capacitor-updater';
 import { Capacitor } from '@capacitor/core';
 import { toast } from 'sonner';
@@ -84,7 +84,7 @@ export const OTAUpdateModal: React.FC<Props> = ({ localVersion }) => {
     // Real Native Capacitor OTA
     try {
       const bundle = await CapacitorUpdater.download({
-        url: "http://10.21.9.90:3000/api/system/download-update",
+        url: `${API_BASE_URL}/system/download-update`,
         version: remoteData.latestVersion,
       });
 
@@ -102,7 +102,7 @@ export const OTAUpdateModal: React.FC<Props> = ({ localVersion }) => {
   if (!isOpen || !remoteData) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 backdrop-blur-sm transition-opacity duration-300 opacity-100 p-0 sm:p-6">
+    <div className="fixed inset-0 z-[999] flex items-start justify-center overflow-y-auto bg-black/60 backdrop-blur-sm transition-opacity duration-300 opacity-100 p-0 sm:p-6">
       <div className="w-full min-h-screen sm:min-h-0 sm:h-auto sm:max-w-md bg-[#121212] sm:rounded-[2.5rem] flex flex-col shadow-2xl transition-transform duration-300 transform translate-y-0 scale-100 my-auto">
         {/* Header matching Nothing OS */}
         <div className="pt-12 pb-6 px-8 shrink-0">
@@ -144,7 +144,7 @@ export const OTAUpdateModal: React.FC<Props> = ({ localVersion }) => {
 
           <div className="pt-2">
             <p className="text-[0.85rem] font-bold text-white">
-              Update size: {remoteData.totalSize.toFixed(1)} MB
+              Update size: {remoteData.sizeMb?.toFixed(1)} MB
             </p>
           </div>
         </div>

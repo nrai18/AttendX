@@ -567,7 +567,7 @@ export const TimetablePage = () => {
             <div>
               <div className="flex items-center gap-3">
                 <h1 className="text-2xl sm:text-3xl font-bold text-foreground tracking-tight">Timetable</h1>
-                {overallPercentage !== undefined && (
+                {overallPercentage !== undefined && overallPercentage !== null && (
                   <div className="px-3 py-1 bg-muted border border-border rounded-full flex items-center gap-1.5 text-xs font-mono font-bold text-foreground">
                     <span className="text-teal-600 dark:text-teal-400">{overallPercentage.toFixed(1)}%</span>
                     <span className="text-muted-foreground">|</span>

@@ -55,7 +55,8 @@ export class SystemController {
   }
 
   static async downloadUpdate(req: Request, res: Response) {
-    const updatePath = path.join(__dirname, "../../uploads/update.zip");
+    // __dirname is server/dist when bundled via tsup
+    const updatePath = path.join(__dirname, "../uploads/update.zip");
     if (fs.existsSync(updatePath)) {
       res.download(updatePath);
     } else {
