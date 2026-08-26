@@ -171,14 +171,13 @@ export const LandingPage: React.FC = () => {
             <p className="text-xs text-muted-foreground font-medium mt-1">Loved by 500+ students</p>
           </div>
 
-          {/* Hero Animation / App Preview Mobile */}
-          <div className="w-full relative rounded-t-[2.5rem] overflow-hidden shadow-2xl mt-4 aspect-[9/16] bg-primary/5 flex items-center justify-center border border-border/50">
-            <div className="absolute inset-0 bg-gradient-to-t from-background to-transparent z-10" />
-            <img 
-              src="/attendx_logo.png" 
-              className="w-48 h-48 drop-shadow-2xl object-contain animate-pulse z-0" 
-              alt="AttendX App Preview" 
-            />
+          {/* Hero Lottie Animation Mobile */}
+          <div className="w-full relative rounded-t-[2.5rem] overflow-hidden shadow-2xl mt-4 aspect-[9/16] bg-muted flex items-center justify-center">
+            {Capacitor.isNativePlatform() ? (
+              <img src="/attendx_logo_lockup.png" className="w-48 h-auto opacity-90 object-contain" alt="AttendX Logo" />
+            ) : (
+              <Lottie src="/logo_animation.json" loop={true} autoplay={true} className="w-full h-full scale-[1.3] transform origin-center" />
+            )}
           </div>
         </div>
       </section>

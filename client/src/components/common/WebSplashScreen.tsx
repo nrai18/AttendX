@@ -1,14 +1,25 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { Player as Lottie } from '@lottiefiles/react-lottie-player';
+
+const animations = [
+  '/logo_animation.json',
+  '/logo_animation_2.json'
+];
 
 export function WebSplashScreen({ onComplete }: { onComplete: () => void }) {
+  const [animPath] = useState(() => animations[Math.floor(Math.random() * animations.length)]);
   const [isFading, setIsFading] = useState(false);
 
   useEffect(() => {
-    // Shorter splash screen duration for a snappier feel
+    if (window.innerWidth >= 768) {
+      onComplete();
+      return;
+    }
+    
     const fallbackTimer = setTimeout(() => {
       handleEnd();
-    }, 2000);
+    }, 4000);
     
     return () => clearTimeout(fallbackTimer);
   }, [onComplete]);
@@ -20,6 +31,8 @@ export function WebSplashScreen({ onComplete }: { onComplete: () => void }) {
     }, 500); // 500ms fade out duration
   };
 
+  if (!animPath) return null;
+
   return (
     <AnimatePresence>
       {!isFading && (
@@ -27,45 +40,20 @@ export function WebSplashScreen({ onComplete }: { onComplete: () => void }) {
           initial={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.5 }}
-          className="fixed inset-0 z-[9999] bg-background flex flex-col items-center justify-center overflow-hidden"
+          className="fixed inset-0 z-[9999] bg-background flex items-center justify-center overflow-hidden"
         >
-          <motion.div
-            initial={{ scale: 0.8, opacity: 0 }}
-            animate={{ 
-              scale: [0.8, 1.1, 1],
-              opacity: [0, 1, 1]
-            }}
-            transition={{ 
-              duration: 1.2, 
-              times: [0, 0.6, 1],
-              ease: "easeOut"
-            }}
-            className="flex flex-col items-center justify-center gap-6"
-          >
-            <motion.img 
-              src="/attendx_logo_lockup.png" 
-              alt="AttendX Logo"
-              className="w-32 h-32 md:w-40 md:h-40 object-contain drop-shadow-2xl"
-              animate={{
-                y: [0, -10, 0],
+          <div className="absolute inset-0 w-full h-full scale-[1.35] md:scale-100 origin-center">
+            <Lottie 
+              src={animPath} 
+              loop={false}
+              autoplay={true}
+              onEvent={(event) => {
+                if (event === 'complete') handleEnd();
               }}
-              transition={{
-                duration: 2,
-                repeat: Infinity,
-                ease: "easeInOut"
-              }}
+              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              rendererSettings={{ preserveAspectRatio: 'xMidYMid slice' }}
             />
-            <motion.div 
-              className="flex items-center gap-2"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.5, duration: 0.5 }}
-            >
-              <div className="w-2 h-2 rounded-full bg-primary animate-bounce" style={{ animationDelay: '0ms' }} />
-              <div className="w-2 h-2 rounded-full bg-primary animate-bounce" style={{ animationDelay: '150ms' }} />
-              <div className="w-2 h-2 rounded-full bg-primary animate-bounce" style={{ animationDelay: '300ms' }} />
-            </motion.div>
-          </motion.div>
+          </div>
         </motion.div>
       )}
     </AnimatePresence>
