@@ -1,5 +1,8 @@
 import React, { useEffect, useState } from "react";
 import { api } from "../../lib/api";
+import { CapacitorUpdater } from '@capgo/capacitor-updater';
+import { Capacitor } from '@capacitor/core';
+import { toast } from 'sonner';
 
 interface Props {
   localVersion: string;
@@ -39,7 +42,7 @@ export const OTAUpdateModal: React.FC<Props> = ({ localVersion }) => {
 
             setRemoteData({
               latestVersion,
-              totalSize,
+              sizeMb: parseFloat(totalSize.toFixed(1)),
               title: newUpdates[0].title,
               sections: allSections,
             });
@@ -51,31 +54,56 @@ export const OTAUpdateModal: React.FC<Props> = ({ localVersion }) => {
       }
     };
     checkUpdates();
+
+    if (Capacitor.isNativePlatform()) {
+      CapacitorUpdater.notifyAppReady();
+    }
   }, [localVersion]);
 
-  const handleDownload = () => {
+  const handleDownload = async () => {
     setIsDownloading(true);
-    // Simulate download
-    let progress = 0;
-    const interval = setInterval(() => {
-      progress += Math.random() * 15;
-      if (progress >= 100) {
-        progress = 100;
-        clearInterval(interval);
-        setTimeout(() => {
-          localStorage.setItem("app_version", remoteData.latestVersion);
-          window.location.reload();
-        }, 1000);
-      }
-      setDownloadProgress(progress);
-    }, 300);
+
+    if (!Capacitor.isNativePlatform()) {
+      // Web Fallback Simulation
+      let progress = 0;
+      const interval = setInterval(() => {
+        progress += Math.random() * 15;
+        if (progress >= 100) {
+          progress = 100;
+          clearInterval(interval);
+          setTimeout(() => {
+            localStorage.setItem("app_version", remoteData.latestVersion);
+            window.location.reload();
+          }, 1000);
+        }
+        setDownloadProgress(progress);
+      }, 300);
+      return;
+    }
+
+    // Real Native Capacitor OTA
+    try {
+      const bundle = await CapacitorUpdater.download({
+        url: "http://10.21.9.90:3000/api/system/download-update",
+        version: remoteData.latestVersion,
+      });
+
+      // We can listen to progress events if we added listener, but for now we'll simulate the UI loader while the background native thread does it
+      setDownloadProgress(99);
+
+      await CapacitorUpdater.set({ id: bundle.id });
+      // The app will restart automatically after set()
+    } catch (error: any) {
+      toast.error("OTA Download Failed: " + error.message);
+      setIsDownloading(false);
+    }
   };
 
   if (!isOpen || !remoteData) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm transition-opacity duration-300 opacity-100">
-      <div className="w-full h-full sm:h-auto sm:max-w-md bg-[#121212] sm:rounded-[2.5rem] flex flex-col shadow-2xl transition-transform duration-300 transform translate-y-0 scale-100">
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 backdrop-blur-sm transition-opacity duration-300 opacity-100 p-0 sm:p-6">
+      <div className="w-full min-h-screen sm:min-h-0 sm:h-auto sm:max-w-md bg-[#121212] sm:rounded-[2.5rem] flex flex-col shadow-2xl transition-transform duration-300 transform translate-y-0 scale-100 my-auto">
         {/* Header matching Nothing OS */}
         <div className="pt-12 pb-6 px-8 shrink-0">
           <div className="w-6 h-10 border-2 border-white/20 rounded-md mb-6 flex flex-col items-center justify-end p-1">

@@ -1381,7 +1381,7 @@ const renderDocuments = (type: string) => {
           >
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 rounded-xl overflow-hidden shrink-0 group-hover:scale-105 transition-transform flex items-center justify-center bg-card">
-                <img src="/attendx_app_icon.png" alt="AttendX Logo" className="w-full h-full object-cover" />
+                <img src="/attendx_logo.png" alt="AttendX Logo" className="w-full h-full object-cover" />
               </div>
               <div>
                 <h3 className="text-sm font-bold text-foreground group-hover:text-primary transition-colors">
@@ -1768,7 +1768,7 @@ const renderDocuments = (type: string) => {
 
             <div className="flex items-center gap-4 border-b border-border/50 pb-5">
               <img
-                src="/attendx_app_icon.png"
+                src="/attendx_logo.png"
                 alt="AttendX Logo"
                 className="w-14 h-14 rounded-2xl object-cover shadow-lg shadow-primary/25 shrink-0 bg-white"
               />

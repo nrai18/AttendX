@@ -330,12 +330,15 @@ export class AttendanceService {
 
     const logs: any[] = [];
 
-    // Loop dates from semEnd down to semStart (newest first)
-    const pad = (n: number) => String(n).padStart(2, '0');
-    for (let d = new Date(semEnd); d >= semStart; d.setDate(d.getDate() - 1)) {
+    // 1. Process all Attendance records (marked classes)
+    for (const att of attendanceRecords) {
+      const sub = subjects.find(s => s.id === att.subjectId);
+      if (!sub) continue;
+      
+      const stats = subjectStatsMap[sub.id];
+      const d = new Date(att.date);
+      const pad = (n: number) => String(n).padStart(2, '0');
       const dateKey = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-      const dayOfWeek = d.getDay() === 0 ? 6 : d.getDay() - 1;
-
       const dateFormatted = d.toLocaleDateString("en-US", {
         weekday: "short",
         day: "numeric",
@@ -343,117 +346,101 @@ export class AttendanceService {
         year: "numeric",
       });
 
-      for (const sub of subjects) {
-        const stats = subjectStatsMap[sub.id];
-
-        const regularSlots = sub.timetableSlots.filter(s => s.dayOfWeek === dayOfWeek);
-        const dateOverrides = overrides.filter(
-          o => o.subjectId === sub.id && AttendanceService.toLocalIso(o.date) === dateKey
-        );
-        const dateAttendance = attendanceRecords.filter(
-          a => a.subjectId === sub.id && AttendanceService.toLocalIso(a.date) === dateKey
-        );
-
-        for (const slot of regularSlots) {
-          const override = dateOverrides.find(o => o.originalSlotId === slot.id);
-          if (override && (override.overrideType === "holiday" || override.overrideType === "cancelled")) {
-            continue;
-          }
-
-          let att = dateAttendance.find(a => a.timetableSlotId === slot.id || (override && a.overrideId === override.id));
-          
-          if (!att) {
-            const orphaned = dateAttendance.find(a => !a.timetableSlotId && !a.overrideId && !logs.some(l => l.attendanceId === a.id));
-            if (orphaned) {
-              att = orphaned;
-            }
-          }
-
-          const status = att?.status || "not_marked";
-          
-          logs.push({
-            id: att?.id || `slot-${slot.id}-${dateKey}`,
-            date: dateKey,
-            dateFormatted,
-            timestamp: d.getTime(),
-            subjectId: sub.id,
-            subjectName: sub.name,
-            subjectCode: sub.code,
-            subjectColor: sub.colorHex || "#8b5cf6",
-            target: stats.target,
-            currentPercentage: stats.percentage,
-            canMiss: stats.canMiss,
-            needAttend: stats.needAttend,
-            statusText: stats.statusText,
-            slotType: slot.slotType ? slot.slotType.charAt(0).toUpperCase() + slot.slotType.slice(1) : "Lecture",
-            startTime: slot.startTime,
-            endTime: slot.endTime,
-            status: status,
-            remarks: att?.remarks || null,
-            timetableSlotId: slot.id,
-            overrideId: override?.id || undefined,
-            attendanceId: att?.id || undefined,
-          });
-        }
-
-        const extraOverrides = dateOverrides.filter(o => o.overrideType === "extra_class");
-        for (const extra of extraOverrides) {
-          const att = dateAttendance.find(a => a.overrideId === extra.id);
-          
-          // Extra classes are always shown (if future, they are shown even if unmarked)
-          logs.push({
-            id: att?.id || `extra-${extra.id}-${dateKey}`,
-            date: dateKey,
-            dateFormatted,
-            timestamp: d.getTime(),
-            subjectId: sub.id,
-            subjectName: sub.name,
-            subjectCode: sub.code,
-            subjectColor: sub.colorHex || "#8b5cf6",
-            target: stats.target,
-            currentPercentage: stats.percentage,
-            canMiss: stats.canMiss,
-            needAttend: stats.needAttend,
-            statusText: stats.statusText,
-            slotType: "Extra",
-            isExtra: true,
-            startTime: extra.startTime || "00:00",
-            endTime: extra.endTime || "00:00",
-            status: att?.status || "not_marked",
-            remarks: att?.remarks || null,
-            timetableSlotId: undefined,
-            overrideId: extra.id,
-            attendanceId: att?.id || undefined,
-          });
-        }
-
-        const matchedAttIds = logs.filter(l => l.attendanceId).map(l => l.attendanceId);
-        const unmatchedAtts = dateAttendance.filter(a => !matchedAttIds.includes(a.id));
-        for (const att of unmatchedAtts) {
-          logs.push({
-            id: att.id,
-            date: dateKey,
-            dateFormatted,
-            timestamp: d.getTime(),
-            subjectId: sub.id,
-            subjectName: sub.name,
-            subjectCode: sub.code,
-            subjectColor: sub.colorHex || "#8b5cf6",
-            target: stats.target,
-            currentPercentage: stats.percentage,
-            canMiss: stats.canMiss,
-            needAttend: stats.needAttend,
-            statusText: stats.statusText,
-            slotType: "Lecture",
-            startTime: "00:00",
-            endTime: "00:00",
-            status: att.status,
-            remarks: att.remarks || null,
-            attendanceId: att.id,
-          });
+      let slotType = "Lecture";
+      let startTime = "00:00";
+      let endTime = "00:00";
+      
+      if (att.timetableSlotId) {
+        const slot = sub.timetableSlots.find(s => s.id === att.timetableSlotId);
+        if (slot) {
+          slotType = slot.slotType ? slot.slotType.charAt(0).toUpperCase() + slot.slotType.slice(1) : "Lecture";
+          startTime = slot.startTime;
+          endTime = slot.endTime;
         }
       }
+      
+      if (att.overrideId) {
+        const override = overrides.find(o => o.id === att.overrideId);
+        if (override) {
+          slotType = override.overrideType === "extra_class" ? "Extra" : slotType;
+          startTime = override.startTime || startTime;
+          endTime = override.endTime || endTime;
+        }
+      }
+
+      logs.push({
+        id: att.id,
+        date: dateKey,
+        dateFormatted,
+        timestamp: d.getTime(),
+        subjectId: sub.id,
+        subjectName: sub.name,
+        subjectCode: sub.code,
+        subjectColor: sub.colorHex || "#8b5cf6",
+        target: stats.target,
+        currentPercentage: stats.percentage,
+        canMiss: stats.canMiss,
+        needAttend: stats.needAttend,
+        statusText: stats.statusText,
+        slotType,
+        isExtra: slotType === "Extra",
+        startTime,
+        endTime,
+        status: att.status,
+        remarks: att.remarks || null,
+        timetableSlotId: att.timetableSlotId,
+        overrideId: att.overrideId,
+        attendanceId: att.id,
+      });
     }
+
+    // 2. Process all extra_class Overrides that do NOT have an attendance record
+    const extraOverrides = overrides.filter(o => o.overrideType === "extra_class");
+    for (const extra of extraOverrides) {
+      if (attendanceRecords.some(a => a.overrideId === extra.id)) continue;
+      
+      const sub = subjects.find(s => s.id === extra.subjectId);
+      if (!sub) continue;
+      
+      const stats = subjectStatsMap[sub.id];
+      const d = new Date(extra.date);
+      const pad = (n: number) => String(n).padStart(2, '0');
+      const dateKey = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+      const dateFormatted = d.toLocaleDateString("en-US", {
+        weekday: "short",
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+      });
+
+      logs.push({
+        id: `extra-${extra.id}-${dateKey}`,
+        date: dateKey,
+        dateFormatted,
+        timestamp: d.getTime(),
+        subjectId: sub.id,
+        subjectName: sub.name,
+        subjectCode: sub.code,
+        subjectColor: sub.colorHex || "#8b5cf6",
+        target: stats.target,
+        currentPercentage: stats.percentage,
+        canMiss: stats.canMiss,
+        needAttend: stats.needAttend,
+        statusText: stats.statusText,
+        slotType: "Extra",
+        isExtra: true,
+        startTime: extra.startTime || "00:00",
+        endTime: extra.endTime || "00:00",
+        status: "not_marked",
+        remarks: null,
+        timetableSlotId: undefined,
+        overrideId: extra.id,
+        attendanceId: undefined,
+      });
+    }
+
+    // Sort descending by timestamp (newest first)
+    logs.sort((a, b) => b.timestamp - a.timestamp || b.startTime.localeCompare(a.startTime));
 
     return {
       logs,

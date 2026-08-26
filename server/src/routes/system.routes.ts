@@ -1,8 +1,9 @@
 import { Router } from "express";
-import { getUpdates } from "../controllers/system.controller";
+import { SystemController } from "../controllers/system.controller";
 
 const router = Router();
-router.get("/update", getUpdates);
+
+router.get("/update", SystemController.getUpdateManifest);
+router.get("/download-update", SystemController.downloadUpdate);
 
 export default router;
-

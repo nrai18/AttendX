@@ -1,4 +1,68 @@
 import { Request, Response } from "express";
+import path from "path";
+import fs from "fs";
+
+export class SystemController {
+  static async getUpdateManifest(req: Request, res: Response) {
+    const manifest = {
+      latestVersion: "1.1.2",
+      title: "Logs Fix & OTA Engine",
+      changelog: [
+        {
+          version: "1.1.2",
+          sizeMb: 0.1,
+          sections: [
+            {
+              title: "Improvements & Fixes",
+              items: [
+                { icon: "📅", text: "Attendance Logs now properly track past/future dates independent of semester bounds" },
+                { icon: "👁️", text: "Unmarked regular classes are now hidden from logs for a cleaner view" },
+                { icon: "➕", text: "Extra classes are properly surfaced in logs even before marking" }
+              ]
+            }
+          ]
+        },
+        {
+          version: "1.1.1",
+          sizeMb: 0.1,
+          sections: [
+            {
+              title: "Improvements & Fixes",
+              items: [
+                { icon: "🛠️", text: "Added live Capacitor OTA engine" },
+                { icon: "📱", text: "Implemented device fingerprinting for modals" },
+                { icon: "🔌", text: "Fixed ghost node process holding port 3000" }
+              ]
+            }
+          ]
+        },
+        {
+          version: "1.1.0",
+          sizeMb: 2.4,
+          sections: [
+            {
+              title: "New Features",
+              items: [
+                { icon: "✨", text: "Brand new cumulative OTA Update system" },
+                { icon: "🔒", text: "Added AES-256 encrypted support logs" }
+              ]
+            }
+          ]
+        }
+      ]
+    };
+    res.json(manifest);
+  }
+
+  static async downloadUpdate(req: Request, res: Response) {
+    const updatePath = path.join(__dirname, "../../uploads/update.zip");
+    if (fs.existsSync(updatePath)) {
+      res.download(updatePath);
+    } else {
+      res.status(404).json({ message: "Update package not found" });
+    }
+  }
+}
 
 export const getUpdates = async (req: Request, res: Response) => {
   const changelog = [

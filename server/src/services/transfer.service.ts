@@ -1,4 +1,5 @@
 import { prisma } from "../lib/prisma";
+import { TimetableService } from "./timetable.service";
 
 export class TransferService {
   static async buildPayload(userId: string, contextType: string, dateRange?: { startDate: string, endDate: string }) {
@@ -7,22 +8,14 @@ export class TransferService {
     });
     if (!activeSem) throw new Error("No active semester found");
 
+    const exportedTimetable = await TimetableService.exportTimetable(userId, activeSem.id);
+
     const payload: any = {
-      timetable: [],
+      slots: exportedTimetable.slots,
       academicCalendar: [],
       lectureLogs: [],
-      subjects: []
+      subjects: exportedTimetable.subjects
     };
-
-    // 1. Fetch Subjects
-    const subjects = await prisma.subject.findMany({
-      where: { semesterId: activeSem.id },
-    });
-
-    // 2. Fetch Timetable
-    const slots = await prisma.timetableSlot.findMany({
-      where: { semesterId: activeSem.id },
-    });
 
     // 3. Fetch Events (Academic Calendar)
     const events = await prisma.event.findMany({
@@ -52,20 +45,15 @@ export class TransferService {
     }
 
     if (contextType === "FULL_EXPORT") {
-      payload.subjects = subjects;
-      payload.timetable = slots;
       payload.academicCalendar = events;
       payload.lectureLogs = logs;
     } 
     else if (contextType === "TIMETABLE_CALENDAR") {
-      payload.subjects = subjects.map((s: any) => ({ id: s.id, code: s.code, name: s.name, colorHex: s.colorHex }));
-      payload.timetable = slots.map((s: any) => ({ subjectId: s.subjectId, dayOfWeek: s.dayOfWeek, startTime: s.startTime, endTime: s.endTime, room: s.room }));
       payload.academicCalendar = events.map((e: any) => ({ date: e.date, type: e.eventType, description: e.title, isHolidayList: e.isHolidayList }));
     }
     else if (contextType === "SCHEDULE_STATUS") {
-      payload.subjects = subjects.map((s: any) => ({ id: s.id, code: s.code, name: s.name, colorHex: s.colorHex }));
-      payload.timetable = slots.map((s: any) => ({ subjectId: s.subjectId, dayOfWeek: s.dayOfWeek, startTime: s.startTime, endTime: s.endTime }));
       payload.academicCalendar = events.map((e: any) => ({ date: e.date, type: e.eventType, description: e.title, isHolidayList: e.isHolidayList }));
+
       
       // Strip personal marks for SCHEDULE_STATUS
       payload.lectureLogs = logs.map((log: any) => {

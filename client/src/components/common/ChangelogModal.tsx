@@ -30,10 +30,10 @@ export const ChangelogModal: React.FC<Props> = ({
 
   return (
     <div
-      className={`fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm transition-opacity duration-300 ${isOpen ? "opacity-100" : "opacity-0"}`}
+      className={`fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 backdrop-blur-sm transition-opacity duration-300 p-0 sm:p-6 ${isOpen ? "opacity-100" : "opacity-0"}`}
     >
       <div
-        className={`w-full h-full sm:h-auto sm:max-w-md bg-[#121212] sm:rounded-[2.5rem] flex flex-col shadow-2xl transition-transform duration-300 transform ${isOpen ? "translate-y-0 scale-100" : "translate-y-10 sm:translate-y-0 sm:scale-95"}`}
+        className={`w-full min-h-screen sm:min-h-0 sm:h-auto sm:max-w-md bg-[#121212] sm:rounded-[2.5rem] flex flex-col shadow-2xl transition-transform duration-300 my-auto ${isOpen ? "transform translate-y-0 scale-100" : "transform translate-y-8 scale-95"}`}
       >
         {/* Header matching Nothing OS */}
         <div className="pt-12 pb-6 px-8 shrink-0">
