@@ -32,18 +32,23 @@ export const OTAUpdateModal: React.FC<Props> = ({ localVersion }) => {
 
           if (newUpdates.length > 0) {
             // Aggregate size and sections
-            let totalSize = 0;
-            const allSections: any[] = [];
+            const groupedSections = new Map<string, any>();
 
             newUpdates.forEach((update: any) => {
-              totalSize += update.sizeMb || 0;
-              allSections.push(...update.sections);
+              update.sections?.forEach((sec: any) => {
+                if (!groupedSections.has(sec.title)) {
+                  groupedSections.set(sec.title, { title: sec.title, items: [] });
+                }
+                groupedSections.get(sec.title).items.push(...sec.items);
+              });
             });
+
+            const allSections = Array.from(groupedSections.values());
 
             setRemoteData({
               latestVersion,
-              sizeMb: parseFloat(totalSize.toFixed(1)),
-              title: newUpdates[0].title,
+              sizeMb: res.data.downloadSizeMb || parseFloat(newUpdates.reduce((acc: number, u: any) => acc + (u.sizeMb || 0), 0).toFixed(1)),
+              title: res.data.title,
               sections: allSections,
             });
             setIsOpen(true);

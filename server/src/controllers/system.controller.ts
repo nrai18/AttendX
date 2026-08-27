@@ -91,6 +91,17 @@ export class SystemController {
         }
       ]
     };
+
+    try {
+      const updatePath = path.join(__dirname, "../uploads/update.zip");
+      if (fs.existsSync(updatePath)) {
+        const stats = fs.statSync(updatePath);
+        (manifest as any).downloadSizeMb = parseFloat((stats.size / (1024 * 1024)).toFixed(2));
+      }
+    } catch (e) {
+      console.error("Failed to calculate update size", e);
+    }
+
     res.json(manifest);
   }
 
