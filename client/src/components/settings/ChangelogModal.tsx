@@ -35,7 +35,7 @@ const RELEASES: Release[] = [
         category: "Improvements & Fixes",
         icon: <Wrench className="w-4 h-4 text-blue-500" />,
         items: [
-          "Added "Not right now" button to skip updates and work uninterrupted.",
+          "Added 'Not right now' button to skip updates and work uninterrupted.",
           "Fixed Landing Page logo visibility and contrast on dark theme.",
           "Fixed Google Sign-In redirecting to web browser."
         ]
