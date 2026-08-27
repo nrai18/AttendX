@@ -87,6 +87,8 @@ export const TodayPage = () => {
   // Overlay state
   const [lastGreetedDate, setLastGreetedDate] = useState<string | null>(null);
   const [showGreetingOverlay, setShowGreetingOverlay] = useState(false);
+
+
   const getHolidayAnimation = (activeEvent: any) => {
     let animType: any = "full_day_off";
     let animMsg = "Congratulations on a full day off! 🎉🥳";
@@ -151,6 +153,15 @@ export const TodayPage = () => {
   const fetchStats = useAttendanceStore((state) => state.fetchStats);
   const user = useAuthStore((state) => state.user);
   const targetPercentage = user?.targetAttendance ?? 75;
+
+  const isBirthday = React.useMemo(() => {
+    if (!user?.birthday) return false;
+    const targetMonth = parseInt(targetDateStr.split('-')[1]);
+    const targetDay = parseInt(targetDateStr.split('-')[2]);
+    const bMonth = parseInt(user.birthday.split('T')[0].split('-')[1]);
+    const bDay = parseInt(user.birthday.split('T')[0].split('-')[2]);
+    return targetMonth === bMonth && targetDay === bDay;
+  }, [user?.birthday, targetDateStr]);
   const { overallPercentage } = useAttendanceStore();
   const handleMarkFullDayOff = async () => {
     if (agenda.length === 0) return;
@@ -303,7 +314,8 @@ export const TodayPage = () => {
   // Greeting overlay effect
   useEffect(() => {
     if (!isLoading) {
-      if (activeEvent && ["holiday", "restricted_holiday"].includes(activeEvent.eventType || "")) {
+      const isHolidayEvent = activeEvent && ["holiday", "restricted_holiday"].includes(activeEvent.eventType || "");
+      if (isBirthday || isHolidayEvent) {
         if (lastGreetedDate !== targetDateStr) {
           setShowGreetingOverlay(true);
           setLastGreetedDate(targetDateStr);
@@ -315,7 +327,7 @@ export const TodayPage = () => {
         }
       }
     }
-  }, [isLoading, activeEvent, targetDateStr, lastGreetedDate]);
+  }, [isLoading, activeEvent, targetDateStr, lastGreetedDate, isBirthday]);
 
   const markAttendance = async (item: AgendaItem, status: string, remarks?: string) => {
     const updatedAgenda = agenda.map(a => 
@@ -451,8 +463,8 @@ export const TodayPage = () => {
       
       <HolidayGreetingOverlay
         isOpen={showGreetingOverlay}
-        holidayName={activeEvent?.title || "Holiday"}
-        holidayAssetSrc={activeEvent ? HOLIDAY_ASSETS[getHolidayAnimation(activeEvent).animType as AnimationType] : undefined}
+        holidayName={isBirthday ? `Happy Birthday, ${user?.name?.split(' ')[0]}!` : (activeEvent?.title || "Holiday")}
+        holidayAssetSrc={isBirthday ? "/lottie/happy-birthday.json" : (activeEvent ? HOLIDAY_ASSETS[getHolidayAnimation(activeEvent).animType as AnimationType] : undefined)}
         hasClasses={agenda.some(item => !item.status)}
         onMarkOff={handleMarkFullDayOff}
         onClose={() => setShowGreetingOverlay(false)}
@@ -545,6 +557,15 @@ export const TodayPage = () => {
           </button>
           
           <div>
+            {isBirthday && (
+              <div className="mb-4 bg-gradient-to-r from-amber-500/20 to-orange-500/20 border border-amber-500/30 rounded-2xl p-4 flex items-center gap-4">
+                <div className="text-3xl">🎂</div>
+                <div>
+                  <h3 className="font-bold text-amber-500">Happy Birthday, {user?.name?.split(' ')[0]}!</h3>
+                  <p className="text-sm text-foreground/80">Hope you have a fantastic day today!</p>
+                </div>
+              </div>
+            )}
             <h1 className="text-2xl font-bold text-foreground">{dateParam ? "Classes on" : "Today's Schedule"}</h1>
             <p className="text-sm text-muted-foreground mt-1">
               {new Date(targetDateStr).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
