@@ -215,6 +215,7 @@ export const SubjectDetailPage = () => {
         status: newStatus,
         timetableSlotId: item.timetableSlotId,
         overrideId: item.overrideId,
+        attendanceId: item.id || (item as any).attendanceId,
       });
 
       window.dispatchEvent(new Event("attendance-updated"));

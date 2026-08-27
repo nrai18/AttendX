@@ -187,6 +187,7 @@ export const TodayPage = () => {
         )
       );
 
+      fetchData();
       fetchStats();
       window.dispatchEvent(new Event("attendance-updated"));
     } catch (error) {
@@ -373,7 +374,7 @@ export const TodayPage = () => {
       if (!item.subject?.id) {
         throw new Error("Subject is missing for this agenda item");
       }
-      await api.post("/attendance/mark", {
+      const res = await api.post("/attendance/mark", {
         subjectId: item.subject.id,
         date: targetDateStr,
         status,
@@ -382,6 +383,13 @@ export const TodayPage = () => {
         overrideId: item.type === "override" ? item.id : undefined,
         attendanceId: item.attendanceId,
       });
+
+      setAgenda(prev => prev.map(a => 
+        a.id === item.id 
+          ? { ...a, attendanceId: status === "clear" ? null : res.data.id } 
+          : a
+      ));
+
       fetchStats();
       window.dispatchEvent(new Event("attendance-updated"));
     } catch (error) {
