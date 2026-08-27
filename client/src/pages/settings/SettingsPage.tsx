@@ -160,6 +160,26 @@ const renderDocuments = (type: string) => {
   const [storedDocuments, setStoredDocuments] = useState<any[]>([]);
   const [searchParams, setSearchParams] = useSearchParams();
 
+  // Dynamic Update Manifest
+  const [updateManifest, setUpdateManifest] = useState<any>({
+    latestVersion: "1.3.8",
+    changelog: []
+  });
+
+  useEffect(() => {
+    const fetchManifest = async () => {
+      try {
+        const { data } = await api.get("/system/update");
+        if (data) {
+          setUpdateManifest(data);
+        }
+      } catch (err) {
+        console.error("Failed to fetch update manifest", err);
+      }
+    };
+    fetchManifest();
+  }, []);
+
   useEffect(() => {
     if (searchParams.get("action") === "edit-profile") {
       setIsEditProfileOpen(true);
@@ -1369,7 +1389,7 @@ const renderDocuments = (type: string) => {
                   App info
                 </h3>
                 <p className="text-xs text-muted-foreground">
-                  Version v1.3.4 & Developer details
+                  Version v{updateManifest.latestVersion} & Developer details
                 </p>
               </div>
             </div>
@@ -1796,7 +1816,7 @@ const renderDocuments = (type: string) => {
                   AttendX
                 </h2>
                 <p className="text-xs font-semibold text-primary">
-                  Smart Attendance Manager • v1.3.4
+                  Smart Attendance Manager • v{updateManifest.latestVersion}
                 </p>
                 <p className="text-xs text-muted-foreground">
                   Built for IIITU Ecosystem
@@ -1905,6 +1925,7 @@ const renderDocuments = (type: string) => {
       <ChangelogModal
         isOpen={isChangelogOpen}
         onClose={() => setIsChangelogOpen(false)}
+        releases={updateManifest.changelog}
       />
       <LinkedDevicesModal 
         isOpen={isLinkedDevicesOpen} 
