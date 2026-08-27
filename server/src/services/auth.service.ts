@@ -57,6 +57,40 @@ export class AuthService {
     return this.generateTokensForOAuth(user);
   }
 
+  static async googleNativeLogin(idToken: string, req: any) {
+    const { OAuth2Client } = require("google-auth-library");
+    // Some setups use a separate Android client ID, but verification usually uses the Web Client ID
+    const client = new OAuth2Client(); 
+    
+    // We verify the token signature and get the payload
+    const ticket = await client.verifyIdToken({
+      idToken,
+      audience: process.env.GOOGLE_CLIENT_ID, 
+    });
+    const payload = ticket.getPayload();
+    if (!payload) throw new Error("Invalid Google token payload");
+
+    const email = payload.email?.toLowerCase().trim();
+    if (!email) throw new Error("No email found in Google token");
+
+    if (!email.endsWith("@iiitu.ac.in") && !email.endsWith("@gmail.com")) {
+      throw new Error("Only @iiitu.ac.in or @gmail.com emails are allowed.");
+    }
+
+    let user = await prisma.user.findUnique({ where: { email } });
+
+    if (!user) {
+      user = await prisma.user.create({
+        data: {
+          email,
+          name: payload.name || "Student",
+        },
+      });
+    }
+
+    return this.generateTokensForOAuth(user);
+  }
+
   static async generateTokensForOAuth(user: any) {
     const { v4: uuidv4 } = require("uuid"); const sessionId = uuidv4(); const accessToken = generateAccessToken(user.id, user.role, sessionId);
     const refreshToken = generateRefreshToken(user.id);
