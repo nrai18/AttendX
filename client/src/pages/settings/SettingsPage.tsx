@@ -256,7 +256,7 @@ const renderDocuments = (type: string) => {
       const payload: any = {
         name: data.fullName,
         gender: data.gender === 'unspecified' ? null : data.gender,
-        birthday: data.birthday ? new Date(data.birthday).toISOString() : null,
+        birthday: data.birthday ? `${data.birthday}T00:00:00.000Z` : null,
         avatarUrl: data.avatarUrl,
       };
       
@@ -1009,7 +1009,7 @@ const renderDocuments = (type: string) => {
           fullName: user?.name || "",
           email: user?.email || "",
           gender: user?.gender || "unspecified",
-          birthday: user?.birthday ? new Date(user?.birthday).toISOString().split('T')[0] : "",
+          birthday: user?.birthday ? user.birthday.split('T')[0] : "",
           avatarUrl: user?.avatarUrl || "",
           hasPassword: user?.hasPassword
         }}

@@ -427,7 +427,7 @@ export const EditProfile: React.FC<EditProfileProps> = ({ isOpen, onClose, initi
                   <span>STUDENT</span>
                 </div>
 
-                {formData.birthday && new Date(formData.birthday).getMonth() === new Date().getMonth() && new Date(formData.birthday).getDate() === new Date().getDate() && (
+                {formData.birthday && parseInt(formData.birthday.split('-')[1]) === new Date().getMonth() + 1 && parseInt(formData.birthday.split('-')[2]) === new Date().getDate() && (
                   <div className="absolute inset-0 z-0 pointer-events-none opacity-60">
                     <Player
                       autoplay
