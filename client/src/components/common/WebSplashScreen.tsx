@@ -17,9 +17,10 @@ export function WebSplashScreen({ onComplete }: { onComplete: () => void }) {
       return;
     }
     
+    // Fallback timer in case the animation doesn't trigger 'complete' event
     const fallbackTimer = setTimeout(() => {
       handleEnd();
-    }, 4000);
+    }, 12000);
     
     return () => clearTimeout(fallbackTimer);
   }, [onComplete]);
