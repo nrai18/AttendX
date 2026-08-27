@@ -14,6 +14,65 @@ interface Release {
 
 const RELEASES: Release[] = [
   {
+    version: "1.3.4",
+    date: "August 2026",
+    notes: [
+      {
+        category: "Improvements & Fixes",
+        icon: <Wrench className="w-4 h-4 text-blue-500" />,
+        items: [
+          "Restored full offline animations (Lottie JSONs) natively to the app",
+          "Fixed massive 285MB download size bug."
+        ]
+      }
+    ]
+  },
+  {
+    version: "1.3.3",
+    date: "August 2026",
+    notes: [
+      {
+        category: "Improvements & Fixes",
+        icon: <Wrench className="w-4 h-4 text-blue-500" />,
+        items: [
+          "Added "Not right now" button to skip updates and work uninterrupted.",
+          "Fixed Landing Page logo visibility and contrast on dark theme.",
+          "Fixed Google Sign-In redirecting to web browser."
+        ]
+      }
+    ]
+  },
+  {
+    version: "1.3.1",
+    date: "August 2026",
+    notes: [
+      {
+        category: "Native Enhancements",
+        icon: <Sparkles className="w-4 h-4 text-emerald-500" />,
+        items: [
+          "Splash screen now gracefully skips on web, preventing duplicate animations.",
+          "Native Google OAuth login now fully supported through Capacitor."
+        ]
+      }
+    ]
+  },
+  {
+    version: "1.3.0",
+    date: "August 2026",
+    notes: [
+      {
+        category: "New Features & OTA Improvements",
+        icon: <Sparkles className="w-4 h-4 text-emerald-500" />,
+        items: [
+          "OTA Updates now aggregate changelogs accurately.",
+          "Landing page hero animations replaced with stable pulse effects.",
+          "Fixed infinite OTA loop in background check.",
+          "Z-index issues fixed on settings overlays."
+        ]
+      }
+    ]
+  },
+  {
     version: "1.2.0",
     date: "August 2026",
     notes: [
@@ -29,8 +88,6 @@ const RELEASES: Release[] = [
         category: "Improvements & Fixes",
         icon: <Wrench className="w-4 h-4 text-blue-500" />,
         items: [
-          "Resolved infinite OTA update loop.",
-          "Fixed massive 285MB download size bug.",
           "Completely revamped native push notification engine."
         ]
       }
@@ -55,19 +112,6 @@ const RELEASES: Release[] = [
           "Added live Capacitor OTA engine.",
           "Implemented device fingerprinting for modals.",
           "Fixed ghost node process holding port 3000."
-        ]
-      }
-    ]
-  },
-  {
-    version: "1.0.0",
-    date: "August 2026",
-    notes: [
-      {
-        category: "Initial Release",
-        icon: <Sparkles className="w-4 h-4 text-emerald-500" />,
-        items: [
-          "Welcome to AttendX! The smartest attendance tracker for IIITU."
         ]
       }
     ]

@@ -1369,7 +1369,7 @@ const renderDocuments = (type: string) => {
                   App info
                 </h3>
                 <p className="text-xs text-muted-foreground">
-                  Version v1.3.2 & Developer details
+                  Version v1.3.4 & Developer details
                 </p>
               </div>
             </div>
@@ -1796,7 +1796,7 @@ const renderDocuments = (type: string) => {
                   AttendX
                 </h2>
                 <p className="text-xs font-semibold text-primary">
-                  Smart Attendance Manager • v1.3.2
+                  Smart Attendance Manager • v1.3.4
                 </p>
                 <p className="text-xs text-muted-foreground">
                   Built for IIITU Ecosystem
