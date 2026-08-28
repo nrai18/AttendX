@@ -27,8 +27,20 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({
   const [email, setEmail] = useState(user?.email || "");
   const [attachLogs, setAttachLogs] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [screenshot, setScreenshot] = useState<string | null>(null);
 
   if (!isOpen) return null;
+
+  const handleScreenshotChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setScreenshot(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -39,6 +51,18 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({
 
     try {
       setIsSubmitting(true);
+      
+      let deviceLogs = null;
+      if (attachLogs) {
+        deviceLogs = {
+          userAgent: navigator.userAgent,
+          platform: navigator.platform,
+          localStorage: { ...localStorage },
+          windowSize: `${window.innerWidth}x${window.innerHeight}`,
+          url: window.location.href
+        };
+      }
+
       await api.post("/support/feedback", {
         type: issueType,
         issue: selectedQuestion,
@@ -46,6 +70,8 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({
         description,
         email,
         attachLogs,
+        screenshot,
+        deviceLogs
       });
       toast.success("Feedback sent successfully.");
       onClose();
@@ -143,8 +169,18 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({
             <label className="text-sm font-medium text-foreground">
               Add screenshot (optional)
             </label>
-            <div className="w-16 h-16 bg-muted/50 border border-border rounded-xl flex items-center justify-center cursor-not-allowed hover:bg-muted transition-colors text-muted-foreground">
-              <Upload className="w-6 h-6" />
+            <div className="relative w-16 h-16 bg-muted/50 border border-border rounded-xl flex items-center justify-center hover:bg-muted transition-colors text-muted-foreground overflow-hidden">
+              {screenshot ? (
+                <img src={screenshot} alt="Screenshot preview" className="w-full h-full object-cover" />
+              ) : (
+                <Upload className="w-6 h-6" />
+              )}
+              <input 
+                type="file" 
+                accept="image/*" 
+                onChange={handleScreenshotChange}
+                className="absolute inset-0 opacity-0 cursor-pointer"
+              />
             </div>
           </div>
 

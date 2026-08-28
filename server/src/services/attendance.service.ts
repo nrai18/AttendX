@@ -502,7 +502,7 @@ export class AttendanceService {
         });
 
         for (const ev of dateEvents) {
-           if ((ev.isHolidayList && ev.eventType !== "restricted_holiday") || ["holiday", "vacation", "midsem", "endsem", "exam", "lab_exam"].includes(ev.eventType)) {
+           if ((ev.isHolidayList && ev.eventType !== "restricted_holiday") || ["holiday", "vacation", "midsem", "endsem"].includes(ev.eventType)) {
              isHoliday = true;
              holidayReason = ev.title || "Holiday";
            }

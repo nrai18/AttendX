@@ -68,7 +68,7 @@ Categorize each event strictly into one of the following ENUM values:
 - VACATION (for mid-semester breaks, semester breaks)
 - FEST (for cultural or sports festivals)
 - HOLIDAY (for public, national, or religious holidays)
-- OTHER (for anything else, such as result declarations, showing answer sheets)
+- OTHER (for anything else, such as result declarations, showing answer sheets, exams, registration)
 
 Return a JSON array of objects following this exact schema. If an event applies to all students, duplicate it into the array for every semester option.
 [
@@ -108,7 +108,7 @@ CRITICAL VISUAL & LOGICAL PARSING RULES:
 
 GENERAL RULES:
 1. DATE FORMATTING: Output all dates strictly as "YYYY-MM-DD". If an event block shows a range (e.g., "02-04, Nov"), startDate is "2026-11-02" and endDate is "2026-11-04".
-2. HOLIDAY HANDLING: If the category is "HOLIDAY", set \`isHoliday\` to \`true\`. For all other categories, set it to \`false\`.
+2. HOLIDAY HANDLING: If the category is "HOLIDAY", set \`isHoliday\` to \`true\`. For all other categories, set it to \`false\`. NEVER set \`isHoliday\` to true for "showing answer sheets" or regular academic milestones.
 3. STRICT JSON: Output ONLY raw, valid JSON. Do not wrap the output in markdown code blocks like \`\`\`json.
 
 Here is the raw extracted text from the PDF as a fallback reference to help you find all the holidays and events:

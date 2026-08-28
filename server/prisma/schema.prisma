@@ -148,6 +148,7 @@ model User {
   storedDocuments         StoredDocument[]
   refreshTokens           RefreshToken[]
   notificationPreferences NotificationPreferences?
+  feedbacks               Feedback[]
 
   @@map("users")
 }
@@ -520,3 +521,19 @@ model ShareTransfer {
   @@map("share_transfers")
 }
 
+
+model Feedback {
+  id              String   @id @default(uuid())
+  userId          String
+  type            String
+  issue           String
+  frequency       String
+  description     String
+  email           String
+  screenshotUrl   String?
+  deviceLogs      Json?
+  encryptedDbDump String?
+  createdAt       DateTime @default(now())
+
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}

@@ -543,7 +543,7 @@ export const PredictiveAttendanceView: React.FC<PredictiveAttendanceViewProps> =
 
                       <div className="shrink-0 text-right">
                         <div className="text-xs font-bold text-muted-foreground mb-0.5">Expected Total Classes</div>
-                        <div className="text-xl font-black text-foreground">{sub.total + remaining}{maxRemaining > remaining ? ` - ${sub.total + maxRemaining}` : ''} <span className="text-xs text-muted-foreground font-medium">({remainingText})</span></div>
+                        <div className="text-xl font-black text-foreground">{simTotal} <span className="text-xs text-muted-foreground font-medium">({remainingText})</span></div>
                       </div>
                     </div>
 
