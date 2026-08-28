@@ -5,9 +5,25 @@ import fs from "fs";
 export class SystemController {
   static async getUpdateManifest(req: Request, res: Response) {
     const manifest = {
-      latestVersion: "1.3.11",
-      title: "UI Polish & Bug Fixes",
+      latestVersion: "2.0.0",
+      title: "Major Update: Offline First & Fixes",
       changelog: [
+        {
+          version: "2.0.0",
+          sizeMb: 0.5,
+          sections: [
+            {
+              title: "Major Improvements",
+              items: [
+                { icon: "🚀", text: "Offline-First Support with Instant Load" },
+                { icon: "🔔", text: "Daily & Weekly Academic Push Notifications" },
+                { icon: "✅", text: "Google Sign-In Crash Fixes" },
+                { icon: "📉", text: "Predictive Attendance Math & Holidays Fixed" },
+                { icon: "📁", text: "Native CSV & JSON Data Export Downloads" }
+              ]
+            }
+          ]
+        },
         {
           version: "1.3.11",
           sizeMb: 0.1,

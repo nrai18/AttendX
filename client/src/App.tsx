@@ -104,7 +104,7 @@ export function App() {
         }}
       />
       <OTAUpdateModal
-        localVersion={localStorage.getItem("app_version") || "1.1.2"}
+        localVersion={localStorage.getItem("app_version") || "2.0.0"}
       />
       {splashFinished && (
         <BrowserRouter>
