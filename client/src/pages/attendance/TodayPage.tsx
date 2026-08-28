@@ -70,6 +70,7 @@ export const TodayPage = () => {
   const [todayStatus, setTodayStatus] = useState<any>(cachedData?.todayStatus || null);
   const activeEvent = syntheticHoliday || todayStatus?.activeEvent;
   const [activeSemester, setActiveSemester] = useState<any>(cachedData?.activeSemester || null);
+  const [onboardingStatus, setOnboardingStatus] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(!cachedData);
   const [isCreateSemesterOpen, setIsCreateSemesterOpen] = useState(false);
 
@@ -268,13 +269,15 @@ export const TodayPage = () => {
       }
 
       // Fetch today status and attendance in parallel
-      const [statusRes, res] = await Promise.allSettled([
+      const [statusRes, res, onboardRes] = await Promise.allSettled([
         statusPromise,
-        api.get(`/attendance/today?date=${targetDateStr}`)
+        api.get(`/attendance/today?date=${targetDateStr}`),
+        api.get("/users/onboarding-status")
       ]);
 
       let nextTodayStatus = null;
       let nextAgenda: AgendaItem[] = [];
+      let nextOnboarding = null;
 
       if (statusRes.status === 'fulfilled') {
         nextTodayStatus = statusRes.value.data;
@@ -288,10 +291,16 @@ export const TodayPage = () => {
         setAgenda([]);
       }
 
+      if (onboardRes.status === 'fulfilled') {
+        nextOnboarding = onboardRes.value.data;
+        setOnboardingStatus(nextOnboarding);
+      }
+
       setCache('today', { 
         agenda: nextAgenda, 
         todayStatus: nextTodayStatus, 
-        activeSemester: semRes.data || null 
+        activeSemester: semRes.data || null,
+        onboarding: nextOnboarding
       });
 
     } catch (error) {
@@ -662,27 +671,31 @@ export const TodayPage = () => {
         </div>
       )}
 
-      {!activeSemester ? (
+      {onboardingStatus && (!onboardingStatus.hasSemester || !onboardingStatus.hasSubjects || !onboardingStatus.hasTimetable || !onboardingStatus.hasCalendar || !onboardingStatus.hasAttendance) && (
         <div className="flex flex-col items-center justify-center py-6">
           <OnboardingChecklist 
             title="Getting Started"
             steps={[
-              { id: 1, title: "Create an active semester", isCompleted: !!activeSemester },
-              { id: 2, title: "Add subjects and set targets", isCompleted: false },
-              { id: 3, title: "Set up weekly timetable", isCompleted: false },
-              { id: 4, title: "Sync your academic calendar", isCompleted: false },
-              { id: 5, title: "Log your first attendance", isCompleted: false }
+              { id: 1, title: "Create an active semester", isCompleted: onboardingStatus.hasSemester, onClick: () => !onboardingStatus.hasSemester ? setIsCreateSemesterOpen(true) : navigate("/settings") },
+              { id: 2, title: "Add subjects and set targets", isCompleted: onboardingStatus.hasSubjects, onClick: () => navigate("/subjects") },
+              { id: 3, title: "Set up weekly timetable", isCompleted: onboardingStatus.hasTimetable, onClick: () => navigate("/timetable") },
+              { id: 4, title: "Sync your academic calendar", isCompleted: onboardingStatus.hasCalendar, onClick: () => navigate("/calendar") },
+              { id: 5, title: "Log your first attendance", isCompleted: onboardingStatus.hasAttendance, onClick: () => navigate("/today") }
             ]} 
           />
-          <button
-            onClick={() => setIsCreateSemesterOpen(true)}
-            className="mt-6 inline-flex items-center gap-2 bg-primary hover:bg-primary/90 text-primary-foreground px-6 py-3 rounded-xl text-sm font-bold transition-all shadow-md shadow-primary/20 cursor-pointer"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Create Semester Now</span>
-          </button>
+          {!onboardingStatus.hasSemester && (
+            <button
+              onClick={() => setIsCreateSemesterOpen(true)}
+              className="mt-6 inline-flex items-center gap-2 bg-primary hover:bg-primary/90 text-primary-foreground px-6 py-3 rounded-xl text-sm font-bold transition-all shadow-md shadow-primary/20 cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Create Semester Now</span>
+            </button>
+          )}
         </div>
-      ) : agenda.length === 0 ? (
+      )}
+
+      {activeSemester && agenda.length === 0 ? (
         <div className="text-center py-12 bg-card border border-border rounded-2xl shadow-sm">
           <CheckCircle2 className="w-12 h-12 text-emerald-500 mx-auto mb-4 opacity-80" />
           <h3 className="text-lg font-medium text-foreground mb-2">No classes scheduled today!</h3>
@@ -690,7 +703,7 @@ export const TodayPage = () => {
             Enjoy your day off or catch up on reading and self-study.
           </p>
         </div>
-      ) : (
+      ) : activeSemester ? (
         <div className="space-y-4">
           {agenda.map(item => (
             <div 
@@ -778,7 +791,7 @@ export const TodayPage = () => {
             </div>
           ))}
         </div>
-      )}
+      ) : null}
 
       {/* Contextual Remark Modal */}
       {selectedRemarkItem && (

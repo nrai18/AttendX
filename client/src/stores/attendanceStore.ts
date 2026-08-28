@@ -1,4 +1,6 @@
 import { create } from "zustand";
+import { persist, createJSONStorage } from "zustand/middleware";
+import { Preferences } from "@capacitor/preferences";
 import { api } from "../lib/api";
 import { useAuthStore } from "./authStore";
 
@@ -48,11 +50,27 @@ interface AttendanceState {
   activeSemesterId: string | null;
   isLoading: boolean;
   simulationBounds: { startDate: string, endDate: string, missingBoundaries: boolean, hasCommencement: boolean, hasLastDay: boolean } | null;
-  fetchStats: () => Promise<void>;
+  fetchStats: (background?: boolean) => Promise<void>;
   updateSimulationBoundaries: (startDate: string, endDate: string) => Promise<void>;
 }
 
-export const useAttendanceStore = create<AttendanceState>((set) => ({
+// Custom storage wrapper for Capacitor Preferences
+const capacitorStorage = {
+  getItem: async (name: string): Promise<string | null> => {
+    const { value } = await Preferences.get({ key: name });
+    return value;
+  },
+  setItem: async (name: string, value: string): Promise<void> => {
+    await Preferences.set({ key: name, value });
+  },
+  removeItem: async (name: string): Promise<void> => {
+    await Preferences.remove({ key: name });
+  },
+};
+
+export const useAttendanceStore = create<AttendanceState>()(
+  persist(
+    (set, get) => ({
   overallPercentage: 0,
   targetPercentage: 75,
   totalAttended: 0,
@@ -64,8 +82,9 @@ export const useAttendanceStore = create<AttendanceState>((set) => ({
   activeSemesterId: null,
   isLoading: true,
   simulationBounds: null,
-  fetchStats: async () => {
-    set({ isLoading: true });
+  fetchStats: async (background = false) => {
+    // Only show loading if we don't have any cached subjects
+    if (!background && get().subjects.length === 0) set({ isLoading: true });
     try {
       const user = useAuthStore.getState().user;
       const userTarget = user?.targetAttendance || 75;
@@ -214,10 +233,28 @@ export const useAttendanceStore = create<AttendanceState>((set) => ({
         endDate
       });
       // Re-fetch all stats to get the new simulation data
-      await fetchStats();
+      await get().fetchStats(false);
     } catch (error) {
       console.error("Failed to update boundaries:", error);
       set({ isLoading: false });
     }
   }
-}));
+    }),
+    {
+      name: "attendx-attendance-cache",
+      storage: createJSONStorage(() => capacitorStorage),
+      partialize: (state) => ({
+        overallPercentage: state.overallPercentage,
+        targetPercentage: state.targetPercentage,
+        totalAttended: state.totalAttended,
+        totalClasses: state.totalClasses,
+        subjects: state.subjects,
+        historyLogs: state.historyLogs,
+        events: state.events,
+        hasActiveSemester: state.hasActiveSemester,
+        activeSemesterId: state.activeSemesterId,
+        simulationBounds: state.simulationBounds
+      }),
+    }
+  )
+);

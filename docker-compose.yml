@@ -42,6 +42,38 @@ services:
     volumes:
       - redis_data:/data
 
+  server:
+    build:
+      context: ./server
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgres://attendx:attendx_password@postgres:5432/attendx?schema=public
+      PORT: 3000
+      JWT_SECRET: "your_jwt_secret_key"
+      JWT_REFRESH_SECRET: "your_jwt_refresh_secret_key"
+      FRONTEND_URL: "http://localhost:80"
+      REDIS_URL: "redis://redis:6379"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  client:
+    build:
+      context: ./client
+    ports:
+      - "80:80"
+    depends_on:
+      - server
+
+  ml-server:
+    build:
+      context: ./ml-server
+    ports:
+      - "8000:8000"
+
 volumes:
   postgres_data:
   redis_data:

@@ -31,25 +31,13 @@ export const OTAUpdateModal: React.FC<Props> = ({ localVersion }) => {
             index !== -1 ? changelog.slice(0, index) : changelog;
 
           if (newUpdates.length > 0) {
-            // Aggregate size and sections
-            const groupedSections = new Map<string, any>();
-
-            newUpdates.forEach((update: any) => {
-              update.sections?.forEach((sec: any) => {
-                if (!groupedSections.has(sec.title)) {
-                  groupedSections.set(sec.title, { title: sec.title, items: [] });
-                }
-                groupedSections.get(sec.title).items.push(...sec.items);
-              });
-            });
-
-            const allSections = Array.from(groupedSections.values());
+            const latestUpdate = newUpdates[0];
 
             setRemoteData({
               latestVersion,
-              sizeMb: res.data.downloadSizeMb || parseFloat(newUpdates.reduce((acc: number, u: any) => acc + (u.sizeMb || 0), 0).toFixed(1)),
-              title: res.data.title,
-              sections: allSections,
+              sizeMb: res.data.downloadSizeMb || latestUpdate.sizeMb || 0,
+              title: res.data.title || latestUpdate.title || "Update Available",
+              sections: latestUpdate.sections || [],
             });
             setIsOpen(true);
           }

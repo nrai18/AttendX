@@ -8,6 +8,7 @@ interface Step {
   id: number;
   title: string;
   isCompleted: boolean;
+  onClick?: () => void;
 }
 
 interface ChecklistProps {
@@ -86,6 +87,7 @@ export const OnboardingChecklist: React.FC<ChecklistProps> = ({
                   {steps.map((step) => (
                     <div 
                       key={step.id}
+                      onClick={step.onClick}
                       className="group flex items-center justify-between p-2.5 sm:p-3 px-3 sm:px-4 hover:bg-[#F9F9F9] dark:hover:bg-white/5 rounded-xl cursor-pointer transition-all active:scale-[0.98] sm:active:scale-100"
                     >
                       <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
