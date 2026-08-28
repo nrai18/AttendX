@@ -19,6 +19,16 @@ export const authenticate: RequestHandler = async (req, res, next) => {
     const token = authHeader.split(" ")[1];
     const payload = verifyAccessToken(token);
 
+    if (payload.sessionId) {
+      const { prisma } = require("../lib/prisma");
+      const sessionExists = await prisma.refreshToken.findUnique({
+        where: { id: payload.sessionId }
+      });
+      if (!sessionExists) {
+        return res.status(401).json({ message: "Session has been revoked" });
+      }
+    }
+
     req.user = payload;
     next();
   } catch (error) {

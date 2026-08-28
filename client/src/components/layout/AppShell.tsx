@@ -7,6 +7,8 @@ import { useAttendanceStore } from "../../stores/attendanceStore";
 import { AttendanceAnimationPopup } from "../common/AttendanceAnimationPopup";
 import { FloatingChatbot } from "../common/FloatingChatbot";
 
+import { NotificationService } from "../../services/NotificationService";
+
 interface AppShellProps {
   title?: string;
   onAddClick?: () => void;
@@ -19,6 +21,7 @@ export const AppShell: React.FC<AppShellProps> = ({ title, onAddClick }) => {
     fetchStats();
     const handleUpdate = () => {
       fetchStats();
+      NotificationService.autoScheduleFromTimetable();
     };
     window.addEventListener("attendance-updated", handleUpdate);
     return () => window.removeEventListener("attendance-updated", handleUpdate);

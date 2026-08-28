@@ -8,7 +8,7 @@ export class AuthService {
     return crypto.createHash("sha256").update(token).digest("hex");
   }
 
-  static async register(data: any) {
+  static async register(data: any, req?: any) {
     const normalizedEmail = data.email.toLowerCase().trim();
     const existingUser = await prisma.user.findUnique({ where: { email: normalizedEmail } });
     
@@ -18,14 +18,14 @@ export class AuthService {
         // Allow them to set a password now.
         const passwordHash = await bcrypt.hash(data.password, 10);
         const user = await prisma.user.update({
-          where: { email: normalizedEmail },
+          where: { id: existingUser.id },
           data: {
             passwordHash,
             name: data.name || existingUser.name,
           },
         });
         
-        return this.generateTokensForOAuth(user);
+        return this.generateTokensForOAuth(user, req);
       }
       
       throw new Error("Account already exists with this email. Please log in instead.");
@@ -40,10 +40,10 @@ export class AuthService {
       },
     });
 
-    return this.generateTokensForOAuth(user);
+    return this.generateTokensForOAuth(user, req);
   }
 
-  static async login(data: any) {
+  static async login(data: any, req?: any) {
     const normalizedEmail = data.email.toLowerCase().trim();
     const user = await prisma.user.findUnique({ where: { email: normalizedEmail } });
 
@@ -54,10 +54,10 @@ export class AuthService {
     const isValid = await bcrypt.compare(data.password, user.passwordHash);
     if (!isValid) throw new Error("Incorrect password. Please try again.");
 
-    return this.generateTokensForOAuth(user);
+    return this.generateTokensForOAuth(user, req);
   }
 
-  static async googleNativeLogin(idToken: string, req: any) {
+  static async googleNativeLogin(idToken: string, req?: any) {
     const { OAuth2Client } = require("google-auth-library");
     // Some setups use a separate Android client ID, but verification usually uses the Web Client ID
     const client = new OAuth2Client(); 
@@ -83,24 +83,31 @@ export class AuthService {
       user = await prisma.user.create({
         data: {
           email,
-          name: payload.name || "Student",
+          name: payload.name || "User",
+          profileImage: payload.picture || "",
         },
       });
     }
 
-    return this.generateTokensForOAuth(user);
+    return this.generateTokensForOAuth(user, req);
   }
 
-  static async generateTokensForOAuth(user: any) {
+  static async generateTokensForOAuth(user: any, req?: any) {
     const { v4: uuidv4 } = require("uuid"); const sessionId = uuidv4(); const accessToken = generateAccessToken(user.id, user.role, sessionId);
     const refreshToken = generateRefreshToken(user.id);
     const hashedRefresh = await this.hashToken(refreshToken);
+
+    const { getDeviceDetails } = require("../utils/device");
+    const { userAgent, ipAddress, location } = getDeviceDetails(req);
 
     await prisma.refreshToken.create({
       data: {
         id: sessionId, userId: user.id,
         token: hashedRefresh,
         expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        userAgent,
+        ipAddress,
+        location,
       },
     });
 
@@ -110,7 +117,7 @@ export class AuthService {
     return { user: userWithHasPassword, accessToken, refreshToken };
   }
 
-  static async refresh(oldRefreshToken: string) {
+  static async refresh(oldRefreshToken: string, req?: any) {
     const payload = verifyRefreshToken(oldRefreshToken);
     const hashedOldRefresh = await this.hashToken(oldRefreshToken);
 
@@ -135,11 +142,17 @@ export class AuthService {
     const newRefreshToken = generateRefreshToken(user.id);
     const hashedNewRefresh = await this.hashToken(newRefreshToken);
 
+    const { getDeviceDetails } = require("../utils/device");
+    const { userAgent, ipAddress, location } = getDeviceDetails(req);
+
     await prisma.refreshToken.create({
       data: {
         id: sessionId, userId: user.id,
         token: hashedNewRefresh,
         expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        userAgent,
+        ipAddress,
+        location,
       },
     });
 

@@ -6,6 +6,7 @@ const router = Router();
 
 router.get("/me", authenticate, UserController.getMe);
 router.patch("/me", authenticate, UserController.updateMe);
+router.get("/onboarding-status", authenticate, UserController.getOnboardingStatus);
 router.post("/reset-data", authenticate, UserController.resetData);
 router.post("/reset-subject-attendance", authenticate, UserController.resetSubjectAttendance);
 router.post("/reset-all-attendance", authenticate, UserController.resetAllAttendance);

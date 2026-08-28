@@ -5,6 +5,7 @@ import { Filesystem, Directory } from "@capacitor/filesystem";
 import { Share } from "@capacitor/share";
 import { useAuthStore } from "../../stores/authStore";
 import { useAttendanceStore } from "../../stores/attendanceStore";
+import { useCacheStore } from "../../stores/cacheStore";
 import { api } from "../../lib/api";
 import { toast } from "sonner";
 import { Stepper } from "../../components/ui/stepper";
@@ -59,6 +60,8 @@ import {
   type FrequencyData,
 } from "../../components/ui/frequency-selector";
 import { PeerSyncModal } from "../../components/sync/PeerSyncModal";
+import { OTAUpdateModal } from "../../components/common/OTAUpdateModal";
+import { downloadBlob } from "../../lib/download";
 import { FeedbackModal } from "../../components/support/FeedbackModal";
 import { ChangelogModal } from "../../components/settings/ChangelogModal";
 import { NotificationService } from "../../services/NotificationService";
@@ -87,13 +90,7 @@ const renderDocuments = (type: string) => {
                 onClick={async () => {
                   try {
                     const res = await api.get(`/documents/${doc.id}/download`, { responseType: 'blob' });
-                    const url = window.URL.createObjectURL(new Blob([res.data]));
-                    const link = document.createElement('a');
-                    link.href = url;
-                    link.setAttribute('download', doc.name);
-                    document.body.appendChild(link);
-                    link.click();
-                    link.parentNode?.removeChild(link);
+                    await downloadBlob(new Blob([res.data]), doc.name);
                   } catch (e) {
                     console.error(e);
                     toast.error("Failed to download document.");
@@ -208,12 +205,12 @@ const renderDocuments = (type: string) => {
   const [notifyBirthday, setNotifyBirthday] = useState(true);
   const [dndEnabled, setDndEnabled] = useState(true);
 
-  const [reminderFrequency, setReminderFrequency] = useState<FrequencyData>({
-    type: "Weekly",
-    subValue: "Mon",
-  });
+  const { reminderFrequency, setReminderFrequency } = useCacheStore();
 
-  // Reset Section Toggle
+  useEffect(() => {
+    // Schedule updates whenever frequency changes
+    NotificationService.scheduleAcademicUpdates(reminderFrequency);
+  }, [reminderFrequency]);  // Reset Section Toggle
   const [enableReset, setEnableReset] = useState(false);
 
   // Reset Modals State
@@ -363,36 +360,9 @@ const renderDocuments = (type: string) => {
 
       const fileName = `attendance_backup_${new Date().toISOString().slice(0, 10)}.json`;
       const jsonString = JSON.stringify(exportData, null, 2);
-
-      if (Capacitor.isNativePlatform()) {
-        try {
-          const base64Content = btoa(unescape(encodeURIComponent(jsonString)));
-          const savedFile = await Filesystem.writeFile({
-            path: fileName,
-            data: base64Content,
-            directory: Directory.Cache,
-          });
-          await Share.share({
-            title: fileName,
-            url: savedFile.uri,
-          });
-          setBackupStatusMessage("Backup exported successfully!");
-          setTimeout(() => setBackupStatusMessage(""), 3000);
-        } catch (e) {
-          console.error("Filesystem save error:", e);
-          toast.error("Failed to save JSON to device.");
-        }
-      } else {
-        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(jsonString);
-        const downloadAnchor = document.createElement("a");
-        downloadAnchor.setAttribute("href", dataStr);
-        downloadAnchor.setAttribute("download", fileName);
-        document.body.appendChild(downloadAnchor);
-        downloadAnchor.click();
-        downloadAnchor.remove();
-        setBackupStatusMessage("Backup exported successfully!");
-        setTimeout(() => setBackupStatusMessage(""), 3000);
-      }
+      await downloadBlob(new Blob([jsonString], { type: "application/json" }), fileName);
+      setBackupStatusMessage("Backup exported successfully!");
+      setTimeout(() => setBackupStatusMessage(""), 3000);
     } catch (err) {
       console.error("Failed to export backup", err);
       toast.error("Failed to export backup file.");
@@ -453,42 +423,7 @@ const renderDocuments = (type: string) => {
       }
 
       const blob = new Blob([res.data], { type: "application/zip" });
-      
-      if (Capacitor.isNativePlatform()) {
-        const reader = new FileReader();
-        reader.readAsDataURL(blob);
-        reader.onloadend = async () => {
-          const base64data = reader.result as string;
-          const base64Content = base64data.split(',')[1];
-          try {
-            const savedFile = await Filesystem.writeFile({
-              path: filename,
-              data: base64Content,
-              directory: Directory.Cache,
-            });
-            await Share.share({
-              title: filename,
-              url: savedFile.uri,
-            });
-          } catch (e: any) {
-            // Capacitor throws an error if the user dismisses the share sheet
-            const errorMsg = e?.message?.toLowerCase() || "";
-            if (!errorMsg.includes("cancel") && !errorMsg.includes("dismiss")) {
-              console.error("Filesystem save/share error:", e);
-              toast.error("Failed to share file.");
-            }
-          }
-        };
-      } else {
-        const url = window.URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.href = url;
-        link.setAttribute("download", filename);
-        document.body.appendChild(link);
-        link.click();
-        link.parentNode?.removeChild(link);
-        window.URL.revokeObjectURL(url);
-      }
+      await downloadBlob(blob, filename);
 } catch (err) {
       console.error("CSV/ZIP export failed", err);
       toast.error("Failed to generate ZIP export.");
@@ -1138,17 +1073,7 @@ const renderDocuments = (type: string) => {
             />
           </div>
 
-          <hr className="border-border/50" />
-          <div className="pt-2 flex flex-col gap-2">
-            <div className="flex gap-2">
-              <button onClick={() => NotificationService.scheduleClassReminder("Data Structures", new Date(Date.now() + 60000), "Room 304")} className="flex-1 py-2 bg-primary/20 text-primary text-xs font-bold rounded-xl hover:bg-primary/30 transition-colors">Test Class Reminder</button>
-              <button onClick={() => NotificationService.triggerPinnedClassMute("Operating Systems", new Date(Date.now() + 60000))} className="flex-1 py-2 bg-amber-500/20 text-amber-500 text-xs font-bold rounded-xl hover:bg-amber-500/30 transition-colors">Test DND Active</button>
-            </div>
-            <div className="flex gap-2">
-              <button onClick={() => NotificationService.scheduleHolidayNotification("Diwali", new Date())} className="flex-1 py-2 bg-emerald-500/20 text-emerald-500 text-xs font-bold rounded-xl hover:bg-emerald-500/30 transition-colors">Test Holiday</button>
-              <button onClick={() => NotificationService.scheduleBirthdayNotification("Naman", new Date())} className="flex-1 py-2 bg-pink-500/20 text-pink-500 text-xs font-bold rounded-xl hover:bg-pink-500/30 transition-colors">Test Birthday</button>
-            </div>
-          </div>
+
         </div>
       </div>
 

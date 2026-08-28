@@ -27,10 +27,9 @@ def get_db_connection():
 import csv
 import datetime
 
-@celery_app.task(bind=True, name="process_zip_upload")
-def process_zip_upload(self, file_b64: str, user_id: str, filename: str = "imported_backup.zip"):
+def process_zip_upload_sync(file_b64: str, user_id: str, filename: str, update_state):
     try:
-        self.update_state(state='PROGRESS', meta={'progress': 10, 'status': 'Extracting ZIP'})
+        update_state(state='PROGRESS', meta={'progress': 10, 'status': 'Extracting ZIP'})
         import base64
         import io
         
@@ -42,7 +41,7 @@ def process_zip_upload(self, file_b64: str, user_id: str, filename: str = "impor
         with zipfile.ZipFile(io.BytesIO(zip_bytes), 'r') as zip_ref:
             zip_ref.extractall(extract_dir)
             
-        self.update_state(state='PROGRESS', meta={'progress': 30, 'status': 'Validating CSV files'})
+        update_state(state='PROGRESS', meta={'progress': 30, 'status': 'Validating CSV files'})
         
         subject_csv_1 = os.path.join(extract_dir, 'subject_stats.csv')
         subject_csv_2 = os.path.join(extract_dir, 'subjects.csv')
@@ -59,7 +58,7 @@ def process_zip_upload(self, file_b64: str, user_id: str, filename: str = "impor
             shutil.rmtree(extract_dir, ignore_errors=True)
             return {'progress': 0, 'status': 'Error: Invalid ZIP format. Missing required CSV files.'}
             
-        self.update_state(state='PROGRESS', meta={'progress': 50, 'status': 'Connecting to Database'})
+        update_state(state='PROGRESS', meta={'progress': 50, 'status': 'Connecting to Database'})
         
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -74,7 +73,7 @@ def process_zip_upload(self, file_b64: str, user_id: str, filename: str = "impor
             
             now = datetime.datetime.now(datetime.timezone.utc)
             
-            self.update_state(state='PROGRESS', meta={'progress': 60, 'status': 'Parsing Subjects'})
+            update_state(state='PROGRESS', meta={'progress': 60, 'status': 'Parsing Subjects'})
             
             # 3. Import Subjects
             subject_map = {}
@@ -112,7 +111,7 @@ def process_zip_upload(self, file_b64: str, user_id: str, filename: str = "impor
             if not subject_values:
                 return {'progress': 0, 'status': 'Error: The ZIP file contains no valid subjects.'}
 
-            self.update_state(state='PROGRESS', meta={'progress': 70, 'status': 'Wiping old semester data & Importing'})
+            update_state(state='PROGRESS', meta={'progress': 70, 'status': 'Wiping old semester data & Importing'})
             
             # 2. Wipe current semester data (Cascades to slots and logs)
             cursor.execute('DELETE FROM timetable_overrides WHERE "semesterId" = %s', (sem_id,))
@@ -120,7 +119,7 @@ def process_zip_upload(self, file_b64: str, user_id: str, filename: str = "impor
             
             execute_values(cursor, 'INSERT INTO subjects (id, "semesterId", "userId", name, "targetAttendance", "colorHex", "createdAt", "updatedAt") VALUES %s', subject_values)
                 
-            self.update_state(state='PROGRESS', meta={'progress': 80, 'status': 'Importing Timetable Slots'})
+            update_state(state='PROGRESS', meta={'progress': 80, 'status': 'Importing Timetable Slots'})
             
             # 4. Import Timetable
             days_map = {"Monday": 0, "Tuesday": 1, "Wednesday": 2, "Thursday": 3, "Friday": 4, "Saturday": 5, "Sunday": 6}
@@ -148,7 +147,7 @@ def process_zip_upload(self, file_b64: str, user_id: str, filename: str = "impor
             if slot_values:
                 execute_values(cursor, 'INSERT INTO timetable_slots (id, "semesterId", "subjectId", "dayOfWeek", "startTime", "endTime", "slotType", "createdAt", "updatedAt") VALUES %s', slot_values)
                 
-            self.update_state(state='PROGRESS', meta={'progress': 90, 'status': 'Importing Attendance Logs'})
+            update_state(state='PROGRESS', meta={'progress': 90, 'status': 'Importing Attendance Logs'})
             
             # 5. Import Logs
             override_values = []
@@ -216,7 +215,7 @@ def process_zip_upload(self, file_b64: str, user_id: str, filename: str = "impor
             import shutil
             shutil.rmtree(extract_dir, ignore_errors=True)
             
-            self.update_state(state='PROGRESS', meta={'progress': 100, 'status': 'Completed successfully'})
+            update_state(state='PROGRESS', meta={'progress': 100, 'status': 'Completed successfully'})
             return {'progress': 100, 'status': 'Completed successfully'}
             
         finally:

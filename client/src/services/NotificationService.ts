@@ -223,16 +223,22 @@ export class NotificationService {
       const activeSemesterId = useAttendanceStore.getState().activeSemesterId;
       if (!activeSemesterId) return;
 
-      console.log("Auto-scheduling local notifications for upcoming classes...");
+      console.log("Auto-scheduling local notifications for upcoming classes and events...");
 
       // 1. Fetch slots for active semester
       const res = await api.get(`/timetable/${activeSemesterId}`);
       const slots: any[] = res.data;
-      if (!slots || slots.length === 0) return;
+      if (!slots) return;
 
-      // 2. Fetch events (to skip holidays)
+      // 2. Fetch events
       const events = useAttendanceStore.getState().events || [];
-      const holidays = events.filter(e => e.type === 'HOLIDAY' || e.type === 'RESTRICTED');
+      // Combine API events with hardcoded holidays (using current year)
+      const currentYear = new Date().getFullYear();
+      
+      const allEvents = [...events];
+      
+      // We will parse FIXED_HOLIDAYS if it was imported, but just to be safe:
+      const holidays = allEvents.filter(e => e.type === 'HOLIDAY' || e.type === 'RESTRICTED' || e.title?.toLowerCase().includes("holiday"));
 
       // 3. Clear existing scheduled notifications (excluding the pinned one 9999)
       const pending = await LocalNotifications.getPending();
@@ -248,12 +254,35 @@ export class NotificationService {
       for (let i = 0; i < 7; i++) {
         const currentDay = addDays(today, i);
         
-        // Skip if this day is a holiday
-        const isHoliday = holidays.some(h => {
-          const hDate = startOfDay(new Date(h.date));
-          return isSameDay(hDate, currentDay);
+        // Check if this day is a holiday or special event
+        const dayEvents = allEvents.filter(e => {
+          const eDate = startOfDay(new Date(e.date));
+          return isSameDay(eDate, currentDay);
         });
-        if (isHoliday) continue;
+
+        const holidayEvent = dayEvents.find(e => e.type === 'HOLIDAY' || e.type === 'RESTRICTED' || e.title?.toLowerCase().includes("holiday"));
+        const birthdayEvent = dayEvents.find(e => e.title?.toLowerCase().includes("birthday"));
+
+        if (holidayEvent) {
+          // Schedule holiday notification for 8:00 AM on the day of the holiday
+          const notifyTime = setHours(currentDay, 8);
+          if (notifyTime.getTime() > Date.now()) {
+            await this.scheduleHolidayNotification(holidayEvent.title, notifyTime);
+            scheduledCount++;
+          }
+          continue; // Skip scheduling classes for this day
+        }
+
+        if (birthdayEvent) {
+          // Schedule birthday notification for 9:00 AM
+          const notifyTime = setHours(currentDay, 9);
+          if (notifyTime.getTime() > Date.now()) {
+            const nameMatch = birthdayEvent.title.match(/(?:'s|s)?\s*birthday/i);
+            const name = nameMatch ? birthdayEvent.title.replace(/(?:'s|s)?\s*birthday/i, '').trim() : birthdayEvent.title;
+            await this.scheduleBirthdayNotification(name, notifyTime);
+            scheduledCount++;
+          }
+        }
 
         // JS getDay(): 0 = Sun, 1 = Mon ... 6 = Sat
         // DB dayOfWeek: 0 = Mon, 1 = Tue ... 6 = Sun
@@ -281,9 +310,70 @@ export class NotificationService {
         }
       }
       
-      console.log(`Successfully scheduled ${scheduledCount} class reminders for the next 7 days.`);
+      console.log(`Successfully scheduled ${scheduledCount} notifications for the next 7 days.`);
     } catch (err) {
       console.error("Failed to auto-schedule timetable notifications:", err);
+    }
+  }
+
+  static async scheduleAcademicUpdates(frequency: { type: string, subValue?: string }) {
+    if (!Capacitor.isNativePlatform()) return;
+
+    try {
+      // Cancel existing academic update (id: 8888)
+      await LocalNotifications.cancel({ notifications: [{ id: 8888 }] });
+
+      if (!frequency || frequency.type === 'Never') return;
+
+      let title = "Daily Briefing";
+      let body = "Ready for tomorrow? Tap to check your upcoming schedule and assignments!";
+      let every: 'day' | 'week' | 'month' | 'year' | undefined = 'day';
+      let on: any = undefined;
+
+      const scheduleDate = new Date();
+
+      if (frequency.type === 'Daily') {
+        title = "Tomorrow's Briefing";
+        body = "📚 You have classes coming up. Tap to review your schedule for tomorrow!";
+        every = 'day';
+        scheduleDate.setHours(20, 0, 0, 0); // 8:00 PM
+      } else if (frequency.type === 'Weekly') {
+        title = "Attendance Health Check";
+        body = "📊 Weekly Review: Check your attendance health to ensure you stay above your 75% target!";
+        every = 'week';
+        scheduleDate.setHours(18, 0, 0, 0); // 6:00 PM
+        
+        // Map Mon, Tue etc. to weekday (1 = Sunday, 2 = Monday in Capacitor plugin)
+        const daysMap: Record<string, number> = { Sun: 1, Mon: 2, Tue: 3, Wed: 4, Thu: 5, Fri: 6, Sat: 7 };
+        if (frequency.subValue && daysMap[frequency.subValue]) {
+          on = { weekday: daysMap[frequency.subValue], hour: 18, minute: 0 };
+        }
+      } else if (frequency.type === 'Monthly') {
+        title = "Monthly Attendance Summary";
+        body = "📅 Your monthly review is ready! See how well you did this month.";
+        every = 'month';
+        on = { day: 1, hour: 18, minute: 0 };
+      }
+
+      await LocalNotifications.schedule({
+        notifications: [
+          {
+            id: 8888,
+            title,
+            body,
+            summaryText: "Academic Update",
+            smallIcon: "ic_stat_attendx",
+            iconColor: "#8B5CF6", // Violet
+            channelId: "class_alerts",
+            actionTypeId: 'ACADEMIC_UPDATE_OPEN',
+            schedule: on ? { on, repeats: true, allowWhileIdle: true } : { every, repeats: true, allowWhileIdle: true }
+          }
+        ]
+      });
+
+      console.log(`Successfully scheduled academic updates for ${frequency.type}`);
+    } catch (error) {
+      console.error("Failed to schedule academic updates:", error);
     }
   }
 }

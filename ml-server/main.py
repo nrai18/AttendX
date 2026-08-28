@@ -55,39 +55,43 @@ celery_app = Celery(
 )
 
 # --- Endpoints ---
+task_status = {}
+
 @app.websocket("/ws/progress/{task_id}")
 async def websocket_endpoint(websocket: WebSocket, task_id: str):
     await websocket.accept()
     try:
         while True:
-            res = AsyncResult(task_id, app=celery_app)
-            if res.state == 'PENDING':
+            if task_id not in task_status:
                 await websocket.send_json({"progress": 0, "status": "Pending"})
-            elif res.state != 'FAILURE':
-                meta = res.info or {}
-                if isinstance(meta, Exception):
-                    await websocket.send_json({"progress": 0, "status": f"Error: {str(meta)}"})
-                    break
-                
-                progress = meta.get('progress', 0) if isinstance(meta, dict) else 0
-                status_msg = meta.get('status', 'Processing') if isinstance(meta, dict) else str(meta)
-                
-                await websocket.send_json({
-                    "progress": progress,
-                    "status": status_msg
-                })
-                if res.state == 'SUCCESS':
-                    break
             else:
-                error_msg = str(res.info) if res.info else "Unknown error"
-                await websocket.send_json({"progress": 0, "status": f"Error: {error_msg}"})
-                break
+                res = task_status[task_id]
+                if res['state'] != 'FAILURE':
+                    meta = res['meta']
+                    if isinstance(meta, Exception):
+                        await websocket.send_json({"progress": 0, "status": f"Error: {str(meta)}"})
+                        break
+                    
+                    progress = meta.get('progress', 0) if isinstance(meta, dict) else 0
+                    status_msg = meta.get('status', 'Processing') if isinstance(meta, dict) else str(meta)
+                    
+                    await websocket.send_json({
+                        "progress": progress,
+                        "status": status_msg
+                    })
+                    if res['state'] == 'SUCCESS':
+                        break
+                else:
+                    error_msg = str(res['meta']) if res['meta'] else "Unknown error"
+                    await websocket.send_json({"progress": 0, "status": f"Error: {error_msg}"})
+                    break
+            
             await asyncio.sleep(0.5)
     except WebSocketDisconnect:
         print(f"Client disconnected from task {task_id}")
 
 @app.post("/upload/zip")
-async def upload_zip(user_id: str, file: UploadFile = File(...)):
+async def upload_zip(user_id: str, file: UploadFile = File(...), background_tasks: BackgroundTasks = BackgroundTasks()):
     if not file.filename.endswith('.zip'):
         raise HTTPException(status_code=400, detail="Only .zip files allowed")
         
@@ -95,10 +99,25 @@ async def upload_zip(user_id: str, file: UploadFile = File(...)):
     import base64
     file_b64 = base64.b64encode(file_bytes).decode('utf-8')
     
-    # Trigger Celery task
-    task = celery_app.send_task("process_zip_upload", args=[file_b64, user_id, file.filename])
+    import uuid
+    task_id = str(uuid.uuid4())
+    task_status[task_id] = {"state": "PENDING", "meta": {"progress": 0, "status": "Pending"}}
     
-    return {"status": "accepted", "message": "ZIP upload processing in background", "task_id": task.id}
+    def update_state(state, meta):
+        task_status[task_id] = {"state": state, "meta": meta}
+    
+    def background_job():
+        try:
+            from tasks import process_zip_upload_sync
+            res = process_zip_upload_sync(file_b64, user_id, file.filename, update_state)
+            update_state("SUCCESS", res)
+        except Exception as e:
+            update_state("FAILURE", str(e))
+            
+    import threading
+    threading.Thread(target=background_job).start()
+    
+    return {"status": "accepted", "message": "ZIP upload processing in background", "task_id": task_id}
 
 @app.post("/upload/calendar-ocr")
 async def calendar_ocr(file: UploadFile = File(...)):

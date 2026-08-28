@@ -13,6 +13,38 @@ export class UserController {
       res.status(404).json({ message: error.message });
     }
   }
+  static async getOnboardingStatus(req: AuthenticatedRequest, res: Response) {
+    try {
+      const userId = req.user!.userId;
+      const { prisma } = require("../lib/prisma");
+
+      const activeSemester = await prisma.semester.findFirst({ where: { userId, isActive: true } });
+      const hasSemester = !!activeSemester;
+      
+      let hasSubjects = false;
+      let hasTimetable = false;
+      let hasCalendar = false;
+      let hasAttendance = false;
+
+      if (hasSemester) {
+        const subCount = await prisma.subject.count({ where: { semesterId: activeSemester.id } });
+        hasSubjects = subCount > 0;
+
+        const ttCount = await prisma.timetableSlot.count({ where: { semesterId: activeSemester.id } });
+        hasTimetable = ttCount > 0;
+
+        const evCount = await prisma.academicEvent.count({ where: { semesterId: activeSemester.id } });
+        hasCalendar = evCount > 0;
+
+        const attCount = await prisma.attendance.count({ where: { userId, subject: { semesterId: activeSemester.id } } });
+        hasAttendance = attCount > 0;
+      }
+
+      res.status(200).json({ hasSemester, hasSubjects, hasTimetable, hasCalendar, hasAttendance });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  }
 
   static async updateMe(req: AuthenticatedRequest, res: Response) {
     try {

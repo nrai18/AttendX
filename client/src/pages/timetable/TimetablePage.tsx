@@ -15,6 +15,7 @@ import { Wand2 } from "lucide-react";
 import { DndContext, closestCenter, DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { normalizeTimeString } from "../../utils/timeUtils";
+import { downloadBlob } from "../../lib/download";
 import { useAttendanceStore } from "../../stores/attendanceStore";
 import { useCacheStore } from "../../stores/cacheStore";
 
@@ -221,6 +222,7 @@ export const TimetablePage = () => {
       
       resetForm();
       fetchData();
+      window.dispatchEvent(new Event("attendance-updated"));
     } catch (error) {
       console.error("Failed to save slot:", error);
     }
@@ -230,13 +232,8 @@ export const TimetablePage = () => {
     if (!activeSemester) return;
     try {
       const res = await api.get(`/timetable/export/${activeSemester.id}`);
-      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(res.data, null, 2));
-      const downloadAnchor = document.createElement("a");
-      downloadAnchor.setAttribute("href", dataStr);
-      downloadAnchor.setAttribute("download", `schedule_${activeSemester.name.replace(/\s+/g, "_")}.json`);
-      document.body.appendChild(downloadAnchor);
-      downloadAnchor.click();
-      downloadAnchor.remove();
+      const jsonStr = JSON.stringify(res.data, null, 2);
+      await downloadBlob(new Blob([jsonStr], { type: "application/json" }), `schedule_${activeSemester.name.replace(/\s+/g, "_")}.json`);
     } catch (error) {
       console.error("Export timetable failed:", error);
       toast.error("Failed to export timetable.");
@@ -258,6 +255,7 @@ export const TimetablePage = () => {
               try {
                 await api.post(`/timetable/import/${activeSemester.id}`, payload);
                 fetchData();
+                window.dispatchEvent(new Event("attendance-updated"));
                 toast.success("Timetable imported successfully!");
               } catch (err: any) {
                 console.error("Failed to import JSON:", err);
@@ -442,6 +440,7 @@ export const TimetablePage = () => {
         toast.error("Timetable imported successfully!");
         setIsOcrModalOpen(false);
         fetchData();
+        window.dispatchEvent(new Event("attendance-updated"));
       }
     } catch (error) {
       console.error("OCR Import failed:", error);
@@ -465,6 +464,7 @@ export const TimetablePage = () => {
       setIsWizardOpen(false);
       setWizardPayload(null);
       fetchData();
+      window.dispatchEvent(new Event("attendance-updated"));
     } catch (error) {
       console.error("Failed to generate timetable:", error);
       toast.error("Failed to generate timetable.");

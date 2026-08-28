@@ -135,33 +135,13 @@ export const LinkedDevicesModal: React.FC<LinkedDevicesProps> = ({
                 <X className="w-5 h-5 text-white" />
               </button>
               <h2 className="text-xl font-medium text-white tracking-wide">
-                Linked devices
+                Active sessions
               </h2>
             </div>
 
             {/* Content */}
             <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
-              <div className="flex flex-col items-center justify-center py-6 mb-4">
-                <div className="flex items-center gap-4 mb-4">
-                  <Smartphone className="w-16 h-16 text-emerald-100 rotate-[-15deg]" />
-                  <Laptop className="w-20 h-20 text-emerald-500" />
-                </div>
-                <p className="text-sm text-slate-300 text-center max-w-xs leading-relaxed">
-                  You can link other devices to this account.
-                  <br />
-                  <span className="text-emerald-400 font-medium cursor-pointer mt-1 block">
-                    Learn more
-                  </span>
-                </p>
-                <button 
-                  onClick={() => window.location.href = "/404"}
-                  className="mt-6 w-full max-w-[280px] bg-emerald-500 hover:bg-emerald-600 text-white font-medium py-3 rounded-full transition-colors"
-                >
-                  Link a device
-                </button>
-              </div>
-
-              <div className="mb-2 flex justify-between items-end">
+              <div className="mb-2 flex justify-between items-end mt-2">
                 <div>
                   <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">
                     Device Status

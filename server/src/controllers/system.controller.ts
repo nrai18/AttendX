@@ -9,6 +9,21 @@ export class SystemController {
       title: "UI Polish & Bug Fixes",
       changelog: [
         {
+          version: "1.3.11",
+          sizeMb: 0.1,
+          sections: [
+            {
+              title: "Improvements & Fixes",
+              items: [
+                { icon: "🔒", text: "Linked Devices page renamed to Active sessions for clarity" },
+                { icon: "🛡️", text: "Instant session invalidation added to 'Sign out all others' action" },
+                { icon: "📱", text: "Accurate OS, Browser, and Geolocation logging for active sessions" },
+                { icon: "🚀", text: "Redesigned Onboarding checklist that tracks your true real-time setup progress" }
+              ]
+            }
+          ]
+        },
+        {
           version: "1.3.10",
           sizeMb: 30.1,
           sections: [
@@ -28,8 +43,8 @@ export class SystemController {
               title: "Improvements & Fixes",
               items: [
                 { icon: "⏭️", text: "Added 'Not right now' button to skip updates and work uninterrupted" },
-                { icon: "✨", text: "Fixed Landing Page logo visibility and contrast on dark theme" },
-                { icon: "🔧", text: "Fixed Google Sign-In redirecting to web browser" }
+                { icon: "🎨", text: "Fixed Landing Page logo visibility and contrast on dark theme" },
+                { icon: "🔑", text: "Fixed Google Sign-In redirecting to web browser" }
               ]
             }
           ]
@@ -41,8 +56,8 @@ export class SystemController {
             {
               title: "Improvements & Fixes",
               items: [
-                { icon: "✨", text: "Fixed Landing Page logo visibility and contrast on dark theme" },
-                { icon: "🔧", text: "Fixed Google Sign-In redirecting to web browser" }
+                { icon: "🎨", text: "Fixed Landing Page logo visibility and contrast on dark theme" },
+                { icon: "🔑", text: "Fixed Google Sign-In redirecting to web browser" }
               ]
             }
           ]
@@ -54,7 +69,7 @@ export class SystemController {
             {
               title: "Native Enhancements",
               items: [
-                { icon: "📱", text: "Splash screen now gracefully skips on web, preventing duplicate animations" },
+                { icon: "⚡", text: "Splash screen now gracefully skips on web, preventing duplicate animations" },
                 { icon: "🔐", text: "Native Google OAuth login now fully supported through Capacitor" }
               ]
             }
@@ -68,9 +83,9 @@ export class SystemController {
               title: "New Features & OTA Improvements",
               items: [
                 { icon: "📦", text: "OTA Updates now aggregate changelogs accurately" },
-                { icon: "🖼️", text: "Landing page hero animations replaced with stable pulse effects" },
-                { icon: "🐛", text: "Fixed infinite OTA loop in background check" },
-                { icon: "🚀", text: "Z-index issues fixed on settings overlays" }
+                { icon: "💫", text: "Landing page hero animations replaced with stable pulse effects" },
+                { icon: "🔄", text: "Fixed infinite OTA loop in background check" },
+                { icon: "🛠️", text: "Z-index issues fixed on settings overlays" }
               ]
             }
           ]
@@ -83,7 +98,7 @@ export class SystemController {
               title: "Improvements & Fixes",
               items: [
                 { icon: "📅", text: "Attendance Logs now properly track past/future dates independent of semester bounds" },
-                { icon: "👁️", text: "Unmarked regular classes are now hidden from logs for a cleaner view" },
+                { icon: "🧹", text: "Unmarked regular classes are now hidden from logs for a cleaner view" },
                 { icon: "➕", text: "Extra classes are properly surfaced in logs even before marking" }
               ]
             }

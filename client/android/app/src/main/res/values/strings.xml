@@ -4,4 +4,5 @@
     <string name="title_activity_main">AttendX</string>
     <string name="package_name">com.attendx.app</string>
     <string name="custom_url_scheme">com.attendx.app</string>
+    <string name="server_client_id">729387616931-qlajf1dss2qi1cta5pvc3dos03fh4coi.apps.googleusercontent.com</string>
 </resources>
