@@ -110,7 +110,8 @@ export const LoginPage: React.FC = () => {
         console.error("Native Google Login failed:", err);
         // User canceled if err.message contains 'canceled'
         if (err.message && !err.message.toLowerCase().includes("canceled")) {
-           setError("Google Sign-In failed.");
+           const detailedError = err?.response?.data?.message || err?.message || String(err);
+           setError("Google Sign-In failed: " + detailedError);
         }
       } finally {
         setLoading(false);

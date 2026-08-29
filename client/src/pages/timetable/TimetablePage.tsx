@@ -594,7 +594,7 @@ export const TimetablePage = () => {
             <button
               onClick={() => {
                 api.get(`/subjects?semesterId=${activeSemester?.id}`).then(res => {
-                  const subs = res.data;
+                  const subs = Array.isArray(res.data) ? res.data : [];
                   if (subs.length >= 2) {
                     const allIds = subs.map((s: any) => s.id);
                     setNewSubjectIds(allIds);

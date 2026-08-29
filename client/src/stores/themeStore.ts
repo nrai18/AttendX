@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-export type ThemeMode = "light" | "dark" | "system";
+export type ThemeMode = "light" | "dark";
 
 interface ThemeState {
   theme: ThemeMode;
@@ -9,20 +9,16 @@ interface ThemeState {
 }
 
 const getInitialTheme = (): ThemeMode => {
-  const saved = localStorage.getItem("app_theme") as ThemeMode;
-  if (saved === "light" || saved === "dark" || saved === "system") {
+  const saved = localStorage.getItem("app_theme");
+  if (saved === "light" || saved === "dark") {
     return saved;
   }
-  return "dark";
+  return "dark"; // Default to dark if empty or 'system' was saved previously
 };
 
 export const applyThemeToDOM = (targetTheme: ThemeMode) => {
   const root = document.documentElement;
-  let isDark = targetTheme === "dark";
-
-  if (targetTheme === "system") {
-    isDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-  }
+  const isDark = targetTheme === "dark";
 
   if (isDark) {
     root.classList.remove("light");
@@ -38,19 +34,15 @@ export const applyThemeToDOM = (targetTheme: ThemeMode) => {
 export const useThemeStore = create<ThemeState>((set, get) => ({
   theme: getInitialTheme(),
 
-  setTheme: (theme: ThemeMode) => {
-    localStorage.setItem("app_theme", theme);
-    set({ theme });
-    applyThemeToDOM(theme);
+  setTheme: (theme: string) => {
+    const validTheme = theme === "light" ? "light" : "dark";
+    localStorage.setItem("app_theme", validTheme);
+    set({ theme: validTheme });
+    applyThemeToDOM(validTheme);
   },
 
   toggleTheme: () => {
     const current = get().theme;
-    let next: ThemeMode = "light";
-    if (current === "light") next = "dark";
-    else if (current === "dark") next = "light";
-    else next = "light";
-
-    get().setTheme(next);
+    get().setTheme(current === "light" ? "dark" : "light");
   },
 }));

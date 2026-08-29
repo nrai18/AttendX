@@ -1,4 +1,4 @@
-import { CapacitorConfig } from '@capacitor/cli';
+﻿import { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
   appId: 'com.attendx.app',
@@ -28,10 +28,9 @@ const config: CapacitorConfig = {
     CapacitorCookies: {
       enabled: true,
     },
-    CapacitorHttp: {
-      enabled: true,
-    },
+    CapacitorHttp: { enabled: false },
   },
 };
 
 export default config;
+

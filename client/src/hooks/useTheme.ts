@@ -15,13 +15,6 @@ export function useTheme() {
 
   useEffect(() => {
     applyThemeToDOM(theme);
-
-    if (theme === "system") {
-      const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
-      const handleChange = () => applyThemeToDOM("system");
-      mediaQuery.addEventListener("change", handleChange);
-      return () => mediaQuery.removeEventListener("change", handleChange);
-    }
   }, [theme]);
 
   return { theme, setTheme };

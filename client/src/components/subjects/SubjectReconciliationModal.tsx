@@ -39,8 +39,9 @@ export const SubjectReconciliationModal: React.FC<ReconciliationProps> = ({
     setIsLoading(true);
     try {
       const res = await api.get(`/subjects?semesterId=${semesterId}`);
-      setSubjects(res.data);
-      autoMap(res.data);
+      const data = Array.isArray(res.data) ? res.data : [];
+      setSubjects(data);
+      autoMap(data);
     } catch (err) {
       console.error("Failed to load subjects", err);
     } finally {

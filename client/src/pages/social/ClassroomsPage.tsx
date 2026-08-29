@@ -29,7 +29,7 @@ export const ClassroomsPage = () => {
     try {
       setIsLoading(true);
       const res = await api.get("/classrooms");
-      setClassrooms(res.data);
+      setClassrooms(Array.isArray(res.data) ? res.data : []);
     } catch (error) {
       console.error("Failed to fetch classrooms:", error);
     } finally {

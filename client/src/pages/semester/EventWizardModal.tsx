@@ -39,10 +39,11 @@ export const EventWizardModal: React.FC<WizardProps> = ({ isOpen, onClose, onSav
     if (isOpen) {
       // Fetch semesters
       api.get("/semesters").then(res => {
-        setSemesters(res.data);
-        const active = res.data.find((s: any) => s.isActive);
+        const data = Array.isArray(res.data) ? res.data : [];
+        setSemesters(data);
+        const active = data.find((s: any) => s.isActive);
         if (active) setSelectedSemester(active.id);
-        else if (res.data.length > 0) setSelectedSemester(res.data[0].id);
+        else if (data.length > 0) setSelectedSemester(data[0].id);
       }).catch(console.error);
       
       // Select all events of the first group by default

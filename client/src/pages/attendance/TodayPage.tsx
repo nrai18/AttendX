@@ -202,7 +202,7 @@ export const TodayPage = () => {
   const openAddExtraModal = async () => {
     try {
       const res = await api.get("/subjects");
-      setSubjectsForExtra(res.data || []);
+      setSubjectsForExtra(Array.isArray(res.data) ? res.data : []);
       setIsAddExtraModalOpen(true);
     } catch (err) {
       console.error("Failed to load subjects:", err);
@@ -305,12 +305,57 @@ export const TodayPage = () => {
 
     } catch (error) {
       console.error("Failed to fetch today data:", error);
+      
+      // OFFLINE FALLBACK
+      const isToday = targetDateStr === format(new Date(), "yyyy-MM-dd");
+      if (!isToday) {
+         // Attempt to construct agenda from cached timetable
+         const timetableCache = useCacheStore.getState().timetable;
+         if (timetableCache && timetableCache.slots) {
+            const dateObj = new Date(targetDateStr);
+            const jsDay = dateObj.getDay();
+            const ttDay = jsDay === 0 ? 6 : jsDay - 1;
+
+            const slotsForDay = timetableCache.slots.filter((s: any) => s.dayOfWeek === ttDay);
+            const pseudoAgenda: AgendaItem[] = slotsForDay.map((slot: any) => {
+               const subject = timetableCache.subjects?.find((sub: any) => sub.id === slot.subjectId) || { id: slot.subjectId, name: "Unknown" };
+               return {
+                  id: slot.id,
+                  type: "slot",
+                  subject,
+                  startTime: slot.startTime,
+                  endTime: slot.endTime,
+                  status: "none"
+               };
+            });
+            pseudoAgenda.sort((a,b) => a.startTime.localeCompare(b.startTime));
+            setAgenda(pseudoAgenda);
+            setTodayStatus(null);
+         } else {
+            setAgenda([]);
+            setTodayStatus(null);
+         }
+      } else {
+         const todayCache = useCacheStore.getState().today;
+         if (todayCache) {
+            setAgenda(todayCache.agenda || []);
+            setTodayStatus(todayCache.todayStatus || null);
+         } else {
+            setAgenda([]);
+         }
+      }
     } finally {
       setIsLoading(false);
     }
   };
 
   useEffect(() => {
+    const todayStr = format(new Date(), "yyyy-MM-dd");
+    if (targetDateStr !== todayStr) {
+      setAgenda([]);
+      setTodayStatus(null);
+      setIsLoading(true);
+    }
     fetchData();
 
     const handleUpdate = () => {

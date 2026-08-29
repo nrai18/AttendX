@@ -119,7 +119,7 @@ export const ScheduleDate: React.FC<ScheduleDateProps> = ({ onApply, onCancel })
 
                 <div className="grid grid-cols-7 gap-y-1 text-center relative">
                     {DAYS.map(d => (
-                        <span key={d} className="text-[11px] font-medium text-neutral-400 dark:text-neutral-600 mb-2">{d}</span>
+                        <span key={d} className="text-[11px] font-medium text-neutral-500 dark:text-neutral-600 mb-2">{d}</span>
                     ))}
                     {Array.from({ length: firstDay }).map((_, i) => <div key={`empty-${i}`} className="h-8" />)}
                     {Array.from({ length: daysInMonth }).map((_, i) => {
@@ -142,7 +142,7 @@ export const ScheduleDate: React.FC<ScheduleDateProps> = ({ onApply, onCancel })
                                 )}
                                 {(isStart || isEnd) ? (
                                     <div className="absolute w-8 h-8 rounded-lg bg-linear-to-b from-neutral-700 to-neutral-900 dark:from-neutral-800 dark:to-indigo-900/50 border border-neutral-600 dark:border-white/10 shadow-xl z-10 flex flex-col items-center justify-center">
-                                        <span className="text-white text-xs font-bold">{day}</span>
+                                        <span className="text-gray-50 text-xs font-bold">{day}</span>
                                         <motion.div layoutId="activeThumb" className="absolute bottom-1 w-2 h-[1.5px] bg-blue-400 dark:bg-indigo-500 rounded-full shadow-[0_0_8px_#6366f1]" />
                                     </div>
                                 ) : (
@@ -216,7 +216,7 @@ export const ScheduleDate: React.FC<ScheduleDateProps> = ({ onApply, onCancel })
 
             <footer className="h-16 border-t border-neutral-200 dark:border-neutral-800 bg-neutral-50/50 dark:bg-neutral-950/50 flex items-center justify-end px-6 gap-3 shrink-0">
                 <button onClick={onCancel} className="px-4 py-1.5 rounded-full border border-neutral-200 dark:border-neutral-800 text-xs font-medium text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-900 hover:text-neutral-900 dark:hover:text-white transition-colors">Cancel</button>
-                <button onClick={() => onApply?.(range)} className="px-5 py-1.5 rounded-full bg-neutral-900 dark:bg-neutral-100 text-white dark:text-black text-xs font-semibold hover:opacity-90 transition-all shadow-lg active:scale-95">Apply</button>
+                <button onClick={() => onApply?.(range)} className="px-5 py-1.5 rounded-full bg-neutral-900 dark:bg-neutral-100 text-gray-50 dark:text-black text-xs font-semibold hover:opacity-90 transition-all shadow-lg active:scale-95">Apply</button>
             </footer>
         </div>
     );

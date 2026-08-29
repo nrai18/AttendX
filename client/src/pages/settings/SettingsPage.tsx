@@ -69,7 +69,7 @@ import { NotificationService } from "../../services/NotificationService";
 export const SettingsPage: React.FC = () => {
 const renderDocuments = (type: string) => {
     // For backups, only show the most recent one (index 0 because it's sorted desc by createdAt on backend)
-    let docs = storedDocuments.filter((d: any) => d.type === type);
+    let docs = (Array.isArray(storedDocuments) ? storedDocuments : []).filter((d: any) => d.type === type);
     if (type === "BACKUP" && docs.length > 0) {
       docs = [docs[0]];
     }
@@ -1017,11 +1017,7 @@ const renderDocuments = (type: string) => {
               <div>
                 <h3 className="text-sm font-bold text-foreground">Set theme</h3>
                 <p className="text-xs text-muted-foreground">
-                  {theme === "dark"
-                    ? "Dark Mode"
-                    : theme === "light"
-                      ? "Light Mode"
-                      : "System Default, using App colors"}
+                  {theme === "dark" ? "Dark Mode" : "Light Mode"}
                 </p>
               </div>
             </div>
@@ -1039,13 +1035,6 @@ const renderDocuments = (type: string) => {
                 className={`p-1.5 rounded-lg transition-all ${theme === "light" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground"}`}
               >
                 <Sun className="w-4 h-4" />
-              </button>
-              <button
-                type="button"
-                onClick={() => setTheme("system")}
-                className={`p-1.5 rounded-lg transition-all ${theme === "system" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground"}`}
-              >
-                <Laptop className="w-4 h-4" />
               </button>
             </div>
           </div>
@@ -1190,7 +1179,7 @@ const renderDocuments = (type: string) => {
                   </p>
                 </div>
               </div>
-              {storedDocuments.filter((d) => d.type === "TIMETABLE").length ===
+              {(Array.isArray(storedDocuments) ? storedDocuments : []).filter((d: any) => d.type === "TIMETABLE").length ===
                 0 && (
                 <span className="text-xs font-bold bg-muted text-muted-foreground px-2 py-1 rounded-md">
                   Empty
@@ -1215,7 +1204,7 @@ const renderDocuments = (type: string) => {
                   </p>
                 </div>
               </div>
-              {storedDocuments.filter((d) => d.type === "CALENDAR").length ===
+              {(Array.isArray(storedDocuments) ? storedDocuments : []).filter((d: any) => d.type === "CALENDAR").length ===
                 0 && (
                 <span className="text-xs font-bold bg-muted text-muted-foreground px-2 py-1 rounded-md">
                   Empty
@@ -1240,7 +1229,7 @@ const renderDocuments = (type: string) => {
                   </p>
                 </div>
               </div>
-              {storedDocuments.filter((d) => d.type === "BACKUP").length ===
+              {(Array.isArray(storedDocuments) ? storedDocuments : []).filter((d: any) => d.type === "BACKUP").length ===
                 0 && (
                 <span className="text-xs font-bold bg-muted text-muted-foreground px-2 py-1 rounded-md">
                   Empty
@@ -1603,7 +1592,7 @@ const renderDocuments = (type: string) => {
                             onClick={() => {
                               if (isChecked) {
                                 setSelectedSubjectIds(
-                                  selectedSubjectIds.filter(
+                                  (Array.isArray(selectedSubjectIds) ? selectedSubjectIds : []).filter(
                                     (id) => id !== sub.id,
                                   ),
                                 );

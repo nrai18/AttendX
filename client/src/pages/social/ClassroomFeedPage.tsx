@@ -35,7 +35,8 @@ export const ClassroomFeedPage = () => {
       try {
         setIsLoading(true);
         const res = await api.get(`/classrooms/${id}/feed`);
-        setFeed(res.data);
+        const data = typeof res.data === 'string' ? { role: 'member', announcements: [] } : res.data;
+        setFeed(data);
       } catch (error) {
         console.error("Failed to fetch feed:", error);
       } finally {

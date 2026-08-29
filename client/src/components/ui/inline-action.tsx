@@ -13,7 +13,7 @@ interface InlineActionProps {
   icon: React.ReactNode;
   actionText: string;
   onAction: () => Promise<void>;
-  theme?: 'light' | 'dark' | 'system';
+  theme?: 'light' | 'dark';
   className?: string;
 }
 
@@ -22,7 +22,7 @@ export const InlineAction: React.FC<InlineActionProps> = ({
   icon,
   actionText,
   onAction,
-  theme = 'system',
+  theme,
   className,
 }) => {
   const [status, setStatus] = useState<'idle' | 'loading' | 'success'>('idle');

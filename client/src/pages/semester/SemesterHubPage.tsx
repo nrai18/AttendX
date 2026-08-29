@@ -85,7 +85,7 @@ export const SemesterHubPage = () => {
       }
 
       const eventsRes = await api.get(eventsUrl);
-      setEvents(eventsRes.data);
+      setEvents(Array.isArray(eventsRes.data) ? eventsRes.data : []);
       
       setCache('semester', {
         ...useCacheStore.getState().semester,
@@ -103,7 +103,8 @@ export const SemesterHubPage = () => {
     try {
       const monthStr = format(currentDate, "yyyy-MM");
       const res = await api.get(`/attendance/calendar?month=${monthStr}`);
-      setCalendarData(res.data);
+      const d = typeof res.data === 'string' ? { days: [], insights: [], events: [], isComplete: false, completionPercentage: 0, requiredClassesToTarget: 0, canBunk: false } : res.data;
+      setCalendarData(d);
       
       setCache('semester', {
         ...useCacheStore.getState().semester,

@@ -65,7 +65,8 @@ export const CalendarPage = () => {
       if (!cachedData || force) setIsLoading(true);
       const monthStr = format(currentDate, "yyyy-MM");
       const res = await api.get(`/attendance/calendar?month=${monthStr}${force ? '&force=true' : ''}`);
-      setData(res.data);
+      const d = typeof res.data === 'string' ? { days: [], insights: [], events: [], isComplete: false, completionPercentage: 0, requiredClassesToTarget: 0, canBunk: false } : res.data;
+      setData(d);
       
       setCache('calendar', {
         data: res.data

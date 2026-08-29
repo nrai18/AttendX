@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Player as Lottie } from '@lottiefiles/react-lottie-player';
 
@@ -47,6 +47,7 @@ export function WebSplashScreen({ onComplete }: { onComplete: () => void }) {
             <Lottie 
               src={animPath} 
               loop={false}
+              speed={2}
               autoplay={true}
               onEvent={(event) => {
                 if (event === 'complete') handleEnd();
@@ -60,3 +61,4 @@ export function WebSplashScreen({ onComplete }: { onComplete: () => void }) {
     </AnimatePresence>
   );
 }
+

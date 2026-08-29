@@ -50,7 +50,7 @@ export const CreateSemesterModal: React.FC<CreateSemesterModalProps> = ({
     try {
       setLoadingSemesters(true);
       const res = await api.get("/semesters");
-      setSemesters(res.data);
+      setSemesters(Array.isArray(res.data) ? res.data : []);
     } catch (err) {
       console.error("Failed to fetch semesters:", err);
     } finally {
