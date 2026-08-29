@@ -93,10 +93,35 @@ export class UserService {
       }
     });
 
-    return sessions.map((s: any) => ({
-      ...s,
-      isCurrent: s.id === sessionId
-    }));
+    return sessions.map((s: any) => {
+      let { os, browser, deviceType, location } = s;
+
+      // Normalize stale "web" os value stored in old sessions
+      if (os === 'web') {
+        os = 'Browser';
+        browser = 'Browser';
+        deviceType = 'desktop';
+      }
+
+      // Normalize stale "Unknown OS" or null
+      if (!os || os === 'Unknown OS') {
+        os = 'Unknown Device';
+      }
+
+      // If location looks like a raw geoip dump with just country code or unknown, prefer showing nothing
+      if (location === 'Unknown Location' || location === ', ') {
+        location = null;
+      }
+
+      return {
+        ...s,
+        os,
+        browser,
+        deviceType,
+        location,
+        isCurrent: s.id === sessionId
+      };
+    });
   }
 
   static async revokeSession(userId: string, sessionId: string) {
@@ -131,6 +156,25 @@ export class UserService {
   }
 
   static async resetData(userId: string) {
+    const fsPromises = require('fs/promises');
+    const path = require('path');
+
+    // Delete stored documents from filesystem
+    const docs = await prisma.storedDocument.findMany({ where: { userId } });
+    for (const doc of docs) {
+      if (doc.fileUrl.startsWith('/uploads/')) {
+        try {
+          const filePath = path.join(process.cwd(), doc.fileUrl);
+          await fsPromises.unlink(filePath).catch((e: any) => {
+            if (e.code !== 'ENOENT') console.error("Failed to delete physical file during reset:", e);
+          });
+        } catch (err) {
+          console.error("Failed to delete file during reset:", doc.fileUrl, err);
+        }
+      }
+    }
+
+    await prisma.storedDocument.deleteMany({ where: { userId } });
     await prisma.attendance.deleteMany({ where: { userId } });
     await prisma.timetableOverride.deleteMany({ where: { semester: { userId } } });
     await prisma.timetableSlot.deleteMany({ where: { semester: { userId } } });

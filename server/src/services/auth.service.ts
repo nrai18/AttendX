@@ -84,7 +84,7 @@ export class AuthService {
         data: {
           email,
           name: payload.name || "User",
-          profileImage: payload.picture || "",
+          avatarUrl: payload.picture || null,
         },
       });
     }
@@ -98,7 +98,7 @@ export class AuthService {
     const hashedRefresh = await this.hashToken(refreshToken);
 
     const { getDeviceDetails } = require("../utils/device");
-    const { userAgent, ipAddress, location } = getDeviceDetails(req);
+    const { userAgent, ipAddress, location, os, browser, deviceType } = await getDeviceDetails(req);
 
     await prisma.refreshToken.create({
       data: {
@@ -108,6 +108,9 @@ export class AuthService {
         userAgent,
         ipAddress,
         location,
+        os,
+        browser,
+        deviceType
       },
     });
 
@@ -143,7 +146,7 @@ export class AuthService {
     const hashedNewRefresh = await this.hashToken(newRefreshToken);
 
     const { getDeviceDetails } = require("../utils/device");
-    const { userAgent, ipAddress, location } = getDeviceDetails(req);
+    const { userAgent, ipAddress, location, os, browser, deviceType } = await getDeviceDetails(req);
 
     await prisma.refreshToken.create({
       data: {
@@ -153,6 +156,9 @@ export class AuthService {
         userAgent,
         ipAddress,
         location,
+        os,
+        browser,
+        deviceType
       },
     });
 

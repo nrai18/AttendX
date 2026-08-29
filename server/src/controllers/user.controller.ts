@@ -33,7 +33,7 @@ export class UserController {
         const ttCount = await prisma.timetableSlot.count({ where: { semesterId: activeSemester.id } });
         hasTimetable = ttCount > 0;
 
-        const evCount = await prisma.academicEvent.count({ where: { semesterId: activeSemester.id } });
+        const evCount = await prisma.event.count({ where: { semesterId: activeSemester.id } });
         hasCalendar = evCount > 0;
 
         const attCount = await prisma.attendance.count({ where: { userId, subject: { semesterId: activeSemester.id } } });

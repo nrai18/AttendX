@@ -555,6 +555,7 @@ export class AttendanceService {
                  reason: "Cancelled/Off Class",
                  count: cancelledClasses
                });
+               maxRemainingClasses += cancelledClasses;
              }
 
              // 4. Handle remaining slots based on holiday or regular
