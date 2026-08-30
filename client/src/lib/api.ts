@@ -20,9 +20,32 @@ const isTokenExpired = (token: string) => {
   }
 };
 
+import { Capacitor } from "@capacitor/core";
+
 // Request interceptor: Attach in-memory Access Token and proactively refresh if expired
 api.interceptors.request.use(
   async (config) => {
+    config.headers['X-Attendx-Platform'] = Capacitor.isNativePlatform() ? 'Mobile App' : 'Web/Laptop';
+    config.headers['X-Attendx-OS'] = Capacitor.getPlatform();
+    config.headers['X-Attendx-Timezone'] = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+    if (config.url?.includes("/auth/login") || config.url?.includes("/auth/register")) {
+      try {
+        if (Capacitor.isNativePlatform()) {
+          const { Geolocation } = await import('@capacitor/geolocation');
+          const hasPerms = await Geolocation.checkPermissions();
+          if (hasPerms.location !== 'granted') {
+            await Geolocation.requestPermissions();
+          }
+          const pos = await Geolocation.getCurrentPosition({ timeout: 5000, maximumAge: 300000 });
+          config.headers['X-Attendx-Lat'] = pos.coords.latitude;
+          config.headers['X-Attendx-Lon'] = pos.coords.longitude;
+        }
+      } catch (e) {
+        console.warn("Location error:", e);
+      }
+    }
+
     if (
       config.url?.includes("/auth/login") ||
       config.url?.includes("/auth/register") ||

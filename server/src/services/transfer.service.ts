@@ -40,7 +40,8 @@ export class TransferService {
       }
       
       logs = await prisma.attendance.findMany({
-        where: whereClause
+        where: whereClause,
+        include: { subject: true }
       });
     }
 
@@ -70,7 +71,9 @@ export class TransferService {
         
         return {
           date: log.date.toISOString().split('T')[0],
-          subjectId: log.subjectId,
+          subjectId: log.subjectId, // the sender's uuid
+          subjectCode: log.subject?.code,
+          subjectName: log.subject?.name,
           slot: log.timetableSlotId,
           status,
           isConducted

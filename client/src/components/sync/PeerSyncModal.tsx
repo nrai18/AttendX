@@ -156,61 +156,61 @@ export const PeerSyncModal = () => {
 
       {mode === "SEND" ? (
         <div className="text-left">
-          {!activeCode ? (
-            <div className="space-y-4 mb-6">
-              <div>
-                <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Sync Mode</label>
-                <select 
-                  value={contextType} 
-                  onChange={(e) => setContextType(e.target.value as ContextType)}
-                  className="w-full bg-muted border border-border rounded-lg p-3 text-sm text-foreground focus:outline-none focus:border-primary"
-                >
-                  <option value="SCHEDULE_STATUS">Schedule Status Mirror (Safe)</option>
-                  <option value="TIMETABLE_CALENDAR">Timetable & Calendar Only</option>
-                  <option value="FULL_EXPORT">Full Backup (All Data)</option>
-                </select>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {contextType === "SCHEDULE_STATUS" && "Shares structure + Held/Off status. Hides your personal attendance marks."}
-                  {contextType === "TIMETABLE_CALENDAR" && "Shares only the structural timetable and calendar. No logs."}
-                  {contextType === "FULL_EXPORT" && "Shares EVERYTHING, including your raw personal attendance logs."}
-                </p>
-              </div>
-
-              {contextType !== "TIMETABLE_CALENDAR" && (
-                <div>
-                  <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Date Range Filter</label>
-                  <button
-                    onClick={() => setShowDatePicker(true)}
-                    className="w-full bg-muted border border-border rounded-lg p-3 text-sm text-left text-foreground focus:outline-none focus:border-primary hover:bg-muted-foreground/20 transition-colors flex justify-between items-center"
-                  >
-                    <span>
-                      {datePreset === "Custom Range" ? `${customStartDate} to ${customEndDate}` : datePreset}
-                    </span>
-                    <ChevronDown className="w-4 h-4 text-muted-foreground" />
-                  </button>
-                </div>
-              )}
-
-              {showDatePicker && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-                  <div className="bg-white dark:bg-neutral-950 rounded-3xl shadow-xl border border-neutral-200 dark:border-neutral-800 max-w-[95vw] overflow-hidden">
-                    <ScheduleDate
-                      onApply={(range) => {
-                        if (range.start && range.end) {
-                          setCustomStartDate(format(range.start, "yyyy-MM-dd"));
-                          setCustomEndDate(format(range.end, "yyyy-MM-dd"));
-                          setDatePreset("Custom Range");
-                        }
-                        setShowDatePicker(false);
-                      }}
-                      onCancel={() => setShowDatePicker(false)}
-                    />
-                  </div>
-                </div>
-              )}
+          <div className="space-y-4 mb-6">
+            <div>
+              <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Sync Mode</label>
+              <select 
+                value={contextType} 
+                onChange={(e) => setContextType(e.target.value as ContextType)}
+                className="w-full bg-muted border border-border rounded-lg p-3 text-sm text-foreground focus:outline-none focus:border-primary"
+              >
+                <option value="SCHEDULE_STATUS">Schedule Status Mirror (Safe)</option>
+                <option value="TIMETABLE_CALENDAR">Timetable & Calendar Only</option>
+                <option value="FULL_EXPORT">Full Backup (All Data)</option>
+              </select>
+              <p className="text-xs text-muted-foreground mt-1">
+                {contextType === "SCHEDULE_STATUS" && "Shares structure + Held/Off status. Hides your personal attendance marks."}
+                {contextType === "TIMETABLE_CALENDAR" && "Shares only the structural timetable and calendar. No logs."}
+                {contextType === "FULL_EXPORT" && "Shares EVERYTHING, including your raw personal attendance logs."}
+              </p>
             </div>
-          ) : (
-            <div className="text-center py-4 mb-4">
+
+            {contextType !== "TIMETABLE_CALENDAR" && (
+              <div>
+                <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Date Range Filter</label>
+                <button
+                  onClick={() => setShowDatePicker(true)}
+                  className="w-full bg-muted border border-border rounded-lg p-3 text-sm text-left text-foreground focus:outline-none focus:border-primary hover:bg-muted-foreground/20 transition-colors flex justify-between items-center"
+                >
+                  <span>
+                    {datePreset === "Custom Range" ? `${customStartDate} to ${customEndDate}` : datePreset}
+                  </span>
+                  <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                </button>
+              </div>
+            )}
+
+            {showDatePicker && (
+              <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+                <div className="bg-white dark:bg-neutral-950 rounded-3xl shadow-xl border border-neutral-200 dark:border-neutral-800 max-w-[95vw] overflow-hidden">
+                  <ScheduleDate
+                    onApply={(range) => {
+                      if (range.start && range.end) {
+                        setCustomStartDate(format(range.start, "yyyy-MM-dd"));
+                        setCustomEndDate(format(range.end, "yyyy-MM-dd"));
+                        setDatePreset("Custom Range");
+                      }
+                      setShowDatePicker(false);
+                    }}
+                    onCancel={() => setShowDatePicker(false)}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
+          {activeCode && (
+            <div className="text-center py-4 mb-4 border-t border-border pt-6 animate-in fade-in zoom-in duration-300">
               <h2 className="text-xl font-semibold mb-2">App Code</h2>
               <p className="text-sm text-muted-foreground mb-6">Share this code to transfer your schedule</p>
               <div className="text-5xl font-mono tracking-[0.3em] font-bold text-foreground mb-6">
@@ -226,14 +226,24 @@ export const PeerSyncModal = () => {
             </div>
           )}
 
-          <button 
-            onClick={handleGenerateCode}
-            disabled={loading}
-            className={`${activeCode ? 'bg-muted-foreground/10 hover:bg-muted-foreground/20' : 'bg-primary text-primary-foreground hover:bg-primary/90'} text-foreground w-full py-3 rounded-lg font-medium flex justify-center items-center text-sm transition-all`}
-          >
-            {loading && <Loader2 className="animate-spin mr-2 h-4 w-4" />}
-            {activeCode ? "Regenerate Code" : "Generate 6-Digit Code"}
-          </button>
+          <div className="flex gap-2">
+            {activeCode && (
+              <button 
+                onClick={() => { clearActiveCode(); toast("Code cancelled."); }}
+                className="bg-muted hover:bg-muted/80 text-foreground py-3 px-4 rounded-lg font-medium transition-all"
+              >
+                Cancel
+              </button>
+            )}
+            <button 
+              onClick={handleGenerateCode}
+              disabled={loading}
+              className="flex-1 bg-primary text-primary-foreground hover:bg-primary/90 w-full py-3 rounded-lg font-medium flex justify-center items-center text-sm transition-all shadow-sm"
+            >
+              {loading && <Loader2 className="animate-spin mr-2 h-4 w-4" />}
+              {activeCode ? "Update & Regenerate" : "Generate 6-Digit Code"}
+            </button>
+          </div>
         </div>
       ) : (
         <div className="py-2">
