@@ -35,7 +35,7 @@ api.interceptors.request.use(
     config.headers['X-Attendx-OS'] = Capacitor.getPlatform();
     config.headers['X-Attendx-Timezone'] = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
-    if (config.url?.includes("/auth/login") || config.url?.includes("/auth/register")) {
+    if (config.url?.includes("/auth/login") || config.url?.includes("/auth/google") || config.url?.includes("/auth/register")) {
       try {
         const { Geolocation } = await import('@capacitor/geolocation');
           const hasPerms = await Geolocation.checkPermissions();
@@ -51,7 +51,7 @@ api.interceptors.request.use(
     }
 
     if (
-      config.url?.includes("/auth/login") ||
+      config.url?.includes("/auth/login") || config.url?.includes("/auth/google") ||
       config.url?.includes("/auth/register") ||
       config.url?.includes("/auth/refresh")
     ) {
@@ -122,7 +122,7 @@ api.interceptors.response.use(
     if (
       error.response?.status === 401 &&
       !originalRequest._retry &&
-      !originalRequest.url?.includes("/auth/login") &&
+      !originalRequest.url?.includes("/auth/login") && !originalRequest.url?.includes("/auth/google") &&
       !originalRequest.url?.includes("/auth/register") && !originalRequest.url?.includes("/auth/refresh")
     ) {
       if (isRefreshing) {

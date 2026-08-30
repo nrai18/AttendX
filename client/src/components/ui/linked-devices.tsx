@@ -99,7 +99,7 @@ function getSessionSubtitle(session: Session) {
   
   if (browser === "AttendX App") {
     // Faking version 1.0.0 for native apps since we don't store it in the DB yet
-    return `AttendX ${os} 1.0.0`;
+    return `AttendX ${os} ${localStorage.getItem("app_version") || "2.2.0"}`;
   }
   
   return `AttendX Web ${os}`;

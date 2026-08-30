@@ -5,26 +5,38 @@ import fs from "fs";
 export class SystemController {
   static async getUpdateManifest(req: Request, res: Response) {
     const manifest = {
-      latestVersion: "2.2.0",
+      latestVersion: "2.2.1",
       title: "Major Update: Deep Cloud Integration & Notifications",
       changelog: [
         {
+          version: "2.2.1",
+          sizeMb: 1.2,
+          sections: [
+            {
+              title: "Developer Preview",
+              items: [
+                { icon: "🔔", text: "Testing: Real-time Android push notifications enabled" }
+              ]
+            }
+          ]
+        },
+                {
           version: "2.2.0",
           sizeMb: 4.8,
           sections: [
             {
               title: "New Features & Fixes",
               items: [
-                { icon: "??", text: "Cloud Storage Engine: Academic calendars are now permanently backed up to the database" },
-                { icon: "??", text: "Security Upgrade: Active sessions now request your GPS location upon login" },
-                { icon: "??", text: "Smart Clean: Added Auto-Terminate preferences to automatically wipe ghost sessions" },
-                { icon: "??", text: "Calendar Fix: Multi-day exams (Mid-sem, Fests) now seamlessly span across the calendar rings" },
-                { icon: "??", text: "Notification Engine: Prepared the backend foundation for real-time mobile push alerts" }
+                { icon: "☁️", text: "Cloud Storage Engine: Academic calendars are now permanently backed up to the database" },
+                { icon: "📍", text: "Security Upgrade: Active sessions now request your GPS location upon login" },
+                { icon: "🧹", text: "Smart Clean: Added Auto-Terminate preferences to automatically wipe ghost sessions" },
+                { icon: "📅", text: "Calendar Fix: Multi-day exams (Mid-sem, Fests) now seamlessly span across the calendar rings" },
+                { icon: "🔔", text: "Notification Engine: Prepared the backend foundation for real-time mobile push alerts" }
               ]
             }
           ]
         },
-                {
+        {
           version: "2.1.0",
           sizeMb: 4.5,
           sections: [
@@ -49,9 +61,9 @@ export class SystemController {
               items: [
                 { icon: "🚀", text: "Offline-First Support with Instant Load" },
                 { icon: "🔔", text: "Daily & Weekly Academic Push Notifications" },
-                { icon: "✅", text: "Google Sign-In Crash Fixes" },
-                { icon: "📉", text: "Predictive Attendance Math & Holidays Fixed" },
-                { icon: "📁", text: "Native CSV & JSON Data Export Downloads" }
+                { icon: "🛠", text: "Google Sign-In Crash Fixes" },
+                { icon: "🧮", text: "Predictive Attendance Math & Holidays Fixed" },
+                { icon: "📥", text: "Native CSV & JSON Data Export Downloads" }
               ]
             }
           ]
@@ -63,10 +75,10 @@ export class SystemController {
             {
               title: "Improvements & Fixes",
               items: [
-                { icon: "🔒", text: "Linked Devices page renamed to Active sessions for clarity" },
+                { icon: "🏷", text: "Linked Devices page renamed to Active sessions for clarity" },
                 { icon: "🛡️", text: "Instant session invalidation added to 'Sign out all others' action" },
-                { icon: "📱", text: "Accurate OS, Browser, and Geolocation logging for active sessions" },
-                { icon: "🚀", text: "Redesigned Onboarding checklist that tracks your true real-time setup progress" }
+                { icon: "💻", text: "Accurate OS, Browser, and Geolocation logging for active sessions" },
+                { icon: "✅", text: "Redesigned Onboarding checklist that tracks your true real-time setup progress" }
               ]
             }
           ]
@@ -78,7 +90,7 @@ export class SystemController {
             {
               title: "Improvements & Fixes",
               items: [
-                { icon: "✨", text: "Restored full offline animations (Lottie JSONs) natively to the app" }
+                { icon: "🎥", text: "Restored full offline animations (Lottie JSONs) natively to the app" }
               ]
             }
           ]
@@ -92,7 +104,7 @@ export class SystemController {
               items: [
                 { icon: "⏭️", text: "Added 'Not right now' button to skip updates and work uninterrupted" },
                 { icon: "🎨", text: "Fixed Landing Page logo visibility and contrast on dark theme" },
-                { icon: "🔑", text: "Fixed Google Sign-In redirecting to web browser" }
+                { icon: "🌐", text: "Fixed Google Sign-In redirecting to web browser" }
               ]
             }
           ]
@@ -105,7 +117,7 @@ export class SystemController {
               title: "Improvements & Fixes",
               items: [
                 { icon: "🎨", text: "Fixed Landing Page logo visibility and contrast on dark theme" },
-                { icon: "🔑", text: "Fixed Google Sign-In redirecting to web browser" }
+                { icon: "🌐", text: "Fixed Google Sign-In redirecting to web browser" }
               ]
             }
           ]
@@ -118,7 +130,7 @@ export class SystemController {
               title: "Native Enhancements",
               items: [
                 { icon: "⚡", text: "Splash screen now gracefully skips on web, preventing duplicate animations" },
-                { icon: "🔐", text: "Native Google OAuth login now fully supported through Capacitor" }
+                { icon: "📥", text: "Native Google OAuth login now fully supported through Capacitor" }
               ]
             }
           ]
@@ -131,9 +143,9 @@ export class SystemController {
               title: "New Features & OTA Improvements",
               items: [
                 { icon: "📦", text: "OTA Updates now aggregate changelogs accurately" },
-                { icon: "💫", text: "Landing page hero animations replaced with stable pulse effects" },
-                { icon: "🔄", text: "Fixed infinite OTA loop in background check" },
-                { icon: "🛠️", text: "Z-index issues fixed on settings overlays" }
+                { icon: "✨", text: "Landing page hero animations replaced with stable pulse effects" },
+                { icon: "🔁", text: "Fixed infinite OTA loop in background check" },
+                { icon: "🗂️", text: "Z-index issues fixed on settings overlays" }
               ]
             }
           ]
@@ -147,7 +159,7 @@ export class SystemController {
               items: [
                 { icon: "📅", text: "Attendance Logs now properly track past/future dates independent of semester bounds" },
                 { icon: "🧹", text: "Unmarked regular classes are now hidden from logs for a cleaner view" },
-                { icon: "➕", text: "Extra classes are properly surfaced in logs even before marking" }
+                { icon: "⭐", text: "Extra classes are properly surfaced in logs even before marking" }
               ]
             }
           ]
