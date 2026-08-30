@@ -65,7 +65,8 @@ export class AuthService {
     // We verify the token signature and get the payload
     const ticket = await client.verifyIdToken({
       idToken,
-      audience: process.env.GOOGLE_CLIENT_ID, 
+      // Get audience from token dynamically to support both Web and Android Client IDs
+      audience: require("jsonwebtoken").decode(idToken)?.aud || process.env.GOOGLE_CLIENT_ID, 
     });
     const payload = ticket.getPayload();
     if (!payload) throw new Error("Invalid Google token payload");

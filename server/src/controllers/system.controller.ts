@@ -5,10 +5,22 @@ import fs from "fs";
 export class SystemController {
   static async getUpdateManifest(req: Request, res: Response) {
     const manifest = {
-      latestVersion: "2.2.1",
+      latestVersion: "2.2.2",
       title: "Major Update: Deep Cloud Integration & Notifications",
       changelog: [
         {
+          version: "2.2.2",
+          sizeMb: 1.2,
+          sections: [
+            {
+              title: "Quality of Life",
+              items: [
+                { icon: "📧", text: "Email Developer button now opens your native Gmail app directly" }
+              ]
+            }
+          ]
+        },
+                {
           version: "2.2.1",
           sizeMb: 1.2,
           sections: [
