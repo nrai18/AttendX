@@ -67,12 +67,37 @@ import { NotFoundPage } from "./pages/NotFoundPage";
 
 import { HardwareBackButtonHandler } from "./components/common/HardwareBackButtonHandler";
 
+import { api } from "./lib/api";
+
+const useSessionPoller = () => {
+  const { isAuthenticated } = useAuthStore();
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const interval = setInterval(() => {
+      // Pinging a lightweight route; if 401, axios interceptor auto-logs out
+      api.get("/users/sessions").catch(() => {});
+    }, 10000);
+    return () => clearInterval(interval);
+  }, [isAuthenticated]);
+};
+
 export function App() {
   useSilentRefresh();
+  useSessionPoller();
   useTheme();
   const theme = useThemeStore((state) => state.theme);
   // We want the Lottie splash screen to play on mobile devices (web and native)
-  const [splashFinished, setSplashFinished] = useState(false);
+  // Only show it once per day
+  const [splashFinished, setSplashFinished] = useState(() => {
+    const lastSplashDate = localStorage.getItem("last_splash_date");
+    const today = new Date().toDateString();
+    return lastSplashDate === today;
+  });
+
+  const handleSplashComplete = () => {
+    localStorage.setItem("last_splash_date", new Date().toDateString());
+    setSplashFinished(true);
+  };
 
   useEffect(() => {
     const initServices = async () => {
@@ -92,7 +117,7 @@ export function App() {
   return (
     <ErrorBoundary>
       {!splashFinished && (
-        <WebSplashScreen onComplete={() => setSplashFinished(true)} />
+        <WebSplashScreen onComplete={handleSplashComplete} />
       )}
       <Toaster
         position="top-center"
@@ -103,9 +128,11 @@ export function App() {
           className: "rounded-xl border border-border shadow-lg mt-4 md:mt-0",
         }}
       />
-      <OTAUpdateModal
-        localVersion={localStorage.getItem("app_version") || "2.0.0"}
-      />
+      {Capacitor.isNativePlatform() && (
+        <OTAUpdateModal
+          localVersion={localStorage.getItem("app_version") || "2.1.0"}
+        />
+      )}
       {splashFinished && (
         <BrowserRouter>
           <HardwareBackButtonHandler />

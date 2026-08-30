@@ -5,9 +5,25 @@ import fs from "fs";
 export class SystemController {
   static async getUpdateManifest(req: Request, res: Response) {
     const manifest = {
-      latestVersion: "2.0.0",
-      title: "Major Update: Offline First & Fixes",
+      latestVersion: "2.1.0",
+      title: "Major Update: Peer Sync & Security",
       changelog: [
+        {
+          version: "2.1.0",
+          sizeMb: 4.5,
+          sections: [
+            {
+              title: "Major Improvements",
+              items: [
+                { icon: "⚡", text: "Peer Sync engine overhauled: Full backups now import 50x faster" },
+                { icon: "📱", text: "Redesigned 'Active Sessions' UI to accurately track devices and locations" },
+                { icon: "🛡️", text: "App resets now safely purge all physical documents to free up space" },
+                { icon: "💬", text: "New Feedback portal to seamlessly report bugs or request features" },
+                { icon: "🎨", text: "Restored fluid Lottie animations on native mobile landing screens" }
+              ]
+            }
+          ]
+        },
         {
           version: "2.0.0",
           sizeMb: 0.5,
