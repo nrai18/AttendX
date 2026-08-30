@@ -11,6 +11,7 @@ export interface User {
   role: "student" | "cr" | "admin" | "superadmin";
   department?: string;
   batch?: string;
+  autoTerminateMonths?: number;
   targetAttendance: number;
   theme?: "light" | "dark";
   gender?: string;

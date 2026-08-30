@@ -173,9 +173,16 @@ export const prisma = new Proxy(
               try {
                 return await originalFn.apply(targetModel, args);
               } catch (dbError: any) {
-                console.warn(`[AI Studio] DB error on prisma.${prop}.${method}, using in-memory fallback:`, dbError?.message || dbError);
-                if ((fallbackModel as any)[method]) {
-                  return await (fallbackModel as any)[method](...args);
+                const isConnectionError = dbError?.code?.startsWith('P1') || 
+                                          dbError?.message?.toLowerCase().includes('connection') ||
+                                          dbError?.message?.toLowerCase().includes('timeout') ||
+                                          dbError?.message?.toLowerCase().includes('network');
+                                          
+                if (isConnectionError) {
+                  console.warn(`[AI Studio] DB connection error on prisma.${prop}.${method}, using in-memory fallback:`, dbError?.message || dbError);
+                  if ((fallbackModel as any)[method]) {
+                    return await (fallbackModel as any)[method](...args);
+                  }
                 }
                 throw dbError;
               }

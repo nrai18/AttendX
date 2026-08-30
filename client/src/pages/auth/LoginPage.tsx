@@ -117,7 +117,16 @@ export const LoginPage: React.FC = () => {
         setLoading(false);
       }
     } else {
-      window.location.href = `${API_BASE_URL}/auth/google`;
+      setLoading(true);
+      try {
+        const { Geolocation } = await import('@capacitor/geolocation');
+        const hasPerms = await Geolocation.checkPermissions();
+        if (hasPerms.location !== 'granted') await Geolocation.requestPermissions();
+        const pos = await Geolocation.getCurrentPosition({ timeout: 5000, maximumAge: 300000 });
+        window.location.href = `${API_BASE_URL}/auth/google?lat=${pos.coords.latitude}&lon=${pos.coords.longitude}`;
+      } catch (e) {
+        window.location.href = `${API_BASE_URL}/auth/google`;
+      }
     }
   };
 

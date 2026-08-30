@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { useAuthStore } from "../../stores/authStore";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { api } from "../../lib/api";
 import { toast } from "sonner";
+import { useHardwareBack } from "../../hooks/useHardwareBack";
 
 interface Session {
   id: string;
@@ -139,6 +140,8 @@ function SessionRow({ session, onRevoke }: { session: Session; onRevoke: () => v
 }
 
 export const LinkedDevicesModal: React.FC<LinkedDevicesProps> = ({ isOpen, onClose }) => {
+  useHardwareBack(isOpen, onClose);
+  const { user, setUser } = useAuthStore();
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -158,7 +161,11 @@ export const LinkedDevicesModal: React.FC<LinkedDevicesProps> = ({ isOpen, onClo
     try {
       setLoading(true);
       const res = await api.get("/users/sessions");
-      setSessions(res.data);
+      if (Array.isArray(res.data)) {
+        setSessions(res.data);
+      } else {
+        setSessions([]);
+      }
     } catch (e: any) {
       toast.error(e.response?.data?.message || "Failed to load devices");
     } finally {
@@ -166,10 +173,7 @@ export const LinkedDevicesModal: React.FC<LinkedDevicesProps> = ({ isOpen, onClo
     }
   };
 
-  const handleRevoke = async (sessionId: string, isCurrent: boolean) => {
-    if (isCurrent) {
-      if (!window.confirm("You will be logged out of this device. Click OK to confirm.")) return;
-    }
+  const executeRevoke = async (sessionId: string, isCurrent: boolean) => {
     try {
       await api.delete(`/users/sessions/${sessionId}`);
       toast.success("Device signed out successfully");
@@ -180,8 +184,17 @@ export const LinkedDevicesModal: React.FC<LinkedDevicesProps> = ({ isOpen, onClo
     }
   };
 
-  const handleSignOutAllOthers = async () => {
-    if (!window.confirm("This will log you out of all other devices. Continue?")) return;
+  const handleRevoke = (sessionId: string, isCurrent: boolean) => {
+    if (isCurrent) {
+      toast("You will be logged out of this device.", {
+        action: { label: "Confirm", onClick: () => executeRevoke(sessionId, isCurrent) }
+      });
+      return;
+    }
+    executeRevoke(sessionId, isCurrent);
+  };
+
+  const executeSignOutAllOthers = async () => {
     try {
       await api.delete("/users/sessions");
       toast.success("Signed out of all other devices");
@@ -189,6 +202,12 @@ export const LinkedDevicesModal: React.FC<LinkedDevicesProps> = ({ isOpen, onClo
     } catch (e: any) {
       toast.error(e.response?.data?.message || "Failed to sign out");
     }
+  };
+
+  const handleSignOutAllOthers = () => {
+    toast("Terminate all other sessions?", {
+      action: { label: "Terminate", onClick: () => executeSignOutAllOthers() }
+    });
   };
 
   return (
@@ -211,17 +230,7 @@ export const LinkedDevicesModal: React.FC<LinkedDevicesProps> = ({ isOpen, onClo
 
             {/* Content */}
             <div className="flex-1 overflow-y-auto pb-8 custom-scrollbar">
-              <div className="text-center px-8 py-6">
-                <p className="text-[15px] text-foreground leading-relaxed">
-                  Log into <span className="text-[#2AABEE]">AttendX Web</span> or <span className="text-[#2AABEE]">AttendX Mobile</span><br/>by entering your credentials.
-                </p>
-                <button
-                  onClick={onClose}
-                  className="mt-5 w-full bg-[#2AABEE] hover:bg-[#2AABEE]/90 text-white font-medium py-2.5 rounded-xl transition-colors"
-                >
-                  Link Desktop Device
-                </button>
-              </div>
+              
 
               {loading && sessions.length === 0 ? (
                 <div className="flex justify-center py-8">
@@ -287,7 +296,28 @@ export const LinkedDevicesModal: React.FC<LinkedDevicesProps> = ({ isOpen, onClo
                     </p>
                     <div className="flex items-center justify-between px-4 py-3.5">
                       <span className="text-[15px] text-foreground">If inactive for</span>
-                      <span className="text-[15px] text-[#2AABEE]">3 months</span>
+                      <select 
+    value={user?.autoTerminateMonths || 0}
+    onChange={async (e) => {
+      const val = parseInt(e.target.value);
+      try {
+        await api.patch("/users/me", { autoTerminateMonths: val === 0 ? null : val });
+        if (setUser && user) {
+          setUser({ ...user, autoTerminateMonths: val === 0 ? undefined : val });
+        }
+        toast.success("Preference updated");
+      } catch (err: any) {
+        toast.error("Failed to update preference");
+      }
+    }}
+    className="bg-transparent text-[15px] text-[#2AABEE] font-medium outline-none cursor-pointer"
+  >
+    <option value={0} className="text-foreground">Never</option>
+    <option value={1} className="text-foreground">1 month</option>
+    <option value={3} className="text-foreground">3 months</option>
+    <option value={6} className="text-foreground">6 months</option>
+    <option value={12} className="text-foreground">1 year</option>
+  </select>
                     </div>
                   </div>
                 </div>

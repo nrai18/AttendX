@@ -5,10 +5,26 @@ import fs from "fs";
 export class SystemController {
   static async getUpdateManifest(req: Request, res: Response) {
     const manifest = {
-      latestVersion: "2.1.0",
-      title: "Major Update: Peer Sync & Security",
+      latestVersion: "2.2.0",
+      title: "Major Update: Deep Cloud Integration & Notifications",
       changelog: [
         {
+          version: "2.2.0",
+          sizeMb: 4.8,
+          sections: [
+            {
+              title: "New Features & Fixes",
+              items: [
+                { icon: "??", text: "Cloud Storage Engine: Academic calendars are now permanently backed up to the database" },
+                { icon: "??", text: "Security Upgrade: Active sessions now request your GPS location upon login" },
+                { icon: "??", text: "Smart Clean: Added Auto-Terminate preferences to automatically wipe ghost sessions" },
+                { icon: "??", text: "Calendar Fix: Multi-day exams (Mid-sem, Fests) now seamlessly span across the calendar rings" },
+                { icon: "??", text: "Notification Engine: Prepared the backend foundation for real-time mobile push alerts" }
+              ]
+            }
+          ]
+        },
+                {
           version: "2.1.0",
           sizeMb: 4.5,
           sections: [

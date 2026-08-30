@@ -1,5 +1,6 @@
 import React, { Component, ErrorInfo, ReactNode } from "react";
 import { FeedbackModal } from "../support/FeedbackModal";
+import { Toaster } from "sonner";
 
 interface Props {
   children: ReactNode;
@@ -54,6 +55,12 @@ export class ErrorBoundary extends Component<Props, State> {
             isOpen={this.state.isFeedbackOpen}
             onClose={() => this.setState({ isFeedbackOpen: false })}
             defaultIssue="UI Bug"
+          />
+          <Toaster 
+            position="top-center" 
+            theme="dark"
+            duration={2500} 
+            toastOptions={{ className: "rounded-xl border border-border shadow-lg" }}
           />
         </div>
       );

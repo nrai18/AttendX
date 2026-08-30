@@ -1,22 +1,32 @@
-﻿import React, { useState } from "react";
+import React, { useState } from "react";
 import { X, Upload, Mail, Lightbulb, Bug } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "../../lib/api";
 import { useAuthStore } from "../../stores/authStore";
+import { useHardwareBack } from "../../hooks/useHardwareBack";
 
 interface FeedbackModalProps {
   isOpen: boolean;
   onClose: () => void;
   defaultIssue?: string;
+  defaultTab?: "issue" | "improvement";
 }
 
 export const FeedbackModal: React.FC<FeedbackModalProps> = ({
   isOpen,
   onClose,
   defaultIssue = "",
+  defaultTab = "issue"
 }) => {
+  useHardwareBack(isOpen, onClose);
+  
   const { user } = useAuthStore();
-  const [tab, setTab] = useState<"issue" | "improvement">("issue");
+  const [tab, setTab] = useState<"issue" | "improvement">(defaultTab);
+
+  // Update tab when defaultTab changes (e.g. reopening modal with different button)
+  React.useEffect(() => {
+    if (isOpen) setTab(defaultTab);
+  }, [isOpen, defaultTab]);
 
   // Issue state
   const [selectedQuestion, setSelectedQuestion] = useState(defaultIssue || "Timetable Error");
@@ -68,7 +78,7 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({
       await api.post("/support/feedback", {
         type: tab === "issue" ? "Report an issue" : "Improvement suggestion",
         issue: tab === "issue" ? selectedQuestion : improvementArea,
-        frequency: tab === "issue" ? frequency : undefined,
+        frequency: tab === "issue" ? frequency : "N/A",
         description: desc,
         email,
         attachLogs: tab === "issue" ? attachLogs : false,

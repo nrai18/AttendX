@@ -16,7 +16,11 @@ import passport from "../middleware/passport";
 import { AuthService } from "../services/auth.service";
 import { setRefreshCookie } from "../utils/cookie";
 
-router.get("/google", passport.authenticate("google", { scope: ["profile", "email"] }));
+router.get("/google", (req, res, next) => {
+  const { lat, lon } = req.query;
+  const state = (lat && lon) ? Buffer.from(JSON.stringify({ lat, lon })).toString('base64') : undefined;
+  passport.authenticate("google", { scope: ["profile", "email"], state })(req, res, next);
+});
 
 router.get(
   "/google/callback",
@@ -25,7 +29,18 @@ router.get(
     try {
       if (!req.user) return res.redirect(process.env.FRONTEND_URL + "/login?error=oauth");
       
-      const { accessToken, refreshToken } = await AuthService.generateTokensForOAuth(req.user, req);
+      let reqWithGps = req;
+      if (req.query.state) {
+        try {
+          const { lat, lon } = JSON.parse(Buffer.from(req.query.state as string, 'base64').toString());
+          if (lat && lon) {
+             reqWithGps = Object.assign({}, req, { 
+                headers: { ...req.headers, 'x-attendx-lat': lat, 'x-attendx-lon': lon } 
+             }) as any;
+          }
+        } catch(e) {}
+      }
+      const { accessToken, refreshToken } = await AuthService.generateTokensForOAuth(req.user, reqWithGps);
       setRefreshCookie(res, refreshToken);
       
       const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";

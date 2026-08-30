@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { App as CapacitorApp } from "@capacitor/app";
 import { Capacitor } from "@capacitor/core";
+import { useBackHandlerStore } from "../../stores/backHandlerStore";
 
 export const HardwareBackButtonHandler = () => {
   const navigate = useNavigate();
@@ -23,6 +24,14 @@ export const HardwareBackButtonHandler = () => {
     }
 
     const backButtonListener = CapacitorApp.addListener("backButton", async () => {
+      // 1. Check if any component (like a modal) wants to handle the back press
+      const handlers = useBackHandlerStore.getState().handlers;
+      for (let i = handlers.length - 1; i >= 0; i--) {
+        if (handlers[i]()) {
+          return; // The handler processed the back press, do not navigate!
+        }
+      }
+
       const currentPath = locationRef.current;
       
       // If we are on the main landing/home pages, exit the app

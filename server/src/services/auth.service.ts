@@ -83,10 +83,24 @@ export class AuthService {
       user = await prisma.user.create({
         data: {
           email,
+          googleId: payload.sub,
           name: payload.name || "User",
           avatarUrl: payload.picture || null,
         },
       });
+    } else {
+      // Sync Google data if missing
+      const updates: any = {};
+      if (!user.googleId) updates.googleId = payload.sub;
+      if (!user.avatarUrl && payload.picture) updates.avatarUrl = payload.picture;
+      if (user.name === "User" && payload.name) updates.name = payload.name;
+
+      if (Object.keys(updates).length > 0) {
+        user = await prisma.user.update({
+          where: { id: user.id },
+          data: updates,
+        });
+      }
     }
 
     return this.generateTokensForOAuth(user, req);
@@ -99,6 +113,15 @@ export class AuthService {
 
     const { getDeviceDetails } = require("../utils/device");
     const { userAgent, ipAddress, location, os, browser, deviceType } = await getDeviceDetails(req);
+    
+    // Auto-terminate inactive sessions on login
+    if (user.autoTerminateMonths) {
+      const cutoffDate = new Date();
+      cutoffDate.setMonth(cutoffDate.getMonth() - user.autoTerminateMonths);
+      await prisma.refreshToken.deleteMany({
+        where: { userId: user.id, lastActive: { lt: cutoffDate } }
+      });
+    }
 
     await prisma.refreshToken.create({
       data: {
@@ -147,6 +170,15 @@ export class AuthService {
 
     const { getDeviceDetails } = require("../utils/device");
     const { userAgent, ipAddress, location, os, browser, deviceType } = await getDeviceDetails(req);
+    
+    // Auto-terminate inactive sessions on login
+    if (user.autoTerminateMonths) {
+      const cutoffDate = new Date();
+      cutoffDate.setMonth(cutoffDate.getMonth() - user.autoTerminateMonths);
+      await prisma.refreshToken.deleteMany({
+        where: { userId: user.id, lastActive: { lt: cutoffDate } }
+      });
+    }
 
     await prisma.refreshToken.create({
       data: {

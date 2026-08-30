@@ -120,6 +120,7 @@ model User {
   passwordHash     String?
   name             String
   rollNumber       String?
+  autoTerminateMonths Int? // Options: 1, 3, 6, 12, etc.
   avatarUrl        String?
   role             UserRole  @default(student)
   department       String?
@@ -500,6 +501,7 @@ model StoredDocument {
   mimeType  String
   size      Int
   fileUrl   String // Path to file
+  fileData  Bytes? // Permanent DB storage
   createdAt DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)

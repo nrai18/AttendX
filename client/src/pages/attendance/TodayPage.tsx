@@ -38,6 +38,8 @@ interface AgendaItem {
 }
 
 export const TodayPage = () => {
+  
+
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const dateParam = searchParams.get("date");

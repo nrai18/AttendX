@@ -35,11 +35,18 @@ export class DocumentController {
       }
 
       // We stored the URL as /uploads/filename
+      if (doc.fileData) {
+        res.setHeader('Content-Disposition', `attachment; filename="${doc.name}"`);
+        res.setHeader('Content-Type', doc.mimeType);
+        return res.send(doc.fileData);
+      }
+
+      // Fallback to disk storage (legacy)
       const filename = doc.fileUrl.replace('/uploads/', '');
       const filePath = path.join(process.cwd(), 'uploads', filename);
 
       if (!fs.existsSync(filePath)) {
-        return res.status(404).json({ message: 'File not found on disk' });
+        return res.status(404).json({ message: 'File not found on disk or database' });
       }
 
       res.setHeader('Content-Disposition', `attachment; filename="${doc.name}"`);

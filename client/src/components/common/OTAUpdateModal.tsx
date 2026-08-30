@@ -18,7 +18,7 @@ export const OTAUpdateModal: React.FC<Props> = ({ localVersion }) => {
     // Check for updates on mount
     const checkUpdates = async () => {
       try {
-        const res = await api.get("/system/update");
+        const res = await api.get(`/system/update?t=${Date.now()}`);
         const { latestVersion, changelog } = res.data;
 
         if (localVersion !== latestVersion) {

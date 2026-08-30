@@ -47,7 +47,8 @@ export class DocumentService {
         type,
         fileUrl,
         mimeType,
-        size: buffer.length
+        size: buffer.length,
+        fileData: buffer
       }
     });
 

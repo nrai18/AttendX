@@ -1,6 +1,7 @@
 import React from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, History } from "lucide-react";
+import { useHardwareBack } from "../../hooks/useHardwareBack";
 
 export interface ChangelogItem {
   icon: string;
@@ -27,6 +28,8 @@ export const ChangelogModal = ({
   onClose: () => void;
   releases?: Release[];
 }) => {
+  useHardwareBack(isOpen, onClose);
+
   return (
     <AnimatePresence>
       {isOpen && (

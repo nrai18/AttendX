@@ -99,6 +99,9 @@ export class EventService {
         }
       });
       if (existing) {
+        if (evt.endDate && (!existing.endDate || new Date(evt.endDate).getTime() !== existing.endDate.getTime())) {
+          await prisma.event.update({ where: { id: existing.id }, data: { endDate: new Date(evt.endDate) } });
+        }
         continue;
       }
 

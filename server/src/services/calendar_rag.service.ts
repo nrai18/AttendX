@@ -106,6 +106,8 @@ CRITICAL VISUAL & LOGICAL PARSING RULES:
 
 4. READ THE DATES INSIDE THE EVENT BLOCKS: For regular events, the exact date is often written right next to the event name (e.g., "01-03, Oct.'26"). Always use that explicit date if present!
 
+5. MULTI-DAY EXAMS AND EVENTS: If the event name says "Mid Semester Exam" or "Mid Semester Break" and is associated with multiple dates, or if the explicitly written date is a range like "09 to 14", you MUST capture the ENTIRE range. startDate is the FIRST date, and endDate is the LAST date.
+
 GENERAL RULES:
 1. DATE FORMATTING: Output all dates strictly as "YYYY-MM-DD". If an event block shows a range (e.g., "02-04, Nov"), startDate is "2026-11-02" and endDate is "2026-11-04".
 2. HOLIDAY HANDLING: If the category is "HOLIDAY", set \`isHoliday\` to \`true\`. For all other categories, set it to \`false\`. NEVER set \`isHoliday\` to true for "showing answer sheets" or regular academic milestones.

@@ -77,6 +77,18 @@ export class UserService {
   }
 
   static async getSessions(userId: string, sessionId?: string) {
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { autoTerminateMonths: true } });
+    if (user?.autoTerminateMonths) {
+      const cutoffDate = new Date();
+      cutoffDate.setMonth(cutoffDate.getMonth() - user.autoTerminateMonths);
+      await prisma.refreshToken.deleteMany({
+        where: {
+          userId,
+          lastActive: { lt: cutoffDate },
+          id: sessionId ? { not: sessionId } : undefined
+        }
+      });
+    }
     const sessions = await prisma.refreshToken.findMany({
       where: { userId },
       orderBy: { lastActive: "desc" },

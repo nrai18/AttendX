@@ -145,7 +145,7 @@ export const CalendarImportModal: React.FC<CalendarImportModalProps> = ({ isOpen
         events: selectedEvents.map(e => ({
           title: e.title,
           date: e.startDate,
-          endDate: e.endDate,
+          endDate: e.endDate || e.startDate,
           eventType: e.category.toLowerCase(),
           isHoliday: e.isHoliday
         }))
@@ -316,7 +316,7 @@ export const CalendarImportModal: React.FC<CalendarImportModalProps> = ({ isOpen
                             </div>
                             <p className="text-xs text-muted-foreground flex items-center gap-1.5">
                               <Calendar className="w-3 h-3" />
-                              {event.startDate === event.endDate 
+                              {event.startDate === (event.endDate || event.startDate) 
                                 ? event.startDate 
                                 : `${event.startDate} to ${event.endDate}`}
                             </p>
