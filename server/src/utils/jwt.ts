@@ -14,7 +14,7 @@ export const generateAccessToken = (userId: string, role: string, sessionId?: st
 
 export const generateRefreshToken = (userId: string) => {
   return jwt.sign({ userId }, getSecret("refresh"), {
-    expiresIn: "7d",
+    expiresIn: "30d",
   });
 };
 

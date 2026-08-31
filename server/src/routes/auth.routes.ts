@@ -1,15 +1,24 @@
-import { Router } from "express";
+﻿import { Router } from "express";
 import { AuthController } from "../controllers/auth.controller";
+import rateLimit from "express-rate-limit";
 
 const router = Router();
 
-router.post("/register", AuthController.register);
-router.post("/login", AuthController.login);
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 15,
+  message: { error: "Too many login attempts from this IP, please try again after 15 minutes" },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+router.post("/register", loginLimiter, AuthController.register);
+router.post("/login", loginLimiter, AuthController.login);
 router.post("/refresh", AuthController.refresh);
 router.post("/logout", AuthController.logout);
 
 // Google OAuth routes (Native Mobile)
-router.post("/google/native", AuthController.googleNative);
+router.post("/google/native", loginLimiter, AuthController.googleNative);
 
 // Google OAuth routes
 import passport from "../middleware/passport";

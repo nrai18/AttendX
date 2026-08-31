@@ -77,7 +77,12 @@ export class UserService {
   }
 
   static async getSessions(userId: string, sessionId?: string) {
-    const user = await prisma.user.findUnique({ where: { id: userId }, select: { autoTerminateMonths: true } });
+    let user: { autoTerminateMonths?: number | null } | null = null;
+    try {
+      user = await prisma.user.findUnique({ where: { id: userId }, select: { autoTerminateMonths: true } }) as any;
+    } catch (error) {
+      // Ignore if Prisma client is not fully generated yet
+    }
     if (user?.autoTerminateMonths) {
       const cutoffDate = new Date();
       cutoffDate.setMonth(cutoffDate.getMonth() - user.autoTerminateMonths);

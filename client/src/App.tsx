@@ -39,7 +39,6 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({
   return <>{children}</>;
 };
 
-import { LandingPage } from "./pages/marketing/LandingPage";
 
 // ... [Keep existing placeholders] ...
 
@@ -48,6 +47,8 @@ import { SettingsPage } from "./pages/settings/SettingsPage";
 import { PredictiveAttendancePage } from "./pages/attendance/PredictiveAttendancePage";
 import { Toaster } from "sonner";
 import { useState } from "react";
+
+import { LandingPage } from "./pages/marketing/LandingPage";
 
 const RootRoute: React.FC = () => {
   const { isAuthenticated, isLoading, _hasHydrated } = useAuthStore();
@@ -130,7 +131,7 @@ export function App() {
       />
       {Capacitor.isNativePlatform() && (
         <OTAUpdateModal
-          localVersion={localStorage.getItem("app_version") || "2.2.2"}
+          localVersion={localStorage.getItem("app_version") || "2.3.0"}
         />
       )}
       {splashFinished && (

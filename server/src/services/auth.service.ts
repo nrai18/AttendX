@@ -128,7 +128,7 @@ export class AuthService {
       data: {
         id: sessionId, userId: user.id,
         token: hashedRefresh,
-        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
         userAgent,
         ipAddress,
         location,
@@ -159,13 +159,12 @@ export class AuthService {
       throw new Error("Invalid refresh token. Please login again.");
     }
 
-    // Delete the old token (rotation)
-    await prisma.refreshToken.delete({ where: { token: hashedOldRefresh } });
+    const sessionId = tokenRecord.id;
 
     const user = await prisma.user.findUnique({ where: { id: payload.userId } });
     if (!user) throw new Error("User not found");
 
-    const { v4: uuidv4 } = require("uuid"); const sessionId = uuidv4(); const accessToken = generateAccessToken(user.id, user.role, sessionId);
+    const accessToken = generateAccessToken(user.id, user.role, sessionId);
     const newRefreshToken = generateRefreshToken(user.id);
     const hashedNewRefresh = await this.hashToken(newRefreshToken);
 
@@ -181,11 +180,12 @@ export class AuthService {
       });
     }
 
-    await prisma.refreshToken.create({
+    await prisma.refreshToken.update({
+      where: { id: sessionId },
       data: {
-        id: sessionId, userId: user.id,
         token: hashedNewRefresh,
-        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        lastActive: new Date(),
         userAgent,
         ipAddress,
         location,
@@ -204,3 +204,5 @@ export class AuthService {
     await prisma.refreshToken.deleteMany({ where: { token: hashedRefresh } });
   }
 }
+
+

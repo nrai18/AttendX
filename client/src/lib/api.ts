@@ -114,7 +114,10 @@ const processQueue = (error: any, token: string | null = null) => {
 };
 
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    import("sonner").then(({ toast }) => toast.dismiss("server-wakeup"));
+    return response;
+  },
   async (error) => {
     const originalRequest = error.config;
 
@@ -163,7 +166,14 @@ api.interceptors.response.use(
     }
 
     // Global Error Interceptor for non-401s and non-429s (Peer Sync recovery)
-    if (error.response?.status !== 401 && error.response?.status !== 429) {
+    if (error.message === "Network Error" || [502, 503, 504].includes(error.response?.status)) {
+      import("sonner").then(({ toast }) => {
+        toast.info("Waking up the cloud server... Please wait a moment.", {
+          id: "server-wakeup",
+          duration: 5000,
+        });
+      });
+    } else if (error.response?.status !== 401 && error.response?.status !== 429) {
       import("sonner").then(({ toast }) => {
         toast.error(`API Error: ${error.response?.data?.message || error.message}`, {
           duration: 10000,
