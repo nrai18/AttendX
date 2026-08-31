@@ -59,7 +59,6 @@ import {
   FrequencySelector,
   type FrequencyData,
 } from "../../components/ui/frequency-selector";
-import { useHardwareBack } from "../../hooks/useHardwareBack";
 import { PeerSyncModal } from "../../components/sync/PeerSyncModal";
 import { OTAUpdateModal } from "../../components/common/OTAUpdateModal";
 import { downloadBlob } from "../../lib/download";
@@ -70,7 +69,7 @@ import { NotificationService } from "../../services/NotificationService";
 export const SettingsPage: React.FC = () => {
 const renderDocuments = (type: string) => {
     // For backups, only show the most recent one (index 0 because it's sorted desc by createdAt on backend)
-    let docs = (Array.isArray(storedDocuments) ? storedDocuments : []).filter((d: any) => d.type === type);
+    let docs = storedDocuments.filter((d: any) => d.type === type);
     if (type === "BACKUP" && docs.length > 0) {
       docs = [docs[0]];
     }
@@ -149,7 +148,6 @@ const renderDocuments = (type: string) => {
   const [showAppInfoModal, setShowAppInfoModal] = useState(false);
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
   const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
-  const [feedbackTab, setFeedbackTab] = useState<"issue" | "improvement">("issue");
   const [isChangelogOpen, setIsChangelogOpen] = useState(false);
   const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
   const [isLinkedDevicesOpen, setIsLinkedDevicesOpen] = useState(false);
@@ -159,31 +157,16 @@ const renderDocuments = (type: string) => {
   const [storedDocuments, setStoredDocuments] = useState<any[]>([]);
   const [searchParams, setSearchParams] = useSearchParams();
 
-
-
   // Dynamic Update Manifest
   const [updateManifest, setUpdateManifest] = useState<any>({
     latestVersion: "1.3.8",
     changelog: []
   });
 
-  // Reset Modals State
-  const [resetModalType, setResetModalType] = useState<
-    "subject" | "attendance" | "timetable" | "events" | "entire" | null
-  >(null);
-  const [selectedSubjectId, setSelectedSubjectId] = useState<string>("");
-  const [isResetting, setIsResetting] = useState(false);
-
-  // Handle hardware back button for inline modals
-  useHardwareBack(!!resetModalType, () => setResetModalType(null));
-  useHardwareBack(showAppInfoModal, () => setShowAppInfoModal(false));
-  useHardwareBack(isDeletingAccount, () => setIsDeletingAccount(false));
-  useHardwareBack(isEditProfileOpen, () => setIsEditProfileOpen(false));
-
   useEffect(() => {
     const fetchManifest = async () => {
       try {
-        const { data } = await api.get(`/system/update?t=${Date.now()}`);
+        const { data } = await api.get("/system/update");
         if (data) {
           setUpdateManifest(data);
         }
@@ -230,6 +213,11 @@ const renderDocuments = (type: string) => {
   }, [reminderFrequency]);  // Reset Section Toggle
   const [enableReset, setEnableReset] = useState(false);
 
+  // Reset Modals State
+  const [resetModalType, setResetModalType] = useState<
+    "subject" | "attendance" | "timetable" | "events" | "entire" | null
+  >(null);
+
   const fetchSubjectsForReset = () => {
     api
       .get("/subjects")
@@ -241,6 +229,7 @@ const renderDocuments = (type: string) => {
   const [subjects, setSubjects] = useState<any[]>([]);
   const [selectedSubjectIds, setSelectedSubjectIds] = useState<string[]>([]);
   const [resetConfirmText, setResetConfirmText] = useState("");
+  const [isResetting, setIsResetting] = useState(false);
   const [resetError, setResetError] = useState("");
 
   // Contact Us State
@@ -1028,7 +1017,11 @@ const renderDocuments = (type: string) => {
               <div>
                 <h3 className="text-sm font-bold text-foreground">Set theme</h3>
                 <p className="text-xs text-muted-foreground">
-                  {theme === "dark" ? "Dark Mode" : "Light Mode"}
+                  {theme === "dark"
+                    ? "Dark Mode"
+                    : theme === "light"
+                      ? "Light Mode"
+                      : "System Default, using App colors"}
                 </p>
               </div>
             </div>
@@ -1047,6 +1040,7 @@ const renderDocuments = (type: string) => {
               >
                 <Sun className="w-4 h-4" />
               </button>
+
             </div>
           </div>
         </div>
@@ -1190,7 +1184,7 @@ const renderDocuments = (type: string) => {
                   </p>
                 </div>
               </div>
-              {(Array.isArray(storedDocuments) ? storedDocuments : []).filter((d: any) => d.type === "TIMETABLE").length ===
+              {storedDocuments.filter((d) => d.type === "TIMETABLE").length ===
                 0 && (
                 <span className="text-xs font-bold bg-muted text-muted-foreground px-2 py-1 rounded-md">
                   Empty
@@ -1215,7 +1209,7 @@ const renderDocuments = (type: string) => {
                   </p>
                 </div>
               </div>
-              {(Array.isArray(storedDocuments) ? storedDocuments : []).filter((d: any) => d.type === "CALENDAR").length ===
+              {storedDocuments.filter((d) => d.type === "CALENDAR").length ===
                 0 && (
                 <span className="text-xs font-bold bg-muted text-muted-foreground px-2 py-1 rounded-md">
                   Empty
@@ -1240,7 +1234,7 @@ const renderDocuments = (type: string) => {
                   </p>
                 </div>
               </div>
-              {(Array.isArray(storedDocuments) ? storedDocuments : []).filter((d: any) => d.type === "BACKUP").length ===
+              {storedDocuments.filter((d) => d.type === "BACKUP").length ===
                 0 && (
                 <span className="text-xs font-bold bg-muted text-muted-foreground px-2 py-1 rounded-md">
                   Empty
@@ -1261,13 +1255,15 @@ const renderDocuments = (type: string) => {
           {/* Share App */}
           <button
             onClick={() => {
+              const appLink = "https://drive.google.com/file/d/1XZBMJBfY8YMGaY82k3FTBHtHmymWggF1/view?usp=sharing";
               if (navigator.share) {
                 navigator.share({
                   title: "Smart Attendance Manager",
-                  url: window.location.origin,
+                  text: "Download AttendX to manage your academic attendance easily!",
+                  url: appLink,
                 });
               } else {
-                navigator.clipboard.writeText(window.location.origin);
+                navigator.clipboard.writeText(appLink);
                 toast.success("App link copied to clipboard!");
               }
             }}
@@ -1323,8 +1319,9 @@ const renderDocuments = (type: string) => {
 
           {/* Install APK */}
           <a
-            href="/AttendX.apk"
-            download
+            href="https://drive.google.com/file/d/1XZBMJBfY8YMGaY82k3FTBHtHmymWggF1/view?usp=sharing"
+            target="_blank"
+            rel="noopener noreferrer"
             className="w-full text-left p-4 hover:bg-muted/50 transition-colors flex items-center justify-between gap-3 cursor-pointer group"
           >
             <div className="flex items-center gap-3">
@@ -1345,48 +1342,28 @@ const renderDocuments = (type: string) => {
         </div>
       </div>
 
-      {/* CATEGORY: Support */}
+            {/* CATEGORY: Support */}
       <div className="space-y-3">
+        <h2 className="text-xs font-bold text-muted-foreground uppercase tracking-wider px-1">
+          Support
+        </h2>
         <div className="bg-card border border-border/70 rounded-2xl divide-y divide-border/50 shadow-md">
-          <div className="px-4 py-2">
-            <h2 className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
-              Support
-            </h2>
-          </div>
-          <div onClick={() => { setFeedbackTab("issue"); setIsFeedbackOpen(true); }} className="w-full text-left p-4 hover:bg-muted/50 transition-colors flex items-center justify-between cursor-pointer group border-b border-border/50">
+          <div onClick={() => setIsFeedbackOpen(true)} className="w-full text-left p-4 hover:bg-muted/50 transition-colors flex items-center justify-between cursor-pointer group">
             <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-red-500/10 text-red-500 flex items-center justify-center">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5"><path d="m8 2 1.88 1.88"/><path d="M14.12 3.88 16 2"/><path d="M9 7.13v-1a3.003 3.003 0 1 1 6 0v1"/><path d="M12 20c-3.3 0-6-2.7-6-6v-3a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v3c0 3.3-2.7 6-6 6"/><path d="M12 20v-9"/><path d="M6.53 9C4.6 8.8 3 7.1 3 5"/><path d="M17.47 9c1.93-.2 3.53-1.9 3.53-4"/></svg>
+              <div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
               </div>
               <div>
-                <h3 className="text-sm font-bold text-foreground group-hover:text-red-500 transition-colors">
-                  Report an Issue
+                <h3 className="text-sm font-bold text-foreground group-hover:text-primary transition-colors">
+                  Send feedback
                 </h3>
                 <p className="text-xs text-muted-foreground">
-                  Found a bug? Let us know.
+                  Report an issue or suggest improvements.
                 </p>
               </div>
             </div>
-            <ChevronRight className="w-5 h-5 text-muted-foreground/50 group-hover:text-red-500 transition-colors" />
+            <ChevronRight className="w-5 h-5 text-muted-foreground/50 group-hover:text-primary transition-colors" />
           </div>
-          
-          <div onClick={() => { setFeedbackTab("improvement"); setIsFeedbackOpen(true); }} className="w-full text-left p-4 hover:bg-muted/50 transition-colors flex items-center justify-between cursor-pointer group border-b border-border/50">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-green-500/10 text-green-500 flex items-center justify-center">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/><path d="M9 18h6"/><path d="M10 22h4"/></svg>
-              </div>
-              <div>
-                <h3 className="text-sm font-bold text-foreground group-hover:text-green-500 transition-colors">
-                  Suggest Improvement
-                </h3>
-                <p className="text-xs text-muted-foreground">
-                  Have an idea to make AttendX better?
-                </p>
-              </div>
-            </div>
-            <ChevronRight className="w-5 h-5 text-muted-foreground/50 group-hover:text-green-500 transition-colors" />
-          </div>
-
           <div onClick={() => setIsChangelogOpen(true)} className="w-full text-left p-4 hover:bg-muted/50 transition-colors flex items-center justify-between cursor-pointer group">
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 rounded-xl bg-purple-500/10 text-purple-500 flex items-center justify-center">
@@ -1623,7 +1600,7 @@ const renderDocuments = (type: string) => {
                             onClick={() => {
                               if (isChecked) {
                                 setSelectedSubjectIds(
-                                  (Array.isArray(selectedSubjectIds) ? selectedSubjectIds : []).filter(
+                                  selectedSubjectIds.filter(
                                     (id) => id !== sub.id,
                                   ),
                                 );
@@ -1866,7 +1843,6 @@ const renderDocuments = (type: string) => {
       <FeedbackModal 
         isOpen={isFeedbackOpen} 
         onClose={() => setIsFeedbackOpen(false)} 
-        defaultTab={feedbackTab}
       />
       <ChangelogModal
         isOpen={isChangelogOpen}

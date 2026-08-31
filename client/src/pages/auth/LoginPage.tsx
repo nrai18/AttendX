@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { Mail, Lock, Loader2, ArrowRight, ArrowLeft, CheckCircle2 } from "lucide-react";
+import { Mail, Lock, Loader2, ArrowRight, ArrowLeft, CheckCircle2, Eye, EyeOff } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
@@ -16,6 +16,7 @@ export const LoginPage: React.FC = () => {
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -110,23 +111,13 @@ export const LoginPage: React.FC = () => {
         console.error("Native Google Login failed:", err);
         // User canceled if err.message contains 'canceled'
         if (err.message && !err.message.toLowerCase().includes("canceled")) {
-           const detailedError = err?.response?.data?.message || err?.message || String(err);
-           setError("Google Sign-In failed: " + detailedError);
+           setError("Google Sign-In failed.");
         }
       } finally {
         setLoading(false);
       }
     } else {
-      setLoading(true);
-      try {
-        const { Geolocation } = await import('@capacitor/geolocation');
-        const hasPerms = await Geolocation.checkPermissions();
-        if (hasPerms.location !== 'granted') await Geolocation.requestPermissions();
-        const pos = await Geolocation.getCurrentPosition({ timeout: 5000, maximumAge: 300000 });
-        window.location.href = `${API_BASE_URL}/auth/google?lat=${pos.coords.latitude}&lon=${pos.coords.longitude}`;
-      } catch (e) {
-        window.location.href = `${API_BASE_URL}/auth/google`;
-      }
+      window.location.href = `${API_BASE_URL}/auth/google`;
     }
   };
 
@@ -272,13 +263,20 @@ export const LoginPage: React.FC = () => {
                     <Input
                       id="password"
                       name="password"
-                      type="password"
+                      type={showPassword ? "text" : "password"}
                       autoComplete="current-password"
                       value={password}
                       onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPassword(e.target.value)}
                       required
-                      className="pl-9 bg-background/50 border-border focus:border-primary text-foreground"
+                      className="pl-9 pr-10 bg-background/50 border-border focus:border-primary text-foreground"
                     />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-3 text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
                   </div>
                 </div>
               </CardContent>

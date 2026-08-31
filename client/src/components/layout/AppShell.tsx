@@ -1,5 +1,5 @@
 import React, { useEffect } from "react";
-import { Outlet } from "react-router-dom";
+import { Outlet, useLocation } from "react-router-dom";
 import { BottomNav } from "./BottomNav";
 import { Sidebar } from "./Sidebar";
 import { TopBar } from "./TopBar";
@@ -16,6 +16,18 @@ interface AppShellProps {
 
 export const AppShell: React.FC<AppShellProps> = ({ title, onAddClick }) => {
   const { fetchStats } = useAttendanceStore();
+  const location = useLocation();
+
+  useEffect(() => {
+    // Force the correct favicon on route change
+    let link: HTMLLinkElement | null = document.querySelector("link[rel~='icon']");
+    if (!link) {
+      link = document.createElement('link');
+      link.rel = 'icon';
+      document.getElementsByTagName('head')[0].appendChild(link);
+    }
+    link.href = '/attendx_app_icon.png';
+  }, [location.pathname]);
 
   useEffect(() => {
     fetchStats();

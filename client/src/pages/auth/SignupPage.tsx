@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { GraduationCap, Mail, Lock, User as UserIcon, Loader2, ArrowRight, Check, X } from "lucide-react";
+import { GraduationCap, Mail, Lock, User as UserIcon, Loader2, ArrowRight, Check, X, Eye, EyeOff } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
@@ -17,6 +17,7 @@ export const SignupPage: React.FC = () => {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -47,8 +48,7 @@ export const SignupPage: React.FC = () => {
         console.error("Native Google Login failed:", err);
         // User canceled if err.message contains 'canceled'
         if (err.message && !err.message.toLowerCase().includes("canceled")) {
-           const detailedError = err?.response?.data?.message || err?.message || String(err);
-           setError("Google Sign-In failed: " + detailedError);
+           setError("Google Sign-In failed.");
         }
       } finally {
         setLoading(false);
@@ -135,6 +135,7 @@ export const SignupPage: React.FC = () => {
                     value={name}
                     onChange={(e: React.ChangeEvent<HTMLInputElement>) => setName(e.target.value)}
                     required
+                    minLength={6}
                     className="pl-9 bg-background/50 border-border focus:border-primary text-foreground"
                   />
                 </div>
@@ -152,6 +153,7 @@ export const SignupPage: React.FC = () => {
                     value={email}
                     onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEmail(e.target.value)}
                     required
+                    minLength={6}
                     className="pl-9 bg-background/50 border-border focus:border-primary text-foreground"
                   />
                 </div>
@@ -165,13 +167,20 @@ export const SignupPage: React.FC = () => {
                     id="password"
                     name="password"
                     autoComplete="new-password"
-                    type="password"
+                    type={showPassword ? "text" : "password"}
                     value={password}
                     onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPassword(e.target.value)}
                     required
                     minLength={6}
-                    className="pl-9 bg-background/50 border-border focus:border-primary text-foreground"
+                    className="pl-9 pr-10 bg-background/50 border-border focus:border-primary text-foreground"
                   />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-3 text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
                 </div>
                 
                 {password.length > 0 && (

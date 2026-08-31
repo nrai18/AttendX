@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { Player as Lottie } from '@lottiefiles/react-lottie-player';
-
+import { Capacitor } from '@capacitor/core';
 import { Button } from "../../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
 import { Input } from "../../components/ui/input";
@@ -129,7 +129,11 @@ export const LandingPage: React.FC = () => {
   
           {/* Hero Lottie Animation Desktop */}
           <div className="mt-16 relative rounded-2xl overflow-hidden shadow-2xl shadow-primary/10 max-w-2xl mx-auto bg-muted/20 flex justify-center aspect-[9/16] sm:aspect-[16/9] items-center">
-            <Lottie src="/logo_animation.json" loop={true} autoplay={true} className="w-full h-full object-cover scale-[1.3] opacity-90" />
+            {Capacitor.isNativePlatform() ? (
+              <img src="/attendx_logo_lockup.png" className="w-64 h-auto opacity-90 object-contain" alt="AttendX Logo" />
+            ) : (
+              <Lottie src="/logo_animation.json" loop={true} autoplay={true} className="w-full h-full object-cover scale-[1.3] opacity-90" />
+            )}
           </div>
         </div>
 
@@ -169,7 +173,11 @@ export const LandingPage: React.FC = () => {
 
           {/* Hero Lottie Animation Mobile */}
           <div className="w-full relative rounded-t-[2.5rem] overflow-hidden shadow-2xl mt-4 aspect-[9/16] bg-muted flex items-center justify-center">
-            <Lottie src="/logo_animation.json" loop={true} autoplay={true} className="w-full h-full scale-[1.3] transform origin-center" />
+            {Capacitor.isNativePlatform() ? (
+              <img src="/attendx_logo_lockup.png" className="w-48 h-auto opacity-90 object-contain" alt="AttendX Logo" />
+            ) : (
+              <Lottie src="/logo_animation.json" loop={true} autoplay={true} className="w-full h-full scale-[1.3] transform origin-center" />
+            )}
           </div>
         </div>
       </section>
