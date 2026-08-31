@@ -5,7 +5,10 @@ import { CalendarRagController } from "../controllers/calendar_rag.controller";
 import { authenticate } from "../middleware/authenticate";
 
 const router = Router();
-const upload = multer({ storage: multer.memoryStorage() });
+const upload = multer({ 
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit
+});
 
 router.use(authenticate);
 

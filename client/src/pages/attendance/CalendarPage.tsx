@@ -53,8 +53,10 @@ export const CalendarPage = () => {
   const setCache = useCacheStore((state) => state.setCache);
   
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [data, setData] = useState<CalendarData | null>(cachedData?.data || null);
-  const [isLoading, setIsLoading] = useState(!cachedData);
+  // Determine initial month
+  const initialMonthStr = format(new Date(), "yyyy-MM");
+  const [data, setData] = useState<CalendarData | null>(cachedData?.[initialMonthStr] || null);
+  const [isLoading, setIsLoading] = useState(!cachedData?.[initialMonthStr]);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
   const [selectedMobileDate, setSelectedMobileDate] = useState<string | null>(null);
@@ -62,14 +64,20 @@ export const CalendarPage = () => {
 
   const fetchCalendar = async (force: boolean = false) => {
     try {
-      if (!cachedData || force) setIsLoading(true);
       const monthStr = format(currentDate, "yyyy-MM");
+      if (cachedData && cachedData[monthStr]) {
+        setData(cachedData[monthStr]);
+      } else {
+        setIsLoading(true);
+      }
+      
       const res = await api.get(`/attendance/calendar?month=${monthStr}${force ? '&force=true' : ''}`);
       const d = typeof res.data === 'string' ? { days: [], insights: [], events: [], isComplete: false, completionPercentage: 0, requiredClassesToTarget: 0, canBunk: false } : res.data;
       setData(d);
       
       setCache('calendar', {
-        data: res.data
+        ...cachedData,
+        [monthStr]: res.data
       });
       return res.data;
     } catch (error) {

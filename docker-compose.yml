@@ -1,4 +1,4 @@
-version: '3.8'
+﻿version: '3.8'
 
 services:
   postgres:
@@ -18,7 +18,7 @@ services:
       retries: 5
 
   pgbouncer:
-    image: edoburu/pgbouncer:1.22.1
+    image: edoburu/pgbouncer:latest
     environment:
       DATABASE_URL: postgres://attendx:attendx_password@postgres:5432/attendx
       AUTH_TYPE: plain
@@ -27,7 +27,7 @@ services:
       MAX_CLIENT_CONN: 1000
       DEFAULT_POOL_SIZE: 20
     ports:
-      - "6432:5432"
+      - "6432:6432"
     depends_on:
       postgres:
         condition: service_healthy
@@ -54,6 +54,7 @@ services:
       JWT_REFRESH_SECRET: "your_jwt_refresh_secret_key"
       FRONTEND_URL: "http://localhost:80"
       REDIS_URL: "redis://redis:6379"
+      ML_API_URL: "http://ml-server:8000"
     depends_on:
       postgres:
         condition: service_healthy
@@ -73,7 +74,27 @@ services:
       context: ./ml-server
     ports:
       - "8000:8000"
+    environment:
+      REDIS_URL: "redis://redis:6379/0"
+      DATABASE_URL: postgres://attendx:attendx_password@postgres:5432/attendx
+    depends_on:
+      - redis
+      - postgres
+      - server
+
+  celery:
+    build:
+      context: ./ml-server
+    command: celery -A tasks.celery_app worker --loglevel=info
+    environment:
+      REDIS_URL: "redis://redis:6379/0"
+      DATABASE_URL: postgres://attendx:attendx_password@postgres:5432/attendx
+    depends_on:
+      - redis
+      - postgres
+      - ml-server
 
 volumes:
   postgres_data:
   redis_data:
+
