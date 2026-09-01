@@ -14,3 +14,11 @@ Whenever preparing a new major update or before compiling a final APK, you MUST 
 1. **Frontend**: Bump the default `localVersion` fallback inside `client/src/App.tsx`.
 2. **Backend**: Update the `latestVersion` string and append the changelog in `server/src/controllers/system.controller.ts`.
 3. **Package**: Run `npm run build` in the `client` directory, then run `node zip_dist.cjs` in the `server` directory to bundle the latest frontend code into `server/uploads/update.zip`.
+
+## Anti-Slop Design Invariants
+Never generate UI that uses the following AI default tropes:
+1. No purple/cyan gradients, decorative glassmorphism, or neon-on-dark.
+2. No "Side-Tab" cards (thick border on one side of a rounded card), nested cards, or ghost shadows (hairline border + wide shadow).
+3. No tiny uppercase letter-spaced eyebrows above oversized italic serif hero headlines.
+4. No "Inter everywhere" — ensure distinct type hierarchies and do not use gradient text.
+5. No marketing buzzwords (supercharge, empower, next-generation). Use literal verbs.

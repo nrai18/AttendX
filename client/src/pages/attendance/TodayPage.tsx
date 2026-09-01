@@ -114,13 +114,15 @@ export const TodayPage = () => {
   const syntheticHoliday = getHolidayFromList(targetDateStr);
   const cachedData = useCacheStore(state => state.today);
   const setCache = useCacheStore(state => state.setCache);
+  
+  const dayCache = cachedData?.[targetDateStr];
 
-  const [agenda, setAgenda] = useState<AgendaItem[]>(cachedData?.agenda || []);
-  const [todayStatus, setTodayStatus] = useState<any>(cachedData?.todayStatus || null);
+  const [agenda, setAgenda] = useState<AgendaItem[]>(dayCache?.agenda || []);
+  const [todayStatus, setTodayStatus] = useState<any>(dayCache?.todayStatus || null);
   const activeEvent = syntheticHoliday || todayStatus?.activeEvent;
-  const [activeSemester, setActiveSemester] = useState<any>(cachedData?.activeSemester || null);
-  const [onboardingStatus, setOnboardingStatus] = useState<any>(null);
-  const [isLoading, setIsLoading] = useState(!cachedData);
+  const [activeSemester, setActiveSemester] = useState<any>(dayCache?.activeSemester || null);
+  const [onboardingStatus, setOnboardingStatus] = useState<any>(dayCache?.onboarding || null);
+  const [isLoading, setIsLoading] = useState(!dayCache);
   const [isCreateSemesterOpen, setIsCreateSemesterOpen] = useState(false);
 
   // Extra Lecture Modal State
@@ -346,52 +348,51 @@ export const TodayPage = () => {
       }
 
       setCache('today', { 
-        agenda: nextAgenda, 
-        todayStatus: nextTodayStatus, 
-        activeSemester: semRes.data || null,
-        onboarding: nextOnboarding
+        ...useCacheStore.getState().today,
+        [targetDateStr]: {
+          agenda: nextAgenda, 
+          todayStatus: nextTodayStatus, 
+          activeSemester: semRes.data || null,
+          onboarding: nextOnboarding
+        }
       });
 
     } catch (error) {
       console.error("Failed to fetch today data:", error);
       
-      // OFFLINE FALLBACK
+      const todayCache = useCacheStore.getState().today?.[targetDateStr];
       const isToday = targetDateStr === format(new Date(), "yyyy-MM-dd");
-      if (!isToday) {
-         // Attempt to construct agenda from cached timetable
-         const timetableCache = useCacheStore.getState().timetable;
-         if (timetableCache && timetableCache.slots) {
-            const dateObj = new Date(targetDateStr);
-            const jsDay = dateObj.getDay();
-            const ttDay = jsDay === 0 ? 6 : jsDay - 1;
 
-            const slotsForDay = timetableCache.slots.filter((s: any) => s.dayOfWeek === ttDay);
-            const pseudoAgenda: AgendaItem[] = slotsForDay.map((slot: any) => {
-               const subject = timetableCache.subjects?.find((sub: any) => sub.id === slot.subjectId) || { id: slot.subjectId, name: "Unknown" };
-               return {
-                  id: slot.id,
-                  type: "slot",
-                  subject,
-                  startTime: slot.startTime,
-                  endTime: slot.endTime,
-                  status: "none"
-               };
-            });
-            pseudoAgenda.sort((a,b) => a.startTime.localeCompare(b.startTime));
-            setAgenda(pseudoAgenda);
-            setTodayStatus(null);
-         } else {
-            setAgenda([]);
-            setTodayStatus(null);
-         }
+      if (todayCache && todayCache.agenda && todayCache.agenda.length > 0) {
+        setAgenda(todayCache.agenda);
+        setTodayStatus(todayCache.todayStatus || null);
       } else {
-         const todayCache = useCacheStore.getState().today;
-         if (todayCache) {
-            setAgenda(todayCache.agenda || []);
-            setTodayStatus(todayCache.todayStatus || null);
-         } else {
-            setAgenda([]);
-         }
+        // Attempt to construct agenda from cached timetable
+        const timetableCache = useCacheStore.getState().timetable;
+        if (timetableCache && timetableCache.slots) {
+          const dateObj = new Date(targetDateStr);
+          const jsDay = dateObj.getDay();
+          const ttDay = jsDay === 0 ? 6 : jsDay - 1;
+
+          const slotsForDay = timetableCache.slots.filter((s: any) => s.dayOfWeek === ttDay);
+          const pseudoAgenda: AgendaItem[] = slotsForDay.map((slot: any) => {
+            const subject = timetableCache.subjects?.find((sub: any) => sub.id === slot.subjectId) || { id: slot.subjectId, name: "Unknown" };
+            return {
+              id: slot.id,
+              type: "slot",
+              subject,
+              startTime: slot.startTime,
+              endTime: slot.endTime,
+              status: null
+            };
+          });
+          pseudoAgenda.sort((a,b) => a.startTime.localeCompare(b.startTime));
+          setAgenda(pseudoAgenda);
+          setTodayStatus(null);
+        } else {
+          setAgenda([]);
+          setTodayStatus(null);
+        }
       }
     } finally {
       setIsLoading(false);
@@ -399,8 +400,13 @@ export const TodayPage = () => {
   };
 
   useEffect(() => {
-    const todayStr = format(new Date(), "yyyy-MM-dd");
-    if (targetDateStr !== todayStr) {
+    const cachedDay = useCacheStore.getState().today?.[targetDateStr];
+    if (cachedDay) {
+      setAgenda(cachedDay.agenda || []);
+      setTodayStatus(cachedDay.todayStatus || null);
+      setActiveSemester(cachedDay.activeSemester || null);
+      setOnboardingStatus(cachedDay.onboarding || null);
+    } else {
       setAgenda([]);
       setTodayStatus(null);
       setIsLoading(true);
@@ -493,11 +499,30 @@ export const TodayPage = () => {
           : a
       ));
 
+      // Update cache
+      useCacheStore.getState().setCache('today', { 
+        ...useCacheStore.getState().today,
+        [targetDateStr]: {
+          ...useCacheStore.getState().today?.[targetDateStr],
+          agenda: updatedAgenda, 
+          todayStatus 
+        }
+      });
+      
       fetchStats();
       window.dispatchEvent(new Event("attendance-updated"));
     } catch (error) {
-      console.error("Failed to mark attendance:", error);
-      fetchData();
+      console.error("Failed to mark attendance offline or error:", error);
+      // Offline fallback: keep optimistic UI update and save to cache
+      useCacheStore.getState().setCache('today', { 
+        ...useCacheStore.getState().today,
+        [targetDateStr]: {
+          ...useCacheStore.getState().today?.[targetDateStr],
+          agenda: updatedAgenda, 
+          todayStatus 
+        }
+      });
+      window.dispatchEvent(new Event("attendance-updated"));
     }
   };
 

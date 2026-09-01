@@ -1,4 +1,4 @@
-import { LocalNotifications } from '@capacitor/local-notifications';
+﻿import { LocalNotifications } from '@capacitor/local-notifications';
 import { Capacitor } from '@capacitor/core';
 import { mutePhone, unmutePhone } from '../lib/ringer';
 import { useAttendanceStore } from '../stores/attendanceStore';
@@ -23,10 +23,10 @@ export class NotificationService {
       id: 'class_alerts',
       name: 'Class Reminders',
       description: 'Heads-up alerts before your class begins.',
-      importance: 5, // IMPORTANCE_MAX for heads up
-      visibility: 1, // VISIBILITY_PUBLIC
+      importance: 5, 
+      visibility: 1, 
       lights: true,
-      lightColor: '#6366F1', // Indigo
+      lightColor: '#6366F1', 
       vibration: true,
     });
 
@@ -34,13 +34,12 @@ export class NotificationService {
       id: 'silent_mode',
       name: 'Active Silent Mode',
       description: 'Pinned notification while class is actively running and phone is muted.',
-      importance: 3, // IMPORTANCE_DEFAULT, no heads-up needed for ongoing
+      importance: 3, 
       visibility: 1,
       lights: false,
       vibration: false,
     });
 
-    // Register action types for pinned notification and class reminders
     await LocalNotifications.registerActionTypes({
       types: [
         {
@@ -48,7 +47,7 @@ export class NotificationService {
           actions: [
             {
               id: 'UNMUTE_ACTION',
-              title: '🔊 Unmute Phone',
+              title: '???? Unmute Phone',
               foreground: false,
               destructive: false
             }
@@ -59,7 +58,7 @@ export class NotificationService {
           actions: [
             {
               id: 'MUTE_ACTION',
-              title: '🔕 Mute Phone for Class',
+              title: '???? Mute Phone for Class',
               foreground: false,
               destructive: false
             }
@@ -71,25 +70,30 @@ export class NotificationService {
     // Listen for unmute/mute actions
     LocalNotifications.addListener('localNotificationActionPerformed', async (action) => {
       if (action.actionId === 'UNMUTE_ACTION') {
-        await unmutePhone();
-        await LocalNotifications.cancel({ notifications: [{ id: 9999 }] });
-        toast.success("Phone unmuted manually.");
+        const success = await unmutePhone();
+        if (success) {
+           await LocalNotifications.cancel({ notifications: [{ id: 9999 }] });
+           toast.success("Phone unmuted manually.");
+        }
       } else if (action.actionId === 'MUTE_ACTION') {
         const { classTitle, endTimeStr } = action.notification.extra || {};
         
-        // Mute the phone
-        await mutePhone();
+        // Try muting
+        const success = await mutePhone();
+        if (!success) {
+           toast.error("Failed to mute phone. DND Permission missing.");
+           return;
+        }
+
         toast.success("Phone muted for class.");
 
-        // Optionally, pin the in-session notification if we want
-        // But we would need a Date object for endTime
         let endTime = new Date();
         if (endTimeStr) {
           const parsed = parse(endTimeStr, "HH:mm", new Date());
           endTime = setMinutes(setHours(new Date(), parsed.getHours()), parsed.getMinutes());
           if (endTime.getTime() < Date.now()) endTime = addDays(endTime, 1);
         } else {
-          endTime = addMinutes(new Date(), 60); // Default 1 hr
+          endTime = addMinutes(new Date(), 60);
         }
         
         await this.triggerPinnedClassMute(classTitle || "Class", endTime);
@@ -99,29 +103,27 @@ export class NotificationService {
     this.isInitialized = true;
   }
 
-  static async scheduleClassReminder(classTitle: string, startTime: Date, location?: string, endTimeStr?: string) {
-    const timeStr = startTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  static async scheduleClassReminder(classTitle: string, actualStartTime: Date, notifyTime: Date, location?: string, endTimeStr?: string) {
+    const timeStr = actualStartTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     
-    if (!Capacitor.isNativePlatform()) {
-      return;
-    }
+    if (!Capacitor.isNativePlatform()) return;
     
     await LocalNotifications.schedule({
       notifications: [
         {
           id: Math.floor(Math.random() * 900000) + 100000,
-          title: `Upcoming Class: ${classTitle}`,
-          body: `Starts at ${timeStr}`,
-          largeBody: `Your class "${classTitle}" is starting at ${timeStr}.${location ? `\nLocation: ${location}` : ''}\n\nTap the action button below to instantly mute your phone for this class.`,
+          title: `Upcoming: ${classTitle}`,
+          body: `Starts at ${timeStr} ${location ? `| ${location}` : ''}`,
+          largeBody: `???? Class: ${classTitle}\n⏰ Time: ${timeStr} - ${endTimeStr || 'TBD'}\n???? Room: ${location || 'N/A'}\n\nTap the action button below to instantly mute your phone for the duration of this class.`,
           summaryText: "Class Reminder",
           smallIcon: "ic_stat_attendx",
-          iconColor: "#6366F1", // Indigo theme
+          iconColor: "#6366F1", 
           channelId: 'class_alerts',
           foreground: true,
           actionTypeId: 'CLASS_REMINDER_ACTIONS',
           extra: { classTitle, endTimeStr },
           schedule: { 
-            at: startTime,
+            at: notifyTime,
             allowWhileIdle: true
           },
         }
@@ -130,33 +132,29 @@ export class NotificationService {
   }
 
   static async triggerPinnedClassMute(className: string, endTime: Date) {
+    if (!Capacitor.isNativePlatform()) return;
+    
     const timeStr = endTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-    if (!Capacitor.isNativePlatform()) {
-      return;
-    }
-
-    // 1. Show ongoing notification
     await LocalNotifications.schedule({
       notifications: [
         {
-          id: 9999, // Static ID so we can cancel it later
+          id: 9999,
           title: `Class in Session`,
           body: `Phone is silenced until ${timeStr}`,
-          largeBody: `You are currently in "${className}".\n\nYour phone has been manually muted via AttendX. It will restore to normal volume automatically at ${timeStr} if the app is opened, or you can unmute manually below.`,
+          largeBody: `???? Current Class: ${className}\n\nYour phone has been manually muted via AttendX. It will restore to normal volume automatically at ${timeStr}, or you can unmute manually below.`,
           summaryText: "Do Not Disturb Active",
           smallIcon: "ic_stat_attendx",
-          iconColor: "#F59E0B", // Amber warning color
+          iconColor: "#EF4444", 
           channelId: 'silent_mode',
-          ongoing: true, // Android pinned
+          ongoing: true,
           autoCancel: false,
           actionTypeId: 'CLASS_SILENT_ACTIONS',
-          schedule: { at: new Date() } // Trigger immediately
+          schedule: { at: new Date(Date.now() + 1000), allowWhileIdle: true }
         }
       ]
     });
 
-    // Automatically unmute when class ends (if app stays open/backgrounded)
     const timeUntilEnd = endTime.getTime() - Date.now();
     if (timeUntilEnd > 0) {
       setTimeout(async () => {
@@ -167,23 +165,18 @@ export class NotificationService {
   }
 
   static async scheduleHolidayNotification(holidayName: string, date: Date) {
-    if (!Capacitor.isNativePlatform()) {
-      toast("🎉 Holiday Tomorrow: " + holidayName, { 
-        description: "No classes scheduled! Enjoy your day off.",
-        style: { borderLeft: "4px solid #10B981" }
-      });
-      return;
-    }
+    if (!Capacitor.isNativePlatform()) return;
 
     await LocalNotifications.schedule({
       notifications: [
         {
           id: Math.floor(Math.random() * 10000),
-          title: "Holiday Tomorrow: " + holidayName,
+          title: "Holiday Today: " + holidayName,
           body: "No classes scheduled! Enjoy your day off.",
+          largeBody: `???? Holiday: ${holidayName}\n\nThere are no classes scheduled for today. Take a break, relax, and enjoy your time off!`,
           summaryText: "Holiday Event",
           smallIcon: "ic_stat_attendx",
-          iconColor: "#10B981", // Emerald
+          iconColor: "#10B981", 
           channelId: "class_alerts",
           schedule: { at: date, allowWhileIdle: true }
         }
@@ -191,24 +184,19 @@ export class NotificationService {
     });
   }
 
-  static async scheduleBirthdayNotification(userName: string, date: Date) {
-    if (!Capacitor.isNativePlatform()) {
-      toast("🎂 Happy Birthday " + userName + "!", { 
-        description: "Have a fantastic day from the AttendX team.",
-        style: { borderLeft: "4px solid #EC4899" }
-      });
-      return;
-    }
+  static async scheduleBirthdayNotification(name: string, date: Date) {
+    if (!Capacitor.isNativePlatform()) return;
 
     await LocalNotifications.schedule({
       notifications: [
         {
           id: Math.floor(Math.random() * 10000),
-          title: "Happy Birthday " + userName + "!",
-          body: "Have a fantastic day from the AttendX team.",
-          summaryText: "Birthday",
+          title: "Happy Birthday!",
+          body: `Wish ${name} a great birthday today!`,
+          largeBody: `???? It's ${name}'s birthday today!\n\nDon't forget to send them your best wishes and make their day special!`,
+          summaryText: "Birthday Event",
           smallIcon: "ic_stat_attendx",
-          iconColor: "#EC4899", // Pink
+          iconColor: "#F59E0B", 
           channelId: "class_alerts",
           schedule: { at: date, allowWhileIdle: true }
         }
@@ -225,36 +213,25 @@ export class NotificationService {
 
       console.log("Auto-scheduling local notifications for upcoming classes and events...");
 
-      // 1. Fetch slots for active semester
       const res = await api.get(`/timetable/${activeSemesterId}`);
       const slots: any[] = res.data;
       if (!slots) return;
 
-      // 2. Fetch events
       const events = useAttendanceStore.getState().events || [];
-      // Combine API events with hardcoded holidays (using current year)
-      const currentYear = new Date().getFullYear();
-      
       const allEvents = [...events];
       
-      // We will parse FIXED_HOLIDAYS if it was imported, but just to be safe:
-      const holidays = allEvents.filter(e => e.type === 'HOLIDAY' || e.type === 'RESTRICTED' || e.title?.toLowerCase().includes("holiday"));
-
-      // 3. Clear existing scheduled notifications (excluding the pinned one 9999)
       const pending = await LocalNotifications.getPending();
       const toCancel = pending.notifications.filter(n => n.id !== 9999);
       if (toCancel.length > 0) {
         await LocalNotifications.cancel({ notifications: toCancel });
       }
 
-      // 4. Schedule for the next 7 days
       const today = startOfDay(new Date());
       let scheduledCount = 0;
 
       for (let i = 0; i < 7; i++) {
         const currentDay = addDays(today, i);
         
-        // Check if this day is a holiday or special event
         const dayEvents = allEvents.filter(e => {
           const eDate = startOfDay(new Date(e.date));
           return isSameDay(eDate, currentDay);
@@ -264,17 +241,15 @@ export class NotificationService {
         const birthdayEvent = dayEvents.find(e => e.title?.toLowerCase().includes("birthday"));
 
         if (holidayEvent) {
-          // Schedule holiday notification for 8:00 AM on the day of the holiday
           const notifyTime = setHours(currentDay, 8);
           if (notifyTime.getTime() > Date.now()) {
             await this.scheduleHolidayNotification(holidayEvent.title, notifyTime);
             scheduledCount++;
           }
-          continue; // Skip scheduling classes for this day
+          continue; 
         }
 
         if (birthdayEvent) {
-          // Schedule birthday notification for 9:00 AM
           const notifyTime = setHours(currentDay, 9);
           if (notifyTime.getTime() > Date.now()) {
             const nameMatch = birthdayEvent.title.match(/(?:'s|s)?\s*birthday/i);
@@ -284,27 +259,24 @@ export class NotificationService {
           }
         }
 
-        // JS getDay(): 0 = Sun, 1 = Mon ... 6 = Sat
-        // DB dayOfWeek: 0 = Mon, 1 = Tue ... 6 = Sun
         let dbDay = currentDay.getDay() - 1;
-        if (dbDay === -1) dbDay = 6; // Sunday
+        if (dbDay === -1) dbDay = 6; 
 
         const daySlots = slots.filter(s => s.dayOfWeek === dbDay);
         
         for (const slot of daySlots) {
           const subjectName = slot.subject?.name || slot.subject?.code || "Class";
-          const startTimeStr = slot.startTime; // "09:00"
-          const endTimeStr = slot.endTime; // "10:00"
+          const startTimeStr = slot.startTime; 
+          const endTimeStr = slot.endTime; 
 
           const parsedStart = parse(startTimeStr, "HH:mm", new Date());
           let classStartObj = setMinutes(setHours(currentDay, parsedStart.getHours()), parsedStart.getMinutes());
           
-          // Notification time: 10 mins before
           const notifyTime = addMinutes(classStartObj, -10);
 
-          // Only schedule if it's in the future
           if (notifyTime.getTime() > Date.now()) {
-            await this.scheduleClassReminder(subjectName, notifyTime, slot.room, endTimeStr);
+            // FIX: Pass actual classStartObj AND notifyTime
+            await this.scheduleClassReminder(subjectName, classStartObj, notifyTime, slot.room, endTimeStr);
             scheduledCount++;
           }
         }
@@ -320,13 +292,13 @@ export class NotificationService {
     if (!Capacitor.isNativePlatform()) return;
 
     try {
-      // Cancel existing academic update (id: 8888)
       await LocalNotifications.cancel({ notifications: [{ id: 8888 }] });
 
       if (!frequency || frequency.type === 'Never') return;
 
       let title = "Daily Briefing";
       let body = "Ready for tomorrow? Tap to check your upcoming schedule and assignments!";
+      let largeBody = "???? Ready for tomorrow?\n\nTap to check your upcoming schedule and ensure you're prepared for all classes!";
       let every: 'day' | 'week' | 'month' | 'year' | undefined = 'day';
       let on: any = undefined;
 
@@ -334,23 +306,23 @@ export class NotificationService {
 
       if (frequency.type === 'Daily') {
         title = "Tomorrow's Briefing";
-        body = "📚 You have classes coming up. Tap to review your schedule for tomorrow!";
+        body = "You have classes coming up tomorrow.";
+        largeBody = `???? Prepare for Tomorrow\n\nYou have classes scheduled. Tap to review your timetable, check for assignments, and pack your bag!`;
         every = 'day';
-        scheduleDate.setHours(20, 0, 0, 0); // 8:00 PM
       } else if (frequency.type === 'Weekly') {
         title = "Attendance Health Check";
-        body = "📊 Weekly Review: Check your attendance health to ensure you stay above your 75% target!";
+        body = "Weekly Review: Check your attendance health!";
+        largeBody = `???? Weekly Attendance Review\n\nTake a moment to check your attendance health to ensure you stay above your target percentage. Let's keep those numbers green!`;
         every = 'week';
-        scheduleDate.setHours(18, 0, 0, 0); // 6:00 PM
         
-        // Map Mon, Tue etc. to weekday (1 = Sunday, 2 = Monday in Capacitor plugin)
         const daysMap: Record<string, number> = { Sun: 1, Mon: 2, Tue: 3, Wed: 4, Thu: 5, Fri: 6, Sat: 7 };
         if (frequency.subValue && daysMap[frequency.subValue]) {
           on = { weekday: daysMap[frequency.subValue], hour: 18, minute: 0 };
         }
       } else if (frequency.type === 'Monthly') {
         title = "Monthly Attendance Summary";
-        body = "📅 Your monthly review is ready! See how well you did this month.";
+        body = "Your monthly review is ready! See how well you did this month.";
+        largeBody = `???? Monthly Summary\n\nYour attendance review for the past month is ready. Tap to see your detailed breakdown and performance across all subjects.`;
         every = 'month';
         on = { day: 1, hour: 18, minute: 0 };
       }
@@ -361,9 +333,10 @@ export class NotificationService {
             id: 8888,
             title,
             body,
+            largeBody,
             summaryText: "Academic Update",
             smallIcon: "ic_stat_attendx",
-            iconColor: "#8B5CF6", // Violet
+            iconColor: "#8B5CF6", 
             channelId: "class_alerts",
             actionTypeId: 'ACADEMIC_UPDATE_OPEN',
             schedule: on ? { on, repeats: true, allowWhileIdle: true } : { every, repeats: true, allowWhileIdle: true }
@@ -371,7 +344,6 @@ export class NotificationService {
         ]
       });
 
-      console.log(`Successfully scheduled academic updates for ${frequency.type}`);
     } catch (error) {
       console.error("Failed to schedule academic updates:", error);
     }

@@ -1,3 +1,4 @@
+import { useCacheStore } from "../../stores/cacheStore";
 import React, { useState, useEffect } from "react";
 import { Plus, Pencil, Trash2, Loader2, AlertCircle, TrendingUp, TrendingDown, CheckCircle2, XCircle, Shield, LayoutDashboard, Sparkles } from "lucide-react";
 import { PageSkeleton } from "../../components/common/PageSkeleton";
@@ -142,11 +143,13 @@ const SubjectCard: React.FC<{
 };
 
 export const SubjectsPage = () => {
+  const cachedSubjectsData = useCacheStore((state) => state.subjects);
+  const setCache = useCacheStore((state) => state.setCache);
   const { user } = useAuthStore();
   const navigate = useNavigate();
-  const [subjectStats, setSubjectStats] = useState<SubjectStat[]>([]);
-  const [subjects, setSubjects] = useState<Subject[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [subjectStats, setSubjectStats] = useState<SubjectStat[]>(cachedSubjectsData?.stats || []);
+  const [subjects, setSubjects] = useState<Subject[]>(cachedSubjectsData?.subjects || []);
+  const [isLoading, setIsLoading] = useState(!cachedSubjectsData);
   const [isAdding, setIsAdding] = useState(false);
   const [editingSubject, setEditingSubject] = useState<Subject | null>(null);
   const [activeSemesterId, setActiveSemesterId] = useState<string | null>(null);
@@ -154,18 +157,23 @@ export const SubjectsPage = () => {
 
   const fetchData = async () => {
     try {
-      setIsLoading(true);
+      if (!cachedSubjectsData) setIsLoading(true);
       const [subjectsRes, semesterRes] = await Promise.all([
         api.get("/subjects"),
         api.get("/semesters/active"),
       ]);
-      setSubjects(Array.isArray(subjectsRes.data) ? subjectsRes.data : []);
+      const newSubjects = Array.isArray(subjectsRes.data) ? subjectsRes.data : [];
+      setSubjects(newSubjects);
 
       const semester = semesterRes.data;
       if (semester) {
         setActiveSemesterId(semester.id);
         const statsRes = await api.get(`/attendance/stats?semesterId=${semester.id}`);
-        setSubjectStats(Array.isArray(statsRes.data) ? statsRes.data : (statsRes.data?.subjects || []));
+        const newStats = Array.isArray(statsRes.data) ? statsRes.data : (statsRes.data?.subjects || []);
+        setSubjectStats(newStats);
+        setCache('subjects', { subjects: newSubjects, stats: newStats });
+      } else {
+        setCache('subjects', { subjects: newSubjects, stats: [] });
       }
     } catch (error) {
       console.error("Failed to fetch subjects:", error);

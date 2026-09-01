@@ -186,8 +186,12 @@ export class AttendanceService {
           userId,
           subjectId: data.subjectId,
           date: targetDate,
-          ...(data.timetableSlotId ? { timetableSlotId: data.timetableSlotId } : {}),
-          ...(data.overrideId ? { overrideId: data.overrideId } : {}),
+          ...(data.timetableSlotId 
+            ? { OR: [{ timetableSlotId: data.timetableSlotId }, { timetableSlotId: null }] } 
+            : {}),
+          ...(data.overrideId 
+            ? { OR: [{ overrideId: data.overrideId }, { overrideId: null }] } 
+            : {}),
         },
       });
     }
@@ -218,6 +222,8 @@ export class AttendanceService {
         data: {
           status: data.status,
           ...(data.remarks !== undefined ? { remarks: data.remarks } : {}),
+          ...(data.timetableSlotId && !existing.timetableSlotId ? { timetableSlotId: data.timetableSlotId } : {}),
+          ...(data.overrideId && !existing.overrideId ? { overrideId: data.overrideId } : {}),
         },
       });
     }
@@ -567,6 +573,7 @@ export class AttendanceService {
                    reason: holidayReason,
                    count: daySlotsCount
                  });
+                 maxRemainingClasses += daySlotsCount;
                } else if (isRestrictedHoliday) {
                  futureBreakdown.push({
                    date: new Date(d).toISOString(),
@@ -653,7 +660,7 @@ export class AttendanceService {
       let needAttend = 0;
 
       if (expectedTotal > 0) {
-        canMiss = Math.floor(attended - (globalTarget / 100) * total);
+        canMiss = Math.floor((attended - (globalTarget / 100) * total) / (globalTarget / 100));
         if (canMiss < 0) {
           needAttend = Math.ceil(((globalTarget / 100) * total - attended) / (1 - (globalTarget / 100)));
         }
@@ -664,7 +671,7 @@ export class AttendanceService {
         name: sub.name,
         code: sub.code,
         colorHex: sub.colorHex,
-        target: sub.targetAttendance,
+        target: sub.targetAttendance ?? globalTarget,
         attended,
         missed,
         off,

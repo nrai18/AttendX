@@ -194,7 +194,7 @@ export const useAttendanceStore = create<AttendanceState>()(
       }
       
       set({ 
-        overallPercentage: Number(overallPercentage.toFixed(1)), 
+        overallPercentage: overallPercentage, 
         targetPercentage: userTarget, 
         totalAttended, 
         totalClasses, 
@@ -208,17 +208,7 @@ export const useAttendanceStore = create<AttendanceState>()(
       });
     } catch (error) {
       console.error("Failed to fetch global attendance stats:", error);
-      set({ 
-        overallPercentage: 0, 
-        totalAttended: 0, 
-        totalClasses: 0, 
-        subjects: [], 
-        historyLogs: [], 
-        events: [], 
-        hasActiveSemester: false, 
-        activeSemesterId: null, 
-        isLoading: false 
-      });
+      set({ isLoading: false });
     }
   },
   updateSimulationBoundaries: async (startDate: string, endDate: string) => {

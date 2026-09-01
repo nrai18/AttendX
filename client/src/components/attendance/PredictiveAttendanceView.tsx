@@ -508,7 +508,7 @@ export const PredictiveAttendanceView: React.FC<PredictiveAttendanceViewProps> =
               const simTotal = sub.total + simAddAttend + simAddMiss;
               const simPct = simTotal > 0 ? (simAttended / simTotal) * 100 : 0;
               
-              const remainingText = maxRemaining > remaining ? `${remaining} - ${maxRemaining} remaining` : `${remaining} remaining`;
+              const remainingText = `${remaining} remaining held classes`;
 
               return (
                 <div

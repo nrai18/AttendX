@@ -594,11 +594,6 @@ export const SubjectDetailPage = () => {
                                       Extra Lecture
                                     </span>
                                   )}
-                                  {item.startTime && item.startTime !== "00:00" && (
-                                    <span className="text-xs text-muted-foreground font-mono">
-                                      ({item.startTime} - {item.endTime})
-                                    </span>
-                                  )}
                                 </div>
 
                                 {/* Attendance Status Controls */}
@@ -666,8 +661,6 @@ export const SubjectDetailPage = () => {
                                         ? "absent"
                                         : isMissed
                                         ? "off"
-                                        : isOff
-                                        ? "not_marked"
                                         : "present";
                                       handleMarkAttendance(item, nextStatus as any);
                                     }}
