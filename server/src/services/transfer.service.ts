@@ -14,7 +14,11 @@ export class TransferService {
       slots: exportedTimetable.slots,
       academicCalendar: [],
       lectureLogs: [],
-      subjects: exportedTimetable.subjects
+      subjects: exportedTimetable.subjects,
+      metadata: {
+        startDate: dateRange?.startDate || null,
+        endDate: dateRange?.endDate || null,
+      }
     };
 
     // 3. Fetch Events (Academic Calendar)

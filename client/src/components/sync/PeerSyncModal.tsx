@@ -7,8 +7,8 @@ import { useAttendanceStore } from "../../stores/attendanceStore";
 import { startOfWeek, endOfWeek, subDays, startOfMonth, endOfMonth, format } from "date-fns";
 import { ScheduleDate } from "../ui/schedule-date";
 import { FeedbackAction } from "../ui/feedback-action";
-import { ChevronDown } from "lucide-react";
-
+import { ChevronDown, ShieldCheck, DownloadCloud, Database, CheckCircle2, RefreshCw } from "lucide-react";
+import { RunActionButton } from "../ui/run-action-button";
 type SyncMode = "SEND" | "RECEIVE";
 type ContextType = "FULL_EXPORT" | "TIMETABLE_CALENDAR" | "SCHEDULE_STATUS";
 type DateRangePreset = "This Week" | "Last 7 Days" | "Current Month" | "Full Semester" | "Custom Range";
@@ -19,6 +19,7 @@ export const PeerSyncModal = () => {
   const [loading, setLoading] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [reviewData, setReviewData] = useState<any>(null);
 
   // Transfer config state
   const [contextType, setContextType] = useState<ContextType>("SCHEDULE_STATUS");
@@ -121,16 +122,28 @@ export const PeerSyncModal = () => {
     setLoading(true);
     try {
       const res = await api.post("/transfer/retrieve", { code: inputCode });
-      const { payload } = res.data;
-      
-      await api.post(`/timetable/import/${activeSemesterId}`, payload);
+      setReviewData(res.data);
+    } catch (error: any) {
+      const msg = error.response?.data?.error || error.response?.data?.message || "Failed to retrieve schedule.";
+      setSyncError(msg);
+      toast.error(msg);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleConfirmSync = async () => {
+    if (!reviewData || !activeSemesterId) return;
+    setLoading(true);
+    try {
+      await api.post(`/timetable/import/${activeSemesterId}`, reviewData.payload);
       await useAttendanceStore.getState().fetchStats();
       
       toast.success("Schedule mirrored successfully!");
       setInputCode("");
+      setReviewData(null);
     } catch (error: any) {
-      const msg = error.response?.data?.error || error.response?.data?.message || "Failed to mirror schedule.";
-      setSyncError(msg);
+      const msg = error.response?.data?.error || error.response?.data?.message || "Failed to import schedule.";
       toast.error(msg);
     } finally {
       setLoading(false);
@@ -247,36 +260,96 @@ export const PeerSyncModal = () => {
         </div>
       ) : (
         <div className="py-2">
-          <label className="text-sm text-muted-foreground block mb-2">Retrieval code (6-digit number)</label>
-          <input
-            type="text"
-            maxLength={6}
-            value={inputCode}
-            onChange={(e) => {
-              setInputCode(e.target.value.replace(/\D/g, ""));
-              setSyncError(null);
-            }}
-            placeholder="e.g. 543210"
-            className="w-full bg-muted border border-border rounded-lg py-4 px-4 text-center text-2xl tracking-widest text-foreground focus:outline-none focus:border-primary mb-6"
-          />
-          {syncError ? (
-            <div className="flex justify-center w-full">
-              <FeedbackAction 
-                errorMessage={syncError} 
-                loadingMessage="Syncing..." 
-                status={loading ? "loading" : "error"} 
-                onRetry={handleRetrieveCode} 
-              />
+          {reviewData ? (
+            <div className="animate-in fade-in zoom-in duration-300">
+              <h3 className="text-lg font-semibold mb-4 text-center">Sync Preview</h3>
+              <div className="flex flex-col items-center gap-3 mb-6 bg-muted/30 p-4 rounded-xl border border-border">
+                {reviewData.sender?.avatarUrl && (
+                  <img src={reviewData.sender.avatarUrl} alt="Sender Avatar" className="w-16 h-16 rounded-full object-cover border-2 border-primary/20" />
+                )}
+                <div className="text-center">
+                  <p className="font-medium text-foreground">{reviewData.sender?.name || "Unknown User"}</p>
+                  <p className="text-xs text-muted-foreground">{reviewData.sender?.email}</p>
+                </div>
+              </div>
+              
+              <div className="space-y-3 text-sm mb-6 bg-muted/50 p-4 rounded-xl border border-border">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Type</span>
+                  <span className="font-medium">{reviewData.contextType.replace(/_/g, ' ')}</span>
+                </div>
+                {reviewData.contextType !== "TIMETABLE_CALENDAR" && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Range</span>
+                    <span className="font-medium">
+                      {reviewData.payload?.metadata?.startDate && reviewData.payload?.metadata?.endDate
+                        ? `${reviewData.payload.metadata.startDate} to ${reviewData.payload.metadata.endDate}`
+                        : "Full Semester"}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex gap-2">
+                <button 
+                  onClick={() => setReviewData(null)}
+                  disabled={loading}
+                  className="bg-muted hover:bg-muted/80 text-foreground py-3 px-4 rounded-lg font-medium transition-all"
+                >
+                  Cancel
+                </button>
+                <div className="flex-1">
+                  <RunActionButton 
+                    action={handleConfirmSync}
+                    disabled={loading}
+                    idleLabel="Confirm & Sync"
+                    doneLabel="Mirrored Successfully"
+                    idleIcon={<RefreshCw className="h-5 w-5 fill-current text-primary-foreground opacity-90" />}
+                    steps={[
+                      { id: 1, label: 'Securing Connection', icon: ShieldCheck },
+                      { id: 2, label: 'Fetching Data', icon: DownloadCloud },
+                      { id: 3, label: 'Merging Records', icon: Database },
+                      { id: 4, label: 'Finalizing', icon: CheckCircle2 }
+                    ]}
+                    widths={{ idle: 220, running: 340, done: 220 }}
+                  />
+                </div>
+              </div>
             </div>
           ) : (
-            <button 
-              onClick={handleRetrieveCode}
-              disabled={loading || inputCode.length !== 6}
-              className="bg-primary text-primary-foreground disabled:bg-primary text-primary-foreground/50 hover:bg-primary/90 text-foreground w-full py-3 rounded-lg font-medium flex justify-center items-center transition-all"
-            >
-              {loading && <Loader2 className="animate-spin mr-2 h-4 w-4" />}
-              Download & Sync Schedule
-            </button>
+            <>
+              <label className="text-sm text-muted-foreground block mb-2">Retrieval code (6-digit number)</label>
+              <input
+                type="text"
+                maxLength={6}
+                value={inputCode}
+                onChange={(e) => {
+                  setInputCode(e.target.value.replace(/\D/g, ""));
+                  setSyncError(null);
+                }}
+                placeholder="e.g. 543210"
+                className="w-full bg-muted border border-border rounded-lg py-4 px-4 text-center text-2xl tracking-widest text-foreground focus:outline-none focus:border-primary mb-6"
+              />
+              {syncError ? (
+                <div className="flex justify-center w-full">
+                  <FeedbackAction 
+                    errorMessage={syncError} 
+                    loadingMessage="Syncing..." 
+                    status={loading ? "loading" : "error"} 
+                    onRetry={handleRetrieveCode} 
+                  />
+                </div>
+              ) : (
+                <button 
+                  onClick={handleRetrieveCode}
+                  disabled={loading || inputCode.length !== 6}
+                  className="bg-primary text-primary-foreground disabled:bg-primary text-primary-foreground/50 hover:bg-primary/90 text-foreground w-full py-3 rounded-lg font-medium flex justify-center items-center transition-all"
+                >
+                  {loading && <Loader2 className="animate-spin mr-2 h-4 w-4" />}
+                  Download & Sync Schedule
+                </button>
+              )}
+            </>
           )}
         </div>
       )}

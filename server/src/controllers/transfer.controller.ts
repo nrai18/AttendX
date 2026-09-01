@@ -90,9 +90,15 @@ export class TransferController {
       // 3. Atomically delete and return the row (Single-Use Guarantee)
       await prisma.shareTransfer.delete({ where: { code } });
 
+      const sender = await prisma.user.findUnique({
+        where: { id: transfer.senderUserId },
+        select: { name: true, email: true, avatarUrl: true }
+      });
+
       return res.status(200).json({
         contextType: transfer.contextType,
-        payload: transfer.payload
+        payload: transfer.payload,
+        sender
       });
 
     } catch (error) {
