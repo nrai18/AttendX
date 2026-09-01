@@ -1310,7 +1310,7 @@ const renderDocuments = (type: string) => {
                   App info
                 </h3>
                 <p className="text-xs text-muted-foreground">
-                  Version v{updateManifest.latestVersion} & Developer details
+                  Version v{(localStorage.getItem("app_version") || "2.2.2")} & Developer details
                 </p>
               </div>
             </div>
@@ -1738,7 +1738,7 @@ const renderDocuments = (type: string) => {
                   AttendX
                 </h2>
                 <p className="text-xs font-semibold text-primary">
-                  Smart Attendance Manager • v{updateManifest.latestVersion}
+                  Smart Attendance Manager • v{(localStorage.getItem("app_version") || "2.2.2")}
                 </p>
                 <p className="text-xs text-muted-foreground">
                   Built for IIITU Ecosystem
