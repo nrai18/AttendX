@@ -1,4 +1,4 @@
-export interface ChangelogVersion {
+﻿export interface ChangelogVersion {
   version: string;
   date: string;
   size?: string;
@@ -14,6 +14,56 @@ export interface ChangelogVersion {
 }
 
 export const APP_CHANGELOG: ChangelogVersion[] = [
+  {
+    version: "2.3.0",
+    date: "Sep 01, 2026",
+    size: "15.4 MB",
+    title: "The Sync & Themes Update",
+    sections: [
+      {
+        title: "What's New",
+        items: [
+          {
+            icon: "🔄",
+            text: "Peer Sync (Schedule Mirroring): Securely transfer your timetable, calendar, or attendance history to friends using a 6-digit code with Sync Previews.",
+          },
+          {
+            icon: "📅",
+            text: "AI Academic Calendar Import: Upload your university's official calendar and extract holidays directly into your matrix view.",
+          },
+          {
+            icon: "📱",
+            text: "Session Management: View and remotely revoke all active devices logged into your account from Settings.",
+          },
+          {
+            icon: "📤",
+            text: "Native App Sharing: Share the AttendX app directly via WhatsApp, Telegram, or email using the native OS share menu.",
+          },
+        ],
+      },
+      {
+        title: "Improvements & Fixes",
+        items: [
+          {
+            icon: "🌗",
+            text: "True Light & Dark Mode: We've completely rebuilt our design system for high-contrast Light Mode and sleek Dark Mode.",
+          },
+          {
+            icon: "🔐",
+            text: "Persistent Sessions: You will no longer be randomly logged out. Sessions securely persist for 30 days.",
+          },
+          {
+            icon: "🤖",
+            text: "Smarter AI Timetable Parser: Flawlessly detects stacked electives for granular import control.",
+          },
+          {
+            icon: "🐛",
+            text: "Bug fixes: Resolved infinite loading spinners, Sync Preview bugs, and duplicate ghost sessions.",
+          },
+        ],
+      },
+    ]
+  },
   {
     version: "1.1.1",
     date: "Aug 26, 2026",
@@ -115,3 +165,5 @@ export const APP_CHANGELOG: ChangelogVersion[] = [
 ];
 
 export const CURRENT_VERSION = APP_CHANGELOG[0].version;
+
+

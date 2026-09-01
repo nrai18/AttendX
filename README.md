@@ -1,210 +1,161 @@
 # 🎓 AttendX
 
 > **Next-Generation Academic Attendance, Timetable & Predictive Intelligence Platform**  
-> Engineered for students, class representatives (CRs), and university administrators with a mobile-first, dark-themed native experience.
+> Engineered for students, class representatives (CRs), and university administrators. Delivering a fast, mobile-first native experience across Progressive Web Apps (PWA), Desktop Web, and Android.
+
+![AttendX Version](https://img.shields.io/badge/version-2.3.0-blue.svg)
+![License](https://img.shields.io/badge/license-MIT-green.svg)
+![Build](https://img.shields.io/badge/build-passing-brightgreen.svg)
 
 ---
 
-## 📱 About AttendX
+## 📱 1. Executive Summary
 
-**AttendX** eliminates manual attendance registers, messy timetable screenshots, and WhatsApp group clutter. It delivers a fast, responsive, and intelligent platform for managing university schedules, tracking attendance targets, forecasting safe absences, and automatically parsing academic timetables using AI vision.
+**AttendX** completely reimagines the academic experience by eliminating manual attendance registers, messy timetable screenshots, and cluttered WhatsApp groups. It delivers a blazing-fast, responsive platform for managing university schedules, tracking attendance targets, forecasting safe absences, securely syncing with peers, and automatically parsing academic timetables and calendars using AI vision.
 
-- 🎯 **Target Platforms**: Progressive Web App (PWA), Desktop Web SPA & Android APK (via Capacitor)
-- 🎨 **Design System**: Dark-mode first (`#050508`), glassmorphic styling, tailored HSL color tokens, and fluid 48px touch targets for mobile devices.
-- 🏫 **Campus Ready**: Optimized for institutional workflows (IIIT Una architecture with multi-institution scalability).
+Built with a modern stack featuring React 18, Node.js, and Google's Gemini Flash 3.6, AttendX is designed to scale from a single student's daily driver to an entire campus's infrastructure.
 
 ---
 
-## ✨ Core Features
+## ✨ 2. Deep Dive: Core Features
 
-### 📅 1. Action-Driven Daily Attendance & Agenda
-- **Smart Status Toggles**: One-tap toggling between **Attended (`present`)**, **Missed (`absent`)**, and **Off (`cancelled`)**.
-- **Void / Undo Support**: Tap the active status again to quickly void or clear any marked record back to unlogged.
-- **Extra Classes on the Fly**: Add and delete ad-hoc or rescheduled lectures directly from the daily view with cascading data cleanup.
-- **Real-Time Global Sync**: Changes made in Today's agenda instantly synchronize across the Calendar, Subject overviews, Predictive Engine, and Navigation badges via unified event broadcasting.
+### 📅 Action-Driven Daily Attendance & Agenda
+- **Smart Status Toggles**: A fluid, gesture-friendly interface allowing one-tap toggling between **Attended**, **Missed**, and **Off** states.
+- **Void & Revert Capabilities**: Instantly undo or clear any marked record back to an unlogged state without database corruption.
+- **Dynamic Extra Classes**: Seamlessly add ad-hoc, rescheduled, or weekend lectures directly from the daily view. The system handles cascading data cleanup automatically.
+- **Real-Time Global Synchronization**: Every action dispatches a global `attendance-updated` event. Changes made in Today's agenda instantly and optimistically synchronize across the Calendar, Subject overviews, Predictive Engine, and Navigation badges without requiring a page reload.
 
-### 🤖 2. AI-Powered Timetable OCR & Setup Wizard
-- **Multimodal AI Parser**: Upload timetable PDFs or screenshots; extracted via **Google Gemini 3.6 Flash** for high-precision schedule reconstruction.
-- **Multi-Branch & Semester Detection**: Automatically identifies branches (e.g., *CSE, ECE, IT*) and semesters from complex university grids.
-- **Interactive Setup Wizard**: Select your specific branch, batch, and electives with real-time preview before committing slots to the database.
-- **Automatic Entity Creation**: Generates subjects, regular timetable slots, slot timings, and room numbers (*e.g., Room 226, Lab 5*) automatically.
+### 🤖 AI-Powered Timetable & Calendar OCR
+- **Multimodal AI Parser**: Users can upload timetable PDFs, raw images, or screenshots of Academic Calendars. AttendX uses **Google Gemini 3.6 Flash** for high-precision, structural data extraction.
+- **Multi-Branch & Semester Intelligence**: Automatically identifies branches (e.g., *CSE, ECE, IT*), semesters, and overlapping elective blocks from complex university grid formats.
+- **Holiday & Event Extraction**: Parses extensive holiday lists, mid-term schedules, and academic events directly into the Matrix Calendar.
+- **Interactive Setup Wizard**: An intuitive multi-step wizard allows users to verify, edit, and select their specific electives with real-time visual previews before committing the structure to the database.
 
-### 📊 3. Predictive Attendance Engine & Scenario Simulator
-- **Unified Global Target Goal**: Single source of truth for your attendance goal (e.g. `75%`, `80%`, `85%`, `90%`) synchronized across the backend database and local cache.
-- **Safe Leaves Calculation**: Computes exact consecutive classes you can safely miss without dipping below your target percentage.
-- **Catch-Up Calculator**: Accurate forecasting of mandatory consecutive classes required to recover from attendance deficits.
-- **Interactive Future Simulator**: Simulate future attended/missed classes per subject to forecast future attendance percentages in real time.
+### 🔄 Secure Peer-to-Peer Sync & Data Transfer
+- **Direct P2P Protocol**: Share schedule structures, holiday calendars, or full historical attendance logs with friends using cryptographically secure, ephemeral 6-digit codes.
+- **Sync Previews (Two-Step Verification)**: Before importing, the receiver sees the sender's avatar, name, and the specific date range of the payload, preventing accidental data overwrites.
+- **Contextual Export Types**: 
+  - *Schedule Status Mirror*: Safely syncs only the structural timetable.
+  - *Timetable & Calendar*: Syncs the structural timetable plus all academic events.
+  - *Full Export*: Complete data transfer including historical attendance records.
 
-### 🗓️ 4. Timezone-Resilient Dot-Matrix Calendar
-- **Monthly Matrix View**: Visual calendar with color-coded status dots:
-  - 🟢 **Attended**: All scheduled classes attended
-  - 🔴 **Missed**: All scheduled classes missed
-  - 🟡 **Mixed**: Partial attendance across the day's lectures
-  - 🟠 **Off / Holiday**: Institute holidays, weekends, or declared off-days
-  - ⚪ **Not Marked / Future**: Unmarked past classes or upcoming scheduled slots
-- **Day Inspector**: Click any calendar date to inspect class-by-class attendance breakdown and override statuses.
-- **UTC / Local Timezone Resilient**: Strict ISO date matching prevents discrepancies between local device time and database timestamps.
+### 📊 Predictive Attendance Engine & Scenario Simulator
+- **Unified Global Target**: A single source of truth for your attendance goal (e.g., `75%`, `80%`, `85%`). Adjusting this immediately recalibrates all safe-leave mathematics across the app.
+- **Mathematical Safe Leaves**: Computes the exact, consecutive number of classes you can safely miss without dipping below your target percentage.
+- **Catch-Up Calculator**: Accurately forecasts the mandatory consecutive classes required to recover from an attendance deficit.
+- **Interactive Future Simulator**: A sandbox mode where users can toggle future classes (Attended/Missed) to dynamically forecast their end-of-semester percentage in real-time.
 
-### 📚 5. Subject Management & Granular Analytics
-- Complete subject breakdown with lecture count breakdowns (*Attended*, *Missed*, *Off*, *Total*).
-- Color-coded visual health indicators and safety buffers for every course.
-- Safe subject deletion with optional past attendance history preservation.
+### 🗓️ Timezone-Resilient Dot-Matrix Calendar
+- **Monthly Matrix View**: A highly visual calendar utilizing color-coded status dots:
+  - 🟢 **Attended**: 100% attendance for scheduled classes that day.
+  - 🔴 **Missed**: 0% attendance for scheduled classes that day.
+  - 🟡 **Mixed**: Partial attendance across the day's lectures.
+  - 🟠 **Off / Holiday**: Institute holidays, weekends, or declared off-days.
+  - ⚪ **Future**: Upcoming scheduled slots.
+- **Strict UTC/Local Resilience**: Built around strict ISO date string matching (`YYYY-MM-DD`) to completely eliminate timezone drift, ensuring midnight boundary crossovers are flawless regardless of device locale.
 
-### 🔒 6. Data Privacy, Backup & Exports
-- **CSV & JSON Data Export**: Download complete attendance audit logs with timestamps, subject codes, and status tags.
-- **Account & Reset Controls**: One-click data reset or account deletion tools directly from user settings.
+### 📚 Subject Management & Device Security
+- **Granular Analytics**: Deep-dive analytics for every subject, detailing exact lecture counts, safety buffers, and historical trends.
+- **Advanced Session Management**: Users can view all active devices logged into their account (complete with OS and browser footprint) and remotely revoke rogue sessions.
+- **Native OS Integration**: Features Web Share API integration allowing users to share the APK directly via WhatsApp, Telegram, or Email using native share sheets.
 
 ---
 
-## 🛠️ Technology Stack
+## 🛠️ 3. Technology Stack & Architecture
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                         FRONTEND                            │
-│  React 18  •  TypeScript  •  Vite  •  Tailwind CSS          │
-│  Zustand   •  Lucide Icons •  Capacitor (Android Native)    │
-└──────────────────────────────┬──────────────────────────────┘
-                               │ REST / JSON (Axios)
-┌──────────────────────────────▼──────────────────────────────┐
-│                         BACKEND                             │
-│  Node.js   •  Express.js  •  TypeScript  •  Prisma ORM      │
-│  JWT Auth  •  Multer      •  Google GenAI (Gemini 3.6 Flash)│
-└──────────────────────────────┬──────────────────────────────┘
-                               │ PostgreSQL
-┌──────────────────────────────▼──────────────────────────────┐
-│                         DATABASE                            │
-│  PostgreSQL (Neon Cloud / Local) with strict relational     │
-│  integrity and cascading constraints                        │
-└─────────────────────────────────────────────────────────────┘
+```text
+                             FRONTEND                            
+ React 18  •  TypeScript  •  Vite  •  Tailwind CSS          
+ Zustand   •  Lucide Icons •  Capacitor (Android Native)    
+============================================================
+                               REST / JSON (Axios)
+============================================================
+                             BACKEND                             
+ Node.js   •  Express.js  •  TypeScript  •  Prisma ORM      
+ JWT Auth  •  Multer      •  Google GenAI (Gemini 3.6 Flash)
+============================================================
+                               PostgreSQL
+============================================================
+                             DATABASE                            
+ PostgreSQL (Neon Cloud / Local) with strict relational     
+ integrity and cascading constraints                        
 ```
 
 ### Frontend (`client/`)
-- **Framework**: React 18 with TypeScript & Vite
-- **Styling**: Vanilla CSS Variables & Tailwind CSS with dynamic dark/light themes
-- **State Management**: Zustand (Auth, Attendance State, and Global Events)
-- **Networking**: Axios with Bearer token injection and silent refresh handling
-- **Native Runtime**: Capacitor for Android build compilation
+- **Core**: React 18, TypeScript, Vite.
+- **Styling**: Tailored CSS Variables & Tailwind CSS enabling a True Dual Theme (Pristine Light Mode & Sleek Dark Mode).
+- **State**: Zustand for reactive global stores (Auth, Attendance, UI state).
+- **Networking**: Axios interceptors handling bearer token injection and silent 30-day rolling refresh token rotation.
+- **Mobile**: Capacitor runtime for generating native Android APKs.
 
 ### Backend (`server/`)
-- **Runtime**: Node.js + Express (TypeScript)
-- **Database & ORM**: PostgreSQL with Prisma ORM
-- **AI Integration**: Google Gemini API (`gemini-3.6-flash`) for multimodal OCR schedule extraction
-- **Authentication**: Hybrid JWT architecture with refresh token rotation and bcrypt password hashing
-- **Security**: CORS headers, Helmet protection, and request sanitization
+- **Core**: Node.js, Express.js, TypeScript.
+- **Database**: PostgreSQL orchestrated via Prisma ORM for type-safe queries and cascading relational integrity.
+- **Security**: Helmet, CORS protection, bcrypt password hashing, and HttpOnly cookie-based refresh tokens.
+- **AI Integration**: Official `@google/genai` SDK interfacing with the Gemini 3.6 Flash multimodal model.
 
 ---
 
-## 📂 Project Architecture
+## 🚀 4. Local Development & Setup
 
-```
-AttendX/
-├── client/                               # Frontend Single Page Application
-│   ├── public/                           # Static assets (developer photo, icons, etc.)
-│   ├── src/
-│   │   ├── components/
-│   │   │   ├── attendance/               # PredictiveAttendanceView, Agenda cards
-│   │   │   ├── layout/                   # AppShell, TopBar, Sidebar, BottomNav
-│   │   │   ├── semester/                 # CreateSemesterModal
-│   │   │   └── ui/                       # Reusable UI primitives
-│   │   ├── lib/                          # Axios API instance & utility helpers
-│   │   ├── pages/
-│   │   │   ├── attendance/               # TodayPage, CalendarPage
-│   │   │   ├── auth/                     # LoginPage, SignupPage
-│   │   │   ├── marketing/                # LandingPage
-│   │   │   ├── settings/                 # SettingsPage (Profile, Target, Exports)
-│   │   │   ├── subjects/                 # SubjectsPage, SubjectDetailPage
-│   │   │   └── timetable/                # TimetablePage, TimetableWizardModal
-│   │   └── stores/                       # Zustand state stores (authStore, attendanceStore)
-│   ├── capacitor.config.ts               # Capacitor Android configuration
-│   └── vite.config.ts                    # Vite build configuration & proxy setup
-│
-├── server/                               # Backend Express API Server
-│   ├── prisma/
-│   │   └── schema.prisma                 # Relational schema (Users, Subjects, Slots, Attendance, etc.)
-│   └── src/
-│       ├── controllers/                  # Route handlers (Attendance, Timetable, Subjects, Users)
-│       ├── middleware/                   # Auth guards & error handling
-│       ├── routes/                       # Express router endpoints
-│       ├── services/                     # Business logic & calculations (AttendanceService, TimetableService)
-│       └── lib/                          # Prisma client initialization
-│
-├── AGENTS.md                             # AI Model rules & invariants
-└── README.md                             # Project documentation
-```
+### Prerequisites
+- **Node.js**: v20.x or later.
+- **Database**: A PostgreSQL instance (v15.x+), either local or hosted (e.g., Neon).
+- **API Keys**: Google Gemini API key for OCR features.
 
----
+### Installation Steps
 
-## 🚀 Getting Started
+1. **Clone the Repository**
+   ```bash
+   git clone https://github.com/nrai18/AttendX.git
+   cd AttendX
+   ```
 
-### 1. Prerequisites
-- **Node.js**: v20.x or later
-- **npm** or **pnpm**
-- **PostgreSQL**: v15.x or later (or a Neon serverless PostgreSQL instance)
-- **Gemini API Key**: For AI Timetable OCR extraction features
-
----
-
-### 2. Installation & Setup
-
-#### Clone the Repository
-```bash
-git clone https://github.com/nrai18/AttendX.git
-cd AttendX
-```
-
-#### Backend Setup
-1. Navigate into `server/`:
+2. **Backend Setup**
    ```bash
    cd server
    npm install
    ```
-
-2. Create a `.env` file in `server/`:
+   Create a `.env` file in the `server/` directory:
    ```env
    DATABASE_URL="postgresql://user:password@localhost:5432/attendx?schema=public"
    PORT=3000
-   JWT_SECRET="your_jwt_secret_key"
-   JWT_REFRESH_SECRET="your_jwt_refresh_secret_key"
+   JWT_SECRET="your_highly_secure_jwt_secret"
+   JWT_REFRESH_SECRET="your_highly_secure_refresh_secret"
    FRONTEND_URL="http://localhost:5173"
    GEMINI_API_KEY="your_google_gemini_api_key"
    ```
-
-3. Sync database schema:
+   Apply the Prisma schema to your database:
    ```bash
    npx prisma db push
    ```
-
-4. Start the backend development server:
+   Start the backend development server:
    ```bash
-   npx tsx src/server.ts
-   # or
    npm run dev
    ```
 
-#### Frontend Setup
-1. In a new terminal, navigate into `client/`:
+3. **Frontend Setup**
+   Open a new terminal session:
    ```bash
    cd client
    npm install
    ```
-
-2. Start the Vite development server:
+   Start the Vite frontend development server:
    ```bash
    npm run dev
    ```
-
-3. Open your browser at `http://localhost:5173`.
-
----
-
-## 🔄 Global Synchronization Rules
-
-- When the **Target Attendance Goal** is updated (via Predictive Engine or Settings), all subject calculations, threshold badges, and safe bunk indicators immediately reflect the new target without requiring manual overrides.
-- All attendance actions (*mark, void, extra classes, deletes*) dispatch a client-side `attendance-updated` event that seamlessly refreshes all open views and calendars in real-time.
-- Calendar date operations strictly employ UTC date key formatting (`YYYY-MM-DD`) to eliminate timezone drift on local client machines.
+   Open your browser at `http://localhost:5173`.
 
 ---
 
-## 📄 License
+## 🔒 5. Core System Invariants & Synchronization Rules
 
-This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
+- **Target Attendance Immutability**: When the global Target Attendance is modified, no historical data is mutated. Instead, all threshold badges, calculation engines, and predictive metrics re-evaluate dynamically on the client side.
+- **Event-Driven UI**: All data mutations (Marks, Voids, Deletions) immediately emit an `attendance-updated` event, instructing all mounted React components to optimistically pull fresh data from the Zustand cache.
+- **Timezone Drift Prevention**: All calendar and attendance date comparisons must strictly use the format `YYYY-MM-DD`. JavaScript `Date` objects are intercepted and normalized to prevent cross-timezone bleeding.
+
+---
+
+## 📄 6. License
+
+This project is open-source and licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
