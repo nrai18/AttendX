@@ -133,7 +133,7 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="px-6 pb-6 space-y-5">
+        <form onSubmit={handleSubmit} className="px-6 pb-28 sm:pb-6 space-y-5">
 
           {/* ── ISSUE FORM ───────────────────────────── */}
           {tab === "issue" && (
