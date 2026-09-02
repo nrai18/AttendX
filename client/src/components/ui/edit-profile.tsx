@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Pencil, Clock, ChevronDown, CheckCircle2, Lock, ShieldAlert } from 'lucide-react';
 import { useAuthStore } from '../../stores/authStore';
+import { api } from '../../lib/api';
+import { toast } from 'sonner';
 import { Player } from '@lottiefiles/react-lottie-player';
 
 export interface ProfileData {
@@ -322,6 +324,43 @@ export const EditProfile: React.FC<EditProfileProps> = ({ isOpen, onClose, initi
                     </AnimatePresence>
                   </div>
                 </div>
+
+                  <div className="mt-8 pt-6 border-t border-border">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        toast("Are you absolutely sure you want to permanently delete your account?", {
+                          action: {
+                            label: "Delete Permanently",
+                            onClick: async () => {
+                              try {
+                                await api.delete("/users/me");
+                                useAuthStore.getState().logout();
+                                toast.success("Account deleted permanently.");
+                              } catch (e: any) {
+                                toast.error(e.response?.data?.message || "Failed to delete account");
+                              }
+                            }
+                          }
+                        });
+                      }}
+                      className="w-full p-4 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 rounded-xl flex items-center justify-between group transition-colors"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-red-500/20 flex items-center justify-center text-red-500">
+                          <ShieldAlert size={20} />
+                        </div>
+                        <div className="text-left">
+                          <h4 className="text-sm font-bold text-red-500 group-hover:text-red-600 transition-colors">
+                            Delete Account
+                          </h4>
+                          <p className="text-xs text-red-500/80 mt-0.5">
+                            Permanently delete your account and all data
+                          </p>
+                        </div>
+                      </div>
+                    </button>
+                  </div>
 
                 {/* Footer Action */}
                 <div className="px-6 py-5 border-t border-border bg-muted/20 flex flex-col-reverse sm:flex-row items-center justify-between gap-4 mt-auto">

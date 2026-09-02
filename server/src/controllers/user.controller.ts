@@ -3,7 +3,24 @@ import { UserService } from "../services/user.service";
 import { AuthenticatedRequest } from "../middleware/authenticate";
 import { CacheService } from "../services/cache.service";
 
-export class UserController {
+export class UserController { 
+
+  static async deleteAccount(req: AuthenticatedRequest, res: Response) {
+    try {
+      const userId = req.user!.userId;
+      await UserService.deleteAccount(userId);
+      // Ensure the refresh token cookie is cleared if they delete themselves
+      res.clearCookie("refreshToken", {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+      });
+      res.status(200).json({ message: "Account deleted permanently" });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message || "Failed to delete account" });
+    }
+  }
+
   static async getMe(req: AuthenticatedRequest, res: Response) {
     try {
       const userId = req.user!.userId;

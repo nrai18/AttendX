@@ -149,12 +149,25 @@ export const LinkedDevicesModal: React.FC<LinkedDevicesProps> = ({ isOpen, onClo
   const otherSessions = sessions.filter((s) => !s.isCurrent);
 
   useEffect(() => {
-    let interval: any;
+    let timeout: any;
+    let isMounted = true;
+    
+    const poll = async () => {
+      if (!isMounted) return;
+      await fetchSessions();
+      if (isMounted) {
+        timeout = setTimeout(poll, 5000);
+      }
+    };
+    
     if (isOpen) {
-      fetchSessions();
-      interval = setInterval(fetchSessions, 5000);
+      poll();
     }
-    return () => { if (interval) clearInterval(interval); };
+    
+    return () => { 
+      isMounted = false;
+      if (timeout) clearTimeout(timeout); 
+    };
   }, [isOpen]);
 
   const fetchSessions = async () => {

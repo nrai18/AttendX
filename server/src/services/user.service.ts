@@ -2,7 +2,34 @@ import { prisma } from "../lib/prisma";
 import { TimetableService } from "./timetable.service";
 import bcrypt from "bcryptjs";
 
-export class UserService {
+export class UserService { 
+
+  static async deleteAccount(userId: string) {
+    const fsPromises = require('fs/promises');
+    const path = require('path');
+
+    // 1. Delete stored documents from filesystem
+    const docs = await prisma.storedDocument.findMany({ where: { userId } });
+    for (const doc of docs) {
+      if (doc.fileUrl.startsWith('/uploads/')) {
+        try {
+          const filePath = path.join(process.cwd(), doc.fileUrl);
+          await fsPromises.unlink(filePath).catch(() => {});
+        } catch(e) {}
+      }
+    }
+
+    // 2. Delete classrooms created by this user
+    await prisma.classroom.deleteMany({ where: { createdById: userId } });
+    
+    // 3. Delete announcements and events created by user
+    await prisma.announcement.deleteMany({ where: { createdById: userId } });
+    await prisma.event.deleteMany({ where: { userId } });
+
+    // 4. Delete the user (this cascades to mostly everything else like attendance, subjects, etc.)
+    await prisma.user.delete({ where: { id: userId } });
+  }
+
   static async getProfile(userId: string) {
     const user = await prisma.user.findUnique({
       where: { id: userId },
