@@ -368,7 +368,7 @@ export class NotificationService {
             id: idCounter++,
             title: "Assignment Due Tomorrow",
             body: assignment.title,
-            largeBody: `?? Reminder: "${assignment.title}" is due tomorrow at ${deadline.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}.`,
+            largeBody: `\u23F0 Reminder: "${assignment.title}" is due tomorrow at ${deadline.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}.`,
             channelId: "class_alerts",
             smallIcon: "ic_stat_adobe",
             iconColor: "#FF0000",
@@ -450,10 +450,10 @@ export class NotificationService {
              return eDate >= notifyDate && eDate < addDays(notifyDate, 7);
            });
 
-           let dynamicText = "?? Weekly Attendance Review\n\nTap to see how you performed this past week and check your overall attendance health.";
+           let dynamicText = "\uD83D\uDCC8 Weekly Attendance Review\n\nTap to see how you performed this past week and check your overall attendance health.";
            if (weekEvents.length > 0) {
               const eventTitles = weekEvents.slice(0, 3).map(e => "� " + e.title).join("\n");
-              dynamicText = "?? Weekly Review:\n\nTap to see how you did this past week, and prepare for upcoming events like:\n" + eventTitles;
+              dynamicText = "\uD83D\uDCC8 Weekly Review:\n\nTap to see how you did this past week, and prepare for upcoming events like:\n" + eventTitles;
            }
 
            notificationsToSchedule.push({

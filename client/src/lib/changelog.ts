@@ -78,7 +78,7 @@ export const APP_CHANGELOG: ChangelogVersion[] = [
             text: "Added structural Skeleton loading animations to all main pages for instant perceptual loading.",
           },
           {
-            icon: "??",
+            icon: "\u2728",
             text: "Replaced the generic spinning circles with native-feeling pulse layouts.",
           }
         ],
@@ -87,11 +87,11 @@ export const APP_CHANGELOG: ChangelogVersion[] = [
         title: "Under the Hood",
         items: [
           {
-            icon: "??",
+            icon: "\u2728",
             text: "Resolved a backend UUID module crash affecting session generation.",
           },
           {
-            icon: "??",
+            icon: "\u2728",
             text: "Improved notification mock previews on the web dashboard.",
           }
         ],
@@ -108,15 +108,15 @@ export const APP_CHANGELOG: ChangelogVersion[] = [
         title: "Mobile Polish & Notifications",
         items: [
           {
-            icon: "??",
+            icon: "\u2728",
             text: "App layout is now strictly locked to portrait mode for a consistent mobile experience.",
           },
           {
-            icon: "??",
+            icon: "\u2728",
             text: "Added extensive Notification Settings (Class Reminders, DND, Holidays, Birthdays).",
           },
           {
-            icon: "??",
+            icon: "\u2728",
             text: "Native pinned overlay added for when Do Not Disturb is active during classes.",
           },
         ],
@@ -129,15 +129,15 @@ export const APP_CHANGELOG: ChangelogVersion[] = [
             text: "Removed obsolete Assignments features to declutter the interface.",
           },
           {
-            icon: "??",
+            icon: "\u2728",
             text: "Added a dedicated Error 404 page for missing routes.",
           },
           {
-            icon: "??",
+            icon: "\u2728",
             text: "Added a brand new Support & Feedback section to report bugs directly.",
           },
           {
-            icon: "??",
+            icon: "\u2728",
             text: "System logs attached to support tickets are now securely encrypted (.bin).",
           },
         ],
@@ -154,10 +154,10 @@ export const APP_CHANGELOG: ChangelogVersion[] = [
         title: "Core Features",
         items: [
           {
-            icon: "??",
+            icon: "\u2728",
             text: "Launched AttendX with core Timetable and Attendance tracking.",
           },
-          { icon: "??", text: "Added Peer-to-Peer local sync." },
+          { icon: "\u2728", text: "Added Peer-to-Peer local sync." },
         ],
       },
     ],
