@@ -10,7 +10,7 @@ export interface CarouselCard {
   title: string;
   value: string;
   color: string;
-  icon: React.ElementType;
+  icon: React.ComponentType<any>;
 }
 
 interface MinimalCarouselProps {

@@ -5,10 +5,31 @@ import fs from "fs";
 export class SystemController {
   static async getUpdateManifest(req: Request, res: Response) {
     const manifest = {
-      latestVersion: "2.3.0",
+      latestVersion: "2.4.1",
       title: "The Sync & Themes Update",
             changelog: [
         {
+          version: "2.4.1",
+          sizeMb: 30.17,
+          sections: [
+            {
+              title: "What's New",
+              items: [
+                { icon: "\u2728", text: "3D Immersive Reports: Gorgeous new visualizations for your weekly and monthly stats" },
+                { icon: "\uD83D\uDCE7", text: "Automated Emails: Stunning new welcome emails and secure password reset emails" }
+              ]
+            },
+            {
+              title: "Security & Fixes",
+              items: [
+                { icon: "\uD83D\uDEE1\uFE0F", text: "Delete Account: Added a secure, permanent account deletion option in Settings" },
+                { icon: "\uD83D\uDD27", text: "Performance: Fixed an infinite polling bug in Linked Devices that choked the server" },
+                { icon: "\uD83D\uDCF1", text: "Smart Notifications: Timetable Alerts and Summary settings now automatically hide based on your frequency choice" }
+              ]
+            }
+          ]
+        },
+{
           version: "2.3.0",
           sizeMb: 15.4,
           sections: [

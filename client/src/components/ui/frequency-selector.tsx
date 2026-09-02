@@ -5,7 +5,7 @@ import { motion, AnimatePresence, LayoutGroup } from 'motion/react';
 import { Check, ChevronRight } from 'lucide-react';
 
 /* ---------- Types ---------- */
-export type FrequencyType = 'Daily' | 'Weekly' | 'Monthly' | 'Yearly';
+export type FrequencyType = 'Never' | 'Daily' | 'Weekly' | 'Monthly' | 'Yearly';
 
 export interface FrequencyData {
   type: FrequencyType;
@@ -26,9 +26,10 @@ const smoothSpring = {
 } as const;
 
 /* ---------- Data ---------- */
-const FREQUENCIES: FrequencyType[] = ['Daily', 'Weekly', 'Monthly', 'Yearly'];
+const FREQUENCIES: FrequencyType[] = ['Never', 'Daily', 'Weekly', 'Monthly', 'Yearly'];
 
 const SUB_OPTIONS: Record<FrequencyType, string[]> = {
+  Never: [],
   Daily: [],
   Weekly: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
   Monthly: Array.from({ length: 31 }, (_, i) => (i + 1).toString()),

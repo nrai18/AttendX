@@ -44,6 +44,8 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({
 
 import { WebSplashScreen } from "./components/common/WebSplashScreen";
 import { SettingsPage } from "./pages/settings/SettingsPage";
+import { AssignmentsPage } from "./pages/assignments/AssignmentsPage";
+import { ReportView } from "./pages/reports/ReportView";
 import { PredictiveAttendancePage } from "./pages/attendance/PredictiveAttendancePage";
 import { Toaster } from "sonner";
 import { useState } from "react";
@@ -84,7 +86,7 @@ const useSessionPoller = () => {
 
 export function App() {
   useSilentRefresh();
-  useSessionPoller();
+  
   useTheme();
   const theme = useThemeStore((state) => state.theme);
   // We want the Lottie splash screen to play on mobile devices (web and native)
@@ -167,6 +169,8 @@ export function App() {
               <Route path="/classrooms" element={<ClassroomsPage />} />
               <Route path="/classrooms/:id" element={<ClassroomFeedPage />} />
               <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/assignments" element={<AssignmentsPage />} />
+              <Route path="/report" element={<ReportView />} />
               <Route path="*" element={<NotFoundPage />} />
             </Route>
 

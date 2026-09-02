@@ -11,6 +11,7 @@ import {
   LayoutDashboard,
   Sparkles,
 } from "lucide-react";
+import { api } from "../../lib/api";
 import { useAuthStore } from "../../stores/authStore";
 import { cn } from "../../lib/utils";
 
@@ -27,6 +28,13 @@ const navItems = [
 export const Sidebar: React.FC = () => {
   const user = useAuthStore((state) => state.user);
   const logout = useAuthStore((state) => state.logout);
+  
+  const handleLogout = async () => {
+    try {
+      await api.post("/auth/logout");
+    } catch (e) {}
+    logout();
+  };
 
   return (
     <aside className="hidden md:flex flex-col w-64 h-screen bg-card border-r border-border p-4 sticky top-0 transition-colors">
@@ -85,7 +93,7 @@ export const Sidebar: React.FC = () => {
             </div>
           </NavLink>
           <button
-            onClick={logout}
+            onClick={handleLogout}
             className="p-1.5 text-muted-foreground hover:text-rose-500 transition-colors cursor-pointer shrink-0 ml-1"
             title="Log Out"
           >

@@ -1,4 +1,5 @@
 import React from "react";
+import { api } from "../../lib/api";
 import { useAuthStore } from "../../stores/authStore";
 import { Plus, SlidersHorizontal, LogOut, Sun, Moon } from "lucide-react";
 import { Button } from "../ui/button";
@@ -16,6 +17,13 @@ export const TopBar: React.FC<TopBarProps> = ({
 }) => {
   const user = useAuthStore((state) => state.user);
   const logout = useAuthStore((state) => state.logout);
+  
+  const handleLogout = async () => {
+    try {
+      await api.post("/auth/logout");
+    } catch (e) {}
+    logout();
+  };
   const { overallPercentage, hasActiveSemester } = useAttendanceStore();
   const targetPercentage = user?.targetAttendance ?? 75;
   const { theme, toggleTheme } = useThemeStore();
@@ -80,7 +88,7 @@ export const TopBar: React.FC<TopBarProps> = ({
           <Button
             variant="ghost"
             size="icon"
-            onClick={logout}
+            onClick={handleLogout}
             className="w-9 h-9 rounded-xl text-muted-foreground hover:text-rose-500 hover:bg-rose-500/10 cursor-pointer"
             title="Log Out"
           >

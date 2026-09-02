@@ -20,6 +20,7 @@ import documentRoutes from "./routes/document.routes";
 import transferRoutes from "./routes/transfer.routes";
 import supportRoutes from "./routes/support.routes";
 import systemRoutes from "./routes/system.routes";
+import assignmentRoutes from "./routes/assignment.routes";
 import { CURRICULUM_META } from "./utils/subjectDictionary";
 
 import passport from "./config/passport";
@@ -72,6 +73,7 @@ app.use("/api/documents", documentRoutes);
 app.use("/api/transfer", transferRoutes);
 app.use("/api/support", supportRoutes);
 app.use("/api/system", systemRoutes);
+app.use("/api/assignments", assignmentRoutes);
 
 // Public: curriculum metadata — branches & semesters derived from actual curriculum
 // No auth required; used by the timetable import wizard on the client

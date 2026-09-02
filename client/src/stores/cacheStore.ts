@@ -10,8 +10,8 @@ interface CacheState {
   subjects: any;
   setCache: (key: string, data: any) => void;
   clearCache: () => void;
-  reminderFrequency: { type: 'Daily' | 'Weekly' | 'Monthly' | 'Yearly', subValue?: string };
-  setReminderFrequency: (data: { type: 'Daily' | 'Weekly' | 'Monthly' | 'Yearly', subValue?: string }) => void;
+  reminderFrequency: { type: 'Never' | 'Daily' | 'Weekly' | 'Monthly' | 'Yearly', subValue?: string };
+  setReminderFrequency: (data: { type: 'Never' | 'Daily' | 'Weekly' | 'Monthly' | 'Yearly', subValue?: string }) => void;
 }
 
 const capacitorStorage = {

@@ -40,53 +40,6 @@ interface AgendaItem {
 }
 
 export const TodayPage = () => {
-  useEffect(() => {
-    const testPush = async () => {
-      if (!Capacitor.isNativePlatform()) return;
-      try {
-        let perm = await LocalNotifications.checkPermissions();
-        if (perm.display !== 'granted') perm = await LocalNotifications.requestPermissions();
-        
-        if (perm.display === 'granted') {
-          const userStore = useAuthStore.getState().user;
-          const bday = userStore?.birthday ? new Date(userStore.birthday).toLocaleDateString() : "Not set";
-          
-          const now = new Date();
-          const nextHol = FIXED_HOLIDAYS.find(h => {
-             const [d, m] = h.date.split(" ");
-             const months = ["January","February","March","April","May","June","July","August","September","October","November","December"];
-             const hDate = new Date(now.getFullYear(), months.indexOf(m), parseInt(d));
-             return hDate > now;
-          });
-          const holStr = nextHol ? `${nextHol.name} on ${nextHol.date}` : "Diwali";
-
-          await LocalNotifications.registerActionTypes({
-            types: [{
-              id: 'CLASS_REMINDER',
-              actions: [{ id: 'mute', title: 'Mute Phone', destructive: false, foreground: false }]
-            }]
-          });
-
-          await LocalNotifications.schedule({
-            notifications: [
-              {
-                title: "AttendX Smart Assistant ??",
-                body: `Birthday: ${bday}\nNext Holiday: ${holStr}\nNext Class: Physics on Monday. Tap to mute your phone.`,
-                id: 9999,
-                schedule: { at: new Date(2026, 7, 30, 16, 53, 0) }, // Pops at 16:53 on Aug 30
-                smallIcon: "ic_stat_icon_name",
-                actionTypeId: "CLASS_REMINDER"
-              }
-            ]
-          });
-        }
-      } catch(e) { console.error("Notification Error", e); }
-    };
-    testPush();
-  }, []);
-
-  
-
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const dateParam = searchParams.get("date");
@@ -706,6 +659,9 @@ export const TodayPage = () => {
             <p className="text-sm text-muted-foreground mt-1">
               {new Date(targetDateStr).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
             </p>
+            <button onClick={() => navigate('/assignments')} className="mt-2 text-xs bg-violet-600 hover:bg-violet-700 text-white px-3 py-1.5 rounded-lg flex items-center gap-1">
+              <BookOpen size={14} /> View Assignments & Deadlines
+            </button>
           </div>
 
           <button 
@@ -1011,3 +967,4 @@ export const TodayPage = () => {
     </div>
   );
 };
+

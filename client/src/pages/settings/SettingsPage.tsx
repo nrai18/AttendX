@@ -6,6 +6,7 @@ import { Share } from "@capacitor/share";
 import { useAuthStore } from "../../stores/authStore";
 import { useAttendanceStore } from "../../stores/attendanceStore";
 import { useCacheStore } from "../../stores/cacheStore";
+import { useNotificationStore } from "../../stores/notificationStore";
 import { api } from "../../lib/api";
 import { toast } from "sonner";
 import { Stepper } from "../../components/ui/stepper";
@@ -206,6 +207,7 @@ const renderDocuments = (type: string) => {
   const [dndEnabled, setDndEnabled] = useState(true);
 
   const { reminderFrequency, setReminderFrequency } = useCacheStore();
+  const { config: notifConfig, updateConfig } = useNotificationStore();
 
   useEffect(() => {
     // Schedule updates whenever frequency changes
@@ -1046,10 +1048,10 @@ const renderDocuments = (type: string) => {
         </div>
       </div>
 
-      {/* CATEGORY 2: Notifications & Reminders */}
+      {/* CATEGORY 2: Summary Reports */}
       <div className="space-y-3">
         <h2 className="text-xs font-bold text-muted-foreground uppercase tracking-wider px-1">
-          Notifications & Reminders
+          Summary Reports
         </h2>
         <div className="bg-card border border-border/70 rounded-2xl p-4 shadow-md space-y-4">
           <div>
@@ -1066,10 +1068,94 @@ const renderDocuments = (type: string) => {
               onChange={setReminderFrequency}
             />
           </div>
-
-
+          {['Weekly', 'Monthly', 'Yearly'].includes(reminderFrequency.type) && (
+            <div className="w-full flex items-center justify-between p-4 mt-2 bg-muted/20 border-t border-border/50">
+              <div className="flex flex-col gap-0.5">
+                <span className="text-sm font-bold text-foreground">Summary Time</span>
+                <span className="text-xs text-muted-foreground">When to send reports</span>
+              </div>
+              <input
+                type="time"
+                value={notifConfig.summaryTime || "18:00"}
+                onChange={(e) => updateConfig({ summaryTime: e.target.value })}
+                className="bg-muted text-foreground text-sm font-semibold rounded-lg px-3 py-1.5 border border-border/50 outline-none focus:ring-2 focus:ring-primary/50"
+              />
+            </div>
+          )}
         </div>
       </div>
+
+      {reminderFrequency.type === 'Daily' && (
+      <div className="space-y-3">
+        <h2 className="text-xs font-bold text-muted-foreground uppercase tracking-wider px-1">
+          Timetable Alerts
+        </h2>
+        <div className="bg-card border border-border/70 rounded-2xl p-4 shadow-md space-y-4">
+          <div className="w-full flex flex-col gap-4">
+            <div className="flex flex-col gap-1">
+              <h3 className="text-sm font-bold text-foreground">Class Reminders</h3>
+              <p className="text-xs text-muted-foreground">Time before class</p>
+            </div>
+            
+            <div className="flex w-full bg-muted/50 p-1 rounded-xl">
+              {[5, 10, 15].map((mins) => (
+                <button
+                  key={mins}
+                  onClick={() => updateConfig({ classReminderOffset: mins })}
+                  className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+                    notifConfig.classReminderOffset === mins
+                      ? 'bg-primary text-primary-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  {mins} min
+                </button>
+              ))}
+            </div>
+
+            <div className="flex items-center justify-between mt-2">
+              <div className="flex flex-col gap-0.5">
+                <span className="text-sm font-semibold text-foreground">Show Location</span>
+                <span className="text-xs text-muted-foreground">Include room in notifications</span>
+              </div>
+              <button
+                onClick={() => updateConfig({ showLocation: !notifConfig.showLocation })}
+                className={`w-11 h-6 rounded-full transition-colors relative ${notifConfig.showLocation ? 'bg-primary' : 'bg-muted'}`}
+              >
+                <div className={`w-5 h-5 bg-white rounded-full absolute top-0.5 transition-transform ${notifConfig.showLocation ? 'left-[22px]' : 'left-0.5'}`} />
+              </button>
+            </div>
+
+            <div className="flex items-center justify-between mt-2">
+              <div className="flex flex-col gap-0.5">
+                <span className="text-sm font-semibold text-foreground">Next Class Heads-up</span>
+                <span className="text-xs text-muted-foreground">Notify when current class ends</span>
+              </div>
+              <button
+                onClick={() => updateConfig({ notifyNextClassOnEnd: !notifConfig.notifyNextClassOnEnd })}
+                className={`w-11 h-6 rounded-full transition-colors relative ${notifConfig.notifyNextClassOnEnd ? 'bg-primary' : 'bg-muted'}`}
+              >
+                <div className={`w-5 h-5 bg-white rounded-full absolute top-0.5 transition-transform ${notifConfig.notifyNextClassOnEnd ? 'left-[22px]' : 'left-0.5'}`} />
+              </button>
+            </div>
+
+            <div className="flex items-center justify-between mt-2">
+              <div className="flex flex-col gap-0.5">
+                <span className="text-sm font-semibold text-foreground">End of Day Summary</span>
+                <span className="text-xs text-muted-foreground">Get a 'Done for the day' alert</span>
+              </div>
+              <button
+                onClick={() => updateConfig({ endOfDaySummary: !notifConfig.endOfDaySummary })}
+                className={`w-11 h-6 rounded-full transition-colors relative ${notifConfig.endOfDaySummary ? 'bg-primary' : 'bg-muted'}`}
+              >
+                <div className={`w-5 h-5 bg-white rounded-full absolute top-0.5 transition-transform ${notifConfig.endOfDaySummary ? 'left-[22px]' : 'left-0.5'}`} />
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+      )}
+
 
       {/* CATEGORY 3: Data Management */}
           <div className="space-y-3">
