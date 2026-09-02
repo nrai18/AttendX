@@ -2,6 +2,8 @@ import { prisma } from "../lib/prisma";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import { generateAccessToken, generateRefreshToken, verifyRefreshToken } from "../utils/jwt";
+import { EmailService } from "./email.service";
+import jwt from "jsonwebtoken";
 
 export class AuthService {
   static async hashToken(token: string) {
@@ -25,6 +27,8 @@ export class AuthService {
           },
         });
         
+        // Send welcome email
+        EmailService.sendWelcomeEmail(user.email, user.name);
         return this.generateTokensForOAuth(user, req);
       }
       
@@ -203,6 +207,47 @@ export class AuthService {
     const hashedRefresh = await this.hashToken(refreshToken);
     await prisma.refreshToken.deleteMany({ where: { token: hashedRefresh } });
   }
+  static async forgotPassword(email: string) {
+    const normalizedEmail = email.toLowerCase().trim();
+    const user = await prisma.user.findUnique({ where: { email: normalizedEmail } });
+    
+    if (!user) {
+      // Don't reveal user existence
+      return;
+    }
+
+    // Create a one-time use token by signing with their CURRENT password hash!
+    // When they change it, the hash changes, and the token instantly invalidates.
+    const secret = process.env.JWT_SECRET + user.passwordHash;
+    const token = jwt.sign({ id: user.id }, secret, { expiresIn: '15m' });
+    
+    await EmailService.sendPasswordResetEmail(user.email, token);
+  }
+
+  static async resetPassword(token: string, newPassword: string) {
+    if (!token) throw new Error("Invalid token");
+    if (!newPassword || newPassword.length < 6) throw new Error("Password must be at least 6 characters");
+    
+    // Decode first to get the user ID
+    const decoded = jwt.decode(token) as { id: string } | null;
+    if (!decoded || !decoded.id) throw new Error("Invalid or expired reset token");
+    
+    const user = await prisma.user.findUnique({ where: { id: decoded.id } });
+    if (!user) throw new Error("User not found");
+    
+    // Verify the signature securely
+    const secret = process.env.JWT_SECRET + user.passwordHash;
+    try {
+      jwt.verify(token, secret);
+    } catch (e) {
+      throw new Error("Invalid or expired reset token");
+    }
+    
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { passwordHash },
+    });
+  }
+
 }
-
-

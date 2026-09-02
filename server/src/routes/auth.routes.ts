@@ -16,6 +16,8 @@ router.post("/register", loginLimiter, AuthController.register);
 router.post("/login", loginLimiter, AuthController.login);
 router.post("/refresh", AuthController.refresh);
 router.post("/logout", AuthController.logout);
+router.post("/forgot-password", loginLimiter, AuthController.forgotPassword);
+router.post("/reset-password", loginLimiter, AuthController.resetPassword);
 
 // Google OAuth routes (Native Mobile)
 router.post("/google/native", loginLimiter, AuthController.googleNative);

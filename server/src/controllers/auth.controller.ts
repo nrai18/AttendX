@@ -2,7 +2,31 @@ import { Request, Response } from "express";
 import { AuthService } from "../services/auth.service";
 import { setRefreshCookie, clearRefreshCookie } from "../utils/cookie";
 
-export class AuthController {
+export class AuthController { 
+
+  static async forgotPassword(req: Request, res: Response) {
+    try {
+      const email = req.body.email;
+      if (!email) return res.status(400).json({ message: "Email is required" });
+      await AuthService.forgotPassword(email);
+      res.status(200).json({ message: "If an account exists, a reset link has been sent." });
+    } catch (error: any) {
+      res.status(500).json({ message: "Something went wrong" });
+    }
+  }
+
+  static async resetPassword(req: Request, res: Response) {
+    try {
+      const { token, newPassword } = req.body;
+      if (!token || !newPassword) return res.status(400).json({ message: "Token and new password are required" });
+      
+      await AuthService.resetPassword(token, newPassword);
+      res.status(200).json({ message: "Password reset successful" });
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  }
+
   static async register(req: Request, res: Response) {
     try {
       const email = req.body.email || "";
