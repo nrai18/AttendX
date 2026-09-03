@@ -82,7 +82,7 @@ export class NotificationService {
       if (action.actionId === 'UNMUTE_ACTION') {
         const success = await unmutePhone();
         if (success) {
-           await LocalNotifications.cancel({ notifications: [{ id: 9999 }] });
+           await LocalNotifications.cancel({ notifications: [{ id: 8888 }] });
            toast.success("Phone unmuted manually.");
         }
       } else if (action.actionId === 'MUTE_ACTION') {
@@ -149,7 +149,7 @@ export class NotificationService {
     await LocalNotifications.schedule({
       notifications: [
         {
-          id: 9999,
+          id: 8888,
           title: `Class in Session`,
           body: `Phone is silenced until ${timeStr}`,
           largeBody: `🔕 Current Class: ${className}\n\nYour phone has been manually muted via AttendX. It will restore to normal volume automatically at ${timeStr}, or you can unmute manually below.`,
@@ -169,7 +169,7 @@ export class NotificationService {
     if (timeUntilEnd > 0) {
       setTimeout(async () => {
         await unmutePhone();
-        await LocalNotifications.cancel({ notifications: [{ id: 9999 }] });
+        await LocalNotifications.cancel({ notifications: [{ id: 8888 }] });
       }, timeUntilEnd);
     }
   }
@@ -231,7 +231,7 @@ export class NotificationService {
       const allEvents = [...events];
       
       const pending = await LocalNotifications.getPending();
-      const toCancel = pending.notifications.filter(n => n.id !== 9999);
+      const toCancel = pending.notifications.filter(n => n.id !== 8888);
       if (toCancel.length > 0) {
         await LocalNotifications.cancel({ notifications: toCancel });
       }

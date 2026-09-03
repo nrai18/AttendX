@@ -5,11 +5,11 @@ import fs from "fs";
 export class SystemController {
   static async getUpdateManifest(req: Request, res: Response) {
     const manifest = {
-      latestVersion: "2.4.4",
+      latestVersion: "2.4.5",
       title: "The Sync & Themes Update",
             changelog: [
         {
-          version: "2.4.4",
+          version: "2.4.5",
           sizeMb: 30.02,
           sections: [
             {
