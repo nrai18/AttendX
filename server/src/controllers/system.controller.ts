@@ -224,7 +224,7 @@ export class SystemController {
     };
 
     try {
-      const updatePath = path.join(__dirname, "../uploads/update.zip");
+      const updatePath = path.resolve(process.cwd(), "src/uploads/update.zip");
       if (fs.existsSync(updatePath)) {
         const stats = fs.statSync(updatePath);
         (manifest as any).downloadSizeMb = parseFloat((stats.size / (1024 * 1024)).toFixed(2));
@@ -237,7 +237,7 @@ export class SystemController {
   }
 
   static async downloadUpdate(req: Request, res: Response) {
-    const updatePath = path.join(__dirname, "../uploads/update.zip");
+    const updatePath = path.resolve(process.cwd(), "src/uploads/update.zip");
     if (fs.existsSync(updatePath)) {
       res.download(updatePath);
     } else {
@@ -245,4 +245,5 @@ export class SystemController {
     }
   }
 }
+
 
