@@ -1,5 +1,6 @@
-﻿import { Capacitor } from '@capacitor/core';
+import { Capacitor } from '@capacitor/core';
 import { Filesystem, Directory } from '@capacitor/filesystem';
+import { Share } from '@capacitor/share';
 import { toast } from 'sonner';
 
 export const downloadBlob = async (blob: Blob, filename: string) => {
@@ -8,13 +9,23 @@ export const downloadBlob = async (blob: Blob, filename: string) => {
       const reader = new FileReader();
       reader.readAsDataURL(blob);
       reader.onloadend = async () => {
-        const base64data = (reader.result as string).split(',')[1];
-        await Filesystem.writeFile({
-          path: filename,
-          data: base64data,
-          directory: Directory.Documents
-        });
-        toast.success('File saved to Documents folder');
+        try {
+          const base64data = (reader.result as string).split(',')[1];
+          const result = await Filesystem.writeFile({
+            path: filename,
+            data: base64data,
+            directory: Directory.Cache
+          });
+          
+          await Share.share({
+            title: filename,
+            url: result.uri,
+            dialogTitle: 'Save or Share File'
+          });
+        } catch (innerErr) {
+          console.error("Inner share err:", innerErr);
+          toast.error("Failed to share file.");
+        }
       };
     } catch (e) {
       console.error(e);
