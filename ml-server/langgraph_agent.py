@@ -132,6 +132,15 @@ def generate_policy_response(state: ChatState):
         history_logs = student_context.get("history_logs", [])
         calendar_events = student_context.get("calendar_events", [])
         
+        user_name = student_context.get("user_name", "Student")
+        user_birthday = student_context.get("user_birthday", "Not set")
+        app_version = student_context.get("app_version", "2.5.0")
+        app_developer = student_context.get("app_developer", "Naman Rai")
+        sem_start = student_context.get("active_semester_start_date", "Unknown")
+        sem_end = student_context.get("active_semester_end_date", "Unknown")
+        current_date = student_context.get("current_date", "Unknown")
+        attendance_rule = student_context.get("attendance_rule", "75% rule")
+        
         sub_lines = []
         for s in subjects:
             code = s.get('code', '')
@@ -140,39 +149,31 @@ def generate_policy_response(state: ChatState):
         subs_text = "\n".join(sub_lines) if sub_lines else "No courses registered in AttendX yet."
         
         log_lines = []
-        for log in history_logs:
-            d_str = log.get('dateFormatted') or log.get('date') or 'Unknown Date'
-            sub = log.get('subject', 'Class')
-            status = log.get('status', 'unknown')
-            log_lines.append(f"  * {d_str}: {sub} marked {status}")
-        logs_text = "\n".join(log_lines) if log_lines else "No attendance recorded yet."
+        for l in history_logs:
+            log_lines.append(f"  - {l.get('date')} | Sub: {l.get('subject',{}).get('name','')} | Stat: {l.get('status')} | Rem: {l.get('remarks','')}")
+        logs_text = "\n".join(log_lines) if log_lines else "No recent history logs."
         
-        event_lines = []
-        for ev in calendar_events:
-            event_lines.append(f"  * {ev.get('date')}: {ev.get('title')} ({ev.get('type')})")
-        events_text = "\n".join(event_lines) if event_lines else "No upcoming events found."
+        events_lines = []
+        for e in calendar_events:
+            d2 = f" to {e.get('endDate')}" if e.get('endDate') else ""
+            events_lines.append(f"  - {e.get('title')} ({e.get('eventType')}) | {e.get('date')}{d2} | Target: {e.get('targetSemester')}")
+        events_text = "\n".join(events_lines) if events_lines else "No events in calendar."
         
-        current_date_str = student_context.get("current_date", "Unknown Date")
-        
-        student_info_block = f"""
-LIVE REAL-TIME STUDENT TELEMETRY (FROM ATTENDX IN-APP DATABASE):
-1. Overall Attendance & Goal:
-- EXACT SYSTEM DATE (TODAY): {current_date_str}
-- Active Semester ID: {active_semester_id}
-- Current Overall Attendance: {overall}% ({attended}/{total} classes attended)
-- Student Personal Target Goal Set in App: {target}%
-- Mandatory Institute Minimum Threshold: 75% (Section 6.1)
-
-2. Enrolled Courses:
-{subs_text}
-
-3. Date-Wise Class Attendance History Logs (Exact Sessions Logged):
-{logs_text}
-
-4. Academic Calendar Events & Holidays:
-{events_text}
-{simulation_text}
-"""
+        student_info_block = (
+            f"--- LIVE STUDENT TELEMETRY & APP CONTEXT ---\n"
+            f"User Profile: Name: {user_name}, Birthday: {user_birthday}\n"
+            f"App Context: Version: {app_version}, Developer: {app_developer}\n"
+            f"Current Date: {current_date}\n"
+            f"Institute Policy: {attendance_rule}\n"
+            f"Active Semester ID: {active_semester_id} | Dates: {sem_start} to {sem_end}\n"
+            f"Overall Attendance: {overall}%. Student Personal Target Goal Set in App: {target}%. "
+            f"Classes Attended: {attended}/{total}.\n"
+            f"Enrolled Courses & IDs (CRITICAL for Action payloads):\n{subs_text}\n"
+            f"Recent Attendance Marking Logs:\n{logs_text}\n"
+            f"Institute Academic Calendar Events & Holidays:\n{events_text}\n"
+            f"{simulation_text}\n"
+            f"--------------------------------------------"
+        )
 
     system_instruction = (
         "You are AttendX AI, the intelligent in-app academic companion and policy advisor for IIIT Una.\n"
@@ -213,7 +214,9 @@ LIVE REAL-TIME STUDENT TELEMETRY (FROM ATTENDX IN-APP DATABASE):
         "8. \"ADD_SUBJECT\": payload { \"name\": string, \"code\": string, \"type\": \"Theory\"|\"Lab\"|\"Project\", \"credits\": number }\n"
         "9. \"REMOVE_SUBJECT\": payload { \"subjectId\": string }\n"
         "10. \"DROP_SUBJECT_FROM_TIMETABLE\": payload { \"semesterId\": string, \"subjectId\": string }\n"
-        "11. \"SHIFT_TIMETABLE_SLOT\": payload { \"semesterId\": string, \"subjectId\": string, \"dayOfWeek\": number, \"newStartTime\": \"HH:MM\", \"newEndTime\": \"HH:MM\" } (dayOfWeek: 0=Sun, 1=Mon, ..., 6=Sat)\n\n"
+        "11. \"SHIFT_TIMETABLE_SLOT\": payload { \"semesterId\": string, \"subjectId\": string, \"dayOfWeek\": number, \"newStartTime\": \"HH:MM\", \"newEndTime\": \"HH:MM\" } (dayOfWeek: 0=Sun, 1=Mon, ..., 6=Sat)\n"
+        "12. \"SHARE_APP\": payload {} - Used when the user asks to share the app link.\n"
+        "13. \"CHANGE_REMINDER_FREQUENCY\": payload { \"frequency\": \"daily\"|\"weekly\"|\"never\" } - Used when user asks to change notification timing/frequency or submit feedback (navigates to settings).\n\n"
         "ACTION COMPOSITION & ORCHESTRATION: Do not assume one action fulfills a complex intent. If a user requests a compound operation (e.g., bulk leave but attending specific classes, dropping a subject and adding a new one, shifting a slot and marking it absent), you MUST emit an array of multiple, independent actions to orchestrate the full request (e.g., a MARK_FULL_DAY_OFF arrayed alongside specific MARK_ATTENDANCE actions).\n\n"
         "PROACTIVE SAFETY ARCHITECTURE: You MUST set `\"requiresConfirmation\": true` for high-risk destructive actions (REMOVE_SUBJECT, DROP_SUBJECT_FROM_TIMETABLE, MARK_FULL_DAY_OFF, SHIFT_TIMETABLE_SLOT). Leave it false for others.\n"
         "Match subject names to their exact `id` from the LIVE REAL-TIME STUDENT TELEMETRY. For actions requiring `semesterId`, use the `active_semester_id` from the telemetry. If multiple actions are requested, include them all. NEVER include the JSON block if no action or navigation is requested. Only include it when performing an action.\n\n"

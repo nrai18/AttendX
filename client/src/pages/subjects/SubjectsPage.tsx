@@ -152,7 +152,7 @@ export const SubjectsPage = () => {
   const [isLoading, setIsLoading] = useState(!cachedSubjectsData);
   const [isAdding, setIsAdding] = useState(false);
   const [editingSubject, setEditingSubject] = useState<Subject | null>(null);
-  const [activeSemesterId, setActiveSemesterId] = useState<string | null>(null);
+  const [activeSemesterId, setActiveSemesterId] = useState<string | null>(cachedSubjectsData?.activeSemesterId || null);
   const [isCreateSemesterOpen, setIsCreateSemesterOpen] = useState(false);
 
   const fetchData = async () => {
@@ -171,9 +171,9 @@ export const SubjectsPage = () => {
         const statsRes = await api.get(`/attendance/stats?semesterId=${semester.id}`);
         const newStats = Array.isArray(statsRes.data) ? statsRes.data : (statsRes.data?.subjects || []);
         setSubjectStats(newStats);
-        setCache('subjects', { subjects: newSubjects, stats: newStats });
+        setCache('subjects', { subjects: newSubjects, stats: newStats, activeSemesterId: semester.id });
       } else {
-        setCache('subjects', { subjects: newSubjects, stats: [] });
+        setCache('subjects', { subjects: newSubjects, stats: [], activeSemesterId: null });
       }
     } catch (error) {
       console.error("Failed to fetch subjects:", error);

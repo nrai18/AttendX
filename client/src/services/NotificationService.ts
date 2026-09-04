@@ -1,4 +1,4 @@
-﻿import { LocalNotifications } from '@capacitor/local-notifications';
+import { LocalNotifications } from '@capacitor/local-notifications';
 import { Capacitor } from '@capacitor/core';
 import { mutePhone, unmutePhone } from '../lib/ringer';
 import { useAttendanceStore } from '../stores/attendanceStore';
@@ -48,7 +48,7 @@ export class NotificationService {
           actions: [
             {
               id: 'UNMUTE_ACTION',
-              title: 'ðŸ”Š Unmute Phone',
+              title: '🔊 Unmute Phone',
               foreground: false,
               destructive: false
             }
@@ -59,7 +59,7 @@ export class NotificationService {
           actions: [
             {
               id: 'MUTE_ACTION',
-              title: 'ðŸ”• Mute Phone for Class',
+              title: '🔕 Mute Phone for Class',
               foreground: false,
               destructive: false
             }
@@ -75,7 +75,7 @@ export class NotificationService {
         const id = action.notification.id;
         // 8800 series is used for daily/weekly/monthly summaries
         if (id >= 8800 && id < 8900) {
-           window.location.href = '/semester';
+           window.location.href = '/report';
            return;
         }
       }
@@ -124,7 +124,7 @@ export class NotificationService {
           id: Math.floor(Math.random() * 900000) + 100000,
           title: `Upcoming: ${classTitle}`,
           body: `Starts at ${timeStr} ${location ? `| ${location}` : ''}`,
-          largeBody: `ðŸ“š Class: ${classTitle}\nâ° Time: ${timeStr} - ${endTimeStr || 'TBD'}\nðŸ“ Room: ${location || 'N/A'}\n\nTap the action button below to instantly mute your phone for the duration of this class.`,
+          largeBody: `📚 Class: ${classTitle}\n⏰ Time: ${timeStr} - ${endTimeStr || 'TBD'}\n📍 Room: ${location || 'N/A'}\n\nTap the action button below to instantly mute your phone for the duration of this class.`,
           summaryText: "Class Reminder",
           smallIcon: "ic_stat_adobe",
           iconColor: "#6366F1", 
@@ -152,7 +152,7 @@ export class NotificationService {
           id: 8888,
           title: `Class in Session`,
           body: `Phone is silenced until ${timeStr}`,
-          largeBody: `ðŸ”• Current Class: ${className}\n\nYour phone has been manually muted via AttendX. It will restore to normal volume automatically at ${timeStr}, or you can unmute manually below.`,
+          largeBody: `🔕 Current Class: ${className}\n\nYour phone has been manually muted via AttendX. It will restore to normal volume automatically at ${timeStr}, or you can unmute manually below.`,
           summaryText: "Do Not Disturb Active",
           smallIcon: "ic_stat_adobe",
           iconColor: "#EF4444", 
@@ -203,7 +203,7 @@ export class NotificationService {
           id: Math.floor(Math.random() * 10000),
           title: "Happy Birthday!",
           body: `Wish ${name} a great birthday today!`,
-          largeBody: `ðŸŽ‚ It's ${name}'s birthday today!\n\nDon't forget to send them your best wishes and make their day special!`,
+          largeBody: `🎂 It's ${name}'s birthday today!\n\nDon't forget to send them your best wishes and make their day special!`,
           summaryText: "Birthday Event",
           smallIcon: "ic_stat_adobe",
           iconColor: "#F59E0B", 
@@ -348,7 +348,7 @@ export class NotificationService {
                   id: Math.floor(Math.random() * 900000) + 100000,
                   title: "Done for the day!",
                   body: "All classes have ended. Enjoy your evening!",
-                  largeBody: "ðŸŽ‰ All classes for today have concluded. You can pack up and enjoy the rest of your day. See you tomorrow!",
+                  largeBody: "🎉 All classes for today have concluded. You can pack up and enjoy the rest of your day. See you tomorrow!",
                   schedule: { at: maxEndTimeObj, allowWhileIdle: true },
                   summaryText: "End of Day",
                   smallIcon: "ic_stat_adobe",
@@ -444,7 +444,7 @@ export class NotificationService {
                 id: 8800 + i,
                 title: "Tomorrow's Briefing",
                 body: "You have classes coming up tomorrow.",
-                largeBody: "ðŸŽ’ Prepare for Tomorrow\n\nYou have classes scheduled. Tap to review your timetable, check for assignments, and pack your bag!",
+                largeBody: "🎒 Prepare for Tomorrow\n\nYou have classes scheduled. Tap to review your timetable, check for assignments, and pack your bag!",
                 summaryText: "Academic Update",
                 smallIcon: "ic_stat_adobe",
             iconColor: "#FF0000",
@@ -513,7 +513,7 @@ export class NotificationService {
               id: 8820 + i,
               title: "Monthly Attendance Summary",
               body: "Your monthly review is ready! See how well you did this month.",
-              largeBody: "ðŸ“ˆ Monthly Summary\n\nYour overall attendance is currently at " + overallPct + "%. Tap to see your detailed breakdown and performance across all subjects.",
+              largeBody: "📈 Monthly Summary\n\nYour overall attendance is currently at " + overallPct + "%. Tap to see your detailed breakdown and performance across all subjects.",
               summaryText: "Academic Update",
               smallIcon: "ic_stat_adobe",
             iconColor: "#FF0000",

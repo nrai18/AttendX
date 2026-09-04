@@ -96,60 +96,60 @@ export const TodayPage = () => {
 
   const getHolidayAnimation = (activeEvent: any) => {
     let animType: any = "full_day_off";
-    let animMsg = "Congratulations on a full day off! ðŸŽ‰ðŸ¥³";
+    let animMsg = "Congratulations on a full day off! 🎉🥳";
 
     if (activeEvent?.title) {
       const title = activeEvent.title.toLowerCase();
       if (title.includes("diwali") || title.includes("deepavali")) {
-        animType = "diwali"; animMsg = "Lighting candles & firecrackers for Diwali! ðŸª”âœ¨";
+        animType = "diwali"; animMsg = "Lighting candles & firecrackers for Diwali! 🪔✨";
       } else if (title.includes("republic")) {
-        animType = "republic_day"; animMsg = "Happy Republic Day! ðŸ‡®ðŸ‡³";
+        animType = "republic_day"; animMsg = "Happy Republic Day! 🇮🇳";
       } else if (title.includes("independence")) {
-        animType = "independence_day"; animMsg = "Happy Independence Day! ðŸ‡®ðŸ‡³âœ¨";
+        animType = "independence_day"; animMsg = "Happy Independence Day! 🇮🇳✨";
       } else if (title.includes("christmas eve")) {
-        animType = "christmas_eve"; animMsg = "Christmas Eve! ðŸŽ„âœ¨";
+        animType = "christmas_eve"; animMsg = "Christmas Eve! 🎄✨";
       } else if (title.includes("christmas")) {
-        animType = "christmas"; animMsg = "Santa Claus is here! Merry Christmas! ðŸŽ…ðŸŽ„";
+        animType = "christmas"; animMsg = "Santa Claus is here! Merry Christmas! 🎅🎄";
       } else if (title.includes("bakrid") || title.includes("zuha")) {
-        animType = "bakrid"; animMsg = "Eid al-Adha Mubarak! ðŸŒ™âœ¨";
+        animType = "bakrid"; animMsg = "Eid al-Adha Mubarak! 🌙✨";
       } else if (title.includes("bhai duj")) {
-        animType = "bhai_duj"; animMsg = "Happy Bhai Duj! âœ¨";
+        animType = "bhai_duj"; animMsg = "Happy Bhai Duj! ✨";
       } else if (title.includes("buddha") || title.includes("purnima")) {
-        animType = "buddha_purnima"; animMsg = "Happy Buddha Purnima! â˜¸ï¸ðŸ•Šï¸";
+        animType = "buddha_purnima"; animMsg = "Happy Buddha Purnima! ☸️🕊️";
       } else if (title.includes("dussehra")) {
-        animType = "dussehra"; animMsg = "Happy Dussehra! ðŸ¹âœ¨";
+        animType = "dussehra"; animMsg = "Happy Dussehra! 🏹✨";
       } else if (title.includes("eid") || title.includes("id-ul") || title.includes("id-e") || title.includes("fitr")) {
-        animType = "eid"; animMsg = "Eid special! Eid Mubarak! ðŸŒ™ðŸ•Œ";
+        animType = "eid"; animMsg = "Eid special! Eid Mubarak! 🌙🕌";
       } else if (title.includes("good friday")) {
-        animType = "good_friday"; animMsg = "Blessed Good Friday! âœï¸ðŸ•Šï¸";
+        animType = "good_friday"; animMsg = "Blessed Good Friday! ✝️🕊️";
       } else if (title.includes("holi") || title.includes("dolyatra")) {
-        animType = "holi"; animMsg = "Happy Holi! ðŸŽ¨";
+        animType = "holi"; animMsg = "Happy Holi! 🎨";
       } else if (title.includes("makar sankranti")) {
-        animType = "makar_sankranti"; animMsg = "Happy Makar Sankranti! ðŸªâœ¨";
+        animType = "makar_sankranti"; animMsg = "Happy Makar Sankranti! 🪁✨";
       } else if (title.includes("new year")) {
-        animType = "new_year"; animMsg = "Happy New Year! ðŸŽ‰âœ¨";
+        animType = "new_year"; animMsg = "Happy New Year! 🎉✨";
       } else if (title.includes("pongal")) {
-        animType = "pongal"; animMsg = "Happy Pongal! ðŸŒ¾âœ¨";
+        animType = "pongal"; animMsg = "Happy Pongal! 🌾✨";
       } else if (title.includes("ram navami")) {
-        animType = "ram_navami"; animMsg = "Happy Ram Navami! ðŸ¹";
+        animType = "ram_navami"; animMsg = "Happy Ram Navami! 🏹";
       } else if (title.includes("maha shivaratri") || title.includes("shivaratri")) {
-        animType = "maha_shivaratri"; animMsg = "Happy Maha Shivaratri! ðŸ•‰ï¸âœ¨";
+        animType = "maha_shivaratri"; animMsg = "Happy Maha Shivaratri! 🕉️✨";
       } else if (title.includes("mahavir")) {
-        animType = "mahavir_jayanti"; animMsg = "Happy Mahavir Jayanti! ðŸª·";
+        animType = "mahavir_jayanti"; animMsg = "Happy Mahavir Jayanti! 🪷";
       } else if (title.includes("milad") || title.includes("nabi")) {
-        animType = "milad_un_nabi"; animMsg = "Milad-Un-Nabi Mubarak! ðŸŒ™âœ¨";
+        animType = "milad_un_nabi"; animMsg = "Milad-Un-Nabi Mubarak! 🌙✨";
       } else if (title.includes("rakshabandhan") || title.includes("raksha bandhan")) {
-        animType = "rakshabandhan"; animMsg = "Happy Raksha Bandhan! âœ¨";
+        animType = "rakshabandhan"; animMsg = "Happy Raksha Bandhan! ✨";
       } else if (title.includes("gandhi")) {
-        animType = "gandhi_jayanti"; animMsg = "Happy Gandhi Jayanti! ðŸ‘“";
+        animType = "gandhi_jayanti"; animMsg = "Happy Gandhi Jayanti! 👓";
       } else if (title.includes("ganesh") || title.includes("vinayaka")) {
-        animType = "ganesh_chaturthi"; animMsg = "Happy Ganesh Chaturthi! ðŸ˜âœ¨";
+        animType = "ganesh_chaturthi"; animMsg = "Happy Ganesh Chaturthi! 🐘✨";
       } else if (title.includes("nanak") || title.includes("gurpurab")) {
-        animType = "guru_nanak"; animMsg = "Happy Gurpurab! ðŸ›•";
+        animType = "guru_nanak"; animMsg = "Happy Gurpurab! 🛕";
       } else if (title.includes("janmashtami")) {
-        animType = "janmashtami"; animMsg = "Happy Krishna Janmashtami! ðŸ¦š";
+        animType = "janmashtami"; animMsg = "Happy Krishna Janmashtami! 🦚";
       } else if (title.includes("muharram")) {
-        animType = "muharram"; animMsg = "Muharram special ðŸ•Œ";
+        animType = "muharram"; animMsg = "Muharram special 🕌";
       }
     }
     return { animType, animMsg };
@@ -400,7 +400,7 @@ export const TodayPage = () => {
 
     // Trigger Popup Animation
     if (status === "absent") {
-      triggerAttendancePopup("crying", "Attendance Dropped! ðŸ˜­");
+      triggerAttendancePopup("crying", "Attendance Dropped! 😭");
     } else if (status === "present" || status === "medical" || status === "od") {
       const { overallPercentage, totalAttended, totalClasses } = useAttendanceStore.getState();
       const targetPct = useAuthStore.getState().user?.targetAttendance ?? 75;
@@ -418,9 +418,9 @@ export const TodayPage = () => {
       const newPercentage = newClasses > 0 ? (newAttended / newClasses) * 100 : 0;
       
       if (overallPercentage < targetPct && newPercentage >= targetPct) {
-        triggerAttendancePopup("target_hit", `Target ${targetPct}% Touched! ðŸŽ¯`);
+        triggerAttendancePopup("target_hit", `Target ${targetPct}% Touched! 🎯`);
       } else {
-        triggerAttendancePopup("thumbs_up", "Awesome! Marked Present ðŸ‘");
+        triggerAttendancePopup("thumbs_up", "Awesome! Marked Present 👍");
       }
     } else if (status === "off" || status === "cancelled") {
       const allOthersOff = updatedAgenda.every(a => a.status === "off" || a.status === "cancelled");
@@ -428,7 +428,7 @@ export const TodayPage = () => {
         const { animType, animMsg } = getHolidayAnimation(activeEvent);
         triggerAttendancePopup(animType, animMsg);
       } else {
-        triggerAttendancePopup("off_class", "Yay! Off class today! ðŸŽˆðŸ›Œ");
+        triggerAttendancePopup("off_class", "Yay! Off class today! 🎈🛌");
       }
     }
 
@@ -631,24 +631,12 @@ export const TodayPage = () => {
         </div>
       </div>
 
-      <div className="flex justify-between items-center flex-wrap gap-3">
-        <div className="flex items-center gap-3">
-          <button 
-            onClick={() => {
-              const prev = new Date(targetDateStr);
-              prev.setDate(prev.getDate() - 1);
-              const dateStr = `${prev.getFullYear()}-${String(prev.getMonth()+1).padStart(2,'0')}-${String(prev.getDate()).padStart(2,'0')}`;
-              navigate(`/today?date=${dateStr}`);
-            }}
-            className="p-1.5 hover:bg-muted rounded-lg text-muted-foreground transition-colors cursor-pointer"
-          >
-            <ChevronLeft className="w-5 h-5" />
-          </button>
-          
-          <div>
+      <div className="flex flex-col gap-6 mb-2">
+        {/* Row 1: Header and Date Picker */}
+        <div className="flex flex-col items-center justify-center text-center">
             {isBirthday && (
-              <div className="mb-4 bg-gradient-to-r from-amber-500/20 to-orange-500/20 border border-amber-500/30 rounded-2xl p-4 flex items-center gap-4">
-                <div className="text-3xl">ðŸŽ‚</div>
+              <div className="mb-4 bg-gradient-to-r from-amber-500/20 to-orange-500/20 border border-amber-500/30 rounded-2xl p-4 flex items-center gap-4 w-full max-w-sm text-left">
+                <div className="text-3xl">🎂</div>
                 <div>
                   <h3 className="font-bold text-amber-500">Happy Birthday, {user?.name?.split(' ')[0]}!</h3>
                   <p className="text-sm text-foreground/80">Hope you have a fantastic day today!</p>
@@ -656,57 +644,68 @@ export const TodayPage = () => {
               </div>
             )}
             <h1 className="text-2xl font-bold text-foreground">{dateParam ? "Classes on" : "Today's Schedule"}</h1>
-            <p className="text-sm text-muted-foreground mt-1">
-              {new Date(targetDateStr).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
-            </p>
-            <button onClick={() => navigate('/assignments')} className="mt-2 text-xs bg-violet-600 hover:bg-violet-700 text-white px-3 py-1.5 rounded-lg flex items-center gap-1">
-              <BookOpen size={14} /> View Assignments & Deadlines
-            </button>
-          </div>
-
-          <button 
-            onClick={() => {
-              const next = new Date(targetDateStr);
-              next.setDate(next.getDate() + 1);
-              const dateStr = `${next.getFullYear()}-${String(next.getMonth()+1).padStart(2,'0')}-${String(next.getDate()).padStart(2,'0')}`;
-              navigate(`/today?date=${dateStr}`);
-            }}
-            className="p-1.5 hover:bg-muted rounded-lg text-muted-foreground transition-colors cursor-pointer"
-          >
-            <ChevronRight className="w-5 h-5" />
-          </button>
+            
+            <div className="flex items-center justify-center gap-4 mt-3">
+              <button 
+                onClick={() => {
+                  const prev = new Date(targetDateStr);
+                  prev.setDate(prev.getDate() - 1);
+                  const dateStr = `${prev.getFullYear()}-${String(prev.getMonth()+1).padStart(2,'0')}-${String(prev.getDate()).padStart(2,'0')}`;
+                  navigate(`/today?date=${dateStr}`);
+                }}
+                className="p-1 hover:bg-muted rounded-lg text-muted-foreground transition-colors cursor-pointer"
+              >
+                <ChevronLeft className="w-5 h-5" />
+              </button>
+              
+              <p className="text-sm font-semibold text-muted-foreground min-w-[140px]">
+                {new Date(targetDateStr).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+              </p>
+              
+              <button 
+                onClick={() => {
+                  const next = new Date(targetDateStr);
+                  next.setDate(next.getDate() + 1);
+                  const dateStr = `${next.getFullYear()}-${String(next.getMonth()+1).padStart(2,'0')}-${String(next.getDate()).padStart(2,'0')}`;
+                  navigate(`/today?date=${dateStr}`);
+                }}
+                className="p-1 hover:bg-muted rounded-lg text-muted-foreground transition-colors cursor-pointer"
+              >
+                <ChevronRight className="w-5 h-5" />
+              </button>
+            </div>
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          {activeSemester && agenda.length > 0 && (
-            <button
-              onClick={handleMarkFullDayOff}
-              disabled={isMarkingFullDayOff}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 hover:bg-amber-500/25 transition-all shadow-sm cursor-pointer disabled:opacity-50"
-              title="Mark all today's classes as Off"
-            >
-              <Palmtree className="w-4 h-4 text-amber-500" />
-              <span>
-                {isMarkingFullDayOff 
-                  ? "Marking..." 
-                  : activeEvent 
-                    ? `Mark full day off for ${activeEvent.title}`
-                    : "Mark Full Day Off"
-                }
-              </span>
+
+        {/* Row 2: Action Buttons */}
+        <div className="flex items-center justify-between gap-3 bg-card/50 border border-border/50 p-2.5 rounded-2xl">
+          <div className="flex items-center gap-2 flex-wrap">
+            <button onClick={() => navigate('/assignments')} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-violet-600/15 text-violet-500 border border-violet-500/20 hover:bg-violet-600/25 transition-all shadow-sm cursor-pointer">
+              <BookOpen size={14} /> View Assignments
             </button>
-          )}
-          {activeSemester && (
-            <button
-              onClick={openAddExtraModal}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-primary text-primary-foreground hover:bg-primary/90 transition-all shadow-md shadow-primary/20 cursor-pointer"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Add Extra Lecture</span>
-            </button>
-          )}
-          <div className="text-right ml-2">
-            <p className="text-2xl font-bold text-foreground">{pendingCount}</p>
-            <p className="text-xs text-muted-foreground uppercase tracking-wide">Pending</p>
+            {activeSemester && (
+              <button
+                onClick={openAddExtraModal}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 transition-all shadow-sm cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                Add Extra
+              </button>
+            )}
+            {activeSemester && agenda.length > 0 && (
+              <button
+                onClick={handleMarkFullDayOff}
+                disabled={isMarkingFullDayOff}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-500/10 text-amber-500 border border-amber-500/20 hover:bg-amber-500/20 transition-all shadow-sm cursor-pointer disabled:opacity-50"
+                title="Mark all today's classes as Off"
+              >
+                <Palmtree className="w-4 h-4" />
+                {isMarkingFullDayOff ? "Marking..." : "Full Day Off"}
+              </button>
+            )}
+          </div>
+          <div className="flex flex-col items-center justify-center shrink-0 pr-2 pl-4 border-l border-border/50">
+            <p className="text-xl font-bold text-foreground leading-none">{pendingCount}</p>
+            <p className="text-[9px] text-muted-foreground uppercase tracking-widest mt-0.5">Pending</p>
           </div>
         </div>
       </div>
@@ -727,7 +726,7 @@ export const TodayPage = () => {
                 if (HOLIDAY_ASSETS[animType as AnimationType]) {
                   return <HolidayIconRenderer src={HOLIDAY_ASSETS[animType as AnimationType] as string} alt="Holiday Icon" className="w-7 h-7 drop-shadow-sm" />;
                 }
-                return ["midsem", "endsem", "exam"].includes((activeEvent.eventType || "").toLowerCase()) ? "ðŸ“" : "ðŸŽ‰";
+                return ["midsem", "endsem", "exam"].includes((activeEvent.eventType || "").toLowerCase()) ? "📝" : "🎉";
               })()}
             </div>
             <div>
@@ -741,7 +740,7 @@ export const TodayPage = () => {
             </div>
           </div>
           <div className="text-xs font-medium text-muted-foreground">
-            ðŸ“Œ Event highlighted for today. Use <span className="font-bold text-foreground">Mark Full Day Off</span> if classes are suspended.
+            📌 Event highlighted for today. Use <span className="font-bold text-foreground">Mark Full Day Off</span> if classes are suspended.
           </div>
         </div>
       )}
@@ -813,7 +812,7 @@ export const TodayPage = () => {
                   <div className="flex items-center gap-3 mt-1.5 text-xs text-muted-foreground font-medium flex-wrap">
                     <span className="bg-muted px-2 py-0.5 rounded text-foreground font-mono shrink-0">{item.startTime} - {item.endTime}</span>
                     <span className="uppercase tracking-wide font-semibold shrink-0">{item.slotType}</span>
-                    {item.room && <span className="shrink-0">â€¢ Room {item.room}</span>}
+                    {item.room && <span className="shrink-0">• Room {item.room}</span>}
                   </div>
                 </div>
               </div>

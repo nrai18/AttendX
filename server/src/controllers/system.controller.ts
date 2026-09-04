@@ -5,9 +5,32 @@ import fs from "fs";
 export class SystemController {
   static async getUpdateManifest(req: Request, res: Response) {
     const manifest = {
-      latestVersion: "2.5.0",
-      title: "The Sync & Themes Update",
+      latestVersion: "2.5.1",
+      title: "The Intelligence & Analytics Update",
             changelog: [
+        {
+          version: "2.5.1",
+          sizeMb: 4.8,
+          sections: [
+            {
+              title: "What's New",
+              items: [
+                { icon: "✨", text: "Immersive Voice Mode: Full-screen AI voice assistant with continuous conversation orb" },
+                { icon: "📊", text: "Analytics Dashboard: Data-dense charts for weekly/monthly performance and predictions" },
+                { icon: "🤖", text: "Agentic Execution: AI can now directly change your reminder frequencies and settings" },
+                { icon: "🧠", text: "Deep Context: AI natively understands app states, limits, and semester boundaries" }
+              ]
+            },
+            {
+              title: "Bug Fixes & UI Polish",
+              items: [
+                { icon: "🐛", text: "Mojibake Fixed: Resolved UTF-8 corruption causing emojis to render improperly" },
+                { icon: "🎨", text: "Sleek AI States: Removed bulky multi-stage loading blocks for minimal typing dots" },
+                { icon: "🔗", text: "Smart Routing: Tapping summary notifications routes straight to the Analytics Dashboard" }
+              ]
+            }
+          ]
+        },
         {
           version: "2.5.0",
           sizeMb: 31.4,

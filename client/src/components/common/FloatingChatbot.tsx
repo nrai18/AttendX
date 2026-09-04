@@ -33,6 +33,9 @@ import { FormattedChatMessage } from "./FormattedChatMessage";
 import { VoiceModeOverlay } from "./VoiceModeOverlay";
 import { useAttendanceStore } from "../../stores/attendanceStore";
 import { useAuthStore } from "../../stores/authStore";
+import { useCacheStore } from "../../stores/cacheStore";
+import { NotificationService } from "../../services/NotificationService";
+import { App } from "@capacitor/app";
 
 interface ActionPayload {
   type: string;
@@ -137,6 +140,11 @@ export const FloatingChatbot: React.FC = () => {
   const [speakingId, setSpeakingId] = useState<string | null>(null);
   const [isListeningMic, setIsListeningMic] = useState(false);
   const [searchStageIndex, setSearchStageIndex] = useState(0);
+  const [appVersion, setAppVersion] = useState("Unknown");
+
+  useEffect(() => {
+    App.getInfo().then(info => setAppVersion(info.version)).catch(() => {});
+  }, []);
 
   const { overallPercentage, targetPercentage, totalAttended, totalClasses, subjects, hasActiveSemester, fetchStats } = useAttendanceStore();
   const user = useAuthStore((state) => state.user);
@@ -301,9 +309,16 @@ export const FloatingChatbot: React.FC = () => {
 
       const studentContext = {
         user_id: user?.id,
+        user_name: user?.name || "Student",
+        user_birthday: user?.birthday || "Not set",
+        app_version: appVersion,
+        app_developer: "Naman Rai",
+        attendance_rule: "Refer to official Institute Ordinances for attendance thresholds.",
         current_date: localTodayStr,
         has_active_semester: currentSubjects.length > 0 || currentLogs.length > 0 || currentTotal > 0,
         active_semester_id: useAttendanceStore.getState().activeSemesterId,
+        active_semester_start_date: useAttendanceStore.getState().simulationBounds?.startDate,
+        active_semester_end_date: useAttendanceStore.getState().simulationBounds?.endDate,
         overall_percentage: currentOverall,
         target_percentage: currentTarget,
         total_attended: currentAttended,
@@ -411,6 +426,29 @@ export const FloatingChatbot: React.FC = () => {
         } else if (action.type === 'DROP_SUBJECT_FROM_TIMETABLE') {
           await api.delete(`/timetable/semester/${action.payload.semesterId}/subject/${action.payload.subjectId}/slots`);
           refresh = true;
+        } else if (action.type === 'SHARE_APP') {
+          const appLink = "https://drive.google.com/file/d/1XZBMJBfY8YMGaY82k3FTBHtHmymWggF1/view?usp=sharing";
+          if (navigator.share) {
+            navigator.share({
+              title: "Smart Attendance Manager",
+              text: "Download AttendX to manage your academic attendance easily!",
+              url: appLink,
+            }).catch(() => {});
+          } else {
+            navigator.clipboard.writeText(appLink);
+          }
+        } else if (action.type === 'CHANGE_REMINDER_FREQUENCY') {
+          const rawFreq = action.payload.frequency || 'daily';
+          let capFreq: 'Never'|'Daily'|'Weekly'|'Monthly'|'Yearly' = 'Daily';
+          if (rawFreq.toLowerCase() === 'never') capFreq = 'Never';
+          if (rawFreq.toLowerCase() === 'weekly') capFreq = 'Weekly';
+          if (rawFreq.toLowerCase() === 'monthly') capFreq = 'Monthly';
+          if (rawFreq.toLowerCase() === 'yearly') capFreq = 'Yearly';
+          
+          const freqData = { type: capFreq };
+          useCacheStore.getState().setReminderFrequency(freqData);
+          NotificationService.scheduleAcademicUpdates(freqData);
+          toast.success(`Reminder frequency updated to ${capFreq}`);
         } else if (action.type === 'SHIFT_TIMETABLE_SLOT') {
           // Fetch timetable to find the slot
           const ttRes = await api.get(`/timetable/${action.payload.semesterId}`);
@@ -925,27 +963,15 @@ export const FloatingChatbot: React.FC = () => {
 
                   {/* Animated Policy Searching / Loading State */}
                   {isLoading && (
-                    <motion.div 
-                      initial={{ opacity: 0, y: 8 }}
+                    <motion.div
+                      initial={{ opacity: 0, y: 5 }}
                       animate={{ opacity: 1, y: 0 }}
-                      className="p-4 rounded-2xl bg-white/80 dark:bg-[#151b2e]/80 border border-purple-500/20 shadow-xs space-y-2"
+                      className="px-4 py-3 bg-muted/40 rounded-2xl rounded-tl-sm max-w-[fit-content] mr-auto"
                     >
-                      {/* Bouncing Animation Dots */}
-                      <div className="flex items-center gap-2">
-                        <div className="w-5 h-5 rounded-full bg-purple-500/20 flex items-center justify-center text-purple-600 dark:text-purple-400">
-                          <Bot className="w-3 h-3" />
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <span className="w-2 h-2 rounded-full bg-purple-600 animate-bounce [animation-delay:-0.3s]"></span>
-                          <span className="w-2 h-2 rounded-full bg-pink-500 animate-bounce [animation-delay:-0.15s]"></span>
-                          <span className="w-2 h-2 rounded-full bg-indigo-500 animate-bounce"></span>
-                        </div>
-                      </div>
-
-                      {/* Dynamic Cycling Search Stage */}
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground font-medium pl-1">
-                        <Search className="w-3.5 h-3.5 text-purple-500 animate-spin" />
-                        <span className="italic">{SEARCH_STAGES[searchStageIndex]}</span>
+                      <div className="flex items-center gap-1.5 h-4">
+                        <span className="w-1.5 h-1.5 rounded-full bg-foreground/40 animate-bounce [animation-delay:-0.3s]"></span>
+                        <span className="w-1.5 h-1.5 rounded-full bg-foreground/40 animate-bounce [animation-delay:-0.15s]"></span>
+                        <span className="w-1.5 h-1.5 rounded-full bg-foreground/40 animate-bounce"></span>
                       </div>
                     </motion.div>
                   )}
