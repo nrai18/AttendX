@@ -1,4 +1,4 @@
-@import "tailwindcss";
+﻿@import "tailwindcss";
 
 @plugin "tailwindcss-animate";
 
@@ -189,6 +189,8 @@
   }
 
   /* Keep Button Text White inside Filled Solid Action Buttons in Light Mode */
+  html.light button.bg-neutral-900,
+  html.light button.bg-neutral-900 *,
   html.light button.bg-primary,
   html.light button.bg-primary *,
   html.light button.bg-indigo-600,
@@ -329,3 +331,4 @@
     background: rgba(148, 163, 184, 0.4);
   }
 }
+

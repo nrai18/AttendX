@@ -275,7 +275,7 @@ export const SubjectDetailPage = () => {
   return (
     <div className="min-h-screen bg-background text-foreground pb-40 md:pb-28">
       {/* Top Header matching dark screenshot theme */}
-      <div className="sticky top-0 z-30 bg-background/95 backdrop-blur-md border-b border-border px-4 py-3">
+      <div className="sticky top-0 z-30 bg-background/95 backdrop-blur-md border-b border-border px-4 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top))]">
         <div className="max-w-3xl mx-auto flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <Link

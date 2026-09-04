@@ -127,7 +127,7 @@ export const ReportView: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-background text-foreground pb-20 animate-in fade-in duration-300">
-      <div className="sticky top-0 z-50 bg-background/80 backdrop-blur-xl border-b border-border/50 px-4 py-4 flex items-center justify-between">
+      <div className="sticky top-0 z-50 bg-background/80 backdrop-blur-xl border-b border-border/50 px-4 pb-4 pt-[calc(1rem+env(safe-area-inset-top))] flex items-center justify-between">
         <div className="flex items-center gap-3">
           <button 
             onClick={() => navigate('/today')}

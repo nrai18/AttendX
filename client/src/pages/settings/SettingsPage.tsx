@@ -921,9 +921,9 @@ const renderDocuments = (type: string) => {
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 rounded-full overflow-hidden bg-muted border-2 border-border/50 shadow-sm shrink-0">
                 <img 
-                  src={user?.avatarUrl || (user?.gender === 'female' ? 'https://api.dicebear.com/7.x/notionists/svg?seed=female&gender=female' : user?.gender === 'male' ? 'https://api.dicebear.com/7.x/notionists/svg?seed=male&gender=male' : 'https://api.dicebear.com/7.x/notionists/svg?seed=user')} 
+                  src={(user?.avatarUrl && user?.avatarUrl !== "null") ? user?.avatarUrl : (user?.gender === 'female' ? 'https://api.dicebear.com/7.x/notionists/svg?seed=female&gender=female' : user?.gender === 'male' ? 'https://api.dicebear.com/7.x/notionists/svg?seed=male&gender=male' : 'https://api.dicebear.com/7.x/notionists/svg?seed=user')} onError={(e) => { e.currentTarget.src = "https://api.dicebear.com/7.x/notionists/svg?seed=user"; }} 
                   alt="Avatar" 
-                  className="w-full h-full object-cover" 
+                  className="w-full h-full object-cover" referrerPolicy="no-referrer" 
                 />
               </div>
               <div className="text-left">
@@ -1101,7 +1101,7 @@ const renderDocuments = (type: string) => {
               {[5, 10, 15].map((mins) => (
                 <button
                   key={mins}
-                  onClick={() => updateConfig({ classReminderOffset: mins })}
+                  onClick={() => { updateConfig({ classReminderOffset: mins }); NotificationService.autoScheduleFromTimetable(); }}
                   className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all ${
                     notifConfig.classReminderOffset === mins
                       ? 'bg-primary text-primary-foreground shadow-sm'

@@ -69,8 +69,17 @@ export const useAuthStore = create<AuthState>()(
         }),
 
       logout: () => {
-        Preferences.remove({ key: "attendx-auth" });
-        localStorage.removeItem("attendx-auth");
+        const keysToRemove = [
+          'attendx-auth',
+          'attendx-attendance-cache',
+          'attendx-api-cache',
+          'attendx-assignments',
+          'attendx-sync-storage'
+        ];
+        keysToRemove.forEach(k => {
+          Preferences.remove({ key: k }).catch(() => {});
+          localStorage.removeItem(k);
+        });
         set({
           user: null,
           accessToken: null,

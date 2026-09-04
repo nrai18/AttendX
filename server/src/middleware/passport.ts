@@ -1,6 +1,7 @@
-import passport from "passport";
+﻿import passport from "passport";
 import { Strategy as GoogleStrategy } from "passport-google-oauth20";
 import dotenv from "dotenv";
+import { EmailService } from "../services/email.service";
 
 dotenv.config();
 
@@ -23,22 +24,36 @@ passport.use(
         // Import Prisma directly from our lib to ensure driver adapter is used
         const { prisma } = require("../lib/prisma");
         
-        // Upsert User
-        const user = await prisma.user.upsert({
-          where: { email },
-          update: {
-            googleId: profile.id,
-            name: profile.displayName || profile.name?.givenName || "Student",
-            avatarUrl: profile.photos?.[0]?.value || null,
-          },
-          create: {
-            email,
-            googleId: profile.id,
-            name: profile.displayName || profile.name?.givenName || "Student",
-            avatarUrl: profile.photos?.[0]?.value || null,
-            role: "student",
-          }
-        });
+        const name = profile.displayName || profile.name?.givenName || "Student";
+        const avatarUrl = profile.photos?.[0]?.value || `https://api.dicebear.com/7.x/notionists/svg?seed=${encodeURIComponent(name)}`;
+
+        let user = await prisma.user.findUnique({ where: { email } });
+        
+        if (!user) {
+          // New User
+          user = await prisma.user.create({
+            data: {
+              email,
+              googleId: profile.id,
+              name,
+              avatarUrl,
+              role: "student",
+            }
+          });
+          
+          // Fire welcome email asynchronously
+          EmailService.sendWelcomeEmail(user.email, user.name);
+        } else {
+          // Existing User - just update Google info
+          user = await prisma.user.update({
+            where: { id: user.id },
+            data: {
+              googleId: profile.id,
+              // Only update avatar if they didn't have one
+              avatarUrl: user.avatarUrl ? user.avatarUrl : avatarUrl,
+            }
+          });
+        }
 
         return done(null, user);
       } catch (error) {

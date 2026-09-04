@@ -35,8 +35,13 @@ export const HardwareBackButtonHandler = () => {
       const currentPath = locationRef.current;
       
       // If we are on the main landing/home pages, exit the app
-      if (currentPath === "/today" || currentPath === "/login" || currentPath === "/") {
+      if (currentPath === "/today" || currentPath === "/") {
         await CapacitorApp.minimizeApp();
+        return;
+      }
+      
+      if (currentPath === "/login" || currentPath === "/signup") {
+        navigate("/", { replace: true });
         return;
       }
 

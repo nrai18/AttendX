@@ -129,7 +129,7 @@ export const LoginPage: React.FC = () => {
       <Button 
         variant="ghost" 
         onClick={() => navigate("/")}
-        className="absolute top-4 left-4 md:top-8 md:left-8 flex items-center gap-2 text-muted-foreground hover:text-foreground z-20"
+        className="absolute left-4 md:left-8 flex items-center gap-2 text-muted-foreground hover:text-foreground z-20" style={{ top: "calc(env(safe-area-inset-top) + 16px)" }}
       >
         <ArrowRight className="w-4 h-4 rotate-180" />
         Back

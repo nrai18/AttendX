@@ -234,7 +234,7 @@ export const LinkedDevicesModal: React.FC<LinkedDevicesProps> = ({ isOpen, onClo
             className="w-full h-full sm:h-auto sm:max-h-[85vh] sm:max-w-md bg-muted/30 sm:rounded-2xl flex flex-col overflow-hidden shadow-2xl border-x-0 sm:border border-border"
           >
             {/* Header */}
-            <div className="flex items-center gap-4 px-4 py-3 bg-card border-b border-border shrink-0">
+            <div className="flex items-center gap-4 px-4 pb-3 bg-card border-b border-border shrink-0" style={{ paddingTop: "calc(env(safe-area-inset-top) + 12px)" }}>
               <button onClick={onClose} className="w-8 h-8 flex items-center justify-center -ml-1 rounded-full hover:bg-accent transition-colors">
                 <X className="w-5 h-5 text-foreground" />
               </button>

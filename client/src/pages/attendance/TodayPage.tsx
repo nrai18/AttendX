@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+﻿import React, { useState, useEffect } from "react";
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { Capacitor } from '@capacitor/core';
 import { Loader2, CheckCircle2, XCircle, AlertCircle, PartyPopper, BookOpen, Palmtree, Timer, TrendingUp, TrendingDown, Plus, MessageSquare, Sparkles, ChevronRight, ChevronLeft, X, Trash2 } from "lucide-react";
@@ -96,60 +96,60 @@ export const TodayPage = () => {
 
   const getHolidayAnimation = (activeEvent: any) => {
     let animType: any = "full_day_off";
-    let animMsg = "Congratulations on a full day off! 🎉🥳";
+    let animMsg = "Congratulations on a full day off! ðŸŽ‰ðŸ¥³";
 
     if (activeEvent?.title) {
       const title = activeEvent.title.toLowerCase();
       if (title.includes("diwali") || title.includes("deepavali")) {
-        animType = "diwali"; animMsg = "Lighting candles & firecrackers for Diwali! 🪔✨";
+        animType = "diwali"; animMsg = "Lighting candles & firecrackers for Diwali! ðŸª”âœ¨";
       } else if (title.includes("republic")) {
-        animType = "republic_day"; animMsg = "Happy Republic Day! 🇮🇳";
+        animType = "republic_day"; animMsg = "Happy Republic Day! ðŸ‡®ðŸ‡³";
       } else if (title.includes("independence")) {
-        animType = "independence_day"; animMsg = "Happy Independence Day! 🇮🇳✨";
+        animType = "independence_day"; animMsg = "Happy Independence Day! ðŸ‡®ðŸ‡³âœ¨";
       } else if (title.includes("christmas eve")) {
-        animType = "christmas_eve"; animMsg = "Christmas Eve! 🎄✨";
+        animType = "christmas_eve"; animMsg = "Christmas Eve! ðŸŽ„âœ¨";
       } else if (title.includes("christmas")) {
-        animType = "christmas"; animMsg = "Santa Claus is here! Merry Christmas! 🎅🎄";
+        animType = "christmas"; animMsg = "Santa Claus is here! Merry Christmas! ðŸŽ…ðŸŽ„";
       } else if (title.includes("bakrid") || title.includes("zuha")) {
-        animType = "bakrid"; animMsg = "Eid al-Adha Mubarak! 🌙✨";
+        animType = "bakrid"; animMsg = "Eid al-Adha Mubarak! ðŸŒ™âœ¨";
       } else if (title.includes("bhai duj")) {
-        animType = "bhai_duj"; animMsg = "Happy Bhai Duj! ✨";
+        animType = "bhai_duj"; animMsg = "Happy Bhai Duj! âœ¨";
       } else if (title.includes("buddha") || title.includes("purnima")) {
-        animType = "buddha_purnima"; animMsg = "Happy Buddha Purnima! ☸️🕊️";
+        animType = "buddha_purnima"; animMsg = "Happy Buddha Purnima! â˜¸ï¸ðŸ•Šï¸";
       } else if (title.includes("dussehra")) {
-        animType = "dussehra"; animMsg = "Happy Dussehra! 🏹✨";
+        animType = "dussehra"; animMsg = "Happy Dussehra! ðŸ¹âœ¨";
       } else if (title.includes("eid") || title.includes("id-ul") || title.includes("id-e") || title.includes("fitr")) {
-        animType = "eid"; animMsg = "Eid special! Eid Mubarak! 🌙🕌";
+        animType = "eid"; animMsg = "Eid special! Eid Mubarak! ðŸŒ™ðŸ•Œ";
       } else if (title.includes("good friday")) {
-        animType = "good_friday"; animMsg = "Blessed Good Friday! ✝️🕊️";
+        animType = "good_friday"; animMsg = "Blessed Good Friday! âœï¸ðŸ•Šï¸";
       } else if (title.includes("holi") || title.includes("dolyatra")) {
-        animType = "holi"; animMsg = "Happy Holi! 🎨";
+        animType = "holi"; animMsg = "Happy Holi! ðŸŽ¨";
       } else if (title.includes("makar sankranti")) {
-        animType = "makar_sankranti"; animMsg = "Happy Makar Sankranti! 🪁✨";
+        animType = "makar_sankranti"; animMsg = "Happy Makar Sankranti! ðŸªâœ¨";
       } else if (title.includes("new year")) {
-        animType = "new_year"; animMsg = "Happy New Year! 🎉✨";
+        animType = "new_year"; animMsg = "Happy New Year! ðŸŽ‰âœ¨";
       } else if (title.includes("pongal")) {
-        animType = "pongal"; animMsg = "Happy Pongal! 🌾✨";
+        animType = "pongal"; animMsg = "Happy Pongal! ðŸŒ¾âœ¨";
       } else if (title.includes("ram navami")) {
-        animType = "ram_navami"; animMsg = "Happy Ram Navami! 🏹";
+        animType = "ram_navami"; animMsg = "Happy Ram Navami! ðŸ¹";
       } else if (title.includes("maha shivaratri") || title.includes("shivaratri")) {
-        animType = "maha_shivaratri"; animMsg = "Happy Maha Shivaratri! 🕉️✨";
+        animType = "maha_shivaratri"; animMsg = "Happy Maha Shivaratri! ðŸ•‰ï¸âœ¨";
       } else if (title.includes("mahavir")) {
-        animType = "mahavir_jayanti"; animMsg = "Happy Mahavir Jayanti! 🪷";
+        animType = "mahavir_jayanti"; animMsg = "Happy Mahavir Jayanti! ðŸª·";
       } else if (title.includes("milad") || title.includes("nabi")) {
-        animType = "milad_un_nabi"; animMsg = "Milad-Un-Nabi Mubarak! 🌙✨";
+        animType = "milad_un_nabi"; animMsg = "Milad-Un-Nabi Mubarak! ðŸŒ™âœ¨";
       } else if (title.includes("rakshabandhan") || title.includes("raksha bandhan")) {
-        animType = "rakshabandhan"; animMsg = "Happy Raksha Bandhan! ✨";
+        animType = "rakshabandhan"; animMsg = "Happy Raksha Bandhan! âœ¨";
       } else if (title.includes("gandhi")) {
-        animType = "gandhi_jayanti"; animMsg = "Happy Gandhi Jayanti! 👓";
+        animType = "gandhi_jayanti"; animMsg = "Happy Gandhi Jayanti! ðŸ‘“";
       } else if (title.includes("ganesh") || title.includes("vinayaka")) {
-        animType = "ganesh_chaturthi"; animMsg = "Happy Ganesh Chaturthi! 🐘✨";
+        animType = "ganesh_chaturthi"; animMsg = "Happy Ganesh Chaturthi! ðŸ˜âœ¨";
       } else if (title.includes("nanak") || title.includes("gurpurab")) {
-        animType = "guru_nanak"; animMsg = "Happy Gurpurab! 🛕";
+        animType = "guru_nanak"; animMsg = "Happy Gurpurab! ðŸ›•";
       } else if (title.includes("janmashtami")) {
-        animType = "janmashtami"; animMsg = "Happy Krishna Janmashtami! 🦚";
+        animType = "janmashtami"; animMsg = "Happy Krishna Janmashtami! ðŸ¦š";
       } else if (title.includes("muharram")) {
-        animType = "muharram"; animMsg = "Muharram special 🕌";
+        animType = "muharram"; animMsg = "Muharram special ðŸ•Œ";
       }
     }
     return { animType, animMsg };
@@ -400,7 +400,7 @@ export const TodayPage = () => {
 
     // Trigger Popup Animation
     if (status === "absent") {
-      triggerAttendancePopup("crying", "Attendance Dropped! 😭");
+      triggerAttendancePopup("crying", "Attendance Dropped! ðŸ˜­");
     } else if (status === "present" || status === "medical" || status === "od") {
       const { overallPercentage, totalAttended, totalClasses } = useAttendanceStore.getState();
       const targetPct = useAuthStore.getState().user?.targetAttendance ?? 75;
@@ -418,9 +418,9 @@ export const TodayPage = () => {
       const newPercentage = newClasses > 0 ? (newAttended / newClasses) * 100 : 0;
       
       if (overallPercentage < targetPct && newPercentage >= targetPct) {
-        triggerAttendancePopup("target_hit", `Target ${targetPct}% Touched! 🎯`);
+        triggerAttendancePopup("target_hit", `Target ${targetPct}% Touched! ðŸŽ¯`);
       } else {
-        triggerAttendancePopup("thumbs_up", "Awesome! Marked Present 👍");
+        triggerAttendancePopup("thumbs_up", "Awesome! Marked Present ðŸ‘");
       }
     } else if (status === "off" || status === "cancelled") {
       const allOthersOff = updatedAgenda.every(a => a.status === "off" || a.status === "cancelled");
@@ -428,7 +428,7 @@ export const TodayPage = () => {
         const { animType, animMsg } = getHolidayAnimation(activeEvent);
         triggerAttendancePopup(animType, animMsg);
       } else {
-        triggerAttendancePopup("off_class", "Yay! Off class today! 🎈🛌");
+        triggerAttendancePopup("off_class", "Yay! Off class today! ðŸŽˆðŸ›Œ");
       }
     }
 
@@ -548,7 +548,7 @@ export const TodayPage = () => {
   const adjustedDate = new Date(displayDate.getTime() + userTimezoneOffset);
 
   return (
-    <div className="p-4 md:p-8 space-y-6 max-w-4xl mx-auto w-full pb-24 md:pb-8">
+    <div className="p-4 md:p-8 space-y-6 max-w-4xl mx-auto w-full pb-32 md:pb-8">
       
       <HolidayGreetingOverlay
         isOpen={showGreetingOverlay}
@@ -648,7 +648,7 @@ export const TodayPage = () => {
           <div>
             {isBirthday && (
               <div className="mb-4 bg-gradient-to-r from-amber-500/20 to-orange-500/20 border border-amber-500/30 rounded-2xl p-4 flex items-center gap-4">
-                <div className="text-3xl">🎂</div>
+                <div className="text-3xl">ðŸŽ‚</div>
                 <div>
                   <h3 className="font-bold text-amber-500">Happy Birthday, {user?.name?.split(' ')[0]}!</h3>
                   <p className="text-sm text-foreground/80">Hope you have a fantastic day today!</p>
@@ -727,7 +727,7 @@ export const TodayPage = () => {
                 if (HOLIDAY_ASSETS[animType as AnimationType]) {
                   return <HolidayIconRenderer src={HOLIDAY_ASSETS[animType as AnimationType] as string} alt="Holiday Icon" className="w-7 h-7 drop-shadow-sm" />;
                 }
-                return ["midsem", "endsem", "exam"].includes((activeEvent.eventType || "").toLowerCase()) ? "📝" : "🎉";
+                return ["midsem", "endsem", "exam"].includes((activeEvent.eventType || "").toLowerCase()) ? "ðŸ“" : "ðŸŽ‰";
               })()}
             </div>
             <div>
@@ -741,7 +741,7 @@ export const TodayPage = () => {
             </div>
           </div>
           <div className="text-xs font-medium text-muted-foreground">
-            📌 Event highlighted for today. Use <span className="font-bold text-foreground">Mark Full Day Off</span> if classes are suspended.
+            ðŸ“Œ Event highlighted for today. Use <span className="font-bold text-foreground">Mark Full Day Off</span> if classes are suspended.
           </div>
         </div>
       )}
@@ -813,7 +813,7 @@ export const TodayPage = () => {
                   <div className="flex items-center gap-3 mt-1.5 text-xs text-muted-foreground font-medium flex-wrap">
                     <span className="bg-muted px-2 py-0.5 rounded text-foreground font-mono shrink-0">{item.startTime} - {item.endTime}</span>
                     <span className="uppercase tracking-wide font-semibold shrink-0">{item.slotType}</span>
-                    {item.room && <span className="shrink-0">• Room {item.room}</span>}
+                    {item.room && <span className="shrink-0">â€¢ Room {item.room}</span>}
                   </div>
                 </div>
               </div>
@@ -967,4 +967,5 @@ export const TodayPage = () => {
     </div>
   );
 };
+
 

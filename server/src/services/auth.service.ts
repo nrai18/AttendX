@@ -1,4 +1,4 @@
-import { prisma } from "../lib/prisma";
+﻿import { prisma } from "../lib/prisma";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import { generateAccessToken, generateRefreshToken, verifyRefreshToken } from "../utils/jwt";
@@ -41,8 +41,11 @@ export class AuthService {
         email: normalizedEmail,
         passwordHash,
         name: data.name,
+        avatarUrl: `https://api.dicebear.com/7.x/notionists/svg?seed=${encodeURIComponent(data.name)}`,
       },
     });
+
+    EmailService.sendWelcomeEmail(user.email, user.name);
 
     return this.generateTokensForOAuth(user, req);
   }
@@ -90,9 +93,11 @@ export class AuthService {
           email,
           googleId: payload.sub,
           name: payload.name || "User",
-          avatarUrl: payload.picture || null,
+          avatarUrl: payload.picture || `https://api.dicebear.com/7.x/notionists/svg?seed=${encodeURIComponent(payload.name || "User")}`,
         },
       });
+
+      EmailService.sendWelcomeEmail(user.email, user.name);
     } else {
       // Sync Google data if missing
       const updates: any = {};
@@ -251,3 +256,6 @@ export class AuthService {
   }
 
 }
+
+
+

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+﻿import React, { useEffect, useState } from "react";
 import { format, isPast, isToday } from "date-fns";
 import { useAssignmentStore } from "../../stores/assignmentStore";
 import { Plus, Check, Clock, AlertCircle } from "lucide-react";
@@ -14,8 +14,8 @@ export function AssignmentsPage() {
   }, [fetchAssignments]);
 
   return (
-    <div className="min-h-screen bg-neutral-900 text-white pb-24">
-      <header className="pt-12 pb-6 px-6 bg-neutral-900 sticky top-0 z-10 border-b border-white/10">
+    <div className="min-h-screen bg-background text-foreground pb-32">
+      <header className="pt-12 pb-6 px-6 bg-background/95 backdrop-blur-md sticky top-0 z-10 border-b border-border">
         <div className="flex justify-between items-center">
           <h1 className="text-3xl font-bold">Assignments</h1>
           <button 
@@ -29,7 +29,7 @@ export function AssignmentsPage() {
 
       <main className="p-6 space-y-4">
         {assignments.length === 0 ? (
-          <div className="text-center text-neutral-400 py-12">
+          <div className="text-center text-muted-foreground py-12">
             <Clock size={48} className="mx-auto mb-4 opacity-50" />
             <p>No assignments found.</p>
             <p className="text-sm">Tap + to add your first deadline.</p>
@@ -38,23 +38,23 @@ export function AssignmentsPage() {
           assignments.map((assignment) => (
             <div 
               key={assignment.id} 
-              className={`p-4 rounded-xl border ${assignment.completions?.length ? "bg-green-900/20 border-green-500/30" : "bg-neutral-800 border-white/10"} flex items-start gap-4`}
+              className={`p-4 rounded-xl border ${assignment.completions?.length ? "bg-green-900/20 border-green-500/30" : "bg-card border-border"} flex items-start gap-4`}
             >
               <button 
                 onClick={() => toggleCompletion(assignment.id)}
                 className={`mt-1 flex-shrink-0 w-6 h-6 rounded-full border flex items-center justify-center
-                  ${assignment.completions?.length ? "bg-green-500 border-green-500" : "border-neutral-500"}
+                  ${assignment.completions?.length ? "bg-green-500 border-green-500" : "border-muted-foreground/50"}
                 `}
               >
-                {assignment.completions?.length ? <Check size={14} className="text-white" /> : null}
+                {assignment.completions?.length ? <Check size={14} stroke="white" /> : null}
               </button>
               
               <div className="flex-1">
-                <h3 className={`font-semibold ${assignment.completions?.length ? "text-neutral-400 line-through" : "text-white"}`}>
+                <h3 className={`font-semibold ${assignment.completions?.length ? "text-muted-foreground line-through" : "text-foreground"}`}>
                   {assignment.title}
                 </h3>
                 {assignment.description && (
-                  <p className="text-sm text-neutral-400 mt-1">{assignment.description}</p>
+                  <p className="text-sm text-muted-foreground mt-1">{assignment.description}</p>
                 )}
                 <div className="flex items-center gap-2 mt-2 text-xs font-medium text-violet-400">
                   <Clock size={12} />
@@ -76,3 +76,6 @@ export function AssignmentsPage() {
     </div>
   );
 }
+
+
+

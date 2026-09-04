@@ -177,6 +177,11 @@ export const SubjectsPage = () => {
       }
     } catch (error) {
       console.error("Failed to fetch subjects:", error);
+      const cache = useCacheStore.getState().subjects;
+      if (cache) {
+        setSubjects(cache.subjects || []);
+        setSubjectStats(cache.stats || []);
+      }
     } finally {
       setIsLoading(false);
     }

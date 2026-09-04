@@ -1,4 +1,4 @@
-import { Resend } from 'resend';
+﻿import { Resend } from 'resend';
 import jwt from 'jsonwebtoken';
 
 const resend = new Resend(process.env.RESEND_API_KEY || 're_123456789');
@@ -48,7 +48,7 @@ export class EmailService {
               <a href="${APP_URL}">Website</a>
               <a href="${APP_URL}/download">Download App</a>
             </div>
-            <p style="margin-top: 20px;">� ${new Date().getFullYear()} AttendX. All rights reserved.</p>
+            <p style="margin-top: 20px;">ï¿½ ${new Date().getFullYear()} AttendX. All rights reserved.</p>
           </div>
         </div>
       </body>
@@ -57,7 +57,7 @@ export class EmailService {
 
     try {
       await resend.emails.send({
-        from: 'AttendX <welcome@attendx.app>',
+        from: process.env.RESEND_FROM_EMAIL || 'AttendX <welcome@attendx.app>',
         to: email,
         subject: 'Welcome to AttendX! ??',
         html,
@@ -111,7 +111,7 @@ export class EmailService {
 
     try {
       await resend.emails.send({
-        from: 'AttendX Security <security@attendx.app>',
+        from: process.env.RESEND_FROM_EMAIL || 'AttendX Security <security@attendx.app>',
         to: email,
         subject: 'Reset your AttendX password',
         html,
@@ -121,3 +121,4 @@ export class EmailService {
     }
   }
 }
+

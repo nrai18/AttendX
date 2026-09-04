@@ -1,4 +1,4 @@
-import { LocalNotifications } from '@capacitor/local-notifications';
+﻿import { LocalNotifications } from '@capacitor/local-notifications';
 import { Capacitor } from '@capacitor/core';
 import { mutePhone, unmutePhone } from '../lib/ringer';
 import { useAttendanceStore } from '../stores/attendanceStore';
@@ -48,7 +48,7 @@ export class NotificationService {
           actions: [
             {
               id: 'UNMUTE_ACTION',
-              title: '🔊 Unmute Phone',
+              title: 'ðŸ”Š Unmute Phone',
               foreground: false,
               destructive: false
             }
@@ -59,7 +59,7 @@ export class NotificationService {
           actions: [
             {
               id: 'MUTE_ACTION',
-              title: '🔕 Mute Phone for Class',
+              title: 'ðŸ”• Mute Phone for Class',
               foreground: false,
               destructive: false
             }
@@ -75,7 +75,7 @@ export class NotificationService {
         const id = action.notification.id;
         // 8800 series is used for daily/weekly/monthly summaries
         if (id >= 8800 && id < 8900) {
-           window.location.href = '/report';
+           window.location.href = '/semester';
            return;
         }
       }
@@ -124,7 +124,7 @@ export class NotificationService {
           id: Math.floor(Math.random() * 900000) + 100000,
           title: `Upcoming: ${classTitle}`,
           body: `Starts at ${timeStr} ${location ? `| ${location}` : ''}`,
-          largeBody: `📚 Class: ${classTitle}\n⏰ Time: ${timeStr} - ${endTimeStr || 'TBD'}\n📍 Room: ${location || 'N/A'}\n\nTap the action button below to instantly mute your phone for the duration of this class.`,
+          largeBody: `ðŸ“š Class: ${classTitle}\nâ° Time: ${timeStr} - ${endTimeStr || 'TBD'}\nðŸ“ Room: ${location || 'N/A'}\n\nTap the action button below to instantly mute your phone for the duration of this class.`,
           summaryText: "Class Reminder",
           smallIcon: "ic_stat_adobe",
           iconColor: "#6366F1", 
@@ -152,7 +152,7 @@ export class NotificationService {
           id: 8888,
           title: `Class in Session`,
           body: `Phone is silenced until ${timeStr}`,
-          largeBody: `🔕 Current Class: ${className}\n\nYour phone has been manually muted via AttendX. It will restore to normal volume automatically at ${timeStr}, or you can unmute manually below.`,
+          largeBody: `ðŸ”• Current Class: ${className}\n\nYour phone has been manually muted via AttendX. It will restore to normal volume automatically at ${timeStr}, or you can unmute manually below.`,
           summaryText: "Do Not Disturb Active",
           smallIcon: "ic_stat_adobe",
           iconColor: "#EF4444", 
@@ -174,16 +174,16 @@ export class NotificationService {
     }
   }
 
-  static async scheduleHolidayNotification(holidayName: string, date: Date) {
+  static async scheduleHolidayNotification(holidayName: string | undefined, date: Date, customMessage: string = "No classes scheduled! Enjoy your day off.") {
     if (!Capacitor.isNativePlatform()) return;
 
     await LocalNotifications.schedule({
       notifications: [
         {
           id: Math.floor(Math.random() * 10000),
-          title: "Holiday Today: " + holidayName,
-          body: "No classes scheduled! Enjoy your day off.",
-          largeBody: `🎉 Holiday: ${holidayName}\n\nThere are no classes scheduled for today. Take a break, relax, and enjoy your time off!`,
+          title: (holidayName || "").toLowerCase().includes("holiday") ? "Holiday Today: " + holidayName : "Event Today: " + holidayName,
+          body: customMessage,
+          largeBody: "✨ " + holidayName + "\n\n" + customMessage,
           summaryText: "Holiday Event",
           smallIcon: "ic_stat_adobe",
           iconColor: "#10B981", 
@@ -203,7 +203,7 @@ export class NotificationService {
           id: Math.floor(Math.random() * 10000),
           title: "Happy Birthday!",
           body: `Wish ${name} a great birthday today!`,
-          largeBody: `🎂 It's ${name}'s birthday today!\n\nDon't forget to send them your best wishes and make their day special!`,
+          largeBody: `ðŸŽ‚ It's ${name}'s birthday today!\n\nDon't forget to send them your best wishes and make their day special!`,
           summaryText: "Birthday Event",
           smallIcon: "ic_stat_adobe",
           iconColor: "#F59E0B", 
@@ -231,7 +231,7 @@ export class NotificationService {
       const allEvents = [...events];
       
       const pending = await LocalNotifications.getPending();
-      const toCancel = pending.notifications.filter(n => n.id !== 8888);
+      const toCancel = pending.notifications.filter(n => n.id >= 100000); // Only cancel timetable classes
       if (toCancel.length > 0) {
         await LocalNotifications.cancel({ notifications: toCancel });
       }
@@ -249,13 +249,40 @@ export class NotificationService {
           return isSameDay(eDate, currentDay);
         });
 
-        const holidayEvent = dayEvents.find(e => e.type === 'HOLIDAY' || e.type === 'RESTRICTED' || e.title?.toLowerCase().includes("holiday"));
+        let isClassOff = false;
+        let specialTitle: string | undefined = undefined;
+        let specialMessage: string | undefined = undefined;
+        
+        for (const e of dayEvents) {
+          const lowerTitle = e.title?.toLowerCase() || "";
+          
+          if (e.type === 'HOLIDAY' || lowerTitle.includes('holiday')) {
+            if (e.type !== 'RESTRICTED' && !lowerTitle.includes('restricted')) {
+              isClassOff = true;
+              specialTitle = e.title;
+              specialMessage = "No classes scheduled! Enjoy your day off.";
+            }
+          } else if (lowerTitle.includes('midsem') && lowerTitle.includes('exam')) {
+            isClassOff = true;
+            specialTitle = e.title;
+            specialMessage = "All the best for your exams!";
+          } else if (lowerTitle.includes('endsem') && lowerTitle.includes('exam')) {
+            isClassOff = true;
+            specialTitle = e.title;
+            specialMessage = "All the best for your exams!";
+          } else if (lowerTitle.includes('vacation')) {
+            isClassOff = true;
+            specialTitle = e.title;
+            specialMessage = "Enjoy your midsem/endsem vacation!";
+          }
+        }
+
         const birthdayEvent = dayEvents.find(e => e.title?.toLowerCase().includes("birthday"));
 
-        if (holidayEvent) {
+        if (isClassOff && specialTitle) {
           const notifyTime = setHours(currentDay, 8);
           if (notifyTime.getTime() > Date.now()) {
-            await this.scheduleHolidayNotification(holidayEvent.title, notifyTime);
+            await this.scheduleHolidayNotification(specialTitle, notifyTime, specialMessage);
             scheduledCount++;
           }
           continue; 
@@ -321,7 +348,7 @@ export class NotificationService {
                   id: Math.floor(Math.random() * 900000) + 100000,
                   title: "Done for the day!",
                   body: "All classes have ended. Enjoy your evening!",
-                  largeBody: "🎉 All classes for today have concluded. You can pack up and enjoy the rest of your day. See you tomorrow!",
+                  largeBody: "ðŸŽ‰ All classes for today have concluded. You can pack up and enjoy the rest of your day. See you tomorrow!",
                   schedule: { at: maxEndTimeObj, allowWhileIdle: true },
                   summaryText: "End of Day",
                   smallIcon: "ic_stat_adobe",
@@ -417,7 +444,7 @@ export class NotificationService {
                 id: 8800 + i,
                 title: "Tomorrow's Briefing",
                 body: "You have classes coming up tomorrow.",
-                largeBody: "🎒 Prepare for Tomorrow\n\nYou have classes scheduled. Tap to review your timetable, check for assignments, and pack your bag!",
+                largeBody: "ðŸŽ’ Prepare for Tomorrow\n\nYou have classes scheduled. Tap to review your timetable, check for assignments, and pack your bag!",
                 summaryText: "Academic Update",
                 smallIcon: "ic_stat_adobe",
             iconColor: "#FF0000",
@@ -450,10 +477,10 @@ export class NotificationService {
              return eDate >= notifyDate && eDate < addDays(notifyDate, 7);
            });
 
-           let dynamicText = "\uD83D\uDCC8 Weekly Attendance Review\n\nTap to see how you performed this past week and check your overall attendance health.";
+           let dynamicText = "📈 Weekly Attendance Review\n\nTap to see how you performed this past week and check your overall attendance health.";
            if (weekEvents.length > 0) {
-              const eventTitles = weekEvents.slice(0, 3).map(e => "� " + e.title).join("\n");
-              dynamicText = "\uD83D\uDCC8 Weekly Review:\n\nTap to see how you did this past week, and prepare for upcoming events like:\n" + eventTitles;
+              const eventTitles = weekEvents.slice(0, 3).map(e => "📅 " + e.title).join("\n");
+              dynamicText = "📅 Weekly Review:\n\nTap to see how you did this past week, and prepare for upcoming events like:\n" + eventTitles;
            }
 
            notificationsToSchedule.push({
@@ -486,7 +513,7 @@ export class NotificationService {
               id: 8820 + i,
               title: "Monthly Attendance Summary",
               body: "Your monthly review is ready! See how well you did this month.",
-              largeBody: "📈 Monthly Summary\n\nYour overall attendance is currently at " + overallPct + "%. Tap to see your detailed breakdown and performance across all subjects.",
+              largeBody: "ðŸ“ˆ Monthly Summary\n\nYour overall attendance is currently at " + overallPct + "%. Tap to see your detailed breakdown and performance across all subjects.",
               summaryText: "Academic Update",
               smallIcon: "ic_stat_adobe",
             iconColor: "#FF0000",
@@ -506,3 +533,5 @@ export class NotificationService {
     }
   }
 }
+
+

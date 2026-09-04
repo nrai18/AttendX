@@ -1,5 +1,6 @@
 import axios from "axios";
 import { useAuthStore } from "../stores/authStore";
+import { useOfflineStore } from "../stores/offlineStore";
 
 export const API_BASE_URL = import.meta.env.VITE_API_URL || "/api";
 
@@ -165,8 +166,32 @@ api.interceptors.response.use(
       }
     }
 
-    // Global Error Interceptor for non-401s and non-429s (Peer Sync recovery)
+        // Global Error Interceptor for non-401s and non-429s (Peer Sync recovery)
     if (error.message === "Network Error" || [502, 503, 504].includes(error.response?.status)) {
+      
+      // Offline mutation interceptor
+      if (originalRequest && !originalRequest.headers['X-Offline-Retry'] &&
+          ['post', 'put', 'delete', 'patch'].includes(originalRequest.method?.toLowerCase()) && 
+          !originalRequest.url?.includes('/auth/') &&
+          !originalRequest.url?.includes('/sync/')) {
+          
+          let parsedData = undefined;
+          try { parsedData = originalRequest.data ? JSON.parse(originalRequest.data) : undefined; } catch(e) {}
+
+          useOfflineStore.getState().enqueue({
+             method: originalRequest.method,
+             url: originalRequest.url,
+             data: parsedData,
+             headers: originalRequest.headers
+          });
+          
+          import("sonner").then(({ toast }) => {
+            toast.success("Saved offline. Will sync when reconnected.", { id: "offline-save" });
+          });
+          
+          return Promise.resolve({ data: { id: 'temp-' + Date.now(), _queued: true } });
+      }
+
       import("sonner").then(({ toast }) => {
         toast.info("Waking up the cloud server... Please wait a moment.", {
           id: "server-wakeup",

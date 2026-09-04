@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+﻿import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Pencil, Clock, ChevronDown, CheckCircle2, Lock, ShieldAlert } from 'lucide-react';
 import { useAuthStore } from '../../stores/authStore';
@@ -112,7 +112,7 @@ export const EditProfile: React.FC<EditProfileProps> = ({ isOpen, onClose, initi
     return 'https://api.dicebear.com/7.x/notionists/svg?seed=user';
   };
 
-  const currentAvatar = formData.avatarUrl || getDefaultAvatar(formData.gender);
+  const currentAvatar = (formData.avatarUrl && formData.avatarUrl !== "null") ? formData.avatarUrl : getDefaultAvatar(formData.gender);
 
   const handleSave = async () => {
     let pwData = undefined;
@@ -164,9 +164,9 @@ export const EditProfile: React.FC<EditProfileProps> = ({ isOpen, onClose, initi
                     >
                       <div className="w-24 h-24 rounded-full overflow-hidden border-4 border-primary/20 bg-muted">
                         <img 
-                          src={formData.avatarUrl || "https://api.dicebear.com/7.x/notionists/svg?seed=Felix"} 
+                          src={(formData.avatarUrl && formData.avatarUrl !== "null") ? formData.avatarUrl : "https://api.dicebear.com/7.x/notionists/svg?seed=Felix"} onError={(e) => { e.currentTarget.src = "https://api.dicebear.com/7.x/notionists/svg?seed=Felix"; }} 
                           alt="Avatar Preview" 
-                          className="w-full h-full object-cover" 
+                          className="w-full h-full object-cover" referrerPolicy="no-referrer"
                         />
                       </div>
                       <div className="absolute inset-0 bg-black/40 rounded-full opacity-0 active:opacity-100 transition-opacity flex items-center justify-center">
@@ -438,11 +438,7 @@ export const EditProfile: React.FC<EditProfileProps> = ({ isOpen, onClose, initi
                       onClick={() => setShowAvatarPicker(true)}
                     >
                       <div className="w-36 h-36 rounded-full overflow-hidden shadow-xl ring-4 ring-background border border-border/50 bg-muted">
-                        <img
-                          src={currentAvatar}
-                          alt="Avatar"
-                          className="w-full h-full object-cover"
-                        />
+                        <img src={currentAvatar} onError={(e) => { e.currentTarget.src = "https://api.dicebear.com/7.x/notionists/svg?seed=Felix"; }} alt="Avatar" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                       </div>
                       <div className="absolute inset-0 bg-black/40 rounded-full opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                         <Pencil className="w-8 h-8 text-white" />
@@ -485,3 +481,6 @@ export const EditProfile: React.FC<EditProfileProps> = ({ isOpen, onClose, initi
     </AnimatePresence>
   );
 };
+
+
+

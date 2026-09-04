@@ -81,11 +81,7 @@ export const Sidebar: React.FC = () => {
             className="flex items-center gap-2.5 min-w-0 flex-1 hover:opacity-80 transition-opacity cursor-pointer"
           >
             <div className="w-8 h-8 rounded-full overflow-hidden bg-primary/20 text-primary flex items-center justify-center font-bold text-xs shrink-0">
-              {user?.avatarUrl ? (
-                <img src={user.avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
-              ) : (
-                user?.name?.[0] || "U"
-              )}
+              {user?.avatarUrl && user?.avatarUrl !== "null" ? (<img src={user.avatarUrl} alt="Avatar" className="w-full h-full object-cover" referrerPolicy="no-referrer" onError={(e) => { e.currentTarget.src = "https://api.dicebear.com/7.x/notionists/svg?seed=" + encodeURIComponent(user?.name || "U"); }} />) : (user?.name?.[0] || "U")}
             </div>
             <div className="min-w-0 flex-1">
               <p className="text-xs font-medium text-foreground truncate group-hover:text-primary transition-colors">{user?.name}</p>

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+﻿import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import { 
   Moon,
@@ -102,7 +102,7 @@ export const LandingPage: React.FC = () => {
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
             </span>
-            AttendX 1.0 is live at IIITU
+            AttendX 2.4.4 is live at IIITU
           </div>
           
           <h1 className="text-5xl md:text-7xl font-extrabold tracking-tight mb-8 bg-gradient-to-b from-foreground to-foreground/60 bg-clip-text text-transparent">
@@ -144,7 +144,7 @@ export const LandingPage: React.FC = () => {
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
             </span>
-            AttendX 1.0 is live at IIITU
+            AttendX 2.4.4 is live at IIITU
           </div>
           
           <h1 className="text-[2.8rem] font-extrabold tracking-tight leading-[1.05] mb-4">
@@ -166,7 +166,7 @@ export const LandingPage: React.FC = () => {
               <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Raina" className="w-8 h-8 rounded-full border-2 border-background bg-muted" alt="user" />
             </div>
             <div className="flex items-center gap-1 text-yellow-500 text-sm">
-              <span>★</span><span>★</span><span>★</span><span>★</span><span>★</span>
+              <span>â˜…</span><span>â˜…</span><span>â˜…</span><span>â˜…</span><span>â˜…</span>
             </div>
             <p className="text-xs text-muted-foreground font-medium mt-1">Loved by 500+ students</p>
           </div>
@@ -428,11 +428,13 @@ export const LandingPage: React.FC = () => {
             &copy; {new Date().getFullYear()} Naman Rai. Built for IIITU.
           </p>
           <div className="flex gap-6 text-sm text-muted-foreground">
-            <a href="/404" className="hover:text-foreground transition-colors">Privacy</a>
-            <a href="/404" className="hover:text-foreground transition-colors">Terms</a>
+            <Link to="/privacy" className="hover:text-foreground transition-colors">Privacy</Link>
+            <Link to="/terms" className="hover:text-foreground transition-colors">Terms</Link>
           </div>
         </div>
       </footer>
     </div>
   );
 };
+
+

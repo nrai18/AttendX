@@ -1,4 +1,4 @@
-import React from "react";
+﻿import React from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { useSilentRefresh } from "./hooks/useSilentRefresh";
 import { useTheme } from "./hooks/useTheme";
@@ -22,9 +22,9 @@ import { ErrorBoundary } from "./components/common/ErrorBoundary";
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
-  const { isAuthenticated, isLoading } = useAuthStore();
+  const { isAuthenticated, isLoading, _hasHydrated } = useAuthStore();
 
-  if (isLoading) {
+  if (isLoading || !_hasHydrated) {
     return (
       <div className="min-h-screen bg-background text-foreground flex items-center justify-center">
         <Loader2 className="w-8 h-8 animate-spin text-primary" />
@@ -51,6 +51,8 @@ import { Toaster } from "sonner";
 import { useState } from "react";
 
 import { LandingPage } from "./pages/marketing/LandingPage";
+import { PrivacyPage } from "./pages/marketing/PrivacyPage";
+import { TermsPage } from "./pages/marketing/TermsPage";
 
 const RootRoute: React.FC = () => {
   const { isAuthenticated, isLoading, _hasHydrated } = useAuthStore();
@@ -146,6 +148,8 @@ export function App() {
             {/* Auth Routes */}
             <Route path="/login" element={<LoginPage />} />
             <Route path="/signup" element={<SignupPage />} />
+            <Route path="/privacy" element={<PrivacyPage />} />
+            <Route path="/terms" element={<TermsPage />} />
 
             {/* Protected App Routes */}
             <Route
@@ -184,3 +188,6 @@ export function App() {
 }
 
 export default App;
+
+
+

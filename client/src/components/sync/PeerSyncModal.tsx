@@ -265,7 +265,7 @@ export const PeerSyncModal = () => {
               <h3 className="text-lg font-semibold mb-4 text-center">Sync Preview</h3>
               <div className="flex flex-col items-center gap-3 mb-6 bg-muted/30 p-4 rounded-xl border border-border">
                 {reviewData.sender?.avatarUrl && (
-                  <img src={reviewData.sender.avatarUrl} alt="Sender Avatar" className="w-16 h-16 rounded-full object-cover border-2 border-primary/20" />
+                  <img src={reviewData.sender.avatarUrl} alt="Sender Avatar" className="w-16 h-16 rounded-full object-cover border-2 border-primary/20" referrerPolicy="no-referrer" />
                 )}
                 <div className="text-center">
                   <p className="font-medium text-foreground">{reviewData.sender?.name || "Unknown User"}</p>
