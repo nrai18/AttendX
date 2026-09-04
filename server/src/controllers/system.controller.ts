@@ -5,9 +5,39 @@ import fs from "fs";
 export class SystemController {
   static async getUpdateManifest(req: Request, res: Response) {
     const manifest = {
-      latestVersion: "2.4.6",
+      latestVersion: "2.5.0",
       title: "The Sync & Themes Update",
             changelog: [
+        {
+          version: "2.5.0",
+          sizeMb: 31.4,
+          sections: [
+            {
+              title: "What's New",
+              items: [
+                { icon: "🔌", text: "The Offline Engine: Mark attendance offline; auto-syncs when reconnected" },
+                { icon: "📅", text: "Smart Holiday Alarms: Mutes class reminders automatically during exams and holidays" },
+                { icon: "🧠", text: "Intelligent Caching: Calendar and Subject pages load flawlessly without internet" }
+              ]
+            },
+            {
+              title: "Improvements & UI Polish",
+              items: [
+                { icon: "📱", text: "Dynamic Notch Support: Headers no longer overlap with your system status bar" },
+                { icon: "🔙", text: "Hardware Navigation: Physical back button gracefully routes through the app" },
+                { icon: "⚙️", text: "Smart Update History: Only shows features currently installed on your phone" },
+                { icon: "🔔", text: "Instant Rescheduling: Adjusting reminder offsets instantly reprograms OS alarms" }
+              ]
+            },
+            {
+              title: "Bug Fixes",
+              items: [
+                { icon: "👻", text: "Ghost Data Purge: Eradicated aggressive cache leaks when switching accounts" },
+                { icon: "📦", text: "OTA Engine: Upgraded compression to resolve native 'OTA Download Failed' errors" }
+              ]
+            }
+          ]
+        },
         {
           version: "2.4.6",
           sizeMb: 5.1,
@@ -31,19 +61,107 @@ export class SystemController {
           ]
         },
         {
-          version: "2.3.0",
-          sizeMb: 5.0,
+          version: "2.4.5",
+          sizeMb: 30.02,
           sections: [
             {
-              title: "Major Updates",
+              title: "What's New",
               items: [
-                { icon: "📱", text: "Session Management: View and remotely revoke all active devices" },
+                { icon: "✨", text: "3D Immersive Reports: Gorgeous new visualizations for your weekly and monthly stats" },
+                { icon: "📧", text: "Automated Emails: Stunning new welcome emails and secure password reset emails" }
+              ]
+            },
+            {
+              title: "Security & Fixes",
+              items: [
+                { icon: "🛡️", text: "Delete Account: Added a secure, permanent account deletion option in Settings" },
+                { icon: "🔧", text: "Performance: Fixed an infinite polling bug in Linked Devices that choked the server" },
+                { icon: "📱", text: "Smart Notifications: Timetable Alerts and Summary settings now automatically hide based on your frequency choice" }
+              ]
+            }
+          ]
+        },
+        {
+          version: "2.3.0",
+          sizeMb: 15.4,
+          sections: [
+            {
+              title: "What's New",
+              items: [
+                { icon: "🔗", text: "Peer Sync: Securely mirror your timetable or attendance to friends using a 6-digit code" },
+                { icon: "🤖", text: "AI Academic Calendar Import: Upload official calendars and extract holidays directly" },
+                { icon: "💻", text: "Session Management: View and remotely revoke all active devices" },
                 { icon: "🚀", text: "Native App Sharing: Share the AttendX app directly via OS share menu" }
+              ]
+            },
+            {
+              title: "Improvements & Fixes",
+              items: [
+                { icon: "🌓", text: "True Light & Dark Mode: High-contrast light mode and sleek dark mode" },
+                { icon: "🔒", text: "Persistent Sessions: You will no longer be randomly logged out" },
+                { icon: "🧠", text: "Smarter AI Parser: Detects stacked electives for granular control" }
+              ]
+            }
+          ]
+        },
+        {
+          version: "2.2.2",
+          sizeMb: 1.2,
+          sections: [
+            {
+              title: "Quality of Life",
+              items: [
+                { icon: "✉️", text: "Email Developer button now opens your native Gmail app directly" }
+              ]
+            }
+          ]
+        },
+        {
+          version: "2.2.1",
+          sizeMb: 1.2,
+          sections: [
+            {
+              title: "Developer Preview",
+              items: [
+                { icon: "🔔", text: "Testing: Real-time Android push notifications enabled" }
+              ]
+            }
+          ]
+        },
+        {
+          version: "2.2.0",
+          sizeMb: 4.8,
+          sections: [
+            {
+              title: "New Features & Fixes",
+              items: [
+                { icon: "☁️", text: "Cloud Storage Engine: Academic calendars are now permanently backed up to the database" },
+                { icon: "📍", text: "Security Upgrade: Active sessions now request your GPS location upon login" },
+                { icon: "🧹", text: "Smart Clean: Added Auto-Terminate preferences to automatically wipe ghost sessions" },
+                { icon: "📅", text: "Calendar Fix: Multi-day exams (Mid-sem, Fests) now seamlessly span across the calendar rings" },
+                { icon: "⚙️", text: "Notification Engine: Prepared the backend foundation for real-time mobile push alerts" }
+              ]
+            }
+          ]
+        },
+        {
+          version: "2.1.0",
+          sizeMb: 4.5,
+          sections: [
+            {
+              title: "Major Improvements",
+              items: [
+                { icon: "⚡", text: "Peer Sync engine overhauled: Full backups now import 50x faster" },
+                { icon: "🔍", text: "Redesigned 'Active Sessions' UI to accurately track devices and locations" },
+                { icon: "🗑️", text: "App resets now safely purge all physical documents to free up space" },
+                { icon: "💬", text: "New Feedback portal to seamlessly report bugs or request features" },
+                { icon: "🎥", text: "Restored fluid Lottie animations on native mobile landing screens" }
               ]
             }
           ]
         }
-      ]    };
+      ]
+    };
 
     try {
       const updatePath = path.resolve(process.cwd(), "src/uploads/update.zip");

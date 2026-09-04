@@ -169,6 +169,10 @@ const renderDocuments = (type: string) => {
       try {
         const { data } = await api.get("/system/update");
         if (data) {
+          const localVersion = localStorage.getItem("app_version") || "2.2.2";
+          const serverChangelog = data.changelog || [];
+          const index = serverChangelog.findIndex((c: any) => c.version === localVersion);
+          data.changelog = index !== -1 ? serverChangelog.slice(index) : serverChangelog;
           setUpdateManifest(data);
         }
       } catch (err) {
