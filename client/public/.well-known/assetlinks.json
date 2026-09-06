@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.attendx.app",
+      "sha256_cert_fingerprints": [
+        "CD:F6:C1:BC:22:BF:89:18:37:9F:5F:A5:82:CF:93:A1:10:61:A3:5F:DD:00:87:31:0F:AE:88:EC:1E:D4:72:04"
+      ]
+    }
+  }
+]

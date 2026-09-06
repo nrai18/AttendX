@@ -78,51 +78,7 @@ interface Message {
   semesterProjection?: SemesterProjectionPayload;
 }
 
-const FEATURE_CARDS = [
-  {
-    title: "Talk with AI (Voice Mode)",
-    subtitle: "Real-time interactive voice conversation",
-    icon: <Mic className="w-5 h-5 text-fuchsia-500" />,
-    gradient: "from-fuchsia-500/20 via-pink-500/15 to-purple-500/20 border-fuchsia-500/30 hover:border-fuchsia-500/50 hover:shadow-fuchsia-500/10",
-    iconBg: "bg-fuchsia-500/20 text-fuchsia-600 dark:text-fuchsia-300",
-    isVoice: true,
-    query: ""
-  },
-  {
-    title: "75% Attendance & Shortage",
-    subtitle: "55%–75% 'L' Grade vs <55% 'R' Grade rules",
-    icon: <Clock className="w-5 h-5 text-amber-500" />,
-    gradient: "from-amber-500/20 via-orange-500/15 to-yellow-500/20 border-amber-500/30 hover:border-amber-500/50 hover:shadow-amber-500/10",
-    iconBg: "bg-amber-500/20 text-amber-600 dark:text-amber-300",
-    isVoice: false,
-    query: "What are the rules, consequences, and makeup class procedure if attendance is between 55% and 75% under Section 6.4 of IIITUGORD02?"
-  },
-  {
-    title: "9-Day Medical Leave & OD",
-    subtitle: "HoD denominator deductions & On-Duty",
-    icon: <FileText className="w-5 h-5 text-emerald-500" />,
-    gradient: "from-emerald-500/20 via-teal-500/15 to-cyan-500/20 border-emerald-500/30 hover:border-emerald-500/50 hover:shadow-emerald-500/10",
-    iconBg: "bg-emerald-500/20 text-emerald-600 dark:text-emerald-300",
-    isVoice: false,
-    query: "How does the short duration 9-day leave rule work under Section 6.5, and how is On-Duty counted under Section 6.8?"
-  },
-  {
-    title: "Mess Rebate (N - 2) & Curfews",
-    subtitle: "Fee reduction formula & 1st-year rules",
-    icon: <Utensils className="w-5 h-5 text-indigo-500" />,
-    gradient: "from-indigo-500/20 via-violet-500/15 to-blue-500/20 border-indigo-500/30 hover:border-indigo-500/50 hover:shadow-indigo-500/10",
-    iconBg: "bg-indigo-500/20 text-indigo-600 dark:text-indigo-300",
-    isVoice: false,
-    query: "How do I apply for hostel mess reduction under Section 11.17, and what are the 1st year hostel timings under Section 14?"
-  }
-];
 
-const RECENT_PROMPTS = [
-  "What is my current attendance?",
-  "What are my current subjects?",
-  "What is the mandatory 30% passing mark in End-Semester exams?",
-  "Can I get B.Tech with Honors and what is the CGPA cutoff?"
-];
 
 const SEARCH_STAGES = [
   "Searching 47-page IIIT Una Ordinances...",
@@ -149,7 +105,18 @@ export const FloatingChatbot: React.FC = () => {
   const { overallPercentage, targetPercentage, totalAttended, totalClasses, subjects, hasActiveSemester, fetchStats } = useAttendanceStore();
   const user = useAuthStore((state) => state.user);
 
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<Message[]>(() => {
+    try {
+      const saved = localStorage.getItem('attendx_chat_history');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  useEffect(() => {
+    localStorage.setItem('attendx_chat_history', JSON.stringify(messages));
+  }, [messages]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -603,9 +570,9 @@ export const FloatingChatbot: React.FC = () => {
                   <button
                     onClick={() => setMessages([])}
                     className="p-1.5 rounded-xl hover:bg-purple-500/10 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
-                    title="Back to menu"
+                    title="New Chat"
                   >
-                    <ArrowLeft className="w-4 h-4" />
+                    <RotateCcw className="w-4 h-4" />
                   </button>
                 )}
                 <div className="relative">
@@ -673,107 +640,27 @@ export const FloatingChatbot: React.FC = () => {
             {/* Main Content Area */}
             <div className="flex-1 overflow-y-auto">
               {messages.length === 0 ? (
-                // Welcome Screen (Smoothly staggered animated cards)
                 <motion.div 
                   initial="hidden"
                   animate="visible"
                   variants={{
                     hidden: { opacity: 0 },
-                    visible: {
-                      opacity: 1,
-                      transition: { staggerChildren: 0.06 }
-                    }
+                    visible: { opacity: 1 }
                   }}
-                  className="p-5 space-y-5"
+                  className="flex-1 flex flex-col items-center justify-center p-8 text-center space-y-4"
                 >
-                  {/* Greeting Headline */}
-                  <motion.div 
-                    variants={{
-                      hidden: { opacity: 0, y: 10 },
-                      visible: { opacity: 1, y: 0 }
-                    }}
-                    className="space-y-1"
-                  >
-                    <p className="text-xs font-semibold text-purple-600 dark:text-purple-400">
-                      Good Day, {user?.name?.split(" ")[0] || "Student"} 👋
-                    </p>
-                    <h2 className="text-xl font-extrabold tracking-tight text-foreground">
-                      How can I help you today?
-                    </h2>
-                    <p className="text-xs text-muted-foreground leading-relaxed">
-                      Instant, cited answers grounded in IIIT Una's official 47-page UG Ordinances.
-                    </p>
-                  </motion.div>
-
-                  {/* Feature Action Grid (Pastel Glossy Cards) */}
-                  <div className="space-y-2.5">
-                    {FEATURE_CARDS.map((card, idx) => (
-                      <motion.button
-                        key={idx}
-                        variants={{
-                          hidden: { opacity: 0, y: 12 },
-                          visible: { opacity: 1, y: 0 }
-                        }}
-                        onClick={() => {
-                          if (card.isVoice) {
-                            setIsVoiceOpen(true);
-                          } else {
-                            handleSendMessage(card.query);
-                          }
-                        }}
-                        className={`w-full text-left p-3.5 rounded-2xl bg-gradient-to-r ${card.gradient} border shadow-xs transition-all hover:scale-[1.01] active:scale-[0.99] flex items-center justify-between group cursor-pointer`}
-                      >
-                        <div className="flex items-center gap-3 min-w-0">
-                          <div className={`w-10 h-10 rounded-xl ${card.iconBg} flex items-center justify-center shrink-0 shadow-xs`}>
-                            {card.icon}
-                          </div>
-                          <div className="min-w-0">
-                            <p className="text-xs font-bold text-foreground truncate group-hover:text-purple-600 dark:group-hover:text-purple-400 transition-colors">
-                              {card.title}
-                            </p>
-                            <p className="text-[11px] text-muted-foreground truncate">
-                              {card.subtitle}
-                            </p>
-                          </div>
-                        </div>
-                        <div className="w-8 h-8 rounded-xl bg-white/60 dark:bg-black/20 flex items-center justify-center text-muted-foreground group-hover:text-purple-600 dark:group-hover:text-purple-300 transition-colors shrink-0 shadow-2xs">
-                          <ArrowUpRight className="w-4 h-4 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
-                        </div>
-                      </motion.button>
-                    ))}
+                  <div className="w-16 h-16 bg-blue-500/10 rounded-full flex items-center justify-center mb-2">
+                    <Bot className="w-8 h-8 text-blue-500" />
                   </div>
-
-                  {/* Frequently Referenced Policies List */}
-                  <motion.div 
-                    variants={{
-                      hidden: { opacity: 0, y: 10 },
-                      visible: { opacity: 1, y: 0 }
-                    }}
-                    className="space-y-2 pt-1"
-                  >
-                    <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-                      <Compass className="w-3.5 h-3.5 text-purple-500" /> Common Inquiries
-                    </p>
-                    <div className="space-y-1.5">
-                      {RECENT_PROMPTS.map((promptText, i) => (
-                        <motion.button
-                          key={i}
-                          variants={{
-                            hidden: { opacity: 0, x: -8 },
-                            visible: { opacity: 1, x: 0 }
-                          }}
-                          onClick={() => handleSendMessage(promptText)}
-                          className="w-full text-left px-3.5 py-2.5 rounded-xl bg-white/70 dark:bg-[#161c30]/70 hover:bg-white dark:hover:bg-[#1c243e] border border-purple-500/10 dark:border-white/5 text-xs text-foreground/90 hover:text-foreground transition-all flex items-center justify-between group cursor-pointer shadow-2xs"
-                        >
-                          <span className="truncate pr-2">{promptText}</span>
-                          <ChevronRight className="w-3.5 h-3.5 text-muted-foreground group-hover:text-purple-500 transition-transform group-hover:translate-x-0.5 shrink-0" />
-                        </motion.button>
-                      ))}
-                    </div>
-                  </motion.div>
+                  <h2 className="text-2xl font-bold tracking-tight text-foreground">
+                    Hey {user?.name?.split(" ")[0] || "there"},<br/>how can I help you today?
+                  </h2>
+                  <p className="text-sm text-muted-foreground max-w-[250px]">
+                    Ask me anything about your attendance or institute policies.
+                  </p>
                 </motion.div>
-              ) : (
-                // Chat Message Stream
+  ) : (
+                  // Chat Message Stream
                 <div className="p-4 space-y-4 text-xs">
                   {messages.map((msg) => (
                     <motion.div

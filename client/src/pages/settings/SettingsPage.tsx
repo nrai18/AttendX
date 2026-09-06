@@ -169,7 +169,7 @@ const renderDocuments = (type: string) => {
       try {
         const { data } = await api.get("/system/update");
         if (data) {
-          const localVersion = localStorage.getItem("app_version") || "2.2.2";
+          const localVersion = localStorage.getItem("app_version") || "2.6.2";
           const serverChangelog = data.changelog || [];
           const index = serverChangelog.findIndex((c: any) => c.version === localVersion);
           data.changelog = index !== -1 ? serverChangelog.slice(index) : serverChangelog;
@@ -1400,7 +1400,7 @@ const renderDocuments = (type: string) => {
                   App info
                 </h3>
                 <p className="text-xs text-muted-foreground">
-                  Version v{(localStorage.getItem("app_version") || "2.2.2")} & Developer details
+                  Version v{(localStorage.getItem("app_version") || "2.6.2")} & Developer details
                 </p>
               </div>
             </div>
@@ -1828,7 +1828,7 @@ const renderDocuments = (type: string) => {
                   AttendX
                 </h2>
                 <p className="text-xs font-semibold text-primary">
-                  Smart Attendance Manager • v{(localStorage.getItem("app_version") || "2.2.2")}
+                  Smart Attendance Manager • v{(localStorage.getItem("app_version") || "2.6.2")}
                 </p>
                 <p className="text-xs text-muted-foreground">
                   Built for IIITU Ecosystem

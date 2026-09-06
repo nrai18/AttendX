@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { Mail, Lock, Loader2, ArrowRight, ArrowLeft, CheckCircle2, Eye, EyeOff } from "lucide-react";
+import { Mail, Lock, Loader2, ArrowRight, ArrowLeft, CheckCircle2, Eye, EyeOff, Key } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
@@ -23,6 +23,23 @@ export const LoginPage: React.FC = () => {
   // Forgot Password State
   const [forgotPasswordMode, setForgotPasswordMode] = useState(false);
   const [resetEmailSent, setResetEmailSent] = useState(false);
+  const [resetToken, setResetToken] = useState("");
+  const [otp, setOtp] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [passwordChanged, setPasswordChanged] = useState(false);
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [resendTimer, setResendTimer] = useState(0);
+
+  // Timer effect
+  useEffect(() => {
+    let interval: any;
+    if (resendTimer > 0) {
+      interval = setInterval(() => {
+        setResendTimer((prev) => prev - 1);
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [resendTimer]);
 
   useEffect(() => {
     // Initialize GoogleSignIn on native platforms
@@ -83,11 +100,53 @@ export const LoginPage: React.FC = () => {
     try {
       setLoading(true);
       setError(null);
-      // Simulate delay for UI purposes since there is no email provider yet
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      const res = await api.post("/auth/forgot-password", { email });
+      setResetToken(res.data.token || "");
       setResetEmailSent(true);
+      setResendTimer(60);
     } catch (e: any) {
-      setError(e.response?.data?.message || "Failed to send reset link");
+      setError(e.response?.data?.message || "Failed to send OTP");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResendOtp = async () => {
+    if (!email || resendTimer > 0) return;
+    try {
+      setLoading(true);
+      setError(null);
+      const res = await api.post("/auth/forgot-password", { email });
+      setResetToken(res.data.token || "");
+      setResendTimer(60);
+    } catch (e: any) {
+      setError(e.response?.data?.message || "Failed to resend OTP");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResetPassword = async () => {
+    if (!otp || !newPassword || !confirmPassword || !resetToken) {
+      setError("All fields are required");
+      return;
+    }
+    if (newPassword.length < 6) {
+      setError("Password must be at least 6 characters");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setError("Passwords do not match");
+      return;
+    }
+    
+    try {
+      setLoading(true);
+      setError(null);
+      await api.post("/auth/reset-password", { token: resetToken, otp, newPassword });
+      setPasswordChanged(true);
+    } catch (e: any) {
+      setError(e.response?.data?.message || "Failed to reset password. Invalid OTP or expired.");
     } finally {
       setLoading(false);
     }
@@ -157,15 +216,97 @@ export const LoginPage: React.FC = () => {
                   </div>
                 )}
                 
-                {resetEmailSent ? (
+                {passwordChanged ? (
                   <div className="flex flex-col items-center justify-center py-4 space-y-3 text-center">
-                    <div className="w-12 h-12 bg-emerald-500/20 rounded-full flex items-center justify-center text-emerald-500">
-                      <CheckCircle2 className="w-6 h-6" />
+                    <div className="w-16 h-16 bg-emerald-500/10 rounded-full flex items-center justify-center text-emerald-500 mb-2">
+                      <CheckCircle2 className="w-8 h-8" />
                     </div>
+                    <h3 className="font-bold text-lg text-foreground">Password Changed!</h3>
                     <p className="text-sm text-muted-foreground">
-                      We've sent a password reset link to <br/>
-                      <span className="font-semibold text-foreground">{email}</span>
+                      Your password has been successfully reset.
                     </p>
+                    <Button 
+                      type="button" 
+                      onClick={() => {
+                        setForgotPasswordMode(false);
+                        setPasswordChanged(false);
+                        setResetEmailSent(false);
+                        setOtp("");
+                        setNewPassword("");
+                        setConfirmPassword("");
+                      }} 
+                      className="w-full mt-4 bg-primary hover:bg-primary/90"
+                    >
+                      Return to Login
+                    </Button>
+                  </div>
+                ) : resetEmailSent ? (
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 p-3 rounded-xl text-xs font-medium">
+                      <span>OTP sent to your email.</span>
+                      <button 
+                        type="button" 
+                        onClick={handleResendOtp}
+                        disabled={resendTimer > 0 || loading}
+                        className="text-emerald-600 hover:text-emerald-500 disabled:opacity-50 transition-colors font-bold underline"
+                      >
+                        {resendTimer > 0 ? `Resend in ${resendTimer}s` : "Resend"}
+                      </button>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <Label htmlFor="otp">6-Digit OTP</Label>
+                      <div className="relative">
+                        <Key className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
+                        <Input
+                          id="otp"
+                          type="text"
+                          maxLength={6}
+                          value={otp}
+                          onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
+                          required
+                          className="pl-9 text-center tracking-widest font-mono text-lg bg-background/50 border-border focus:border-primary text-foreground"
+                          placeholder="000000"
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="new-password">New Password</Label>
+                      <div className="relative">
+                        <Lock className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
+                        <Input
+                          id="new-password"
+                          type={showPassword ? "text" : "password"}
+                          value={newPassword}
+                          onChange={(e) => setNewPassword(e.target.value)}
+                          required
+                          className="pl-9 pr-10 bg-background/50 border-border focus:border-primary text-foreground"
+                          placeholder="Enter new password"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(!showPassword)}
+                          className="absolute right-3 top-3 text-muted-foreground hover:text-foreground transition-colors"
+                        >
+                          {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="confirm-password">Confirm Password</Label>
+                      <div className="relative">
+                        <Lock className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
+                        <Input
+                          id="confirm-password"
+                          type={showPassword ? "text" : "password"}
+                          value={confirmPassword}
+                          onChange={(e) => setConfirmPassword(e.target.value)}
+                          required
+                          className="pl-9 pr-10 bg-background/50 border-border focus:border-primary text-foreground"
+                          placeholder="Confirm new password"
+                        />
+                      </div>
+                    </div>
                   </div>
                 ) : (
                   <div className="space-y-2">
@@ -189,10 +330,21 @@ export const LoginPage: React.FC = () => {
               </CardContent>
 
               <CardFooter className="flex flex-col space-y-4 pt-2">
-                {!resetEmailSent && (
-                  <Button type="submit" disabled={loading} className="w-full bg-primary hover:bg-primary/90 font-semibold h-11 rounded-xl">
-                    {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Send Reset Link"}
-                  </Button>
+                {!passwordChanged && (
+                  resetEmailSent ? (
+                    <Button 
+                      type="button" 
+                      onClick={handleResetPassword} 
+                      disabled={loading || otp.length !== 6 || newPassword.length < 6 || confirmPassword.length < 6} 
+                      className="w-full bg-primary hover:bg-primary/90 font-semibold h-11 rounded-xl"
+                    >
+                      {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Reset Password"}
+                    </Button>
+                  ) : (
+                    <Button type="submit" disabled={loading} className="w-full bg-primary hover:bg-primary/90 font-semibold h-11 rounded-xl">
+                      {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Send Reset Link"}
+                    </Button>
+                  )
                 )}
                 
                 <button 

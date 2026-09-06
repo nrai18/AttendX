@@ -62,6 +62,7 @@ const RootRoute: React.FC = () => {
   return isAuthenticated ? <Navigate to="/today" replace /> : <LandingPage />;
 };
 
+import { App as CapacitorApp } from "@capacitor/app";
 import { NotificationService } from "./services/NotificationService";
 import { OTAUpdateModal } from "./components/common/OTAUpdateModal";
 import { CapacitorUpdater } from "@capgo/capacitor-updater";
@@ -107,11 +108,44 @@ export function App() {
   useEffect(() => {
     const initServices = async () => {
       try {
+        
         if (Capacitor.isNativePlatform()) {
           await CapacitorUpdater.notifyAppReady();
+          try {
+            const info = await CapacitorApp.getInfo();
+            const nativeVersion = info.version;
+            const localVer = localStorage.getItem("app_version") || "0.0.0";
+            
+            const p1 = nativeVersion.split('.').map(Number);
+            const p2 = localVer.split('.').map(Number);
+            let isNativeNewer = false;
+            for (let i = 0; i < Math.max(p1.length, p2.length); i++) {
+              const num1 = p1[i] || 0;
+              const num2 = p2[i] || 0;
+              if (num1 > num2) { isNativeNewer = true; break; }
+              if (num1 < num2) { break; }
+            }
+            
+            if (isNativeNewer) {
+              localStorage.setItem("app_version", nativeVersion);
+              window.location.reload();
+              return;
+            }
+          } catch(e) {}
         }
+
         await NotificationService.init();
         await NotificationService.autoScheduleFromTimetable();
+        // Silent ping to ML server to wake it up on boot (Render Free Tier)
+        const mlUrl = import.meta.env.VITE_ML_API_URL;
+        if (mlUrl) {
+          fetch(`${mlUrl}/health`).catch(() => {
+            // We expect this to fail or timeout if it's asleep, 
+            // but the HTTP request alone is enough to wake the Render instance!
+          });
+          // Also ping the base url just in case /health doesn't exist
+          fetch(`${mlUrl}/`).catch(() => {});
+        }
       } catch (e) {
         console.error("Failed to init NotificationService", e);
       }
@@ -135,7 +169,7 @@ export function App() {
       />
       {Capacitor.isNativePlatform() && (
         <OTAUpdateModal
-          localVersion={localStorage.getItem("app_version") || "2.3.0"}
+          localVersion={localStorage.getItem("app_version") || "2.6.2"}
         />
       )}
       {splashFinished && (

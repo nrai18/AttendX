@@ -1,4 +1,4 @@
-﻿import { prisma } from "../lib/prisma";
+import { prisma } from "../lib/prisma";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import { generateAccessToken, generateRefreshToken, verifyRefreshToken } from "../utils/jwt";
@@ -216,37 +216,48 @@ export class AuthService {
     const normalizedEmail = email.toLowerCase().trim();
     const user = await prisma.user.findUnique({ where: { email: normalizedEmail } });
     
+    // Generate a 6 digit OTP
+    const crypto = require('crypto');
+    const otp = crypto.randomInt(100000, 999999).toString();
+    const otpHash = crypto.createHash('sha256').update(otp).digest('hex');
+
     if (!user) {
-      // Don't reveal user existence
-      return;
+      // Return a fake token to prevent user enumeration
+      const fakeToken = require('jsonwebtoken').sign({ id: 'fake', otpHash }, (process.env.JWT_SECRET as string) + 'fake', { expiresIn: '15m' });
+      return { token: fakeToken };
     }
 
-    // Create a one-time use token by signing with their CURRENT password hash!
-    // When they change it, the hash changes, and the token instantly invalidates.
-    const secret = process.env.JWT_SECRET + user.passwordHash;
-    const token = jwt.sign({ id: user.id }, secret, { expiresIn: '15m' });
+    const secret = (process.env.JWT_SECRET as string) + (user.passwordHash as string);
+    const token = require('jsonwebtoken').sign({ id: user.id, otpHash }, secret, { expiresIn: '15m' });
     
-    await EmailService.sendPasswordResetEmail(user.email, token);
+    // Send the plain OTP via email!
+    await EmailService.sendPasswordResetEmail(user.email, otp);
+    return { token };
   }
 
-  static async resetPassword(token: string, newPassword: string) {
+  static async resetPassword(token: string, otp: string, newPassword: string) {
+    const crypto = require('crypto');
+    if (!otp) throw new Error("OTP is required");
     if (!token) throw new Error("Invalid token");
     if (!newPassword || newPassword.length < 6) throw new Error("Password must be at least 6 characters");
     
     // Decode first to get the user ID
-    const decoded = jwt.decode(token) as { id: string } | null;
+    const decoded = jwt.decode(token) as { id: string, otpHash: string } | null;
     if (!decoded || !decoded.id) throw new Error("Invalid or expired reset token");
     
     const user = await prisma.user.findUnique({ where: { id: decoded.id } });
     if (!user) throw new Error("User not found");
     
     // Verify the signature securely
-    const secret = process.env.JWT_SECRET + user.passwordHash;
+    const secret = (process.env.JWT_SECRET as string) + (user.passwordHash as string);
     try {
       jwt.verify(token, secret);
     } catch (e) {
       throw new Error("Invalid or expired reset token");
     }
+    
+    const providedHash = crypto.createHash('sha256').update(otp).digest('hex');
+    if (providedHash !== decoded.otpHash) throw new Error("Invalid OTP");
     
     const passwordHash = await bcrypt.hash(newPassword, 10);
     await prisma.user.update({

@@ -8,8 +8,8 @@ export class AuthController {
     try {
       const email = req.body.email;
       if (!email) return res.status(400).json({ message: "Email is required" });
-      await AuthService.forgotPassword(email);
-      res.status(200).json({ message: "If an account exists, a reset link has been sent." });
+      const result = await AuthService.forgotPassword(email);
+      res.status(200).json({ message: "If an account exists, an OTP has been sent.", token: result.token });
     } catch (error: any) {
       res.status(500).json({ message: "Something went wrong" });
     }
@@ -17,10 +17,10 @@ export class AuthController {
 
   static async resetPassword(req: Request, res: Response) {
     try {
-      const { token, newPassword } = req.body;
-      if (!token || !newPassword) return res.status(400).json({ message: "Token and new password are required" });
+      const { token, otp, newPassword } = req.body;
+      if (!token || !otp || !newPassword) return res.status(400).json({ message: "Token, OTP, and new password are required" });
       
-      await AuthService.resetPassword(token, newPassword);
+      await AuthService.resetPassword(token, otp, newPassword);
       res.status(200).json({ message: "Password reset successful" });
     } catch (error: any) {
       res.status(400).json({ message: error.message });

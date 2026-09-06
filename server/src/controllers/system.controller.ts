@@ -1,13 +1,27 @@
-﻿import { Request, Response } from "express";
+import { Request, Response } from "express";
 import path from "path";
 import fs from "fs";
 
 export class SystemController {
   static async getUpdateManifest(req: Request, res: Response) {
     const manifest = {
-      latestVersion: "2.5.1",
-      title: "The Intelligence & Analytics Update",
-            changelog: [
+      latestVersion: "2.6.2",
+      title: "The Security & Architecture Update",
+      changelog: [
+        {
+          version: "2.6.2",
+          sizeMb: 5.2,
+          sections: [
+            {
+              title: "What's New",
+              items: [
+                { icon: "🔒", text: "Stateless OTP Security: Gorgeous new 6-digit email flows for resetting passwords safely" },
+                { icon: "🧠", text: "Background AI Wakeup: Instant ML server booting upon app launch for zero-delay chat" },
+                { icon: "💬", text: "Zero-State Chatbot: Complete redesign with conversation history persistence" }
+              ]
+            }
+          ]
+        },
         {
           version: "2.5.1",
           sizeMb: 4.8,

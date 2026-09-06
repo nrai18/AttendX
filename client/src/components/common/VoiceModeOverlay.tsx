@@ -80,22 +80,7 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
     };
   }, []);
 
-  // When Voice Mode opens, we immediately start listening!
-  // The user explicitly tapped the mic to get here, so permission/intent is clear.
-  useEffect(() => {
-    if (isOpen) {
-      setTranscript("");
-      setIsProcessing(false);
-      setIsSpeaking(false);
-      setLastResponse("");
-      startListening();
-    } else {
-      stopListening();
-      if (synthRef.current) {
-        synthRef.current.cancel();
-      }
-    }
-  }, [isOpen]);
+
 
   const startListening = () => {
     if (synthRef.current) {
@@ -150,10 +135,14 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
     utterance.onstart = () => setIsSpeaking(true);
     utterance.onend = () => {
       setIsSpeaking(false);
+      // BUGFIX: Only restart listening if we aren't currently waiting for a network response
       setTimeout(() => {
-        if (isOpen) { 
+        setIsProcessing(prevIsProcessing => {
+          if (!prevIsProcessing && isOpen) {
             startListening();
-        }
+          }
+          return prevIsProcessing;
+        });
       }, 500);
     };
     utterance.onerror = () => setIsSpeaking(false);
@@ -175,14 +164,14 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
     try {
       const response = await onSendMessage(query);
       if (response) {
+        setIsProcessing(false); // Stop processing state so onend can trigger listening
         setLastResponse(response);
         handleSpeakText(response);
       }
     } catch (err) {
+      setIsProcessing(false);
       setLastResponse("I encountered an error connecting to the policy advisor. Please try again.");
       handleSpeakText("I encountered an error. Please try again.");
-    } finally {
-      setIsProcessing(false);
     }
   };
 
@@ -194,6 +183,25 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
       return () => clearTimeout(timer);
     }
   }, [isListening, transcript]);
+
+  // When Voice Mode opens, we immediately start listening!
+  useEffect(() => {
+    if (isOpen) {
+      setTranscript("");
+      setIsProcessing(false);
+      setIsSpeaking(false);
+      
+      const greeting = "Hey there, how can I help you today?";
+      setLastResponse(greeting);
+      handleSpeakText(greeting);
+      // Listening will start automatically after the greeting finishes via utterance.onend
+    } else {
+      stopListening();
+      if (synthRef.current) {
+        synthRef.current.cancel();
+      }
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
