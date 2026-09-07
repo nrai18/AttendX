@@ -6,6 +6,7 @@ import { TopBar } from "./TopBar";
 import { useAttendanceStore } from "../../stores/attendanceStore";
 import { AttendanceAnimationPopup } from "../common/AttendanceAnimationPopup";
 import { FloatingChatbot } from "../common/FloatingChatbot";
+import { ScrollToTopButton } from "../common/ScrollToTopButton";
 
 import { NotificationService } from "../../services/NotificationService";
 
@@ -60,6 +61,9 @@ export const AppShell: React.FC<AppShellProps> = ({ title, onAddClick }) => {
 
       {/* 2-Second Popup Animation Overlay */}
       <AttendanceAnimationPopup />
+
+      {/* Scroll to Top Navigation */}
+      <ScrollToTopButton />
 
       {/* Floating AI Ordinance & Policy Chatbot */}
       <FloatingChatbot />

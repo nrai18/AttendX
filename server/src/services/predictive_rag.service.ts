@@ -43,7 +43,7 @@ Analyze this data and return a JSON object with the following schema:
 CRITICAL RULE: Return ONLY a valid JSON object. No markdown blocks or extra text.`;
 
     try {
-      const candidateModels = ["gemini-3.6-flash", "gemini-3.5-flash-lite"];
+      const candidateModels = ["gemini-3.8-flash", "gemini-3.7-flash"];
       let response: any = null;
 
       for (const modelName of candidateModels) {

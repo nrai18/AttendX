@@ -1,7 +1,7 @@
 import React from "react";
 import { api } from "../../lib/api";
 import { useAuthStore } from "../../stores/authStore";
-import { Plus, SlidersHorizontal, LogOut, Sun, Moon } from "lucide-react";
+import { Plus, SlidersHorizontal, LogOut, Sun, Moon, Loader2 } from "lucide-react";
 import { Button } from "../ui/button";
 import { useAttendanceStore } from "../../stores/attendanceStore";
 import { useThemeStore } from "../../stores/themeStore";
@@ -18,7 +18,9 @@ export const TopBar: React.FC<TopBarProps> = ({
   const user = useAuthStore((state) => state.user);
   const logout = useAuthStore((state) => state.logout);
   
+  const [isLoggingOut, setIsLoggingOut] = React.useState(false);
   const handleLogout = async () => {
+    setIsLoggingOut(true);
     try {
       await api.post("/auth/logout");
     } catch (e) {}
@@ -89,10 +91,11 @@ export const TopBar: React.FC<TopBarProps> = ({
             variant="ghost"
             size="icon"
             onClick={handleLogout}
-            className="w-9 h-9 rounded-xl text-muted-foreground hover:text-rose-500 hover:bg-rose-500/10 cursor-pointer"
+            disabled={isLoggingOut}
+            className="w-9 h-9 rounded-xl text-muted-foreground hover:text-rose-500 hover:bg-rose-500/10 cursor-pointer active:scale-90 transition-transform disabled:opacity-50"
             title="Log Out"
           >
-            <LogOut className="w-4 h-4" />
+            {isLoggingOut ? <Loader2 className="w-4 h-4 animate-spin" /> : <LogOut className="w-4 h-4" />}
           </Button>
         </div>
       </div>

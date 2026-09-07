@@ -19,6 +19,12 @@ export class TimetableController {
     res.json(slots);
   }
 
+  static async getArchivedTimetables(req: Request | any, res: Response) {
+    const semesterId = String(req.params.semesterId);
+    const archivedSlots = await TimetableService.getArchivedTimetables(semesterId);
+    res.json(archivedSlots);
+  }
+
   static async createSlot(req: AuthenticatedRequest, res: Response) {
     const slot = await TimetableService.createSlot(req.body);
     await CacheService.invalidateUser(req.user!.userId);
@@ -121,14 +127,14 @@ export class TimetableController {
 
   static async saveWizard(req: Request | any, res: Response) {
     try {
-      const { semesterId, selections, rawSlots } = req.body;
+      const { semesterId, selections, rawSlots, startDate } = req.body;
       const userId = req.user?.userId;
 
       if (!semesterId || !userId || !selections || !rawSlots) {
         return res.status(400).json({ error: "Missing required fields" });
       }
 
-      const { slots, newSubjectIds, existingSubjectIds } = await TimetableService.saveWizardTimetable(userId, semesterId, selections, rawSlots);
+      const { slots, newSubjectIds, existingSubjectIds } = await TimetableService.saveWizardTimetable(userId, semesterId, selections, rawSlots, startDate);
       await CacheService.invalidateUser(userId);
       res.status(201).json({ message: "Timetable generated successfully", slots, newSubjectIds, existingSubjectIds });
     } catch (error: any) {

@@ -6,20 +6,52 @@ import { COURSE_CURRICULUM, resolveSubjectName, SUBJECT_DICTIONARY, BRANCH_NAMES
 import { normalizeTimeString } from "../utils/timeUtils";
 
 export class TimetableService {
+  
+  static async getArchivedTimetables(semesterId: string) {
+    const archivedSlots = await prisma.timetableSlot.findMany({
+      where: { 
+        semesterId, 
+        validUntil: { not: null } 
+      },
+      include: { subject: true },
+      orderBy: [
+        { validUntil: 'desc' },
+        { dayOfWeek: 'asc' },
+        { startTime: 'asc' }
+      ]
+    });
+    
+    const versionsMap = new Map<string, any>();
+    
+    for (const slot of archivedSlots) {
+      if (!slot.validUntil || !slot.validFrom) continue;
+      const key = `${slot.validFrom.getTime()}_${slot.validUntil.getTime()}`;
+      
+      if (!versionsMap.has(key)) {
+        versionsMap.set(key, {
+          id: key,
+          validFrom: slot.validFrom,
+          validUntil: slot.validUntil,
+          slots: []
+        });
+      }
+      versionsMap.get(key).slots.push(slot);
+    }
+    
+    return Array.from(versionsMap.values());
+  }
+
   static async getTimetable(semesterId: string, group?: string) {
     // Auto-heal: Ensure practicals are on their correct schedules, spans, and non-duplicate
     try {
       const allSlots = await prisma.timetableSlot.findMany({
-        where: { semesterId },
+        where: { semesterId, validUntil: null },
         include: { subject: true }
       });
 
       // 1. Fix misplaced ECSE301 practical (Data Communication and Networks Lab -> Wednesday 14:00-15:40)
       for (const slot of allSlots) {
-        const isECSE301Lab =
-          (slot.subject?.code?.toUpperCase().includes("ECSE301") || slot.subject?.name?.toLowerCase().includes("data communication")) &&
-          (slot.slotType === "practical" || slot.subject?.name?.toLowerCase().includes("lab"));
-
+        const isECSE301Lab = false; // Disabled hardcoded auto-heal for ECSE301 because it breaks new timetables
         if (isECSE301Lab) {
           const updateData: any = {};
           if (slot.dayOfWeek !== 2) updateData.dayOfWeek = 2;
@@ -51,7 +83,7 @@ export class TimetableService {
     }
 
     const slots = await prisma.timetableSlot.findMany({
-      where: { semesterId },
+      where: { semesterId, validUntil: null },
       include: {
         subject: {
           select: {
@@ -416,8 +448,8 @@ Return ONLY strict JSON matching this structure:
           });
         }
 
-        // Compliant 2026 Model Invariant: Primary gemini-3.6-flash with modern fallbacks
-        const candidateModels = ["gemini-3.6-flash", "gemini-3.5-flash-lite", "gemini-3.5-flash", "gemini-3.7-flash"];
+        // Updated to use only 3.7 and 3.8 flash per user request
+        const candidateModels = ["gemini-3.8-flash", "gemini-3.7-flash"];
         let response: any = null;
         let lastError: any = null;
 
@@ -476,219 +508,14 @@ Return ONLY strict JSON matching this structure:
           };
         }
       } catch (error) {
-        console.error("AI Timetable Extraction failed, falling back to heuristic parser:", error);
-      }
-    }
-
-    // 3. Robust Comprehensive Curriculum Timetable Generator for all Branches & Semesters
-    return TimetableService.generateComprehensiveMasterSchedules();
-  }
-
-  static generateComprehensiveMasterSchedules() {
-    const branches = ["CSE", "IT", "ECE", "CY", "DS"];
-    const semesters = [1, 2, 3, 4, 5, 6, 7, 8];
-
-    const masterSchedules: Record<string, Record<number, any>> = {};
-
-    for (const b of branches) {
-      masterSchedules[b] = {};
-      for (const sem of semesters) {
-        const isOddSem = sem % 2 !== 0;
-        const isElectiveSem = sem >= 5;
-
-        // Program Electives (Only for 5th semester onwards!)
-        let programElectives: any[] = [];
-        let minorElectives: any[] = [];
-
-        if (isElectiveSem) {
-          if (b === "ECE") {
-            programElectives = [
-              {
-                id: "pe1",
-                name: "Program Elective",
-                options: [
-                  { code: sem === 5 ? "ECSE303" : "ECSE401", title: resolveSubjectName(sem === 5 ? "ECSE303" : "ECSE401"), credits: 4 },
-                  { code: sem === 5 ? "ECSE304" : "ECSE402", title: resolveSubjectName(sem === 5 ? "ECSE304" : "ECSE402"), credits: 4 }
-                ]
-              }
-            ];
-          } else if (b === "IT") {
-            programElectives = [
-              {
-                id: "pe1",
-                name: "Program Elective",
-                options: [
-                  { code: sem === 5 ? "ITSE301" : "ITSE401", title: resolveSubjectName(sem === 5 ? "ITSE301" : "ITSE401"), credits: 4 },
-                  { code: sem === 5 ? "ITSE304" : "ITSE402", title: resolveSubjectName(sem === 5 ? "ITSE304" : "ITSE402"), credits: 4 }
-                ]
-              }
-            ];
-          } else {
-            // CSE, CY, DS
-            programElectives = [
-              {
-                id: "pe1",
-                name: "Program Elective",
-                options: [
-                  { code: sem === 5 ? "CSSE301" : "CSSE401", title: resolveSubjectName(sem === 5 ? "CSSE301" : "CSSE401"), credits: 4 },
-                  { code: sem === 5 ? "CSSE304" : "CSSE402", title: resolveSubjectName(sem === 5 ? "CSSE304" : "CSSE402"), credits: 4 }
-                ]
-              }
-            ];
-          }
-
-          minorElectives = [
-            {
-              id: "me1",
-              name: "Minor / Open Elective",
-              options: [
-                { code: sem === 5 ? "SCMS301" : "SCMS401", title: resolveSubjectName(sem === 5 ? "SCMS301" : "SCMS401"), credits: 3 },
-                { code: sem === 5 ? "SEMS301" : "SEMS401", title: resolveSubjectName(sem === 5 ? "SEMS301" : "SEMS401"), credits: 3 }
-              ]
-            }
-          ];
+        console.error("AI Timetable Extraction failed:", error);
+          throw new Error("AI Timetable Extraction failed: Could not parse timetable. Please ensure the image is clear and try again.");
         }
-
-        // Section distinction: sections A & B for lower semesters, or ALL
-        const hasSections = sem <= 4;
-        const sections = hasSections ? ["Section A", "Section B"] : [];
-
-        // Build weekly slots
-        const rawSlots = TimetableService.buildWeeklySlotsForBranchAndSem(b, sem);
-
-        masterSchedules[b][sem] = {
-          hasSections,
-          sections,
-          hasElectives: isElectiveSem,
-          programElectives,
-          minorElectives,
-          labGroups: ["G1", "G2"],
-          rawSlots
-        };
       }
-    }
-
-    return {
-      status: "needs_setup",
-      detectedBranches: branches,
-      detectedSemesters: semesters,
-      schedules: masterSchedules
-    };
+      throw new Error("GEMINI_API_KEY is missing. Real-time OCR parsing requires Gemini API.");
   }
 
-  static buildWeeklySlotsForBranchAndSem(branch: string, sem: number) {
-    const isElectiveSem = sem >= 5;
-    const peCode = branch === "ECE" ? (sem === 5 ? "ECSE303" : "ECSE401") : (sem === 5 ? "CSSE301" : "CSSE401");
-    const altPeCode = branch === "ECE" ? (sem === 5 ? "ECSE304" : "ECSE402") : (sem === 5 ? "CSSE304" : "CSSE402");
-    const openCode = sem === 5 ? "SCMS301" : "SCMS401";
-    const altOpenCode = sem === 5 ? "SEMS301" : "SEMS401";
-
-    if (branch === "ECE" && sem === 5) {
-      return [
-        // MONDAY
-        { code: "ECSE303", dayOfWeek: 0, startTime: "09:00", endTime: "09:50", type: "lecture", room: "125", faculty: "SAK", group: "ALL", section: "ALL", isProgramElective: true },
-        { code: "ECSE304", dayOfWeek: 0, startTime: "09:00", endTime: "09:50", type: "lecture", room: "328", faculty: "AKW", group: "ALL", section: "ALL", isProgramElective: true },
-        { code: "ICVA301", dayOfWeek: 0, startTime: "09:00", endTime: "09:50", type: "lecture", room: "226", faculty: "MAC", group: "ALL", section: "ALL" },
-        { code: "ECMC301", dayOfWeek: 0, startTime: "09:50", endTime: "10:40", type: "lecture", room: "326", faculty: "GUK", group: "ALL", section: "ALL" },
-        { code: "ICAE301", dayOfWeek: 0, startTime: "14:00", endTime: "15:40", type: "practical", room: "Lab-5", faculty: "MAC", group: "G1/G2", section: "ALL" },
-        { code: "SCMS301", dayOfWeek: 0, startTime: "16:30", endTime: "17:20", type: "lecture", room: "228", faculty: "NIG", group: "ALL", section: "ALL", isMinorElective: true },
-
-        // TUESDAY
-        { code: "ECSE301", dayOfWeek: 1, startTime: "09:50", endTime: "10:40", type: "lecture", room: "226", faculty: "VEK", group: "ALL", section: "ALL" },
-        { code: "ECSE304", dayOfWeek: 1, startTime: "09:50", endTime: "10:40", type: "lecture", room: "125", faculty: "AKW", group: "ALL", section: "ALL", isProgramElective: true },
-        { code: "ECSE304", dayOfWeek: 1, startTime: "11:00", endTime: "12:40", type: "practical", room: "104", faculty: "AKW", group: "G1", section: "ALL", isProgramElective: true },
-        { code: "SEMS301", dayOfWeek: 1, startTime: "15:40", endTime: "16:30", type: "lecture", room: "133", faculty: "SHC", group: "ALL", section: "ALL", isMinorElective: true },
-        { code: "ECMC301", dayOfWeek: 1, startTime: "15:40", endTime: "16:30", type: "lecture", room: "329", faculty: "GUK", group: "ALL", section: "ALL" },
-        { code: "SCMS301", dayOfWeek: 1, startTime: "16:30", endTime: "17:20", type: "lecture", room: "228", faculty: "NIG", group: "ALL", section: "ALL", isMinorElective: true },
-        { code: "SEMS301", dayOfWeek: 1, startTime: "16:30", endTime: "17:20", type: "lecture", room: "125", faculty: "SHC", group: "ALL", section: "ALL", isMinorElective: true },
-
-        // WEDNESDAY
-        { code: "ICAE301", dayOfWeek: 2, startTime: "11:00", endTime: "12:40", type: "practical", room: "Lab-5", faculty: "MAC", group: "G1/G2", section: "ALL" },
-        { code: "ECSE301", dayOfWeek: 2, startTime: "14:00", endTime: "15:40", type: "practical", room: "104", faculty: "VEK/TA5", group: "G1", section: "ALL" },
-        { code: "ECSE301", dayOfWeek: 2, startTime: "14:00", endTime: "15:40", type: "practical", room: "104", faculty: "VEK/TA8", group: "G2", section: "ALL" },
-
-        // THURSDAY
-        { code: "ECSE301", dayOfWeek: 3, startTime: "09:00", endTime: "09:50", type: "lecture", room: "125", faculty: "VEK", group: "ALL", section: "ALL" },
-        { code: "ECSE303", dayOfWeek: 3, startTime: "09:50", endTime: "10:40", type: "lecture", room: "226", faculty: "SAK", group: "ALL", section: "ALL", isProgramElective: true },
-        { code: "ECSE304", dayOfWeek: 3, startTime: "09:50", endTime: "10:40", type: "lecture", room: "325", faculty: "AKW", group: "ALL", section: "ALL", isProgramElective: true },
-        { code: "SEMS301", dayOfWeek: 3, startTime: "11:50", endTime: "12:40", type: "lecture", room: "133", faculty: "SHC", group: "ALL", section: "ALL", isMinorElective: true },
-        { code: "ECMC301", dayOfWeek: 3, startTime: "14:00", endTime: "15:40", type: "practical", room: "104", faculty: "GUK/NIK", group: "G2", section: "ALL" },
-        { code: "ICVA301", dayOfWeek: 3, startTime: "15:40", endTime: "16:30", type: "lecture", room: "230", faculty: "MAC", group: "ALL", section: "ALL" },
-
-        // FRIDAY
-        { code: "ECSE301", dayOfWeek: 4, startTime: "09:00", endTime: "09:50", type: "lecture", room: "326", faculty: "VEK", group: "ALL", section: "ALL" },
-        { code: "ECMC301", dayOfWeek: 4, startTime: "09:50", endTime: "10:40", type: "lecture", room: "126", faculty: "GUK", group: "ALL", section: "ALL" },
-        { code: "ECMC301", dayOfWeek: 4, startTime: "11:00", endTime: "12:40", type: "practical", room: "104", faculty: "GUK/ANT", group: "G1", section: "ALL" },
-        { code: "ECSE303", dayOfWeek: 4, startTime: "14:00", endTime: "14:50", type: "lecture", room: "126", faculty: "SAK", group: "ALL", section: "ALL", isProgramElective: true },
-        { code: "ECSE304", dayOfWeek: 4, startTime: "14:00", endTime: "15:40", type: "practical", room: "104", faculty: "AKW", group: "G2", section: "ALL", isProgramElective: true },
-        { code: "ECSE303", dayOfWeek: 4, startTime: "14:50", endTime: "15:40", type: "practical", room: "103", faculty: "SAK", group: "ALL", section: "ALL", isProgramElective: true },
-        { code: "ICVA301", dayOfWeek: 4, startTime: "16:30", endTime: "17:20", type: "lecture", room: "329", faculty: "MAC", group: "ALL", section: "ALL" }
-      ];
-    }
-
-    let core1 = "ICMD104";
-    let core2 = "CSMC101";
-    let core3 = "ICAE101";
-
-    if (sem === 2) { core1 = "ICMD105"; core2 = "CSMC103"; core3 = "ICMD102"; }
-    else if (sem === 3) { core1 = "CSMC201"; core2 = "CSMC202"; core3 = "ICAE301"; }
-    else if (sem === 4) { core1 = "CSMC203"; core2 = "CSMC205"; core3 = "CSMC209"; }
-    else if (sem === 5) {
-      if (branch === "IT") { core1 = "ITMC301"; core2 = "ITMC302"; core3 = "ICVA301"; }
-      else { core1 = "CSMC301"; core2 = "CSMC302"; core3 = "ICVA301"; }
-    } else if (sem >= 6) {
-      if (branch === "ECE") { core1 = "ECMC302"; core2 = "ICPR401"; core3 = "ICAE302"; }
-      else { core1 = "CSMC303"; core2 = "ICPR401"; core3 = "ICAE302"; }
-    }
-
-    return [
-      // Monday
-      { code: core1, dayOfWeek: 0, startTime: "09:00", endTime: "09:50", type: "lecture", room: "101", group: "ALL", section: "ALL" },
-      { code: core2, dayOfWeek: 0, startTime: "09:50", endTime: "10:40", type: "lecture", room: "101", group: "ALL", section: "ALL" },
-      { code: isElectiveSem ? peCode : core3, dayOfWeek: 0, startTime: "11:00", endTime: "11:50", type: "lecture", room: "102", group: "ALL", section: "ALL" },
-      { code: isElectiveSem ? altPeCode : core3, dayOfWeek: 0, startTime: "11:00", endTime: "11:50", type: "lecture", room: "103", group: "ALL", section: "ALL" },
-      { code: core1, dayOfWeek: 0, startTime: "14:00", endTime: "15:40", type: "practical", room: "Lab-1", group: "G1", section: "Section A" },
-      { code: core2, dayOfWeek: 0, startTime: "14:00", endTime: "15:40", type: "practical", room: "Lab-2", group: "G2", section: "Section B" },
-      { code: isElectiveSem ? openCode : core2, dayOfWeek: 0, startTime: "16:30", endTime: "17:20", type: "lecture", room: "201", group: "ALL", section: "ALL" },
-      { code: isElectiveSem ? altOpenCode : core2, dayOfWeek: 0, startTime: "16:30", endTime: "17:20", type: "lecture", room: "202", group: "ALL", section: "ALL" },
-
-      // Tuesday
-      { code: core3, dayOfWeek: 1, startTime: "09:00", endTime: "09:50", type: "lecture", room: "101", group: "ALL", section: "ALL" },
-      { code: core1, dayOfWeek: 1, startTime: "09:50", endTime: "10:40", type: "lecture", room: "101", group: "ALL", section: "ALL" },
-      { code: core2, dayOfWeek: 1, startTime: "11:00", endTime: "12:40", type: "practical", room: "Lab-1", group: "G1", section: "Section A" },
-      { code: core1, dayOfWeek: 1, startTime: "11:00", endTime: "12:40", type: "practical", room: "Lab-2", group: "G2", section: "Section B" },
-      { code: isElectiveSem ? peCode : core1, dayOfWeek: 1, startTime: "14:00", endTime: "14:50", type: "lecture", room: "102", group: "ALL", section: "ALL" },
-      { code: isElectiveSem ? altPeCode : core1, dayOfWeek: 1, startTime: "14:00", endTime: "14:50", type: "lecture", room: "103", group: "ALL", section: "ALL" },
-      { code: isElectiveSem ? openCode : core3, dayOfWeek: 1, startTime: "15:40", endTime: "16:30", type: "lecture", room: "201", group: "ALL", section: "ALL" },
-      { code: isElectiveSem ? altOpenCode : core3, dayOfWeek: 1, startTime: "16:30", endTime: "17:20", type: "lecture", room: "202", group: "ALL", section: "ALL" },
-
-      // Wednesday
-      { code: core2, dayOfWeek: 2, startTime: "09:00", endTime: "09:50", type: "lecture", room: "101", group: "ALL", section: "ALL" },
-      { code: core3, dayOfWeek: 2, startTime: "09:50", endTime: "10:40", type: "lecture", room: "101", group: "ALL", section: "ALL" },
-      { code: isElectiveSem ? peCode : core1, dayOfWeek: 2, startTime: "11:00", endTime: "11:50", type: "lecture", room: "102", group: "ALL", section: "ALL" },
-      { code: isElectiveSem ? altPeCode : core1, dayOfWeek: 2, startTime: "11:00", endTime: "11:50", type: "lecture", room: "103", group: "ALL", section: "ALL" },
-      { code: core3, dayOfWeek: 2, startTime: "11:00", endTime: "12:40", type: "practical", room: "Lab-3", group: "G1/G2", section: "ALL" },
-
-      // Thursday
-      { code: core1, dayOfWeek: 3, startTime: "09:00", endTime: "09:50", type: "lecture", room: "101", group: "ALL", section: "ALL" },
-      { code: isElectiveSem ? peCode : core2, dayOfWeek: 3, startTime: "09:50", endTime: "10:40", type: "lecture", room: "102", group: "ALL", section: "ALL" },
-      { code: isElectiveSem ? altPeCode : core2, dayOfWeek: 3, startTime: "09:50", endTime: "10:40", type: "lecture", room: "103", group: "ALL", section: "ALL" },
-      { code: core2, dayOfWeek: 3, startTime: "11:50", endTime: "12:40", type: "lecture", room: "101", group: "ALL", section: "ALL" },
-      { code: isElectiveSem ? openCode : core3, dayOfWeek: 3, startTime: "14:00", endTime: "14:50", type: "lecture", room: "201", group: "ALL", section: "ALL" },
-      { code: isElectiveSem ? altOpenCode : core3, dayOfWeek: 3, startTime: "15:40", endTime: "16:30", type: "lecture", room: "202", group: "ALL", section: "ALL" },
-      { code: core1, dayOfWeek: 3, startTime: "14:00", endTime: "15:40", type: "practical", room: "Lab-1", group: "G2", section: "Section A" },
-
-      // Friday
-      { code: core3, dayOfWeek: 4, startTime: "09:00", endTime: "09:50", type: "lecture", room: "101", group: "ALL", section: "ALL" },
-      { code: core2, dayOfWeek: 4, startTime: "09:50", endTime: "10:40", type: "lecture", room: "101", group: "ALL", section: "ALL" },
-      { code: isElectiveSem ? peCode : core1, dayOfWeek: 4, startTime: "11:00", endTime: "12:40", type: "practical", room: "Lab-2", group: "G1", section: "Section A" },
-      { code: isElectiveSem ? altPeCode : core1, dayOfWeek: 4, startTime: "14:00", endTime: "15:40", type: "practical", room: "Lab-3", group: "G2", section: "Section B" },
-      { code: core1, dayOfWeek: 4, startTime: "14:00", endTime: "14:50", type: "lecture", room: "101", group: "ALL", section: "ALL" },
-      { code: core2, dayOfWeek: 4, startTime: "16:30", endTime: "17:20", type: "lecture", room: "101", group: "ALL", section: "ALL" }
-    ];
-  }
-
-  static async saveWizardTimetable(userId: string, semesterId: string, selections: any, rawSlots: any[]) {
+  static async saveWizardTimetable(userId: string, semesterId: string, selections: any, rawSlots: any[], startDateStr?: string) {
     const { branch, semester, section, labGroup } = selections;
 
     // Support both multi-select array and legacy single code parameters
@@ -698,8 +525,9 @@ Return ONLY strict JSON matching this structure:
       ? selections.selectedElectives.map((c: string) => c.trim().toUpperCase())
       : [selections.programElectiveCode, selections.minorElectiveCode].filter(Boolean).map((c: string) => c.trim().toUpperCase());
 
-    // Safely delete existing timetable slots for this active semester
-    await this.safeDeleteTimetable(userId, semesterId);
+    // Archive existing active timetable slots up to the new start date
+    const effectiveStart = startDateStr ? new Date(startDateStr) : new Date();
+    await this.archiveTimetable(userId, semesterId, effectiveStart.toISOString());
 
     const colors = [
       "#3b82f6", "#10b981", "#f59e0b", "#8b5cf6", "#ec4899",
@@ -915,6 +743,7 @@ Return ONLY strict JSON matching this structure:
           endTime: normalizeTimeString(slot.endTime, "10:00"),
           room: slot.room || null,
           slotType: slot.type || "lecture",
+          validFrom: effectiveStart,
         },
         include: { subject: true }
       });
@@ -962,6 +791,32 @@ Return ONLY strict JSON matching this structure:
     };
   }
 
+  
+  static async archiveTimetable(userId: string, semesterId: string, startDateStr: string) {
+    const subjects = await prisma.subject.findMany({
+      where: { userId, semesterId },
+      select: { id: true }
+    });
+    const subjectIds = subjects.map(s => s.id);
+    if (subjectIds.length === 0) return;
+
+    // Set validUntil to 23:59:59.999 of the DAY BEFORE the new startDate
+    const newStart = new Date(startDateStr);
+    const endOfPreviousDay = new Date(newStart.getTime() - 24 * 60 * 60 * 1000);
+    endOfPreviousDay.setUTCHours(23, 59, 59, 999);
+
+    await prisma.timetableSlot.updateMany({
+      where: { 
+        semesterId, 
+        subjectId: { in: subjectIds },
+        validUntil: null 
+      },
+      data: {
+        validUntil: endOfPreviousDay
+      }
+    });
+  }
+
   static async safeDeleteTimetable(userId: string, semesterId?: string) {
     const subjects = await prisma.subject.findMany({
       where: { userId, ...(semesterId ? { semesterId } : {}) },
@@ -980,7 +835,7 @@ Return ONLY strict JSON matching this structure:
     const whereCond = { OR: conditions };
 
     const slots = await prisma.timetableSlot.findMany({
-      where: whereCond,
+      where: { ...whereCond, validUntil: null },
       select: { id: true }
     });
     const slotIds = slots.map(s => s.id);
@@ -1064,12 +919,12 @@ Return ONLY strict JSON matching this structure:
 
     try {
       await prisma.timetableSlot.deleteMany({
-        where: whereCond
+        where: { ...whereCond, validUntil: null }
       });
     } catch (slotDelErr) {
       console.warn("TimetableSlot delete error:", slotDelErr);
       if (semesterId) {
-        await prisma.timetableSlot.deleteMany({ where: { semesterId } }).catch(() => {});
+        await prisma.timetableSlot.deleteMany({ where: { semesterId, validUntil: null } }).catch(() => {});
       }
     }
   }
@@ -1107,6 +962,7 @@ Return ONLY strict JSON matching this structure:
         targetAttendance: s.targetAttendance,
       })),
       slots: semester.timetableSlots.map((slot) => ({
+        originalId: slot.id,
         subjectCode: slot.subject?.code || "",
         subjectName: slot.subject?.name || "Subject",
         dayOfWeek: slot.dayOfWeek,
@@ -1114,6 +970,8 @@ Return ONLY strict JSON matching this structure:
         endTime: normalizeTimeString(slot.endTime, "10:00"),
         room: slot.room,
         slotType: slot.slotType,
+        validFrom: slot.validFrom,
+        validUntil: slot.validUntil,
       })),
     };
   }
@@ -1199,7 +1057,7 @@ Return ONLY strict JSON matching this structure:
       }
     }
 
-    // â”€â”€ 4. Attendance Logs â€” single batch insert â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // === 4. Attendance Logs ===
     let importedLogs = 0;
     if (payload.lectureLogs && Array.isArray(payload.lectureLogs) && payload.lectureLogs.length > 0) {
       const existingLogs = await prisma.attendance.findMany({

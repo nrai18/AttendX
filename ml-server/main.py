@@ -147,7 +147,7 @@ async def calendar_ocr(file: UploadFile = File(...)):
         class EventList(BaseModel):
             rawEvents: List[AcademicEvent]
 
-        llm = ChatGoogleGenerativeAI(model="gemini-3.6-flash", temperature=0)
+        llm = ChatGoogleGenerativeAI(model="gemini-3.8-flash", temperature=0)
         structured_llm = llm.with_structured_output(EventList)
         
         prompt = "You are an expert OCR parser for academic calendars. Extract all academic activities, exams, cycle tests, holidays, fests, and vacations."

@@ -10,6 +10,7 @@ import {
   GraduationCap,
   LayoutDashboard,
   Sparkles,
+  Loader2,
 } from "lucide-react";
 import { api } from "../../lib/api";
 import { useAuthStore } from "../../stores/authStore";
@@ -29,7 +30,9 @@ export const Sidebar: React.FC = () => {
   const user = useAuthStore((state) => state.user);
   const logout = useAuthStore((state) => state.logout);
   
+  const [isLoggingOut, setIsLoggingOut] = React.useState(false);
   const handleLogout = async () => {
+    setIsLoggingOut(true);
     try {
       await api.post("/auth/logout");
     } catch (e) {}
@@ -90,10 +93,11 @@ export const Sidebar: React.FC = () => {
           </NavLink>
           <button
             onClick={handleLogout}
-            className="p-1.5 text-muted-foreground hover:text-rose-500 transition-colors cursor-pointer shrink-0 ml-1"
+            disabled={isLoggingOut}
+            className="p-1.5 text-muted-foreground hover:text-rose-500 transition-colors cursor-pointer shrink-0 ml-1 disabled:opacity-50 active:scale-90"
             title="Log Out"
           >
-            <LogOut className="w-4 h-4" />
+            {isLoggingOut ? <Loader2 className="w-4 h-4 animate-spin" /> : <LogOut className="w-4 h-4" />}
           </button>
         </div>
       </div>

@@ -64,7 +64,7 @@ def reformulate_query(state: ChatState):
         "Standalone Search Query:"
     )
     
-    for model_name in ['gemini-3.5-flash-lite', 'gemini-3.6-flash', 'gemini-3.5-flash']:
+    for model_name in ['gemini-3.8-flash', 'gemini-3.7-flash']:
         try:
             response = client.models.generate_content(
                 model=model_name,
@@ -102,7 +102,7 @@ def retrieve_ordinance_context(state: ChatState):
 def generate_policy_response(state: ChatState):
     """
     Step 3 (Context-Grounded Answer Generation & Citation Precision):
-    Synthesizes a precise response using gemini-3.6-flash, combining live in-app
+    Synthesizes a precise response using gemini-3.8-flash, combining live in-app
     student telemetry (attendance logs, calendar events, courses, target goal) and retrieved ordinances.
     """
     import os
@@ -235,7 +235,7 @@ def generate_policy_response(state: ChatState):
     )
     
     answer_text = None
-    for model_name in ['gemini-3.5-flash-lite', 'gemini-3.6-flash', 'gemini-3.5-flash']:
+    for model_name in ['gemini-3.8-flash', 'gemini-3.7-flash']:
         try:
             response = client.models.generate_content(
                 model=model_name,
