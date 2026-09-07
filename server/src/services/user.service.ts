@@ -107,9 +107,17 @@ export class UserService {
     let user: { autoTerminateMonths?: number | null } | null = null;
     try {
       user = await prisma.user.findUnique({ where: { id: userId }, select: { autoTerminateMonths: true } }) as any;
-    } catch (error) {
-      // Ignore if Prisma client is not fully generated yet
-    }
+    } catch (error) {}
+
+    // Passive Garbage Collection: Delete expired tokens first
+    await prisma.refreshToken.deleteMany({
+      where: {
+        userId,
+        expiresAt: { lt: new Date() },
+        id: sessionId ? { not: sessionId } : undefined
+      }
+    });
+
     if (user?.autoTerminateMonths) {
       const cutoffDate = new Date();
       cutoffDate.setMonth(cutoffDate.getMonth() - user.autoTerminateMonths);

@@ -19,6 +19,7 @@ export const LoginPage: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [geoCoords, setGeoCoords] = useState<{lat: number, lon: number} | null>(null);
 
   // Forgot Password State
   const [forgotPasswordMode, setForgotPasswordMode] = useState(false);
@@ -73,6 +74,23 @@ export const LoginPage: React.FC = () => {
     }
   }, [navigate, setAuth]);
 
+  useEffect(() => {
+    let mounted = true;
+    const fetchLoc = async () => {
+      try {
+        const { Geolocation } = await import('@capacitor/geolocation');
+        if (Capacitor.isNativePlatform()) {
+          const hasPerms = await Geolocation.checkPermissions();
+          if (hasPerms.location !== 'granted') await Geolocation.requestPermissions();
+        }
+        const pos = await Geolocation.getCurrentPosition({ timeout: 15000, maximumAge: 300000, enableHighAccuracy: false });
+        if (mounted) setGeoCoords({ lat: pos.coords.latitude, lon: pos.coords.longitude });
+      } catch(e) {}
+    };
+    fetchLoc();
+    return () => { mounted = false; };
+  }, []);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || !password) return;
@@ -80,7 +98,9 @@ export const LoginPage: React.FC = () => {
     try {
       setLoading(true);
       setError(null);
-      const res = await api.post("/auth/login", { email, password });
+      const res = await api.post("/auth/login", { email, password }, {
+        headers: geoCoords ? { 'x-attendx-lat': geoCoords.lat, 'x-attendx-lon': geoCoords.lon } : {}
+      });
       setAuth(res.data.user, res.data.accessToken);
       navigate("/today");
     } catch (e: any) {
@@ -160,8 +180,8 @@ export const LoginPage: React.FC = () => {
         const result = await GoogleSignIn.signIn();
         
         // Send the idToken to our backend to generate our own JWT
-        const res = await api.post("/auth/google/native", {
-          idToken: result.idToken
+        const res = await api.post("/auth/google/native", { idToken: result.idToken }, {
+          headers: geoCoords ? { 'x-attendx-lat': geoCoords.lat, 'x-attendx-lon': geoCoords.lon } : {}
         });
         
         setAuth(res.data.user, res.data.accessToken);
@@ -176,19 +196,19 @@ export const LoginPage: React.FC = () => {
         setLoading(false);
       }
     } else {
-      window.location.href = `${API_BASE_URL}/auth/google`;
+      window.location.href = `${API_BASE_URL}/auth/google` + (geoCoords ? `?lat=${geoCoords.lat}&lon=${geoCoords.lon}` : "");
     }
   };
 
   return (
-    <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4 relative overflow-hidden text-foreground antialiased">
+    <div className="min-h-screen bg-slate-50 dark:bg-[#050505] flex flex-col items-center justify-center p-4 relative overflow-hidden text-slate-900 dark:text-slate-50 antialiased">
       
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-primary/20 blur-[120px] rounded-full pointer-events-none opacity-50" />
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] hidden blur-[120px] rounded-full pointer-events-none opacity-50" />
       
       <Button 
         variant="ghost" 
         onClick={() => navigate("/")}
-        className="absolute left-4 md:left-8 flex items-center gap-2 text-muted-foreground hover:text-foreground z-20" style={{ top: "calc(env(safe-area-inset-top) + 16px)" }}
+        className="absolute left-4 md:left-8 flex items-center gap-2 text-slate-600 dark:text-slate-50/60 hover:text-slate-900 dark:text-slate-50 z-20" style={{ top: "calc(env(safe-area-inset-top) + 16px)" }}
       >
         <ArrowRight className="w-4 h-4 rotate-180" />
         Back
@@ -196,12 +216,12 @@ export const LoginPage: React.FC = () => {
 
       <div className="w-full max-w-md z-10 space-y-6">
         <div className="text-center space-y-2">
-          <img src="/attendx_logo_lockup.png" alt="AttendX Logo" className="h-10 w-auto object-contain mx-auto mb-6" />
+          <img src="/attendx_logo_lockup.png" alt="AttendX Logo" className="h-16 w-auto object-contain mx-auto mb-6 dark:brightness-0 dark:invert" />
           <h1 className="text-3xl font-extrabold tracking-tight">Welcome Back</h1>
-          <p className="text-sm text-muted-foreground">Log in to manage your attendance</p>
+          <p className="text-sm text-slate-600 dark:text-slate-50/60">Log in to manage your attendance</p>
         </div>
 
-        <Card className="bg-card/90 border-border shadow-2xl backdrop-blur-xl">
+        <Card className="bg-white dark:bg-[#111111] rounded-none border-slate-300 dark:border-[#333333] shadow-2xl backdrop-blur-xl">
           {forgotPasswordMode ? (
             <form onSubmit={handleForgotPassword}>
               <CardHeader className="space-y-1">
@@ -221,8 +241,8 @@ export const LoginPage: React.FC = () => {
                     <div className="w-16 h-16 bg-emerald-500/10 rounded-full flex items-center justify-center text-emerald-500 mb-2">
                       <CheckCircle2 className="w-8 h-8" />
                     </div>
-                    <h3 className="font-bold text-lg text-foreground">Password Changed!</h3>
-                    <p className="text-sm text-muted-foreground">
+                    <h3 className="font-bold text-lg text-slate-900 dark:text-slate-50">Password Changed!</h3>
+                    <p className="text-sm text-slate-600 dark:text-slate-50/60">
                       Your password has been successfully reset.
                     </p>
                     <Button 
@@ -235,7 +255,7 @@ export const LoginPage: React.FC = () => {
                         setNewPassword("");
                         setConfirmPassword("");
                       }} 
-                      className="w-full mt-4 bg-primary hover:bg-primary/90"
+                      className="w-full mt-4 bg-[#E63946] hover:bg-[#E63946]/90 text-slate-900 dark:text-slate-50 rounded-none hover:bg-[#E63946] hover:bg-[#E63946]/90 text-slate-900 dark:text-slate-50 rounded-none"
                     >
                       Return to Login
                     </Button>
@@ -257,7 +277,7 @@ export const LoginPage: React.FC = () => {
                     <div className="space-y-2">
                       <Label htmlFor="otp">6-Digit OTP</Label>
                       <div className="relative">
-                        <Key className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
+                        <Key className="absolute left-3 top-3 w-4 h-4 text-slate-600 dark:text-slate-50/60" />
                         <Input
                           id="otp"
                           type="text"
@@ -265,7 +285,7 @@ export const LoginPage: React.FC = () => {
                           value={otp}
                           onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
                           required
-                          className="pl-9 text-center tracking-widest font-mono text-lg bg-background/50 border-border focus:border-primary text-foreground"
+                          className="pl-9 text-center tracking-widest font-mono text-lg bg-slate-50 dark:bg-[#050505]/50 border-slate-300 dark:border-[#333333] focus:border-primary text-slate-900 dark:text-slate-50"
                           placeholder="000000"
                         />
                       </div>
@@ -273,20 +293,20 @@ export const LoginPage: React.FC = () => {
                     <div className="space-y-2">
                       <Label htmlFor="new-password">New Password</Label>
                       <div className="relative">
-                        <Lock className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
+                        <Lock className="absolute left-3 top-3 w-4 h-4 text-slate-600 dark:text-slate-50/60" />
                         <Input
                           id="new-password"
                           type={showPassword ? "text" : "password"}
                           value={newPassword}
                           onChange={(e) => setNewPassword(e.target.value)}
                           required
-                          className="pl-9 pr-10 bg-background/50 border-border focus:border-primary text-foreground"
+                          className="pl-9 pr-10 bg-slate-50 dark:bg-[#050505]/50 border-slate-300 dark:border-[#333333] focus:border-primary text-slate-900 dark:text-slate-50"
                           placeholder="Enter new password"
                         />
                         <button
                           type="button"
                           onClick={() => setShowPassword(!showPassword)}
-                          className="absolute right-3 top-3 text-muted-foreground hover:text-foreground transition-colors"
+                          className="absolute right-3 top-3 text-slate-600 dark:text-slate-50/60 hover:text-slate-900 dark:text-slate-50 transition-colors"
                         >
                           {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                         </button>
@@ -295,14 +315,14 @@ export const LoginPage: React.FC = () => {
                     <div className="space-y-2">
                       <Label htmlFor="confirm-password">Confirm Password</Label>
                       <div className="relative">
-                        <Lock className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
+                        <Lock className="absolute left-3 top-3 w-4 h-4 text-slate-600 dark:text-slate-50/60" />
                         <Input
                           id="confirm-password"
                           type={showPassword ? "text" : "password"}
                           value={confirmPassword}
                           onChange={(e) => setConfirmPassword(e.target.value)}
                           required
-                          className="pl-9 pr-10 bg-background/50 border-border focus:border-primary text-foreground"
+                          className="pl-9 pr-10 bg-slate-50 dark:bg-[#050505]/50 border-slate-300 dark:border-[#333333] focus:border-primary text-slate-900 dark:text-slate-50"
                           placeholder="Confirm new password"
                         />
                       </div>
@@ -312,7 +332,7 @@ export const LoginPage: React.FC = () => {
                   <div className="space-y-2">
                     <Label htmlFor="reset-email">Email</Label>
                     <div className="relative">
-                      <Mail className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
+                      <Mail className="absolute left-3 top-3 w-4 h-4 text-slate-600 dark:text-slate-50/60" />
                       <Input
                         id="reset-email"
                         name="email"
@@ -321,7 +341,7 @@ export const LoginPage: React.FC = () => {
                         value={email}
                         onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEmail(e.target.value)}
                         required
-                        className="pl-9 bg-background/50 border-border focus:border-primary text-foreground"
+                        className="pl-9 bg-slate-50 dark:bg-[#050505]/50 border-slate-300 dark:border-[#333333] focus:border-primary text-slate-900 dark:text-slate-50"
                         placeholder="your.email@iiitu.ac.in"
                       />
                     </div>
@@ -336,12 +356,12 @@ export const LoginPage: React.FC = () => {
                       type="button" 
                       onClick={handleResetPassword} 
                       disabled={loading || otp.length !== 6 || newPassword.length < 6 || confirmPassword.length < 6} 
-                      className="w-full bg-primary hover:bg-primary/90 font-semibold h-11 rounded-xl"
+                      className="w-full bg-[#E63946] hover:bg-[#E63946]/90 text-slate-900 dark:text-slate-50 rounded-none hover:bg-[#E63946] hover:bg-[#E63946]/90 text-slate-900 dark:text-slate-50 rounded-none font-semibold h-11 rounded-xl"
                     >
                       {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Reset Password"}
                     </Button>
                   ) : (
-                    <Button type="submit" disabled={loading} className="w-full bg-primary hover:bg-primary/90 font-semibold h-11 rounded-xl">
+                    <Button type="submit" disabled={loading} className="w-full bg-[#E63946] hover:bg-[#E63946]/90 text-slate-900 dark:text-slate-50 rounded-none hover:bg-[#E63946] hover:bg-[#E63946]/90 text-slate-900 dark:text-slate-50 rounded-none font-semibold h-11 rounded-xl">
                       {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Send Reset Link"}
                     </Button>
                   )
@@ -354,7 +374,7 @@ export const LoginPage: React.FC = () => {
                     setResetEmailSent(false);
                     setError(null);
                   }}
-                  className="text-sm text-muted-foreground hover:text-foreground flex items-center justify-center transition-colors h-11"
+                  className="text-sm text-slate-600 dark:text-slate-50/60 hover:text-slate-900 dark:text-slate-50 flex items-center justify-center transition-colors h-11"
                 >
                   <ArrowLeft className="w-4 h-4 mr-2" /> Back to login
                 </button>
@@ -382,7 +402,7 @@ export const LoginPage: React.FC = () => {
                 <div className="space-y-2">
                   <Label htmlFor="email">Email</Label>
                   <div className="relative">
-                    <Mail className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
+                    <Mail className="absolute left-3 top-3 w-4 h-4 text-slate-600 dark:text-slate-50/60" />
                     <Input
                       id="email"
                       name="email"
@@ -391,7 +411,7 @@ export const LoginPage: React.FC = () => {
                       value={email}
                       onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEmail(e.target.value)}
                       required
-                      className="pl-9 bg-background/50 border-border focus:border-primary text-foreground"
+                      className="pl-9 bg-slate-50 dark:bg-[#050505]/50 border-slate-300 dark:border-[#333333] focus:border-primary text-slate-900 dark:text-slate-50"
                     />
                   </div>
                 </div>
@@ -405,13 +425,13 @@ export const LoginPage: React.FC = () => {
                         setForgotPasswordMode(true);
                         setError(null);
                       }}
-                      className="text-xs text-primary hover:underline hover:text-primary/80 font-medium"
+                      className="text-xs text-[#E63946] hover:underline hover:text-[#E63946]/80 font-medium"
                     >
                       Forgot password?
                     </button>
                   </div>
                   <div className="relative">
-                    <Lock className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
+                    <Lock className="absolute left-3 top-3 w-4 h-4 text-slate-600 dark:text-slate-50/60" />
                     <Input
                       id="password"
                       name="password"
@@ -420,12 +440,12 @@ export const LoginPage: React.FC = () => {
                       value={password}
                       onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPassword(e.target.value)}
                       required
-                      className="pl-9 pr-10 bg-background/50 border-border focus:border-primary text-foreground"
+                      className="pl-9 pr-10 bg-slate-50 dark:bg-[#050505]/50 border-slate-300 dark:border-[#333333] focus:border-primary text-slate-900 dark:text-slate-50"
                     />
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-3 text-muted-foreground hover:text-foreground transition-colors"
+                      className="absolute right-3 top-3 text-slate-600 dark:text-slate-50/60 hover:text-slate-900 dark:text-slate-50 transition-colors"
                     >
                       {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
@@ -434,23 +454,23 @@ export const LoginPage: React.FC = () => {
               </CardContent>
 
               <CardFooter className="flex flex-col space-y-4 pt-4">
-                <Button type="submit" disabled={loading} className="w-full bg-primary hover:bg-primary/90 font-semibold h-11 rounded-xl">
+                <Button type="submit" disabled={loading} className="w-full bg-[#E63946] hover:bg-[#E63946]/90 text-slate-900 dark:text-slate-50 rounded-none hover:bg-[#E63946] hover:bg-[#E63946]/90 text-slate-900 dark:text-slate-50 rounded-none font-semibold h-11 rounded-xl">
                   {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <>Log In <ArrowRight className="w-4 h-4 ml-2" /></>}
                 </Button>
                 
                 <div className="relative w-full py-2">
                   <div className="absolute inset-0 flex items-center">
-                    <div className="w-full border-t border-border"></div>
+                    <div className="w-full border-t border-slate-300 dark:border-[#333333]"></div>
                   </div>
                   <div className="relative flex justify-center text-xs uppercase">
-                    <span className="bg-card px-2 text-muted-foreground">Or continue with</span>
+                    <span className="bg-white dark:bg-[#111111] rounded-none px-2 text-slate-600 dark:text-slate-50/60">Or continue with</span>
                   </div>
                 </div>
                 
                 <Button 
                   type="button" 
                   variant="outline" 
-                  className="w-full h-11 rounded-xl border-border hover:bg-background/50 font-semibold text-foreground bg-transparent"
+                  className="w-full h-11 rounded-xl border-slate-300 dark:border-[#333333] hover:bg-slate-50 dark:bg-[#050505]/50 font-semibold text-slate-900 dark:text-slate-50 bg-transparent"
                   onClick={handleGoogleLogin}
                   disabled={loading}
                 >
@@ -467,8 +487,8 @@ export const LoginPage: React.FC = () => {
           )}
         </Card>
 
-        <p className="text-center text-sm text-muted-foreground">
-          Don't have an account? <Link to="/signup" className="text-primary hover:underline font-medium">Sign up</Link>
+        <p className="text-center text-sm text-slate-600 dark:text-slate-50/60">
+          Don't have an account? <Link to="/signup" className="text-[#E63946] hover:underline font-medium">Sign up</Link>
         </p>
       </div>
     </div>

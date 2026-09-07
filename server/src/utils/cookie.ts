@@ -6,7 +6,7 @@ export const setRefreshCookie = (res: Response, refreshToken: string) => {
     httpOnly: true, // Prevents JS access (XSS protection)
     secure: isProd, // Must be true for SameSite=None
     sameSite: isProd ? "none" : "lax", // None required for cross-site (Vercel -> Render)
-    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    maxAge: 90 * 24 * 60 * 60 * 1000, // 90 days (sliding)
     path: "/api/auth/refresh", // Only sent to refresh endpoint
   });
 };

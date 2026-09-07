@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { GraduationCap, Mail, Lock, User as UserIcon, Loader2, ArrowRight, Check, X, Eye, EyeOff } from "lucide-react";
 import { Button } from "../../components/ui/button";
@@ -20,6 +20,7 @@ export const SignupPage: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [geoCoords, setGeoCoords] = useState<{lat: number, lon: number} | null>(null);
 
   React.useEffect(() => {
     // Initialize GoogleSignIn on native platforms
@@ -38,8 +39,8 @@ export const SignupPage: React.FC = () => {
         const result = await GoogleSignIn.signIn();
         
         // Send the idToken to our backend to generate our own JWT
-        const res = await api.post("/auth/google/native", {
-          idToken: result.idToken
+        const res = await api.post("/auth/google/native", { idToken: result.idToken }, {
+          headers: geoCoords ? { 'x-attendx-lat': geoCoords.lat, 'x-attendx-lon': geoCoords.lon } : {}
         });
         
         setAuth(res.data.user, res.data.accessToken);
@@ -54,9 +55,26 @@ export const SignupPage: React.FC = () => {
         setLoading(false);
       }
     } else {
-      window.location.href = `${API_BASE_URL}/auth/google`;
+      window.location.href = `${API_BASE_URL}/auth/google` + (geoCoords ? `?lat=${geoCoords.lat}&lon=${geoCoords.lon}` : "");
     }
   };
+
+  useEffect(() => {
+    let mounted = true;
+    const fetchLoc = async () => {
+      try {
+        const { Geolocation } = await import('@capacitor/geolocation');
+        if (Capacitor.isNativePlatform()) {
+          const hasPerms = await Geolocation.checkPermissions();
+          if (hasPerms.location !== 'granted') await Geolocation.requestPermissions();
+        }
+        const pos = await Geolocation.getCurrentPosition({ timeout: 15000, maximumAge: 300000, enableHighAccuracy: false });
+        if (mounted) setGeoCoords({ lat: pos.coords.latitude, lon: pos.coords.longitude });
+      } catch(e) {}
+    };
+    fetchLoc();
+    return () => { mounted = false; };
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -74,7 +92,9 @@ export const SignupPage: React.FC = () => {
 
     setLoading(true);
     try {
-      const res = await api.post("/auth/register", { name, email, password });
+      const res = await api.post("/auth/register", { name, email, password, role: "student" }, {
+        headers: geoCoords ? { 'x-attendx-lat': geoCoords.lat, 'x-attendx-lon': geoCoords.lon } : {}
+      });
       const { user, accessToken } = res.data;
       setAuth(user, accessToken);
       navigate("/today");
@@ -86,11 +106,11 @@ export const SignupPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-backgroundackground text-foreground flex items-center justify-center p-4 antialiased relative">
+    <div className="min-h-screen bg-slate-50 dark:bg-[#050505] text-slate-900 dark:text-slate-50 flex items-center justify-center p-4 antialiased relative">
       <Button 
         variant="ghost" 
         onClick={() => navigate("/")}
-        className="absolute top-4 left-4 md:top-8 md:left-8 flex items-center gap-2 text-muted-foreground hover:text-foreground"
+        className="absolute top-4 left-4 md:top-8 md:left-8 flex items-center gap-2 text-slate-600 dark:text-slate-50/60 hover:text-slate-900 dark:text-slate-50"
       >
         <ArrowRight className="w-4 h-4 rotate-180" />
         Back
@@ -98,13 +118,13 @@ export const SignupPage: React.FC = () => {
       <div className="w-full max-w-md space-y-6">
         {/* Brand Header */}
         <div className="text-center space-y-2">
-          <img src="/attendx_logo_lockup.png" alt="AttendX Logo" className="h-10 w-auto object-contain mx-auto mb-6" />
+          <img src="/attendx_logo_lockup.png" alt="AttendX Logo" className="h-16 w-auto object-contain mx-auto mb-6 dark:brightness-0 dark:invert" />
           <h1 className="text-3xl font-extrabold tracking-tight">Create Account</h1>
-          <p className="text-sm text-muted-foreground">Join AttendX to organize your academic schedule</p>
+          <p className="text-sm text-slate-600 dark:text-slate-50/60">Join AttendX to organize your academic schedule</p>
         </div>
 
         {/* Card Form */}
-        <Card className="bg-card/90 border-border shadow-2xl backdrop-blur-xl">
+        <Card className="bg-white dark:bg-[#111111] rounded-none border-slate-300 dark:border-[#333333] shadow-2xl backdrop-blur-xl">
           <form onSubmit={handleSubmit}>
             <CardHeader className="space-y-1">
               <CardTitle className="text-xl">Sign Up</CardTitle>
@@ -126,7 +146,7 @@ export const SignupPage: React.FC = () => {
               <div className="space-y-2">
                 <Label htmlFor="name">Full Name</Label>
                 <div className="relative">
-                  <UserIcon className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
+                  <UserIcon className="absolute left-3 top-3 w-4 h-4 text-slate-600 dark:text-slate-50/60" />
                   <Input
                     id="name"
                     name="name"
@@ -136,7 +156,7 @@ export const SignupPage: React.FC = () => {
                     onChange={(e: React.ChangeEvent<HTMLInputElement>) => setName(e.target.value)}
                     required
                     minLength={6}
-                    className="pl-9 bg-background/50 border-border focus:border-primary text-foreground"
+                    className="pl-9 bg-slate-50 dark:bg-[#050505]/50 border-slate-300 dark:border-[#333333] focus:border-primary text-slate-900 dark:text-slate-50"
                   />
                 </div>
               </div>
@@ -144,7 +164,7 @@ export const SignupPage: React.FC = () => {
               <div className="space-y-2">
                 <Label htmlFor="email">Email</Label>
                 <div className="relative">
-                  <Mail className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
+                  <Mail className="absolute left-3 top-3 w-4 h-4 text-slate-600 dark:text-slate-50/60" />
                   <Input
                     id="email"
                     name="email"
@@ -154,7 +174,7 @@ export const SignupPage: React.FC = () => {
                     onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEmail(e.target.value)}
                     required
                     minLength={6}
-                    className="pl-9 bg-background/50 border-border focus:border-primary text-foreground"
+                    className="pl-9 bg-slate-50 dark:bg-[#050505]/50 border-slate-300 dark:border-[#333333] focus:border-primary text-slate-900 dark:text-slate-50"
                   />
                 </div>
               </div>
@@ -162,7 +182,7 @@ export const SignupPage: React.FC = () => {
               <div className="space-y-2">
                 <Label htmlFor="password">Password</Label>
                 <div className="relative">
-                  <Lock className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
+                  <Lock className="absolute left-3 top-3 w-4 h-4 text-slate-600 dark:text-slate-50/60" />
                   <Input
                     id="password"
                     name="password"
@@ -172,12 +192,12 @@ export const SignupPage: React.FC = () => {
                     onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPassword(e.target.value)}
                     required
                     minLength={6}
-                    className="pl-9 pr-10 bg-background/50 border-border focus:border-primary text-foreground"
+                    className="pl-9 pr-10 bg-slate-50 dark:bg-[#050505]/50 border-slate-300 dark:border-[#333333] focus:border-primary text-slate-900 dark:text-slate-50"
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-3 text-muted-foreground hover:text-foreground transition-colors"
+                    className="absolute right-3 top-3 text-slate-600 dark:text-slate-50/60 hover:text-slate-900 dark:text-slate-50 transition-colors"
                   >
                     {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
@@ -185,15 +205,15 @@ export const SignupPage: React.FC = () => {
                 
                 {password.length > 0 && (
                   <div className="pt-3 pb-2 pl-1 space-y-2 text-xs">
-                    <div className={`flex items-center gap-2 ${password.length >= 6 ? 'text-emerald-400' : 'text-muted-foreground'}`}>
+                    <div className={`flex items-center gap-2 ${password.length >= 6 ? 'text-emerald-400' : 'text-slate-600 dark:text-slate-50/60'}`}>
                       {password.length >= 6 ? <Check className="w-4 h-4" /> : <X className="w-4 h-4" />}
                       <span>At least 6 characters</span>
                     </div>
-                    <div className={`flex items-center gap-2 ${/[A-Z]/.test(password) ? 'text-emerald-400' : 'text-muted-foreground'}`}>
+                    <div className={`flex items-center gap-2 ${/[A-Z]/.test(password) ? 'text-emerald-400' : 'text-slate-600 dark:text-slate-50/60'}`}>
                       {/[A-Z]/.test(password) ? <Check className="w-4 h-4" /> : <X className="w-4 h-4" />}
                       <span>At least 1 uppercase letter</span>
                     </div>
-                    <div className={`flex items-center gap-2 ${/[0-9]/.test(password) ? 'text-emerald-400' : 'text-muted-foreground'}`}>
+                    <div className={`flex items-center gap-2 ${/[0-9]/.test(password) ? 'text-emerald-400' : 'text-slate-600 dark:text-slate-50/60'}`}>
                       {/[0-9]/.test(password) ? <Check className="w-4 h-4" /> : <X className="w-4 h-4" />}
                       <span>At least 1 number</span>
                     </div>
@@ -203,23 +223,23 @@ export const SignupPage: React.FC = () => {
             </CardContent>
 
             <CardFooter className="flex flex-col space-y-4 pt-4">
-              <Button type="submit" disabled={loading} className="w-full bg-primary hover:bg-primary/90 font-semibold h-11 rounded-xl">
+              <Button type="submit" disabled={loading} className="w-full bg-[#E63946] hover:bg-[#E63946]/90 text-slate-900 dark:text-slate-50 rounded-none hover:bg-[#E63946] hover:bg-[#E63946]/90 text-slate-900 dark:text-slate-50 rounded-none font-semibold h-11 rounded-xl">
                 {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <>Get Started <ArrowRight className="w-4 h-4 ml-2" /></>}
               </Button>
 
               <div className="relative w-full py-2">
                 <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-border"></div>
+                  <div className="w-full border-t border-slate-300 dark:border-[#333333]"></div>
                 </div>
                 <div className="relative flex justify-center text-xs uppercase">
-                  <span className="bg-card px-2 text-muted-foreground">Or continue with</span>
+                  <span className="bg-white dark:bg-[#111111] rounded-none px-2 text-slate-600 dark:text-slate-50/60">Or continue with</span>
                 </div>
               </div>
 
               <Button
                 type="button"
                 variant="outline"
-                className="w-full h-11 rounded-xl border-border hover:bg-background/50 font-semibold text-foreground bg-transparent"
+                className="w-full h-11 rounded-xl border-slate-300 dark:border-[#333333] hover:bg-slate-50 dark:bg-[#050505]/50 font-semibold text-slate-900 dark:text-slate-50 bg-transparent"
                 onClick={handleGoogleLogin}
                 disabled={loading}
               >
@@ -232,9 +252,9 @@ export const SignupPage: React.FC = () => {
                 Google
               </Button>
 
-              <div className="text-center text-xs text-muted-foreground pt-2">
+              <div className="text-center text-xs text-slate-600 dark:text-slate-50/60 pt-2">
                 Already have an account?{" "}
-                <Link to="/login" className="text-primary font-semibold hover:underline">
+                <Link to="/login" className="text-[#E63946] font-semibold hover:underline">
                   Sign In
                 </Link>
               </div>

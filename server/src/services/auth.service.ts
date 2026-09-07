@@ -121,8 +121,15 @@ export class AuthService {
     const refreshToken = generateRefreshToken(user.id);
     const hashedRefresh = await this.hashToken(refreshToken);
 
+    
     const { getDeviceDetails } = require("../utils/device");
     const { userAgent, ipAddress, location, os, browser, deviceType } = await getDeviceDetails(req);
+    
+    let finalLocation = location;
+    if (!location || location === "Unknown Location" || location === "Local Network" || location.includes("Asia")) {
+      // New sessions do not have a prior location
+    }
+    
     
     // Auto-terminate inactive sessions on login
     if (user.autoTerminateMonths) {
@@ -154,8 +161,16 @@ export class AuthService {
   }
 
   static async refresh(oldRefreshToken: string, req?: any) {
-    const payload = verifyRefreshToken(oldRefreshToken);
     const hashedOldRefresh = await this.hashToken(oldRefreshToken);
+    
+    let payload;
+    try {
+      payload = verifyRefreshToken(oldRefreshToken);
+    } catch (error) {
+      console.error("Refresh token verification failed:", error);
+      await prisma.refreshToken.deleteMany({ where: { token: hashedOldRefresh } });
+      throw new Error("Invalid or expired refresh token. Please login again.");
+    }
 
     // Check if token exists in DB (not revoked or already used)
     const tokenRecord = await prisma.refreshToken.findUnique({
@@ -164,7 +179,7 @@ export class AuthService {
 
     if (!tokenRecord) {
       // Security measure: if token was already used, revoke all tokens for this user
-      await prisma.refreshToken.deleteMany({ where: { userId: payload.userId } });
+      // Removed aggressive nuke to prevent cross-device logouts
       throw new Error("Invalid refresh token. Please login again.");
     }
 
@@ -174,12 +189,16 @@ export class AuthService {
     if (!user) throw new Error("User not found");
 
     const accessToken = generateAccessToken(user.id, user.role, sessionId);
-    const newRefreshToken = generateRefreshToken(user.id);
-    const hashedNewRefresh = await this.hashToken(newRefreshToken);
+    // DO NOT ROTATE tokens!
 
     const { getDeviceDetails } = require("../utils/device");
     const { userAgent, ipAddress, location, os, browser, deviceType } = await getDeviceDetails(req);
-    
+    let finalLocation = location;
+    if (!location || location === "Unknown Location" || location === "Local Network" || location.includes("Asia")) {
+      if (typeof tokenRecord !== 'undefined' && tokenRecord && tokenRecord.location && tokenRecord.location !== "Unknown Location") {
+        finalLocation = tokenRecord.location;
+      }
+    }
     // Auto-terminate inactive sessions on login
     if (user.autoTerminateMonths) {
       const cutoffDate = new Date();
@@ -192,19 +211,20 @@ export class AuthService {
     await prisma.refreshToken.update({
       where: { id: sessionId },
       data: {
-        token: hashedNewRefresh,
-        expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        
+        
+        expiresAt: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000), // Extended to 90 days of inactivity!
         lastActive: new Date(),
         userAgent,
         ipAddress,
-        location,
+        location: finalLocation,
         os,
         browser,
         deviceType
       },
     });
 
-    return { accessToken, refreshToken: newRefreshToken };
+    return { accessToken, refreshToken: oldRefreshToken };
   }
 
   static async logout(refreshToken: string) {

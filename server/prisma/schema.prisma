@@ -237,11 +237,13 @@ model TimetableSlot {
   id         String   @id @default(uuid())
   semesterId String
   subjectId  String
-  dayOfWeek  Int // 0=Monday … 6=Sunday
+  dayOfWeek  Int // 0=Monday
   startTime  String // "09:00"
   endTime    String // "10:00"
   room       String?
   slotType   SlotType @default(lecture)
+  validFrom  DateTime @default(now())
+  validUntil DateTime?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 

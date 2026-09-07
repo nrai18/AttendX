@@ -74,21 +74,29 @@ export async function getDeviceDetails(req: any) {
   
   const parser = new UAParser(uaString);
   const result = parser.getResult();
+  
+  const customBrowser = req.headers['x-attendx-browser'];
+  const hardwareModel = req.headers['x-attendx-hardware'];
+  const appVersion = req.headers['x-attendx-version'];
 
   if (platformHeader && osHeader && osHeader !== 'web') {
      // Native Mobile App
      deviceType = platformHeader.toLowerCase().includes('mobile') ? 'mobile' : 'desktop';
-     
-     // Capitalize os (e.g. android -> Android, ios -> iOS)
      os = osHeader.toLowerCase() === 'ios' ? 'iOS' : osHeader.charAt(0).toUpperCase() + osHeader.slice(1);
-     browser = 'AttendX App';
+     
+     // Instead of generic 'AttendX App', use the actual physical phone model (e.g. Galaxy S23) if available
+     const versionStr = appVersion ? ` ${appVersion}` : '';
+     browser = hardwareModel ? `AttendX${versionStr} (${hardwareModel})` : `AttendX Native App${versionStr}`;
   } else {
-    // Web Browser (or missing headers)
+    // Web Browser (Laptop or Mobile Web)
     deviceType = result.device.type || (uaString.includes('Mobile') ? 'mobile' : 'desktop');
     os = result.os.name || 'Unknown OS';
-    browser = result.browser.name || 'Unknown Browser';
-    if (uaString.includes('Capacitor') || uaString.includes('AttendX')) {
-      browser = 'AttendX App';
+    
+    // Prioritize the precise Client Hints browser name (e.g. 'Brave', 'Microsoft Edge') over spoofed UA string
+    if (customBrowser) {
+       browser = customBrowser;
+    } else {
+       browser = result.browser.name || 'Unknown Browser';
     }
   }
 

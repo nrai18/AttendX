@@ -147,9 +147,25 @@ export class UserController {
   static async revokeAllOtherSessions(req: AuthenticatedRequest, res: Response) {
     try {
       const userId = req.user!.userId;
-      const sessionId = req.user!.sessionId;
-      if (!sessionId) throw new Error("Current session missing");
-      const result = await UserService.revokeAllOtherSessions(userId, sessionId);
+      let sessionIdToKeep = req.user!.sessionId;
+      
+      // Safety check: Ensure we don't accidentally revoke the session tied to the user's current refresh cookie
+      // This happens if a user logs in twice in different tabs, but clicks 'Terminate' using an older access token
+      const refreshToken = req.cookies.refreshToken;
+      if (refreshToken) {
+         try {
+           const { AuthService } = require("../services/auth.service");
+           const hashedRefresh = await AuthService.hashToken(refreshToken);
+           const { prisma } = require("../lib/prisma");
+           const tokenRecord = await prisma.refreshToken.findUnique({ where: { token: hashedRefresh } });
+           if (tokenRecord) {
+             sessionIdToKeep = tokenRecord.id;
+           }
+         } catch(e) {}
+      }
+
+      if (!sessionIdToKeep) throw new Error("Current session missing");
+      const result = await UserService.revokeAllOtherSessions(userId, sessionIdToKeep);
       res.status(200).json(result);
     } catch (error: any) {
       res.status(500).json({ message: error.message });

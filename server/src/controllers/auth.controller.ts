@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { AuthService } from "../services/auth.service";
+import { prisma } from "../lib/prisma";
 import { setRefreshCookie, clearRefreshCookie } from "../utils/cookie";
 
 export class AuthController { 
@@ -73,8 +74,26 @@ export class AuthController {
 
   static async logout(req: Request, res: Response) {
     try {
+      // 1. Try to delete session using the access token's sessionId
+      const authHeader = req.headers.authorization;
+      if (authHeader && authHeader.startsWith("Bearer ")) {
+        const token = authHeader.split(" ")[1];
+        try {
+          const jwt = require("jsonwebtoken");
+          const payload = jwt.decode(token);
+          if (payload && payload.sessionId) {
+            const deleted = await prisma.refreshToken.deleteMany({ where: { id: payload.sessionId } });
+            console.log("Logout deleted sessions by ID:", deleted.count);
+          }
+        } catch (e) { console.error("Error in logout deletion by token:", e); }
+      }
+
+      // 2. Try the refresh token cookie
       const refreshToken = req.cookies.refreshToken;
-      await AuthService.logout(refreshToken);
+      if (refreshToken) {
+        await AuthService.logout(refreshToken);
+      }
+
       clearRefreshCookie(res);
       res.status(200).json({ message: "Logged out successfully" });
     } catch (error: any) {
