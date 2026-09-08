@@ -139,7 +139,7 @@ const Indicator = ({
           initial={{ width: "0%" }}
           animate={{ width: "100%" }}
           transition={{ duration: autoDelay / 1000, ease: "linear" }}
-          className="absolute inset-0 rounded-full bg-white shadow-[0_0_8px_rgba(255,255,255,0.5)]"
+          className="absolute inset-0 rounded-full bg-white border border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
         />
       )}
     </motion.button>

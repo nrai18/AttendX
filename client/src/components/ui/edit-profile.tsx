@@ -1,6 +1,6 @@
 ﻿import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Pencil, Clock, ChevronDown, CheckCircle2, Lock, ShieldAlert } from 'lucide-react';
+import { X, Pencil, Clock, ChevronDown, CheckCircle2, Lock, ShieldAlert, Eye, EyeOff } from 'lucide-react';
 import { useAuthStore } from '../../stores/authStore';
 import { api } from '../../lib/api';
 import { toast } from 'sonner';
@@ -27,6 +27,7 @@ export const EditProfile: React.FC<EditProfileProps> = ({ isOpen, onClose, initi
   const [formData, setFormData] = useState<ProfileData>(initialData);
   const [passwords, setPasswords] = useState({ oldPassword: '', newPassword: '' });
   const [showPasswordSection, setShowPasswordSection] = useState(false);
+  const [showPasswords, setShowPasswords] = useState(false);
   const [showAvatarPicker, setShowAvatarPicker] = useState(false);
 
   const AVATARS = [
@@ -55,6 +56,7 @@ export const EditProfile: React.FC<EditProfileProps> = ({ isOpen, onClose, initi
       setFormData(initialData);
       setPasswords({ oldPassword: '', newPassword: '' });
       setShowPasswordSection(false);
+      setShowPasswords(false);
       setShowAvatarPicker(false);
     }
   }, [isOpen, initialData]);
@@ -115,11 +117,8 @@ export const EditProfile: React.FC<EditProfileProps> = ({ isOpen, onClose, initi
   const currentAvatar = (formData.avatarUrl && formData.avatarUrl !== "null") ? formData.avatarUrl : getDefaultAvatar(formData.gender);
 
   const handleSave = async () => {
-    let pwData = undefined;
-    if (showPasswordSection && passwords.newPassword) {
-      pwData = { ...passwords };
-    }
-    await onSave(formData, pwData);
+    // Password is now saved independently inside its own section
+    await onSave(formData, undefined);
   };
 
   return (
@@ -132,7 +131,7 @@ export const EditProfile: React.FC<EditProfileProps> = ({ isOpen, onClose, initi
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={!isLoading ? onClose : undefined}
-            className="fixed inset-0 backdrop-blur-sm bg-background/50"
+            className="fixed inset-0 bg-[#0F0A09]/80 dark:bg-[#0F0A09]/90"
           />
 
           {/* Modal Container */}
@@ -142,13 +141,13 @@ export const EditProfile: React.FC<EditProfileProps> = ({ isOpen, onClose, initi
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
               transition={{ type: "spring", damping: 25, stiffness: 300, mass: 0.8 }}
-              className="pointer-events-auto w-full rounded-2xl shadow-2xl border border-border overflow-hidden bg-card flex flex-col md:flex-row"
+              className="pointer-events-auto w-full rounded-[32px] shadow-2xl border border-[#5A4A46]/30 dark:border-[#5A4A46]/50 overflow-hidden bg-[#E6E1D6] dark:bg-[#0F0A09] text-[#4A1711] dark:text-[#E6E1D6] flex flex-col md:flex-row"
             >
               
               {/* Left Side: Form */}
               <div className="flex-1 flex flex-col">
-                <div className="flex items-center justify-between px-6 py-5 border-b border-border bg-muted/20">
-                  <h2 className="text-xl font-bold text-foreground">Edit Profile</h2>
+                <div className="flex items-center justify-between px-8 py-6 border-b border-[#5A4A46]/20 dark:border-[#5A4A46]/50">
+                  <h2 className="text-2xl font-bold font-sans tracking-tight">Edit Profile</h2>
                   <button onClick={onClose} disabled={isLoading} className="text-muted-foreground hover:text-foreground transition-colors p-2 rounded-full hover:bg-muted">
                     <X size={20} />
                   </button>
@@ -212,35 +211,35 @@ export const EditProfile: React.FC<EditProfileProps> = ({ isOpen, onClose, initi
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-sm font-semibold text-muted-foreground">Full Name</label>
+                    <label className="text-xs font-bold font-mono tracking-wide uppercase text-[#4A1711]/80 dark:text-[#E6E1D6]/80">Full Name</label>
                     <input
                       name="fullName"
                       value={formData.fullName}
                       onChange={handleChange}
-                      className="w-full px-4 py-3 rounded-xl border-2 outline-none transition-all text-base font-semibold bg-background border-border text-foreground focus:border-primary focus:ring-4 focus:ring-primary/10"
+                      className="w-full px-4 py-3 rounded-2xl border-2 outline-none transition-all text-lg font-bold font-mono text-[#4A1711] dark:text-[#E6E1D6] bg-white/50 dark:bg-black/20 border-[#5A4A46]/20 dark:border-[#5A4A46]/50 focus:border-[#4A1711] dark:focus:border-[#E6E1D6]"
                     />
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-sm font-semibold text-muted-foreground">Email Address</label>
+                    <label className="text-xs font-bold font-mono tracking-wide uppercase text-[#4A1711]/80 dark:text-[#E6E1D6]/80">Email Address</label>
                     <input
                       name="email"
                       value={formData.email}
                       readOnly
                       disabled
-                      className="w-full px-4 py-3 rounded-xl border-2 outline-none font-medium transition-all text-base bg-muted border-border text-muted-foreground opacity-70 cursor-not-allowed"
+                      className="w-full px-4 py-3 rounded-2xl border-2 outline-none font-mono text-lg font-bold text-[#4A1711] dark:text-[#E6E1D6] bg-[#4A1711]/5 dark:bg-[#E6E1D6]/5 border-[#5A4A46]/20 dark:border-[#5A4A46]/30 cursor-not-allowed"
                     />
                   </div>
 
                   <div className="flex flex-col sm:flex-row gap-5">
                     <div className="flex-1 space-y-1.5">
-                      <label className="text-sm font-semibold text-muted-foreground">Gender</label>
+                      <label className="text-xs font-bold font-mono tracking-wide uppercase text-[#4A1711]/80 dark:text-[#E6E1D6]/80">Gender</label>
                       <div className="relative">
                         <select
                           name="gender"
                           value={formData.gender}
                           onChange={handleChange}
-                          className="w-full px-4 py-3 rounded-xl border-2 appearance-none outline-none text-base font-semibold bg-background border-border text-foreground focus:border-primary focus:ring-4 focus:ring-primary/10"
+                          className="w-full px-4 py-3 rounded-2xl border-2 appearance-none outline-none transition-all text-base font-mono bg-white/50 dark:bg-black/20 border-[#5A4A46]/20 dark:border-[#5A4A46]/50 focus:border-[#4A1711] dark:focus:border-[#E6E1D6]"
                         >
                           <option value="unspecified">Prefer not to say</option>
                           <option value="male">Male</option>
@@ -252,13 +251,13 @@ export const EditProfile: React.FC<EditProfileProps> = ({ isOpen, onClose, initi
                     </div>
 
                     <div className="flex-1 space-y-1.5">
-                      <label className="text-sm font-semibold text-muted-foreground">Birthday</label>
+                      <label className="text-xs font-bold font-mono tracking-wide uppercase text-[#4A1711]/80 dark:text-[#E6E1D6]/80">Birthday</label>
                       <input
                         type="date"
                         name="birthday"
                         value={formData.birthday}
                         onChange={handleChange}
-                        className="w-full px-4 py-3 rounded-xl border-2 outline-none text-base font-semibold bg-background border-border text-foreground focus:border-primary focus:ring-4 focus:ring-primary/10"
+                        className="w-full px-4 py-3 rounded-2xl border-2 outline-none transition-all text-lg font-bold font-mono text-[#4A1711] dark:text-[#E6E1D6] bg-white/50 dark:bg-black/20 border-[#5A4A46]/20 dark:border-[#5A4A46]/50 focus:border-[#4A1711] dark:focus:border-[#E6E1D6]"
                       />
                     </div>
                   </div>
@@ -267,17 +266,17 @@ export const EditProfile: React.FC<EditProfileProps> = ({ isOpen, onClose, initi
                   <div className="pt-4 border-t border-border">
                     <button
                       onClick={() => setShowPasswordSection(!showPasswordSection)}
-                      className="flex items-center justify-between w-full text-left bg-primary/5 hover:bg-primary/10 border border-primary/20 p-4 rounded-xl transition-colors"
+                      className="flex items-center justify-between w-full text-left p-4 rounded-2xl transition-colors hover:bg-black/5 dark:hover:bg-white/5"
                     >
                       <div className="flex items-center gap-3">
                         <div className="p-2 bg-primary/10 rounded-full text-primary">
                           {initialData.hasPassword ? <Lock size={18} /> : <ShieldAlert size={18} />}
                         </div>
                         <div>
-                          <h4 className="text-sm font-bold text-foreground">
+                          <h4 className="text-sm font-bold font-sans">
                             {initialData.hasPassword ? "Change Password" : "Set Account Password"}
                           </h4>
-                          <p className="text-xs text-muted-foreground mt-0.5">
+                          <p className="text-xs font-mono opacity-70 mt-0.5">
                             {initialData.hasPassword ? "Update your existing password" : "You signed in with Google. Set a password here."}
                           </p>
                         </div>
@@ -293,33 +292,54 @@ export const EditProfile: React.FC<EditProfileProps> = ({ isOpen, onClose, initi
                           exit={{ height: 0, opacity: 0 }}
                           className="overflow-hidden"
                         >
-                          <div className="p-4 mt-3 bg-muted/30 border border-border rounded-xl space-y-4">
+                          <div className="pt-4 mt-2 space-y-4 border-t border-[#5A4A46]/10 dark:border-[#5A4A46]/30">
                             {initialData.hasPassword && (
                               <div className="space-y-1.5">
                                 <label className="text-xs font-semibold text-muted-foreground">Current Password</label>
-                                <input
-                                  type="password"
-                                  name="oldPassword"
-                                  value={passwords.oldPassword}
-                                  onChange={handlePasswordChange}
-                                  placeholder="Enter current password"
-                                  className="w-full px-3 py-2.5 rounded-lg border-2 outline-none text-sm font-medium bg-background border-border focus:border-primary"
-                                />
+                                <div className="relative">
+                                  <input
+                                    type={showPasswords ? "text" : "password"}
+                                    name="oldPassword"
+                                    value={passwords.oldPassword}
+                                    onChange={handlePasswordChange}
+                                    className="w-full pl-4 pr-12 py-3 rounded-2xl border-2 outline-none transition-all text-lg font-bold font-mono text-[#4A1711] dark:text-[#E6E1D6] bg-white/50 dark:bg-black/20 border-[#5A4A46]/20 dark:border-[#5A4A46]/50 focus:border-[#4A1711] dark:focus:border-[#E6E1D6]"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => setShowPasswords(!showPasswords)}
+                                    className="absolute right-4 top-1/2 -translate-y-1/2 text-[#5A4A46]/60 hover:text-[#5A4A46] dark:text-[#E6E1D6]/40 dark:hover:text-[#E6E1D6]/80 transition-colors"
+                                  >
+                                    {showPasswords ? <EyeOff size={18} /> : <Eye size={18} />}
+                                  </button>
+                                </div>
                               </div>
                             )}
                             <div className="space-y-1.5">
                               <label className="text-xs font-semibold text-muted-foreground">New Password</label>
-                              <input
-                                type="password"
-                                name="newPassword"
-                                value={passwords.newPassword}
-                                onChange={handlePasswordChange}
-                                placeholder="Enter new password"
-                                className="w-full px-3 py-2.5 rounded-lg border-2 outline-none text-sm font-medium bg-background border-border focus:border-primary"
-                              />
+                              <div className="relative">
+                                <input
+                                  type={showPasswords ? "text" : "password"}
+                                  name="newPassword"
+                                  value={passwords.newPassword}
+                                  onChange={handlePasswordChange}
+                                  className="w-full pl-4 pr-12 py-3 rounded-2xl border-2 outline-none transition-all text-lg font-bold font-mono text-[#4A1711] dark:text-[#E6E1D6] bg-white/50 dark:bg-black/20 border-[#5A4A46]/20 dark:border-[#5A4A46]/50 focus:border-[#4A1711] dark:focus:border-[#E6E1D6]"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => setShowPasswords(!showPasswords)}
+                                  className="absolute right-4 top-1/2 -translate-y-1/2 text-[#5A4A46]/60 hover:text-[#5A4A46] dark:text-[#E6E1D6]/40 dark:hover:text-[#E6E1D6]/80 transition-colors"
+                                >
+                                  {showPasswords ? <EyeOff size={18} /> : <Eye size={18} />}
+                                </button>
+                              </div>
                             </div>
-                          </div>
-                        </motion.div>
+                            <div className="pt-2">
+                                <button type="button" onClick={async () => { if (passwords.newPassword) { await onSave(formData, passwords); setPasswords({oldPassword: '', newPassword: ''}); setShowPasswordSection(false); toast.success('Password updated successfully'); } }} className="px-6 py-2.5 rounded-2xl text-sm font-bold font-mono bg-[#4A1711] text-[#E6E1D6] hover:bg-[#4A1711]/90 dark:bg-[#E6E1D6] dark:text-[#0F0A09] dark:hover:bg-[#E6E1D6]/90 transition-colors">
+                                  Save New Password
+                                </button>
+                              </div>
+                            </div>
+                          </motion.div>
                       )}
                     </AnimatePresence>
                   </div>
@@ -344,10 +364,10 @@ export const EditProfile: React.FC<EditProfileProps> = ({ isOpen, onClose, initi
                           }
                         });
                       }}
-                      className="w-full p-4 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 rounded-xl flex items-center justify-between group transition-colors"
+                      className="w-full p-4 hover:bg-red-500/10 rounded-2xl flex items-center justify-between group transition-colors"
                     >
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-red-500/20 flex items-center justify-center text-red-500">
+                        <div className="w-10 h-10 rounded-full flex items-center justify-center text-red-500">
                           <ShieldAlert size={20} />
                         </div>
                         <div className="text-left">
@@ -363,18 +383,18 @@ export const EditProfile: React.FC<EditProfileProps> = ({ isOpen, onClose, initi
                   </div>
 
                 {/* Footer Action */}
-                <div className="px-6 py-5 border-t border-border bg-muted/20 flex flex-col-reverse sm:flex-row items-center justify-between gap-4 mt-auto">
+                <div className="px-8 py-6 border-t border-[#5A4A46]/20 dark:border-[#5A4A46]/50 flex flex-col-reverse sm:flex-row items-center justify-between gap-4 mt-auto">
                   <button
                     onClick={onClose}
                     disabled={isLoading}
-                    className="w-full sm:w-auto px-6 py-2.5 rounded-xl text-sm border-2 font-bold transition-colors bg-muted border-border text-foreground hover:bg-muted/80 disabled:opacity-50"
+                    className="w-full sm:w-auto px-6 py-3 rounded-2xl text-sm font-bold font-mono transition-colors hover:bg-black/5 dark:hover:bg-white/5 disabled:opacity-50"
                   >
                     Cancel
                   </button>
                   <button
                     onClick={handleSave}
                     disabled={isLoading}
-                    className="w-full sm:w-auto px-6 py-2.5 rounded-xl text-sm font-bold transition-all shadow-lg bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 flex items-center justify-center gap-2"
+                    className="w-full sm:w-auto px-8 py-3 rounded-2xl text-sm font-bold font-mono transition-all bg-[#4A1711] text-[#E6E1D6] hover:bg-[#4A1711]/90 dark:bg-[#E6E1D6] dark:text-[#0F0A09] dark:hover:bg-[#E6E1D6]/90 disabled:opacity-50"
                   >
                     {isLoading ? "Saving..." : "Save Changes"}
                   </button>
@@ -382,10 +402,10 @@ export const EditProfile: React.FC<EditProfileProps> = ({ isOpen, onClose, initi
               </div>
 
               {/* Right Side: Preview */}
-              <div className="hidden md:flex w-72 lg:w-80 border-l border-border bg-card flex-col items-center justify-center p-8 relative overflow-hidden">
-                <div className="absolute inset-0 bg-gradient-to-b from-primary/5 to-transparent pointer-events-none" />
+              <div className="hidden md:flex w-72 lg:w-80 border-l border-[#5A4A46]/20 dark:border-[#5A4A46]/50 bg-black/5 dark:bg-white/5 flex-col items-center justify-center p-8 relative overflow-hidden">
                 
-                <span className="text-xs font-bold uppercase tracking-widest mb-8 text-muted-foreground z-10">Live Preview</span>
+                
+                <span className="text-xs font-bold font-mono uppercase tracking-widest mb-8 opacity-50 z-10">Live Preview</span>
                 
                 <AnimatePresence mode="wait">
                   {showAvatarPicker ? (
@@ -453,11 +473,11 @@ export const EditProfile: React.FC<EditProfileProps> = ({ isOpen, onClose, initi
                   onChange={handleImageUpload}
                   className="hidden"
                 />
-                <h3 className="text-xl font-extrabold text-foreground text-center line-clamp-1 w-full z-10">
+                <h3 className="text-2xl font-bold font-sans text-center line-clamp-1 w-full z-10">
                   {formData.fullName || "Your Name"}
                 </h3>
                 
-                <div className="mt-3 inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold bg-primary/10 text-primary z-10">
+                <div className="mt-4 inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-bold font-mono bg-[#4A1711] text-[#E6E1D6] dark:bg-[#E6E1D6] dark:text-[#0F0A09] z-10">
                   <CheckCircle2 size={12} />
                   <span>STUDENT</span>
                 </div>

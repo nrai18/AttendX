@@ -1,3 +1,4 @@
+import { FaWindows, FaApple, FaLinux } from "react-icons/fa";
 import React, { useState, useEffect } from "react";
 import { useAuthStore } from "../../stores/authStore";
 import { motion, AnimatePresence } from "framer-motion";
@@ -28,51 +29,58 @@ interface LinkedDevicesProps {
   onClose: () => void;
 }
 
+
+
 function DeviceAvatar({ os, browser }: { os: string | null; browser: string | null }) {
-  const osLower = (os || "").toLowerCase();
+  const osLower = (os || "windows").toLowerCase();
+  const browserLower = (browser || "unknown").toLowerCase();
   
-  if (osLower.includes("android")) {
-    return (
-      <div className="w-11 h-11 rounded-full bg-[#5fcb45] flex items-center justify-center shrink-0">
-        <svg className="w-6 h-6 text-white" viewBox="0 0 576 512" fill="currentColor">
-          <path d="M420.55,301.93a24,24,0,1,1,24-24,24,24,0,0,1-24,24m-265.1,0a24,24,0,1,1,24-24,24,24,0,0,1-24,24m273.7-144.48,47.94-83a10,10,0,1,0-17.27-10h0l-48.54,84.07a301.25,301.25,0,0,0-246.56,0L116.18,64.45a10,10,0,1,0-17.27,10h0l48,83.24C73.16,207.9,24,297,24,400v20h528v-20c0-103-49.16-192.1-122.85-242.55"/>
-        </svg>
-      </div>
-    );
-  }
-  
-  if (osLower.includes("ios") || osLower.includes("mac")) {
-    return (
-      <div className="w-11 h-11 rounded-full bg-black dark:bg-white flex items-center justify-center shrink-0">
-        <svg className="w-5 h-5 text-white dark:text-black" viewBox="0 0 384 512" fill="currentColor">
-          <path d="M318.7 268.7c-.2-36.7 16.4-64.4 50-84.8-18.8-26.9-47.2-41.7-84.7-44.6-35.5-2.8-74.3 20.7-88.5 20.7-15 0-49.4-19.7-76.4-19.7C63.3 141.2 4 184.8 4 273.5q0 39.3 14.4 81.2c12.8 36.7 59 126.7 107.2 125.2 25.2-.6 43-17.9 75.8-17.9 31.8 0 48.3 17.9 76.4 17.9 48.6-.7 90.4-82.5 102.6-119.3-65.2-30.7-61.7-90-61.7-91.9zm-56.6-164.2c27.3-32.4 24.8-61.9 24-72.5-24.1 1.4-52 16.4-67.9 34.9-17.5 19.8-27.8 44.3-25.6 71.9 26.1 2 49.9-11.4 69.5-34.3z"/>
-        </svg>
-      </div>
-    );
-  }
-  
-  if (osLower.includes("windows")) {
-    return (
-      <div className="w-11 h-11 rounded-full bg-[#2AABEE] flex items-center justify-center shrink-0">
-        <svg className="w-5 h-5 text-white" viewBox="0 0 448 512" fill="currentColor">
-          <path d="M0 93.7l183.6-25.3v177.4H0V93.7zm0 324.6l183.6 25.3V268.4H0v149.9zm203.8 28L448 480V268.4H203.8v177.9zm0-380.6v180.1H448V32L203.8 65.7z"/>
-        </svg>
-      </div>
-    );
-  }
-  
-  const isBrowser = browser && browser !== "AttendX App" && browser !== "Unknown Browser";
-  if (isBrowser) {
-    return (
-      <div className="w-11 h-11 rounded-full bg-violet-500 flex items-center justify-center shrink-0">
-        <Globe className="w-5 h-5 text-white" />
-      </div>
-    );
-  }
-  
+  // Resolve OS Logo
+  let osLogo = "windows.svg";
+  if (osLower.includes("mac")) osLogo = "macos.svg";
+  else if (osLower.includes("ios") || osLower.includes("iphone") || osLower.includes("ipad")) osLogo = "ios.svg";
+  else if (osLower.includes("android")) osLogo = "android.svg";
+  else if (osLower.includes("ubuntu")) osLogo = "ubuntu.svg";
+  else if (osLower.includes("linux")) osLogo = "linux.svg";
+
+  // Resolve Browser Badge
+  let browserBadge = null;
+  if (browserLower.includes("chrome")) browserBadge = "chrome.svg";
+  else if (browserLower.includes("edge")) browserBadge = "edge.svg";
+  else if (browserLower.includes("brave")) browserBadge = "brave.svg";
+  else if (browserLower.includes("firefox")) browserBadge = "firefox.svg";
+  else if (browserLower.includes("safari")) browserBadge = "safari.svg";
+  else if (browserLower.includes("opera") && !browserLower.includes("mini")) browserBadge = "opera.svg";
+  else if (browserLower.includes("opera mini")) browserBadge = "opera_mini.svg";
+  else if (browserLower.includes("vivaldi")) browserBadge = "vivaldi.svg";
+  else if (browserLower.includes("duckduckgo")) browserBadge = "duckduckgo.svg";
+  else if (browserLower.includes("samsung")) browserBadge = "samsung-browser.svg";
+  else if (browserLower.includes("midori")) browserBadge = "midori.svg";
+  else if (browserLower.includes("comet")) browserBadge = "696ec0dc4c5ef-Comet-Browser.svg";
+  else if (browserLower.includes("zen")) browserBadge = "zen-browser.svg";
+  else if (browserLower.includes("arc")) browserBadge = "arc.svg";
+
+  const isMobileApp = browserLower.includes("attendx");
+
   return (
-    <div className="w-11 h-11 rounded-full bg-[#2AABEE] flex items-center justify-center shrink-0">
-      <Laptop className="w-5 h-5 text-white" />
+    <div className="relative w-[50px] h-[50px] shrink-0">
+      <img 
+        src={`/icons/os/${osLogo}`} 
+        className="w-full h-full object-contain drop-shadow-sm" 
+        alt={os || "OS"} 
+        onError={(e) => { e.currentTarget.src = '/icons/os/windows.svg'; }}
+      />
+      
+      {!isMobileApp && browserBadge && browserLower !== "unknown browser" && (
+        <div className="absolute -bottom-1 -right-1 w-[20px] h-[20px] rounded-full bg-white shadow-sm flex items-center justify-center p-[2px] border border-gray-100 dark:border-gray-800">
+          <img 
+            src={`/icons/browsers/${browserBadge}`} 
+            className="w-full h-full object-contain" 
+            alt={browser || undefined}
+            onError={(e) => { e.currentTarget.style.display = 'none'; }}
+          />
+        </div>
+      )}
     </div>
   );
 }
@@ -81,8 +89,15 @@ function getSessionTitle(session: Session) {
   const os = session.os || "Unknown";
   const browser = session.browser || "Unknown";
   
-  if (browser !== "AttendX App" && browser !== "Unknown Browser" && browser !== "Browser") {
-    return `${browser} Browser`;
+  // Try to extract hardware model if backend provided it
+  // e.g. "AttendX 3.0.0 (Nothing Phone (3a))" -> "Nothing Phone (3a)"
+  const hardwareMatch = browser.match(/\((.*?)\)/);
+  if (hardwareMatch) {
+    return hardwareMatch[1];
+  }
+
+  if (browser !== "AttendX App" && !browser.startsWith("AttendX") && browser !== "Unknown Browser" && browser !== "Browser") {
+    return `${browser} on ${os}`;
   }
   
   if (os.toLowerCase().includes("android")) return "Android Device";
@@ -97,9 +112,15 @@ function getSessionSubtitle(session: Session) {
   const os = session.os || "Unknown OS";
   const browser = session.browser || "Unknown";
   
-  if (browser === "AttendX App") {
-    // Faking version 1.0.0 for native apps since we don't store it in the DB yet
-    return `AttendX ${os} ${localStorage.getItem("app_version") || "2.2.0"}`;
+  if (browser.startsWith("AttendX")) {
+    const isNative = browser.includes("Native App") || browser.includes("(");
+    if (isNative) {
+      // Extract version like "AttendX 3.0.0" or fallback
+      const match = browser.match(/AttendX(?: App)?\s+([\d\.]+)/);
+      const version = match ? match[1] : (localStorage.getItem("app_version") || "");
+      const versionStr = version ? ` ${version}` : "";
+      return `AttendX ${os}${versionStr}`;
+    }
   }
   
   return `AttendX Web ${os}`;
@@ -299,7 +320,7 @@ export const LinkedDevicesModal: React.FC<LinkedDevicesProps> = ({ isOpen, onClo
                   )}
 
                   <p className="text-[14px] text-muted-foreground px-4 text-center sm:text-left leading-relaxed">
-                    The official AttendX app is available for Android, iPhone, iPad, Windows, macOS and Linux.
+                    The official AttendX app is currently available for Windows, macOS, and Android.
                   </p>
 
                   {/* Auto-terminate setting mock */}

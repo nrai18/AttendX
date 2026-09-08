@@ -143,7 +143,7 @@ export const ScheduleDate: React.FC<ScheduleDateProps> = ({ onApply, onCancel })
                                 {(isStart || isEnd) ? (
                                     <div className="absolute w-8 h-8 rounded-lg bg-linear-to-b from-neutral-700 to-neutral-900 dark:from-neutral-800 dark:to-indigo-900/50 border border-neutral-600 dark:border-white/10 shadow-xl z-10 flex flex-col items-center justify-center">
                                         <span className="text-gray-50 text-xs font-bold">{day}</span>
-                                        <motion.div layoutId="activeThumb" className="absolute bottom-1 w-2 h-[1.5px] bg-blue-400 dark:bg-indigo-500 rounded-full shadow-[0_0_8px_#6366f1]" />
+                                        <motion.div layoutId="activeThumb" className="absolute bottom-1 w-2 h-[1.5px] bg-blue-400 dark:bg-indigo-500 rounded-full " />
                                     </div>
                                 ) : (
                                     <span className={cn("relative z-10 text-[13px] font-normal transition-colors",
