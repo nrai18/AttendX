@@ -40,8 +40,21 @@ export const HardwareBackButtonHandler = () => {
         return;
       }
       
+      // Auth routes go back to landing
       if (currentPath === "/login" || currentPath === "/signup") {
         navigate("/", { replace: true });
+        return;
+      }
+      
+      // Legal routes go back to landing
+      if (currentPath === "/privacy" || currentPath === "/terms") {
+        navigate("/", { replace: true });
+        return;
+      }
+      
+      // Top-level tabs should ideally return to the main dashboard
+      if (currentPath === "/report" || currentPath === "/timetable" || currentPath === "/calendar" || currentPath === "/subjects" || currentPath === "/settings" || currentPath === "/predictive" || currentPath === "/semester") {
+        navigate("/today", { replace: true });
         return;
       }
 

@@ -7,7 +7,6 @@ import { useAttendanceStore } from "../../stores/attendanceStore";
 import { AttendanceAnimationPopup } from "../common/AttendanceAnimationPopup";
 import { FloatingChatbot } from "../common/FloatingChatbot";
 import { ScrollToTopButton } from "../common/ScrollToTopButton";
-
 import { NotificationService } from "../../services/NotificationService";
 
 interface AppShellProps {
@@ -40,8 +39,10 @@ export const AppShell: React.FC<AppShellProps> = ({ title, onAddClick }) => {
     return () => window.removeEventListener("attendance-updated", handleUpdate);
   }, [fetchStats]);
 
+  const isReports = location.pathname.startsWith("/report");
+
   return (
-    <div className="min-h-screen bg-background text-foreground flex flex-col md:flex-row antialiased selection:bg-primary selection:text-white transition-colors duration-200 overflow-x-hidden">
+    <div className={`min-h-screen ${isReports ? "bg-[#FDF8F5] dark:bg-[#1A090C]" : "bg-background"} text-foreground flex flex-col md:flex-row antialiased selection:bg-[#74313A] selection:text-white transition-colors duration-200 overflow-x-hidden`}>
       {/* Sidebar for Desktop */}
       <Sidebar />
 
@@ -51,7 +52,7 @@ export const AppShell: React.FC<AppShellProps> = ({ title, onAddClick }) => {
         <TopBar title={title} onAddClick={onAddClick} />
 
         {/* Page Content */}
-        <main className="flex-1 max-w-5xl w-full mx-auto p-4 sm:p-6 space-y-6">
+        <main className={`flex-1 w-full mx-auto ${isReports ? "" : "max-w-5xl p-4 sm:p-6 space-y-6"}`}>
           <Outlet />
         </main>
       </div>
