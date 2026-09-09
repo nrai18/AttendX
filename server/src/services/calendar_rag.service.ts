@@ -134,7 +134,7 @@ Here is the raw extracted text from the PDF as a fallback reference to help you 
       });
     }
 
-    const candidateModels = ["gemini-3.8-flash", "gemini-3.7-flash"];
+    const candidateModels = ["gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.1-pro-preview", "gemini-3.6-flash"];
     let response: any = null;
     let lastError: any = null;
 

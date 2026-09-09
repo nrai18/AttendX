@@ -26,11 +26,22 @@ export class AttendanceService {
     }
 
     // 1. Fetch regular slots
-    const regularSlots = await prisma.timetableSlot.findMany({
-      where: {
-        semesterId: activeSemester.id,
-        dayOfWeek,
-      },
+    const targetDateStart = new Date(targetDate);
+      targetDateStart.setHours(0, 0, 0, 0);
+      const targetDateEnd = new Date(targetDate);
+      targetDateEnd.setHours(23, 59, 59, 999);
+
+      // 1. Fetch regular slots that were active on THIS SPECIFIC targetDate (Time-Travel)
+      const regularSlots = await prisma.timetableSlot.findMany({
+        where: {
+          semesterId: activeSemester.id,
+          dayOfWeek,
+          validFrom: { lte: targetDateEnd },
+          OR: [
+            { validUntil: null },
+            { validUntil: { gte: targetDateStart } }
+          ]
+        },
       include: {
         subject: true,
       },
@@ -154,7 +165,7 @@ export class AttendanceService {
           room: null,
           slotType: "Extra",
           status: att.status,
-          remarks: att.remarks || "Extra class from merge",
+          remarks: att.remarks || "Previous Timetable / Extra Class",
           attendanceId: att.id,
         });
       }
@@ -519,7 +530,7 @@ export class AttendanceService {
         }
 
         let dbDayOfWeek = d.getDay() === 0 ? 6 : d.getDay() - 1;
-        const slotsOnDay = (subject.timetableSlots || []).filter((s: any) => s.dayOfWeek === dbDayOfWeek).length;
+        const slotsOnDay = (subject.timetableSlots || []).filter((s: any) => s.dayOfWeek === dbDayOfWeek && s.validUntil === null).length;
         const extraClasses = dateOverrides.filter(o => o.overrideType === 'extra_class').length;
         const cancelledClasses = dateOverrides.filter(o => o.overrideType === 'cancelled' || o.overrideType === 'holiday').length;
         
@@ -862,7 +873,21 @@ export class AttendanceService {
         }));
       }
       
-      const daySlots = regularSlots.filter(s => s.dayOfWeek === dbDayOfWeek);
+      const dStart = new Date(d);
+      dStart.setHours(0, 0, 0, 0);
+      const dEnd = new Date(d);
+      dEnd.setHours(23, 59, 59, 999);
+
+      const daySlots = regularSlots.filter(s => {
+        if (s.dayOfWeek !== dbDayOfWeek) return false;
+        const validFromDate = new Date(s.validFrom);
+        if (validFromDate > dEnd) return false; // Not active yet
+        if (s.validUntil) {
+          const validUntilDate = new Date(s.validUntil);
+          if (validUntilDate < dStart) return false; // Already archived
+        }
+        return true;
+      });
       const dayOverrides = overrides.filter(o => AttendanceService.toLocalIso(o.date) === dateKey);
       
       let expectedClasses = 0;

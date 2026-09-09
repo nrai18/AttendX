@@ -1,4 +1,4 @@
-﻿import { prisma } from "../lib/prisma";
+import { prisma } from "../lib/prisma";
 import { GoogleGenAI } from "@google/genai";
 // pdf-parse is loaded lazily inside processOcrImage to avoid startup crashes in production
 // (pdf-parse tries to load test files from disk at module init time)
@@ -42,46 +42,6 @@ export class TimetableService {
   }
 
   static async getTimetable(semesterId: string, group?: string) {
-    // Auto-heal: Ensure practicals are on their correct schedules, spans, and non-duplicate
-    try {
-      const allSlots = await prisma.timetableSlot.findMany({
-        where: { semesterId, validUntil: null },
-        include: { subject: true }
-      });
-
-      // 1. Fix misplaced ECSE301 practical (Data Communication and Networks Lab -> Wednesday 14:00-15:40)
-      for (const slot of allSlots) {
-        const isECSE301Lab = false; // Disabled hardcoded auto-heal for ECSE301 because it breaks new timetables
-        if (isECSE301Lab) {
-          const updateData: any = {};
-          if (slot.dayOfWeek !== 2) updateData.dayOfWeek = 2;
-          if (slot.startTime === "14:00" && slot.endTime === "14:50") updateData.endTime = "15:40";
-          if (!slot.room) updateData.room = "104";
-
-          if (Object.keys(updateData).length > 0) {
-            await prisma.timetableSlot.update({
-              where: { id: slot.id },
-              data: updateData
-            });
-          }
-        }
-
-        // 2. Fix 50-min practical slot spans to standard 100-min lab spans
-        if (slot.slotType === "practical" || slot.subject?.name?.toLowerCase().includes("lab")) {
-          if (slot.startTime === "14:00" && slot.endTime === "14:50") {
-            await prisma.timetableSlot.update({ where: { id: slot.id }, data: { endTime: "15:40" } });
-          } else if (slot.startTime === "11:00" && slot.endTime === "11:50") {
-            await prisma.timetableSlot.update({ where: { id: slot.id }, data: { endTime: "12:40" } });
-          } else if (slot.startTime === "09:00" && slot.endTime === "09:50") {
-            await prisma.timetableSlot.update({ where: { id: slot.id }, data: { endTime: "10:40" } });
-          }
-        }
-      }
-    } catch (e) {
-      // Non-blocking auto-heal
-      console.warn("Timetable auto-heal notice:", e);
-    }
-
     const slots = await prisma.timetableSlot.findMany({
       where: { semesterId, validUntil: null },
       include: {
@@ -373,10 +333,14 @@ CRITICAL TIMING & PERIOD RULES:
      - Morning Lab (Slot 1 & 2): startTime MUST be "09:00", endTime MUST be "10:40"
 
 3. Lab Groups & Batch Notation Rules:
-   - "G1/G2" or "G1 / G2" or "G1, G2" or "Both": Set "group": "G1/G2" (indicates BOTH groups G1 and G2 have this lab together).
-   - "G1": Set "group": "G1" (only group 1).
-   - "G2": Set "group": "G2" (only group 2).
-   - If a cell contains parallel batches, generate TWO SEPARATE slot objects.
+   - Institute Guidelines define subgroups using alphanumeric codes. The LAST DIGIT of the subgroup code specifies the group number:
+     - Codes ending in "1" (e.g., "3ECA1", "2CSA1", "PE2-A1", "PE2-B1") -> Group 1. Set "group": "G1".
+     - Codes ending in "2" (e.g., "3ECA2", "2CSA2", "PE2-A2", "PE2-B2") -> Group 2. Set "group": "G2".
+     - Combined codes (e.g., "3ECA1/3ECA2") -> Set "group": "G1/G2".
+   - Standard notation: "G1/G2", "G1 / G2", "G1, G2", "Both" -> Set "group": "G1/G2".
+   - "G1": Set "group": "G1".
+   - "G2": Set "group": "G2".
+   - If a cell contains parallel batches for different groups, generate TWO SEPARATE slot objects.
    - Regular lectures without group specifications must have "group": "ALL".
 
 4. Electives & Multi-Subject Cells:
@@ -449,7 +413,7 @@ Return ONLY strict JSON matching this structure:
         }
 
         // Updated to use only 3.7 and 3.8 flash per user request
-        const candidateModels = ["gemini-3.8-flash", "gemini-3.7-flash"];
+        const candidateModels = ["gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.1-pro-preview", "gemini-3.6-flash"];
         let response: any = null;
         let lastError: any = null;
 

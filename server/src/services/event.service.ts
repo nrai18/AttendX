@@ -16,24 +16,42 @@ export class EventService {
       };
     }
 
-    let semesterFilter = {};
-    if (semesterId) {
-      semesterFilter = {
-        OR: [
-          { semesterId: semesterId },
-          { semesterId: null }
-        ]
-      };
+    const whereClause: any = {
+      AND: [
+        { OR: [{ userId }, { userId: null }] }
+      ]
+    };
+    if (Object.keys(dateFilter).length > 0) {
+      whereClause.AND.push(dateFilter);
     }
 
-    return prisma.event.findMany({
-      where: {
-        OR: [{ userId }, { userId: null }],
-        ...dateFilter,
-        ...semesterFilter
-      },
+    if (semesterId) {
+      whereClause.AND.push({
+        OR: [{ semesterId }, { semesterId: null }]
+      });
+    }
+
+    const events = await prisma.event.findMany({
+      where: whereClause,
       orderBy: { date: "asc" }
     });
+
+    // Deduplicate: If there's a global event and a user event with the same title and date, keep the user event
+    const uniqueEvents = new Map();
+    for (const evt of events) {
+      const rawTitle = evt.title.toLowerCase().replace(/\([^)]*\)/g, '').replace(/[^a-z0-9]/g, ' ').replace(/\s+/g, ' ').trim();
+      const key = `${rawTitle}_${evt.date.toISOString().split('T')[0]}`;
+      if (uniqueEvents.has(key)) {
+        // If the existing one is global (userId: null) and the current one is user-specific, replace it
+        if (!uniqueEvents.get(key).userId && evt.userId) {
+          uniqueEvents.set(key, evt);
+        }
+      } else {
+        uniqueEvents.set(key, evt);
+      }
+    }
+    
+    return Array.from(uniqueEvents.values());
   }
 
   static async processCalendarOcr(userId: string, fileBuffer: Buffer, semesterId: string, fileName: string = "", mimeType: string = "") {
@@ -231,19 +249,12 @@ export class EventService {
     };
   }
 
-  static async clearAllEvents(userId: string, target?: "holiday_list" | "academic_calendar" | "all") {
-    const semesters = await prisma.semester.findMany({
-      where: { userId },
-      select: { id: true }
-    });
-    const semesterIds = semesters.map(s => s.id);
+  static async clearAllEvents(userId: string, target?: "holiday_list" | "academic_calendar" | "all", semesterId?: string) {
+    const baseWhere: any = { userId };
 
-    const baseWhere: any = {
-      OR: [
-        { userId },
-        ...(semesterIds.length > 0 ? [{ semesterId: { in: semesterIds } }] : [])
-      ]
-    };
+    if (semesterId) {
+      baseWhere.semesterId = semesterId;
+    }
 
     if (target === "holiday_list") {
       baseWhere.isHolidayList = true;

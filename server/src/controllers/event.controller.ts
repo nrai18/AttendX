@@ -81,7 +81,8 @@ export class EventController {
   static async clearAllEvents(req: AuthenticatedRequest, res: Response) {
     try {
       const target = req.query.target as "holiday_list" | "academic_calendar" | "all" | undefined;
-      await EventService.clearAllEvents(req.user!.userId, target);
+      const semesterId = req.query.semesterId as string | undefined;
+      await EventService.clearAllEvents(req.user!.userId, target, semesterId);
       // Invalidate the cache so the Calendar page doesn't show old events
       await CacheService.invalidateUser(req.user!.userId);
       res.json({ message: "Events removed successfully" });

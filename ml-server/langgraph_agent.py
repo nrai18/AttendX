@@ -64,7 +64,7 @@ def reformulate_query(state: ChatState):
         "Standalone Search Query:"
     )
     
-    for model_name in ['gemini-3.8-flash', 'gemini-3.7-flash']:
+    for model_name in ['gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.1-pro-preview', 'gemini-3.6-flash']:
         try:
             response = client.models.generate_content(
                 model=model_name,
@@ -150,7 +150,9 @@ def generate_policy_response(state: ChatState):
         
         log_lines = []
         for l in history_logs:
-            log_lines.append(f"  - {l.get('date')} | Sub: {l.get('subject',{}).get('name','')} | Stat: {l.get('status')} | Rem: {l.get('remarks','')}")
+            sub_val = l.get('subject')
+            sub_name = sub_val if isinstance(sub_val, str) else (sub_val.get('name', '') if isinstance(sub_val, dict) else '')
+            log_lines.append(f"  - {l.get('date')} | Sub: {sub_name} | Stat: {l.get('status')} | Rem: {l.get('remarks','')}")
         logs_text = "\n".join(log_lines) if log_lines else "No recent history logs."
         
         events_lines = []
@@ -235,7 +237,7 @@ def generate_policy_response(state: ChatState):
     )
     
     answer_text = None
-    for model_name in ['gemini-3.8-flash', 'gemini-3.7-flash']:
+    for model_name in ['gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.1-pro-preview', 'gemini-3.6-flash']:
         try:
             response = client.models.generate_content(
                 model=model_name,
@@ -249,10 +251,7 @@ def generate_policy_response(state: ChatState):
             continue
 
     if not answer_text:
-        answer_text = (
-            f"Relevant Information:\n\n"
-            f"{context}"
-        )
+        answer_text = "I'm currently experiencing high demand or a temporary rate limit. Please wait a few seconds and try again!"
     
     parsed_actions = []
     # Try to find and extract the JSON block
