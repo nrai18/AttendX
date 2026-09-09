@@ -67,8 +67,18 @@ export class AuthController {
       setRefreshCookie(res, refreshToken);
       res.status(200).json({ accessToken });
     } catch (error: any) {
-      clearRefreshCookie(res);
-      res.status(401).json({ message: error.message });
+      if (
+        error.message.includes("Invalid") || 
+        error.message.includes("expired") || 
+        error.message.includes("not found")
+      ) {
+        clearRefreshCookie(res);
+        res.status(401).json({ message: error.message });
+      } else {
+        // Database timeout or other server error
+        console.error("Refresh error (500):", error);
+        res.status(500).json({ message: "Internal server error during refresh" });
+      }
     }
   }
 

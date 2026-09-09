@@ -40,7 +40,11 @@ app.use(
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 app.use(cookieParser());
-app.use(morgan("dev"));
+app.use(
+  morgan("dev", {
+    skip: (req, res) => req.url.startsWith("/api/auth") || req.url.includes("password"),
+  })
+);
 
 // Rate Limiting
 const limiter = rateLimit({

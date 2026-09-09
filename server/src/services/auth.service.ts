@@ -239,7 +239,7 @@ export class AuthService {
     // Generate a 6 digit OTP
     const crypto = require('crypto');
     const otp = crypto.randomInt(100000, 999999).toString();
-    const otpHash = crypto.createHash('sha256').update(otp).digest('hex');
+    const otpHash = crypto.createHmac('sha256', process.env.JWT_SECRET as string).update(otp).digest('hex');
 
     if (!user) {
       // Return a fake token to prevent user enumeration
@@ -276,7 +276,7 @@ export class AuthService {
       throw new Error("Invalid or expired reset token");
     }
     
-    const providedHash = crypto.createHash('sha256').update(otp).digest('hex');
+    const providedHash = crypto.createHmac('sha256', process.env.JWT_SECRET as string).update(otp).digest('hex');
     if (providedHash !== decoded.otpHash) throw new Error("Invalid OTP");
     
     const passwordHash = await bcrypt.hash(newPassword, 10);

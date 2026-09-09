@@ -1,4 +1,4 @@
-﻿import { Router } from "express";
+import { Router } from "express";
 import { AuthController } from "../controllers/auth.controller";
 import rateLimit from "express-rate-limit";
 
@@ -7,7 +7,16 @@ const router = Router();
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 15,
-  message: { error: "Too many login attempts from this IP, please try again after 15 minutes" },
+  message: { message: "Too many login attempts from this IP, please try again after 15 minutes" },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const forgotPasswordLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 1,
+  keyGenerator: (req) => req.body.email || req.ip,
+  message: { message: "You can only request a password reset once every 15 minutes." },
   standardHeaders: true,
   legacyHeaders: false,
 });
@@ -16,7 +25,7 @@ router.post("/register", loginLimiter, AuthController.register);
 router.post("/login", loginLimiter, AuthController.login);
 router.post("/refresh", AuthController.refresh);
 router.post("/logout", AuthController.logout);
-router.post("/forgot-password", loginLimiter, AuthController.forgotPassword);
+router.post("/forgot-password", forgotPasswordLimiter, AuthController.forgotPassword);
 router.post("/reset-password", loginLimiter, AuthController.resetPassword);
 
 // Google OAuth routes (Native Mobile)
