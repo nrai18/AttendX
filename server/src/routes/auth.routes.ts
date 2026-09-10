@@ -15,7 +15,7 @@ const loginLimiter = rateLimit({
 const forgotPasswordLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 1,
-  keyGenerator: (req) => req.body.email || req.ip,
+  keyGenerator: (req) => req.body?.email ? String(req.body.email).toLowerCase() : "unknown-email",
   message: { message: "You can only request a password reset once every 15 minutes." },
   standardHeaders: true,
   legacyHeaders: false,
