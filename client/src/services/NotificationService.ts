@@ -224,7 +224,7 @@ export class NotificationService {
 
       console.log("Auto-scheduling local notifications for upcoming classes and events...");
 
-      let slots = useCacheStore.getState().timetable?.slots;
+      let slots: any[] = useCacheStore.getState().timetable?.slots;
       if (!slots) {
          try {
             const res = await api.get(`/timetable/${activeSemesterId}`);
