@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { Capacitor } from '@capacitor/core';
 import { Loader2, CheckCircle2, XCircle, AlertCircle, PartyPopper, BookOpen, Palmtree, Timer, TrendingUp, TrendingDown, Plus, MessageSquare, Sparkles, ChevronRight, ChevronLeft, X, Trash2 } from "lucide-react";
@@ -278,6 +278,8 @@ export const TodayPage = () => {
         api.get(`/attendance/today?date=${targetDateStr}`),
         api.get("/users/onboarding-status")
       ]);
+
+      if (res.status === 'rejected') throw res.reason;
 
       let nextTodayStatus = null;
       let nextAgenda: AgendaItem[] = [];

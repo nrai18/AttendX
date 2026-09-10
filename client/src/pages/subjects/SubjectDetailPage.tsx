@@ -94,12 +94,16 @@ export const SubjectDetailPage = () => {
   const [simMissed, setSimMissed] = useState(0);
 
   const fetchLogsData = async () => {
+    const querySubject = isOverall ? "all" : id;
     try {
       setIsLoading(true);
-      const querySubject = isOverall ? "all" : id;
       const res = await api.get(`/attendance/logs?subjectId=${querySubject}`);
       const rawLogs: AttendanceLogItem[] = res.data.logs || [];
       const subjects = res.data.subjects || [];
+
+      // Cache the response for offline use
+      const existingCache = useCacheStore.getState().subjects || {};
+      useCacheStore.getState().setCache('subjects', { ...existingCache, [querySubject]: res.data });
 
       setLogs(rawLogs);
       setSubjectsList(subjects);
@@ -153,6 +157,60 @@ export const SubjectDetailPage = () => {
       }
     } catch (error) {
       console.error("Failed to fetch attendance logs:", error);
+      // Offline Fallback
+      const existingCache = useCacheStore.getState().subjects || {};
+      const cachedData = existingCache[querySubject];
+      if (cachedData) {
+        const rawLogs: AttendanceLogItem[] = cachedData.logs || [];
+        const subjects = cachedData.subjects || [];
+        setLogs(rawLogs);
+        setSubjectsList(subjects);
+
+        if (isOverall) {
+          let totalAttended = 0;
+          let totalClasses = 0;
+          subjects.forEach((s: any) => {
+            totalAttended += s.attended;
+            totalClasses += s.total;
+          });
+          const pct = totalClasses > 0 ? (totalAttended / totalClasses) * 100 : 0;
+          const user = useAuthStore.getState().user;
+          const avgTarget = user?.targetAttendance ?? 75;
+          const totalCanMiss = Math.floor((totalAttended - (avgTarget / 100) * totalClasses) / (avgTarget / 100));
+
+          setHeaderStats({
+            id: "overall",
+            name: "Overall",
+            target: avgTarget,
+            attended: totalAttended,
+            total: totalClasses,
+            percentage: pct,
+            canMiss: totalCanMiss > 0 ? totalCanMiss : 0,
+            needAttend: 0,
+            statusText: totalClasses === 0
+              ? "No classes recorded yet"
+              : totalCanMiss > 0
+              ? `can miss ${totalCanMiss} lecture${totalCanMiss > 1 ? "s" : ""}`
+              : "can't miss the next lecture",
+          });
+        } else {
+          const sub = subjects.find((s: any) => s.id === id);
+          if (sub) {
+            setHeaderStats({
+              id: sub.id,
+              name: sub.name,
+              code: sub.code,
+              target: useAuthStore.getState().user?.targetAttendance ?? 75,
+              attended: sub.attended,
+              total: sub.total,
+              percentage: sub.percentage,
+              canMiss: sub.canMiss,
+              needAttend: sub.needAttend,
+              statusText: sub.statusText,
+            });
+          }
+        }
+      }
     } finally {
       setIsLoading(false);
     }

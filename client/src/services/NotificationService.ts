@@ -3,6 +3,7 @@ import { Capacitor } from '@capacitor/core';
 import { mutePhone, unmutePhone } from '../lib/ringer';
 import { useAttendanceStore } from '../stores/attendanceStore';
 import { useNotificationStore } from '../stores/notificationStore';
+import { useCacheStore } from '../stores/cacheStore';
 import { api } from '../lib/api';
 import { toast } from 'sonner';
 import { differenceInDays, parse, addMinutes, setHours, setMinutes, startOfDay, addDays, isSameDay } from 'date-fns';
@@ -223,8 +224,15 @@ export class NotificationService {
 
       console.log("Auto-scheduling local notifications for upcoming classes and events...");
 
-      const res = await api.get(`/timetable/${activeSemesterId}`);
-      const slots: any[] = res.data;
+      let slots = useCacheStore.getState().timetable?.slots;
+      if (!slots) {
+         try {
+            const res = await api.get(`/timetable/${activeSemesterId}`);
+            slots = res.data;
+         } catch(e) {
+            console.error("Failed to fetch timetable for auto-scheduling", e);
+         }
+      }
       if (!slots) return;
 
       const events = useAttendanceStore.getState().events || [];
@@ -233,7 +241,7 @@ export class NotificationService {
       const pending = await LocalNotifications.getPending();
       const toCancel = pending.notifications.filter(n => n.id >= 100000); // Only cancel timetable classes
       if (toCancel.length > 0) {
-        await LocalNotifications.cancel({ notifications: toCancel });
+        await LocalNotifications.cancel({ notifications: toCancel.map(n => ({ id: Number(n.id) })) });
       }
 
       const today = startOfDay(new Date());
@@ -317,18 +325,25 @@ export class NotificationService {
           const parsedStart = parse(startTimeStr, "HH:mm", new Date());
           let classStartObj = setMinutes(setHours(currentDay, parsedStart.getHours()), parsedStart.getMinutes());
           
-          let notifyTime = addMinutes(classStartObj, -config.classReminderOffset);
+          const standardNotifyTime = addMinutes(classStartObj, -config.classReminderOffset);
+          let headsUpTime: Date | null = null;
 
           if (config.notifyNextClassOnEnd && prevSlot && prevSlot.endTime) {
             const prevParsedEnd = parse(prevSlot.endTime, "HH:mm", new Date());
             const prevEndObj = setMinutes(setHours(currentDay, prevParsedEnd.getHours()), prevParsedEnd.getMinutes());
-            if (prevEndObj.getTime() >= (classStartObj.getTime() - 60*60*1000) && prevEndObj.getTime() <= classStartObj.getTime()) {
-               notifyTime = prevEndObj;
+            // Only schedule Heads Up if it's within 1 hour, and at least 5 minutes before the standard reminder
+            if (prevEndObj.getTime() >= (classStartObj.getTime() - 60*60*1000) && prevEndObj.getTime() <= (standardNotifyTime.getTime() - 5*60*1000)) {
+               headsUpTime = prevEndObj;
             }
           }
 
-          if (notifyTime.getTime() > Date.now()) {
-            await this.scheduleClassReminder(subjectName, classStartObj, notifyTime, config.showLocation ? slot.room : undefined, endTimeStr);
+          if (headsUpTime && headsUpTime.getTime() > Date.now()) {
+            await this.scheduleClassReminder(subjectName + " (Heads Up)", classStartObj, headsUpTime, config.showLocation ? slot.room : undefined, endTimeStr);
+            scheduledCount++;
+          }
+
+          if (standardNotifyTime.getTime() > Date.now()) {
+            await this.scheduleClassReminder(subjectName, classStartObj, standardNotifyTime, config.showLocation ? slot.room : undefined, endTimeStr);
             scheduledCount++;
           }
           
@@ -373,7 +388,7 @@ export class NotificationService {
       const pending = await LocalNotifications.getPending();
       const toCancel = pending.notifications.filter(n => n.id >= 9000 && n.id <= 9999);
       if (toCancel.length > 0) {
-        await LocalNotifications.cancel({ notifications: toCancel });
+        await LocalNotifications.cancel({ notifications: toCancel.map(n => ({ id: Number(n.id) })) });
       }
 
       const { api } = await import('../lib/api');
@@ -388,20 +403,28 @@ export class NotificationService {
         const deadline = new Date(assignment.deadline);
         if (deadline.getTime() < Date.now()) continue;
 
-        // Reminder 1 day before
-        const oneDayBefore = new Date(deadline.getTime() - 24 * 60 * 60 * 1000);
-        if (oneDayBefore.getTime() > Date.now()) {
-          notifications.push({
-            id: idCounter++,
-            title: "Assignment Due Tomorrow",
-            body: assignment.title,
-            largeBody: `\u23F0 Reminder: "${assignment.title}" is due tomorrow at ${deadline.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}.`,
-            channelId: "class_alerts",
-            smallIcon: "ic_stat_adobe",
-            iconColor: "#FF0000",
-            actionTypeId: 'ACADEMIC_UPDATE_OPEN',
-            schedule: { at: oneDayBefore, allowWhileIdle: true }
-          });
+        // Schedule multiple cascade reminders
+        const reminders = [
+          { time: deadline.getTime() - 24 * 60 * 60 * 1000, title: "Assignment Due Tomorrow", text: "due tomorrow" },
+          { time: deadline.getTime() - 2 * 60 * 60 * 1000, title: "Assignment Due in 2 Hours", text: "due in 2 hours" },
+          { time: deadline.getTime() - 15 * 60 * 1000, title: "Assignment Due Soon", text: "due in 15 minutes!" }
+        ];
+
+        for (const rem of reminders) {
+          const remDate = new Date(rem.time);
+          if (remDate.getTime() > Date.now()) {
+            notifications.push({
+              id: idCounter++,
+              title: rem.title,
+              body: assignment.title,
+              largeBody: `\u23F0 Reminder: "${assignment.title}" is ${rem.text} at ${deadline.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}.`,
+              channelId: "class_alerts",
+              smallIcon: "ic_stat_adobe",
+              iconColor: "#FF0000",
+              actionTypeId: 'ACADEMIC_UPDATE_OPEN',
+              schedule: { at: remDate, allowWhileIdle: true }
+            });
+          }
         }
       }
 
@@ -420,7 +443,7 @@ export class NotificationService {
       const pending = await LocalNotifications.getPending();
       const toCancel = pending.notifications.filter(n => n.id >= 8800 && n.id <= 8899 || n.id === 8888);
       if (toCancel.length > 0) {
-        await LocalNotifications.cancel({ notifications: toCancel });
+        await LocalNotifications.cancel({ notifications: toCancel.map(n => ({ id: Number(n.id) })) });
       }
 
       if (!frequency || frequency.type === 'Never') return;
@@ -497,6 +520,7 @@ export class NotificationService {
            });
         }
       } else if (frequency.type === 'Monthly') {
+        const targetDate = parseInt(frequency.subValue || "1", 10);
         const subjects = useAttendanceStore.getState().subjects || [];
         let attended = 0;
         let total = 0;
@@ -504,9 +528,9 @@ export class NotificationService {
         const overallPct = total === 0 ? 100 : Math.round((attended / total) * 100);
 
         for (let i = 0; i < 3; i++) {
-           let notifyDate = setMinutes(setHours(new Date(today.getFullYear(), today.getMonth() + i, 1), summaryHour), summaryMinute);
+           let notifyDate = setMinutes(setHours(new Date(today.getFullYear(), today.getMonth() + i, targetDate), summaryHour), summaryMinute);
            if (notifyDate.getTime() <= Date.now()) {
-              notifyDate = setMinutes(setHours(new Date(today.getFullYear(), today.getMonth() + i + 3, 1), summaryHour), summaryMinute);
+              notifyDate = setMinutes(setHours(new Date(today.getFullYear(), today.getMonth() + i + 3, targetDate), summaryHour), summaryMinute);
            }
            
            notificationsToSchedule.push({

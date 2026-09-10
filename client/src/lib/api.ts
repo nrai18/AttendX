@@ -36,20 +36,27 @@ api.interceptors.request.use(
     config.headers['X-Attendx-OS'] = Capacitor.getPlatform();
     config.headers['X-Attendx-Timezone'] = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
-    if (config.url?.includes("/auth/login") || config.url?.includes("/auth/google") || config.url?.includes("/auth/register")) {
-      try {
-        const { Geolocation } = await import('@capacitor/geolocation');
-          const hasPerms = await Geolocation.checkPermissions();
-          if (hasPerms.location !== 'granted') {
-            await Geolocation.requestPermissions();
-          }
-          const pos = await Geolocation.getCurrentPosition({ timeout: 5000, maximumAge: 300000, enableHighAccuracy: false });
-          config.headers['X-Attendx-Lat'] = pos.coords.latitude;
-          config.headers['X-Attendx-Lon'] = pos.coords.longitude;
-      } catch (e) {
-        console.warn("Location error:", e);
-      }
+    try {
+      const { Device } = await import('@capacitor/device');
+      const info = await Device.getInfo();
+      config.headers['X-Attendx-Hardware'] = info.model;
+      
+      const { App } = await import('@capacitor/app');
+      const appInfo = await App.getInfo();
+      config.headers['X-Attendx-Version'] = appInfo.version;
+    } catch(e) {}
+
+    let browserName = "";
+    // @ts-ignore
+    if (navigator.userAgentData && navigator.userAgentData.brands) {
+      // @ts-ignore
+      const brands = navigator.userAgentData.brands;
+      const nonChromium = brands.find((b: any) => b.brand !== 'Chromium' && !b.brand.includes('Not'));
+      browserName = nonChromium ? nonChromium.brand : (brands[0]?.brand || "");
     }
+    if (browserName) config.headers['X-Attendx-Browser'] = browserName;
+
+    // Geolocation fetching has been moved directly to UI mounting phases
 
     if (
       config.url?.includes("/auth/login") || config.url?.includes("/auth/google") ||
@@ -73,11 +80,16 @@ api.interceptors.request.use(
           token = response.data.accessToken;
           useAuthStore.getState().setAccessToken(token);
           processQueue(null, token);
-        } catch (error) {
+        
+        } catch (error: any) {
           processQueue(error, null);
-          useAuthStore.getState().logout();
+          const isNetworkError = !error.response || error.response.status >= 500;
+          if (!isNetworkError) {
+            useAuthStore.getState().logout();
+          }
           token = null;
         } finally {
+
           isRefreshing = false;
         }
       } else {
@@ -157,11 +169,16 @@ api.interceptors.response.use(
         processQueue(null, accessToken);
         originalRequest.headers.Authorization = `Bearer ${accessToken}`;
         return api(originalRequest);
-      } catch (refreshError) {
+      
+      } catch (refreshError: any) {
         processQueue(refreshError, null);
-        useAuthStore.getState().logout();
+        const isNetworkError = !refreshError.response || refreshError.response.status >= 500;
+        if (!isNetworkError) {
+          useAuthStore.getState().logout();
+        }
         return Promise.reject(refreshError);
       } finally {
+
         isRefreshing = false;
       }
     }
@@ -212,7 +229,7 @@ api.interceptors.response.use(
               }, null, 2);
               const subject = encodeURIComponent("AttendX API Error");
               const body = encodeURIComponent(`Error Trace:\n${trace}`);
-              window.location.href = `mailto:24247@iiitu.ac.in,rai18naman@gmail.com?subject=${subject}&body=${body}`;
+              window.location.href = `mailto:support@mail.attendx.tech?subject=${subject}&body=${body}`;
             }
           }
         });

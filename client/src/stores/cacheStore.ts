@@ -8,6 +8,7 @@ interface CacheState {
   semester: any;
   calendar: any;
   subjects: any;
+  all_logs?: any;
   setCache: (key: string, data: any) => void;
   clearCache: () => void;
   reminderFrequency: { type: 'Never' | 'Daily' | 'Weekly' | 'Monthly' | 'Yearly', subValue?: string };

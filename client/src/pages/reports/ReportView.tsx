@@ -1,44 +1,47 @@
 import React, { useEffect, useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAttendanceStore } from '../../stores/attendanceStore';
 import { api } from '../../lib/api';
-import { Loader2, ChevronLeft, Calendar as CalendarIcon, TrendingUp, BarChart3, PieChart as PieChartIcon, Activity } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { ChevronLeft, Activity, BarChart3, PieChartIcon, CalendarIcon, Clock, CheckCircle2, AlertCircle } from 'lucide-react';
+import { AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
+import { format, subDays, addDays, isAfter, isBefore, parseISO, differenceInDays } from 'date-fns';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { Text, Float, Environment, ContactShadows } from '@react-three/drei';
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Legend, PieChart, Pie, Cell } from 'recharts';
 import * as THREE from 'three';
-import { format, subDays, addDays, isWithinInterval, parseISO } from 'date-fns';
 
 // 3D Ring Component
 const GlowingRing = ({ percentage }: { percentage: number }) => {
-  const meshRef = React.useRef<THREE.Mesh>(null);
+  const groupRef = React.useRef<THREE.Group>(null);
   
   useFrame((state, delta) => {
-    if (meshRef.current) {
-      meshRef.current.rotation.x += delta * 0.2;
-      meshRef.current.rotation.y += delta * 0.5;
+    if (groupRef.current) {
+      groupRef.current.rotation.x += delta * 0.2;
+      groupRef.current.rotation.y += delta * 0.5;
     }
   });
 
-  const color = percentage >= 75 ? '#10b981' : percentage >= 60 ? '#f59e0b' : '#ef4444';
+  const color = '#74313A';
 
   return (
     <Float speed={2} rotationIntensity={0.5} floatIntensity={1}>
-      <mesh ref={meshRef}>
-        <torusGeometry args={[1.5, 0.4, 32, 100, (percentage / 100) * Math.PI * 2]} />
-        <meshStandardMaterial 
-          color={color} 
-          emissive={color} 
-          emissiveIntensity={0.8}
-          roughness={0.2}
-          metalness={0.8}
-        />
-      </mesh>
-      {/* Background ring for the empty part */}
-      <mesh rotation-z={(percentage / 100) * Math.PI * 2}>
-        <torusGeometry args={[1.5, 0.38, 32, 100, ((100 - percentage) / 100) * Math.PI * 2]} />
-        <meshStandardMaterial color="#1f2937" transparent opacity={0.3} />
-      </mesh>
+      <group ref={groupRef}>
+        <mesh>
+          <torusGeometry args={[1.5, 0.4, 32, 100, (percentage / 100) * Math.PI * 2]} />
+          <meshStandardMaterial 
+            color={color} 
+            emissive={color} 
+            emissiveIntensity={0.8}
+            roughness={0.2}
+            metalness={0.8}
+          />
+        </mesh>
+        {/* Background ring for the empty part */}
+        <mesh rotation-z={(percentage / 100) * Math.PI * 2}>
+          <torusGeometry args={[1.5, 0.38, 32, 100, ((100 - percentage) / 100) * Math.PI * 2]} />
+          <meshStandardMaterial color="#EED3CF" transparent opacity={0.3} />
+        </mesh>
+      </group>
       
       <Text
         position={[0, 0, 0]}
@@ -53,7 +56,7 @@ const GlowingRing = ({ percentage }: { percentage: number }) => {
       <Text
         position={[0, -0.6, 0]}
         fontSize={0.2}
-        color="#9ca3af"
+        color="#7E2430"
         anchorX="center"
         anchorY="middle"
       >
@@ -63,7 +66,7 @@ const GlowingRing = ({ percentage }: { percentage: number }) => {
   );
 };
 
-const COLORS = ['#10b981', '#ef4444', '#f59e0b', '#3b82f6', '#8b5cf6', '#ec4899'];
+const COLORS = ['#74313A', '#D35C6D', '#EED3CF', '#7E2430', '#A94A57', '#C48189'];
 
 export const ReportView: React.FC = () => {
   const navigate = useNavigate();
@@ -76,9 +79,15 @@ export const ReportView: React.FC = () => {
       if (!activeSemesterId) return;
       try {
         const res = await api.get('/attendance/logs');
-        setLogs(res.data);
+        const data = res.data?.logs || [];
+        setLogs(data);
+        useCacheStore.getState().setCache('all_logs', data);
       } catch (err) {
         console.error(err);
+        const cached = useCacheStore.getState().all_logs;
+        if (cached) {
+           setLogs(cached);
+        }
       } finally {
         setLoading(false);
       }
@@ -86,18 +95,8 @@ export const ReportView: React.FC = () => {
     fetchLogs();
   }, [activeSemesterId]);
 
-  // Overall calculations
-  const totalAttended = subjects?.reduce((acc, s) => acc + s.attended, 0) || 0;
-  const totalClasses = subjects?.reduce((acc, s) => acc + s.total, 0) || 0;
-  const overallPercentage = totalClasses === 0 ? 100 : Math.round((totalAttended / totalClasses) * 100);
-
-  // Expected classes calculation
-  const totalExpectedRemaining = subjects?.reduce((acc, s: any) => acc + (s.remainingClasses || 0), 0) || 0;
-
-  // Compute past week & past month summaries
   const { weeklyStats, monthlyStats, weeklyChart } = useMemo(() => {
     const today = new Date();
-    
     let wAttended = 0, wTotal = 0, mAttended = 0, mTotal = 0;
     const wChart = [];
 
@@ -105,21 +104,24 @@ export const ReportView: React.FC = () => {
     for (let i = 6; i >= 0; i--) {
       const d = subDays(today, i);
       const dateStr = format(d, 'yyyy-MM-dd');
-      const dayLogs = logs.filter(l => l.date.startsWith(dateStr));
-      const attended = dayLogs.filter(l => l.status === 'PRESENT').length;
-      const total = dayLogs.length;
+      const dayLogs = logs.filter((l: any) => l.date.startsWith(dateStr));
+      const countable = dayLogs.filter((l: any) => ['present', 'absent', 'medical', 'od'].includes(l.status));
+      const attended = countable.filter((l: any) => ['present', 'medical', 'od'].includes(l.status)).length;
+      const missed = countable.filter((l: any) => l.status === 'absent').length;
+      const total = countable.length;
       wAttended += attended;
       wTotal += total;
-      wChart.push({ name: format(d, 'EEE'), attended, missed: total - attended, total });
+      wChart.push({ name: format(d, 'EEE'), attended, missed, total });
     }
 
     // Month chart
     for (let i = 29; i >= 0; i--) {
       const d = subDays(today, i);
       const dateStr = format(d, 'yyyy-MM-dd');
-      const dayLogs = logs.filter(l => l.date.startsWith(dateStr));
-      const attended = dayLogs.filter(l => l.status === 'PRESENT').length;
-      const total = dayLogs.length;
+      const dayLogs = logs.filter((l: any) => l.date.startsWith(dateStr));
+      const countable = dayLogs.filter((l: any) => ['present', 'absent', 'medical', 'od'].includes(l.status));
+      const attended = countable.filter((l: any) => ['present', 'medical', 'od'].includes(l.status)).length;
+      const total = countable.length;
       mAttended += attended;
       mTotal += total;
     }
@@ -131,230 +133,214 @@ export const ReportView: React.FC = () => {
     };
   }, [logs]);
 
-  // Compute upcoming events
-  const { upcomingWeekEvents, upcomingMonthEvents } = useMemo(() => {
+  const { upcomingEvents, pastEvents } = useMemo(() => {
     const today = new Date();
-    const next7 = addDays(today, 7);
-    const next30 = addDays(today, 30);
-    
-    const wEvents = events?.filter((e: any) => {
-      try {
-        const ed = parseISO(e.date);
-        return isWithinInterval(ed, { start: today, end: next7 });
-      } catch { return false; }
-    }) || [];
-
-    const mEvents = events?.filter((e: any) => {
-      try {
-        const ed = parseISO(e.date);
-        return isWithinInterval(ed, { start: today, end: next30 });
-      } catch { return false; }
-    }) || [];
-
-    return { upcomingWeekEvents: wEvents, upcomingMonthEvents: mEvents };
+    today.setHours(0,0,0,0);
+    const up = events?.filter((e: any) => isAfter(parseISO(e.date), today) || differenceInDays(parseISO(e.date), today) === 0).sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime()) || [];
+    const past = events?.filter((e: any) => isBefore(parseISO(e.date), today) && differenceInDays(today, parseISO(e.date)) <= 30 && differenceInDays(parseISO(e.date), today) !== 0).sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime()) || [];
+    return { upcomingEvents: up, pastEvents: past };
   }, [events]);
 
+  const expectedClassesData = useMemo(() => {
+    return subjects.map((s: any) => {
+      const remainingClasses = s.remainingClasses || 0;
+      const attended = s.attended || 0;
+      return { name: s.code || s.name.substring(0, 5), attended, remaining: remainingClasses };
+    });
+  }, [subjects]);
+  const totalExpectedRemaining = expectedClassesData.reduce((acc, curr) => acc + curr.remaining, 0);
+
   const subjectPieData = useMemo(() => {
-    return subjects?.map(s => ({
-      name: s.code || s.name.substring(0, 10),
-      value: s.attended || 1 // fallback to 1 to show on chart even if 0
-    })) || [];
+    return subjects.map((s: any) => ({ name: s.code || s.name.substring(0, 5), value: s.attended || 0 })).filter(d => d.value > 0);
   }, [subjects]);
 
-  const expectedClassesData = useMemo(() => {
-    return subjects?.map((s: any) => ({
-      name: s.code || s.name.substring(0, 5),
-      remaining: s.remainingClasses || 0,
-      attended: s.attended || 0
-    })) || [];
+  const overallPercentage = useMemo(() => {
+    let totalAttended = 0;
+    let totalClasses = 0;
+    subjects.forEach((s: any) => {
+      totalAttended += s.attended || 0;
+      totalClasses += s.total || 0;
+    });
+    return totalClasses > 0 ? Math.round((totalAttended / totalClasses) * 100) : 0;
   }, [subjects]);
 
   if (loading) {
     return (
-      <div className="flex h-screen items-center justify-center bg-background">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      <div className="min-h-screen bg-[#EED3CF] dark:bg-[#2C0F14] flex items-center justify-center">
+        <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1, ease: "linear" }} className="w-10 h-10 border-4 border-[#74313A] border-t-transparent rounded-full" />
       </div>
     );
   }
 
+  const containerVariants = {
+    hidden: { opacity: 0 },
+    show: { opacity: 1, transition: { staggerChildren: 0.1 } }
+  };
+  const itemVariants: any = {
+    hidden: { opacity: 0, y: 20 },
+    show: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 100 } }
+  };
+
+  const cardClasses = "bg-white/80 dark:bg-[#74313A]/20 backdrop-blur-2xl border border-white/50 dark:border-[#74313A]/30 shadow-[0_16px_40px_-12px_rgba(116,49,58,0.15)] rounded-[24px] p-6 transition-all hover:shadow-[0_20px_50px_-12px_rgba(116,49,58,0.25)]";
+
   return (
-    <div className="min-h-screen bg-background text-foreground pb-20 animate-in fade-in duration-300">
-      <div className="sticky top-0 z-50 bg-background/80 backdrop-blur-xl border-b border-border/50 px-4 pb-4 pt-[calc(1rem+env(safe-area-inset-top))] flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <button 
-            onClick={() => navigate('/today')}
-            className="w-10 h-10 rounded-full bg-muted/50 flex items-center justify-center hover:bg-muted transition-colors"
-          >
-            <ChevronLeft className="w-5 h-5 text-foreground" />
-          </button>
-          <h1 className="text-lg font-bold text-foreground">Analytics Report</h1>
-        </div>
-      </div>
-
-      <div className="px-4 mt-6 space-y-8">
+    <div className="min-h-screen text-[#111827] dark:text-[#FDF8F5] p-4 md:p-8 font-sans overflow-x-hidden selection:bg-[#74313A] selection:text-white">
+      <div className="max-w-5xl mx-auto space-y-8 pb-20">
         
-        {/* 3D Visualizer */}
-        <div className="w-full h-[350px] bg-card border border-border/50 rounded-3xl overflow-hidden relative shadow-lg">
-          <div className="absolute top-4 left-4 z-10">
-            <span className="px-3 py-1 bg-primary/10 text-primary text-xs font-bold rounded-full">LIVE TELEMETRY</span>
-          </div>
-          <Canvas camera={{ position: [0, 0, 5], fov: 45 }}>
-            <ambientLight intensity={0.5} />
-            <spotLight position={[10, 10, 10]} angle={0.15} penumbra={1} intensity={1} />
-            <pointLight position={[-10, -10, -10]} intensity={0.5} />
-            <GlowingRing percentage={overallPercentage} />
-            <ContactShadows position={[0, -2, 0]} opacity={0.4} scale={10} blur={2} far={4} />
-            <Environment preset="city" />
-          </Canvas>
-        </div>
-
-        {/* Weekly & Monthly Summary Cards */}
-        <div className="grid grid-cols-2 gap-4">
-          <div className="bg-card border border-border/50 rounded-3xl p-5 shadow-sm flex flex-col gap-2">
-            <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Past 7 Days</h3>
-            <div className="flex items-end gap-2">
-              <span className="text-3xl font-black">{weeklyStats.pct}%</span>
+        {/* Header */}
+        <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <button onClick={() => navigate(-1)} className="w-12 h-12 rounded-[16px] bg-white/60 dark:bg-black/20 backdrop-blur-md flex items-center justify-center hover:bg-white dark:hover:bg-black/40 transition-colors border border-white/40 dark:border-white/10 shadow-sm text-[#74313A] dark:text-[#EED3CF]">
+              <ChevronLeft className="w-6 h-6" />
+            </button>
+            <div>
+              <h1 className="text-3xl font-black tracking-tight text-[#74313A] dark:text-[#EED3CF]" style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>Analytics Report</h1>
+              <p className="text-sm font-medium opacity-70">Deep dive into your performance.</p>
             </div>
-            <p className="text-xs font-medium text-muted-foreground">{weeklyStats.attended} attended / {weeklyStats.missed} missed</p>
           </div>
-          <div className="bg-card border border-border/50 rounded-3xl p-5 shadow-sm flex flex-col gap-2">
-            <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Past 30 Days</h3>
-            <div className="flex items-end gap-2">
-              <span className="text-3xl font-black">{monthlyStats.pct}%</span>
-            </div>
-            <p className="text-xs font-medium text-muted-foreground">{monthlyStats.attended} attended / {monthlyStats.missed} missed</p>
-          </div>
-        </div>
+        </motion.div>
 
-        {/* Weekly Chart */}
-        <div className="w-full bg-card border border-border/50 rounded-3xl p-5 shadow-lg">
-          <div className="flex items-center gap-2 mb-4">
-            <Activity className="w-5 h-5 text-blue-500" />
-            <h2 className="text-base font-bold">Weekly Performance Trend</h2>
-          </div>
-          <div className="h-[200px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={weeklyChart} margin={{ top: 10, right: 10, left: -30, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="colorAttended" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.8}/>
-                    <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={false} />
-                <XAxis dataKey="name" stroke="#9ca3af" fontSize={10} tickLine={false} axisLine={false} />
-                <YAxis stroke="#9ca3af" fontSize={10} tickLine={false} axisLine={false} />
-                <Tooltip contentStyle={{ backgroundColor: '#1f2937', borderColor: '#374151', borderRadius: '12px' }} />
-                <Area type="monotone" dataKey="attended" stroke="#10b981" fillOpacity={1} fill="url(#colorAttended)" strokeWidth={3} />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-        {/* Expected Classes Simulation Chart */}
-        <div className="w-full bg-card border border-border/50 rounded-3xl p-5 shadow-lg">
-          <div className="flex items-center gap-2 mb-4">
-            <BarChart3 className="w-5 h-5 text-purple-500" />
-            <h2 className="text-base font-bold">Expected Remaining Classes</h2>
-          </div>
-          <p className="text-sm text-muted-foreground mb-4">
-            Total of <span className="font-bold text-foreground">{totalExpectedRemaining}</span> classes remaining in the semester.
-          </p>
-          <div className="h-[250px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={expectedClassesData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={false} />
-                <XAxis dataKey="name" stroke="#9ca3af" fontSize={10} tickLine={false} axisLine={false} />
-                <YAxis stroke="#9ca3af" fontSize={10} tickLine={false} axisLine={false} />
-                <Tooltip cursor={{fill: '#374151'}} contentStyle={{ backgroundColor: '#1f2937', borderColor: '#374151', borderRadius: '12px' }} />
-                <Legend wrapperStyle={{ fontSize: '10px' }} />
-                <Bar dataKey="attended" name="Attended So Far" stackId="a" fill="#3b82f6" radius={[0, 0, 4, 4]} />
-                <Bar dataKey="remaining" name="Expected Remaining" stackId="a" fill="#8b5cf6" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-        {/* Subject Attendance Distribution Pie Chart */}
-        <div className="w-full bg-card border border-border/50 rounded-3xl p-5 shadow-lg">
-          <div className="flex items-center gap-2 mb-4">
-            <PieChartIcon className="w-5 h-5 text-pink-500" />
-            <h2 className="text-base font-bold">Attendance Distribution</h2>
-          </div>
-          <div className="h-[250px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={subjectPieData}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={60}
-                  outerRadius={80}
-                  paddingAngle={5}
-                  dataKey="value"
-                >
-                  {subjectPieData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip contentStyle={{ backgroundColor: '#1f2937', borderColor: '#374151', borderRadius: '12px' }} />
-                <Legend layout="horizontal" verticalAlign="bottom" align="center" wrapperStyle={{ fontSize: '10px' }}/>
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-        {/* Upcoming Events Section */}
-        <div className="w-full bg-card border border-border/50 rounded-3xl p-5 shadow-lg">
-          <div className="flex items-center gap-2 mb-4">
-            <CalendarIcon className="w-5 h-5 text-emerald-500" />
-            <h2 className="text-base font-bold">Upcoming Semester Events</h2>
-          </div>
+        <motion.div variants={containerVariants} initial="hidden" animate="show" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           
-          <div className="space-y-6">
-            <div>
-              <h3 className="text-sm font-semibold text-muted-foreground mb-3">Next 7 Days ({upcomingWeekEvents.length})</h3>
-              {upcomingWeekEvents.length === 0 ? (
-                <p className="text-xs text-muted-foreground bg-muted/20 p-3 rounded-lg">No events in the next 7 days.</p>
-              ) : (
-                <div className="space-y-2">
-                  {upcomingWeekEvents.map((e: any) => (
-                    <div key={e.id} className="p-3 bg-muted/30 border border-border/30 rounded-xl flex items-center justify-between">
-                      <div className="flex flex-col">
-                        <span className="text-sm font-semibold">{e.title}</span>
-                        <span className="text-xs text-muted-foreground">{format(parseISO(e.date), 'MMM d, yyyy')}</span>
-                      </div>
-                      <span className="text-[10px] font-bold px-2 py-1 bg-primary/10 text-primary rounded-full">{e.eventType || e.type}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
+          {/* Main Ring */}
+          <motion.div variants={itemVariants} className={`${cardClasses} col-span-1 md:col-span-2 lg:col-span-3 flex flex-col items-center justify-center relative overflow-hidden h-[300px]`}>
+            <div className="absolute inset-0 bg-gradient-to-r from-[#74313A]/5 to-[#D35C6D]/5 pointer-events-none" />
+            <span className="absolute top-6 left-6 px-4 py-1.5 bg-[#74313A]/10 text-[#74313A] dark:bg-[#EED3CF]/10 dark:text-[#EED3CF] text-xs font-bold rounded-full tracking-widest backdrop-blur-md border border-[#74313A]/20">LIVE TELEMETRY</span>
+            
+          <div className="relative z-10 w-full h-full min-h-[300px]">
+            <Canvas camera={{ position: [0, 0, 5], fov: 45 }}>
+              <ambientLight intensity={0.5} />
+              <spotLight position={[10, 10, 10]} angle={0.15} penumbra={1} intensity={1} />
+              <pointLight position={[-10, -10, -10]} intensity={0.5} />
+              <GlowingRing percentage={overallPercentage} />
+              <ContactShadows position={[0, -2, 0]} opacity={0.4} scale={10} blur={2} far={4} color="#74313A" />
+              <Environment preset="city" />
+            </Canvas>
+          </div>
+          </motion.div>
 
-            <div>
-              <h3 className="text-sm font-semibold text-muted-foreground mb-3">Next 30 Days ({upcomingMonthEvents.length})</h3>
-              {upcomingMonthEvents.length === 0 ? (
-                <p className="text-xs text-muted-foreground bg-muted/20 p-3 rounded-lg">No upcoming events this month.</p>
-              ) : (
-                <div className="space-y-2">
-                  {upcomingMonthEvents.slice(0, 5).map((e: any) => (
-                    <div key={e.id} className="p-3 bg-muted/30 border border-border/30 rounded-xl flex items-center justify-between">
-                      <div className="flex flex-col">
-                        <span className="text-sm font-semibold">{e.title}</span>
-                        <span className="text-xs text-muted-foreground">{format(parseISO(e.date), 'MMM d, yyyy')}</span>
-                      </div>
-                      <span className="text-[10px] font-bold px-2 py-1 bg-secondary/20 text-secondary-foreground rounded-full">{e.eventType || e.type}</span>
-                    </div>
-                  ))}
-                  {upcomingMonthEvents.length > 5 && (
-                    <p className="text-xs text-center text-muted-foreground pt-2">+{upcomingMonthEvents.length - 5} more events...</p>
+          {/* KPI Cards */}
+          <motion.div variants={itemVariants} className={`\${cardClasses} flex flex-col justify-center`}>
+            <h3 className="text-xs font-bold uppercase tracking-widest opacity-60 mb-2">Past 7 Days</h3>
+            <div className="text-4xl font-black text-[#74313A] dark:text-[#EED3CF] font-mono mb-1">{weeklyStats.pct}%</div>
+            <p className="text-sm font-medium opacity-75">{weeklyStats.attended} attended / {weeklyStats.missed} missed</p>
+          </motion.div>
+
+          <motion.div variants={itemVariants} className={`\${cardClasses} flex flex-col justify-center`}>
+            <h3 className="text-xs font-bold uppercase tracking-widest opacity-60 mb-2">Past 30 Days</h3>
+            <div className="text-4xl font-black text-[#74313A] dark:text-[#EED3CF] font-mono mb-1">{monthlyStats.pct}%</div>
+            <p className="text-sm font-medium opacity-75">{monthlyStats.attended} attended / {monthlyStats.missed} missed</p>
+          </motion.div>
+
+          {/* Area Chart */}
+          <motion.div variants={itemVariants} className={`\${cardClasses} col-span-1 md:col-span-2 lg:col-span-3`}>
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-10 h-10 rounded-full bg-[#74313A]/10 text-[#74313A] dark:bg-[#EED3CF]/10 dark:text-[#EED3CF] flex items-center justify-center">
+                <Activity className="w-5 h-5" />
+              </div>
+              <h2 className="text-lg font-bold" style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>Weekly Performance Trend</h2>
+            </div>
+            <div className="h-[250px] w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={weeklyChart} margin={{ top: 10, right: 10, left: -30, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="colorArea" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#74313A" stopOpacity={0.4}/>
+                      <stop offset="95%" stopColor="#74313A" stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="currentColor" className="opacity-10" vertical={false} />
+                  <XAxis dataKey="name" stroke="currentColor" className="opacity-50" fontSize={12} tickLine={false} axisLine={false} />
+                  <YAxis stroke="currentColor" className="opacity-50" fontSize={12} tickLine={false} axisLine={false} />
+                  <Tooltip contentStyle={{ backgroundColor: 'rgba(255,255,255,0.9)', borderColor: 'rgba(116,49,58,0.2)', borderRadius: '16px', color: '#111827', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.1)', backdropFilter: 'blur(10px)' }} itemStyle={{ color: '#74313A', fontWeight: 'bold' }} cursor={{ stroke: '#74313A', strokeWidth: 1, strokeDasharray: '4 4' }} />
+                  <Area type="monotone" dataKey="attended" stroke="#74313A" strokeWidth={4} fillOpacity={1} fill="url(#colorArea)" activeDot={{ r: 6, fill: '#74313A', stroke: '#fff', strokeWidth: 2 }} />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          </motion.div>
+
+          <motion.div variants={itemVariants} className={`\${cardClasses} col-span-1 md:col-span-2 lg:col-span-3`}>
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-10 h-10 rounded-full bg-[#D35C6D]/10 text-[#D35C6D] flex items-center justify-center">
+                <BarChart3 className="w-5 h-5" />
+              </div>
+              <h2 className="text-lg font-bold" style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>Expected Remaining Classes</h2>
+            </div>
+            <div className="h-[250px] w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={expectedClassesData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="currentColor" className="opacity-10" vertical={false} />
+                  <XAxis dataKey="name" stroke="currentColor" className="opacity-50" fontSize={10} tickLine={false} axisLine={false} angle={-45} textAnchor="end" height={60} interval={0} />
+                  <YAxis stroke="currentColor" className="opacity-50" fontSize={12} tickLine={false} axisLine={false} />
+                  <Tooltip cursor={{fill: 'currentColor', opacity: 0.05}} contentStyle={{ backgroundColor: 'rgba(255,255,255,0.9)', borderColor: 'rgba(116,49,58,0.2)', borderRadius: '16px', color: '#111827', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.1)' }} />
+                  <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} iconType="circle" />
+                  <Bar dataKey="attended" name="Attended So Far" stackId="a" fill="#74313A" radius={[0, 0, 8, 8]} />
+                  <Bar dataKey="remaining" name="Expected Remaining" stackId="a" fill="#D35C6D" radius={[8, 8, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </motion.div>
+
+          <motion.div variants={itemVariants} className={`\${cardClasses} col-span-1 md:col-span-2 lg:col-span-3`}>
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-10 h-10 rounded-full bg-[#EED3CF]/20 text-[#74313A] dark:bg-[#7E2430]/30 dark:text-[#EED3CF] flex items-center justify-center">
+                <CalendarIcon className="w-5 h-5" />
+              </div>
+              <h2 className="text-lg font-bold" style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>Events & Milestones</h2>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              {/* Upcoming Events */}
+              <div>
+                <h3 className="text-xs font-bold uppercase tracking-widest opacity-60 mb-4 flex items-center gap-2"><Clock className="w-3 h-3"/> Upcoming Events</h3>
+                <div className="space-y-3">
+                  {upcomingEvents.length === 0 ? (
+                    <p className="text-sm opacity-50 italic">No upcoming events found.</p>
+                  ) : (
+                    upcomingEvents.slice(0, 5).map((e: any, index: number) => {
+                      const daysAway = differenceInDays(parseISO(e.date), new Date());
+                      return (
+                        <motion.div whileHover={{ scale: 1.02 }} key={e.id || `upcoming-${index}`} className="p-4 rounded-[16px] bg-[#74313A]/5 border border-[#74313A]/10 dark:bg-black/20 dark:border-white/5 flex items-center justify-between">
+                          <div>
+                            <p className="font-semibold">{e.title}</p>
+                            <p className="text-xs font-mono opacity-60">{format(parseISO(e.date), 'MMM d, yyyy')}</p>
+                          </div>
+                          <div className="text-right">
+                            <span className="text-xs font-bold px-3 py-1 bg-[#74313A]/10 text-[#74313A] dark:bg-[#EED3CF]/10 dark:text-[#EED3CF] rounded-full">{daysAway === 0 ? 'Today' : `in ${daysAway} days`}</span>
+                          </div>
+                        </motion.div>
+                      );
+                    })
                   )}
                 </div>
-              )}
+              </div>
+
+              {/* Past Events */}
+              <div>
+                <h3 className="text-xs font-bold uppercase tracking-widest opacity-60 mb-4 flex items-center gap-2"><CheckCircle2 className="w-3 h-3"/> Happened Recently</h3>
+                <div className="space-y-3">
+                  {pastEvents.length === 0 ? (
+                    <p className="text-sm opacity-50 italic">No past events in the last 30 days.</p>
+                  ) : (
+                    pastEvents.slice(0, 5).map((e: any, index: number) => {
+                      const daysAgo = differenceInDays(new Date(), parseISO(e.date));
+                      return (
+                        <div key={e.id || `past-${index}`} className="p-4 rounded-[16px] bg-black/5 border border-black/5 dark:bg-white/5 dark:border-white/5 flex items-center justify-between opacity-80">
+                          <div>
+                            <p className="font-semibold line-through decoration-[#74313A]/30">{e.title}</p>
+                            <p className="text-xs font-mono opacity-60">{format(parseISO(e.date), 'MMM d, yyyy')}</p>
+                          </div>
+                          <span className="text-[10px] uppercase font-bold tracking-widest text-[#74313A] opacity-70 dark:text-[#EED3CF]">{daysAgo === 0 ? 'Earlier' : `${daysAgo}d ago`}</span>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
             </div>
-          </div>
-        </div>
-        
+          </motion.div>
+          
+        </motion.div>
       </div>
     </div>
   );
