@@ -5,9 +5,34 @@ import fs from "fs";
 export class SystemController {
   static async getUpdateManifest(req: Request, res: Response) {
     const manifest = {
-      latestVersion: "2.6.2",
+      latestVersion: "3.5",
       title: "The Security & Architecture Update",
       changelog: [
+        
+        {
+          version: "3.5",
+          date: "2026-09-10",
+          sizeMb: 30.2,
+          sections: [
+            {
+              title: "What's New (Security & Offline)",
+              items: [
+                { icon: "🛡️", text: "Zero-Knowledge OTPs: Upgraded internal token hashing to HMAC-SHA256, stopping offline cracking tools instantly." },
+                { icon: "📶", text: "Flawless Offline Mode: Solved the 'disappearing green pill' bug. The app now accurately caches and displays your subjects and logs fully offline." },
+                { icon: "⏰", text: "Precise Scheduling: Fixed an issue where the 'Time before class' offset and Monthly report schedules were being ignored or overridden." }
+              ]
+            },
+            {
+              title: "Improvements & UI Polish",
+              items: [
+                { icon: "🎨", text: "Complete UI/UX redesign featuring a pure brutalist aesthetic with NO neon gradients or AI slop." },
+                { icon: "🚦", text: "Forgot Password rate limiter actively throttles spammers to 1 request every 15 minutes." },
+                { icon: "📝", text: "Secured backend console logs to aggressively mask all authentication data." }
+              ]
+            }
+          ],
+          mandatory: true
+        },
         {
           version: "2.6.2",
           sizeMb: 5.2,

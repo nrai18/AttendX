@@ -25,6 +25,7 @@ export const TimetableWizardModal: React.FC<WizardProps> = ({ isOpen, onClose, o
   const [selectedLabGroup, setSelectedLabGroup] = useState<string>("G1");
   const [selectedElectives, setSelectedElectives] = useState<string[]>([]);
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
+  const [startDate, setStartDate] = useState<string>(new Date().toISOString().split('T')[0]);
 
   // Term mode (Jul-Dec => odd semesters 1,3,5,7; Jan-Jun => even semesters 2,4,6,8)
   const isJulToDec = new Date().getMonth() >= 6;
@@ -135,14 +136,17 @@ export const TimetableWizardModal: React.FC<WizardProps> = ({ isOpen, onClose, o
 
     // 5. If nothing detected and semester >= 5, scan curriculum dictionary for electives in this branch
     if (list.length === 0 && selectedSemester >= 5) {
-      const branchPrefix = selectedBranch ? selectedBranch.toUpperCase().slice(0, 2) : "CS";
-      Object.keys(COURSE_CURRICULUM).forEach((code) => {
-        if (code.startsWith(`${branchPrefix}SE3`) || code.startsWith("SCMS3") || code.startsWith("SEMS3")) {
-          const isMinor = code.startsWith("SCMS") || code.startsWith("SEMS");
-          addOption(code, COURSE_CURRICULUM[code], isMinor ? "Minor / Open Elective" : "Program Elective", isMinor ? 3 : 4);
-        }
-      });
-    }
+        const branchPrefix = selectedBranch ? selectedBranch.toUpperCase().slice(0, 2) : "CS";
+        Object.keys(COURSE_CURRICULUM).forEach((code) => {
+          if (code.startsWith(`${branchPrefix}SE3`) || code.startsWith("SCMS3") || code.startsWith("SEMS3")) {
+            let category = "Program Elective";
+            if (code.startsWith("SCMS")) category = "Minor Elective (SoC)";
+            else if (code.startsWith("SEMS")) category = "Open Elective (SoE)";
+            
+            addOption(code, COURSE_CURRICULUM[code], category, category.includes("Program") ? 4 : 3);
+          }
+        });
+      }
 
     return list;
   }, [currentSchedule, setupPayload, selectedBranch, selectedSemester]);
@@ -691,6 +695,7 @@ export const TimetableWizardModal: React.FC<WizardProps> = ({ isOpen, onClose, o
                 </div>
               )}
 
+              
               {/* Classes Preview list */}
               <div className="space-y-3">
                 <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex justify-between items-center">

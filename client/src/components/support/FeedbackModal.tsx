@@ -6,6 +6,7 @@ import { useAuthStore } from "../../stores/authStore";
 import { useHardwareBack } from "../../hooks/useHardwareBack";
 
 interface FeedbackModalProps {
+  errorDetails?: any;
   isOpen: boolean;
   onClose: () => void;
   defaultIssue?: string;
@@ -16,7 +17,8 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({
   isOpen,
   onClose,
   defaultIssue = "",
-  defaultTab = "issue"
+  defaultTab = "issue",
+  errorDetails
 }) => {
   useHardwareBack(isOpen, onClose);
   
@@ -70,6 +72,8 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({
           userAgent: navigator.userAgent,
           platform: navigator.platform,
           localStorage: { ...localStorage },
+            errorDetails,
+            email,
           windowSize: `${window.innerWidth}x${window.innerHeight}`,
           url: window.location.href
         };

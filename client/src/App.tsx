@@ -1,4 +1,4 @@
-﻿import React from "react";
+import React from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { useSilentRefresh } from "./hooks/useSilentRefresh";
 import { useTheme } from "./hooks/useTheme";
@@ -169,7 +169,7 @@ export function App() {
       />
       {Capacitor.isNativePlatform() && (
         <OTAUpdateModal
-          localVersion={localStorage.getItem("app_version") || "2.6.2"}
+          localVersion={localStorage.getItem("app_version") || "3.5"}
         />
       )}
       {splashFinished && (

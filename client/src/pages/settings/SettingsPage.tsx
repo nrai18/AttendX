@@ -147,6 +147,15 @@ const renderDocuments = (type: string) => {
 
   // App Info Modal State
   const [showAppInfoModal, setShowAppInfoModal] = useState(false);
+  const [appInfoColored, setAppInfoColored] = useState(false);
+
+  useEffect(() => {
+    if (showAppInfoModal) {
+      setAppInfoColored(false);
+      const timer = setTimeout(() => setAppInfoColored(true), 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [showAppInfoModal]);
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
   const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
   const [isChangelogOpen, setIsChangelogOpen] = useState(false);
@@ -169,7 +178,7 @@ const renderDocuments = (type: string) => {
       try {
         const { data } = await api.get("/system/update");
         if (data) {
-          const localVersion = localStorage.getItem("app_version") || "2.6.2";
+          const localVersion = localStorage.getItem("app_version") || "3.0.0";
           const serverChangelog = data.changelog || [];
           const index = serverChangelog.findIndex((c: any) => c.version === localVersion);
           data.changelog = index !== -1 ? serverChangelog.slice(index) : serverChangelog;
@@ -570,7 +579,7 @@ const renderDocuments = (type: string) => {
       `Name: ${user?.name || "User"}\nEmail: ${user?.email || "User"}\n\nMessage:\n${contactMessage}`,
     );
     window.open(
-      `https://mail.google.com/mail/?view=cm&fs=1&to=24247@iiitu.ac.in,rai18naman@gmail.com&su=${mailtoSubject}&body=${mailtoBody}`,
+      `https://mail.google.com/mail/?view=cm&fs=1&to=support@mail.attendx.tech&su=${mailtoSubject}&body=${mailtoBody}`,
       "_blank",
     );
     setContactSubmitted(true);
@@ -709,7 +718,7 @@ const renderDocuments = (type: string) => {
                   Google Account
                 </span>
                 <span className="text-xs text-muted-foreground">
-                  {user?.email || "rai18naman@gmail.com"}
+                  {user?.email || "support@mail.attendx.tech"}
                 </span>
               </div>
 
@@ -807,7 +816,7 @@ const renderDocuments = (type: string) => {
             </div>
             <div className="flex items-center gap-2">
               <Mail className="w-3.5 h-3.5 text-emerald-500" />
-              <span>rai18naman@gmail.com</span>
+              <span>support@mail.attendx.tech</span>
             </div>
           </div>
         </div>
@@ -817,7 +826,7 @@ const renderDocuments = (type: string) => {
             <p className="text-sm">Thank you for reaching out!</p>
             <p className="text-muted-foreground font-normal">
               Your email client has been opened. You can also contact Naman Rai
-              directly at rai18naman@gmail.com or 8076408958.
+              directly at support@mail.attendx.tech or 8076408958.
             </p>
           </div>
         )}
@@ -1400,7 +1409,7 @@ const renderDocuments = (type: string) => {
                   App info
                 </h3>
                 <p className="text-xs text-muted-foreground">
-                  Version v{(localStorage.getItem("app_version") || "2.6.2")} & Developer details
+                  Version v3.0.0 & Developer details
                 </p>
               </div>
             </div>
@@ -1809,7 +1818,7 @@ const renderDocuments = (type: string) => {
       {/* App Info Modal */}
       {showAppInfoModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="bg-card border border-border rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-6 relative overflow-hidden">
+          <div className="bg-white dark:bg-[#111111] border-2 border-black dark:border-[#333333] rounded-none max-w-md w-full p-6 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] dark:shadow-[8px_8px_0px_0px_#222222] space-y-6 relative overflow-hidden">
             <button
               onClick={() => setShowAppInfoModal(false)}
               className="absolute top-4 right-4 p-2 rounded-full hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
@@ -1821,14 +1830,14 @@ const renderDocuments = (type: string) => {
               <img
                 src="/attendx_logo.png"
                 alt="AttendX Logo"
-                className="w-14 h-14 rounded-2xl object-cover shadow-lg shadow-primary/25 shrink-0 bg-white"
+                className="w-14 h-14 rounded-none object-cover border-2 border-black shrink-0 bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] dark:shadow-[4px_4px_0px_0px_#222222]"
               />
               <div>
                 <h2 className="text-xl font-extrabold text-foreground tracking-tight">
                   AttendX
                 </h2>
                 <p className="text-xs font-semibold text-primary">
-                  Smart Attendance Manager • v{(localStorage.getItem("app_version") || "2.6.2")}
+                  Smart Attendance Manager <span className="md:hidden">• v{localStorage.getItem("app_version") || "3.0.0"}</span>
                 </p>
                 <p className="text-xs text-muted-foreground">
                   Built for IIITU Ecosystem
@@ -1837,13 +1846,13 @@ const renderDocuments = (type: string) => {
             </div>
 
             {/* Creator Profile */}
-            <div className="bg-muted/40 border border-border/60 rounded-2xl p-4 space-y-3">
+            <div className="bg-slate-50 dark:bg-[#050505] border-2 border-black dark:border-[#333333] rounded-none p-4 space-y-3 shadow-[4px_4px_0px_0px_rgba(0,0,0,0.1)] dark:shadow-[4px_4px_0px_0px_#050505]">
               <div className="flex items-center gap-3">
                 <img
                   src="/developer-photo.jpg"
                   alt="Naman Rai"
                   referrerPolicy="no-referrer"
-                  className="w-14 h-14 rounded-full object-cover border-2 border-primary shadow-md shrink-0"
+                  className={`w-14 h-14 rounded-none object-cover border-2 border-black dark:border-[#333333] shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] dark:shadow-[4px_4px_0px_0px_#222222] shrink-0 transition-all duration-300 ${appInfoColored ? 'grayscale-0 md:grayscale md:hover:grayscale-0' : 'grayscale hover:grayscale-0'}`}
                   onError={(e) => {
                     e.currentTarget.style.display = "none";
                     if (e.currentTarget.nextElementSibling) {
@@ -1875,17 +1884,17 @@ const renderDocuments = (type: string) => {
               </p>
               <div className="flex flex-wrap gap-2 pt-2 border-t border-border/40 text-xs">
                 <a
-                  href="https://mail.google.com/mail/?view=cm&fs=1&to=24247@iiitu.ac.in,rai18naman@gmail.com"
+                  href="https://mail.google.com/mail/?view=cm&fs=1&to=support@mail.attendx.tech"
                   target="_blank"
                   rel="noreferrer"
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-background border border-border text-foreground hover:bg-muted transition-colors font-medium"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-none bg-white dark:bg-[#111111] border-2 border-black dark:border-[#333333] text-foreground hover:bg-slate-50 dark:hover:bg-[#050505] transition-colors font-bold shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_#222222] hover:-translate-y-0.5 hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] dark:hover:shadow-[4px_4px_0px_0px_#222222]"
                 >
                   <Mail className="w-3.5 h-3.5 text-primary" />
-                  <span>rai18naman@gmail.com</span>
+                  <span>support@mail.attendx.tech</span>
                 </a>
                 <a
                   href="tel:+918076408958"
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-background border border-border text-foreground hover:bg-muted transition-colors font-medium"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-none bg-white dark:bg-[#111111] border-2 border-black dark:border-[#333333] text-foreground hover:bg-slate-50 dark:hover:bg-[#050505] transition-colors font-bold shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_#222222] hover:-translate-y-0.5 hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] dark:hover:shadow-[4px_4px_0px_0px_#222222]"
                 >
                   <Phone className="w-3.5 h-3.5 text-emerald-500" />
                   <span>+91 8076408958</span>
@@ -1899,19 +1908,19 @@ const renderDocuments = (type: string) => {
                 Key Capabilities
               </h4>
               <ul className="grid grid-cols-2 gap-2 text-muted-foreground font-medium">
-                <li className="flex items-center gap-1.5 bg-card p-2 rounded-xl border border-border/40">
+                <li className="flex items-center gap-1.5 bg-white dark:bg-[#111111] p-2 rounded-none border-2 border-black dark:border-[#333333] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_#222222]">
                   <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
                   Dynamic Criteria Target
                 </li>
-                <li className="flex items-center gap-1.5 bg-card p-2 rounded-xl border border-border/40">
+                <li className="flex items-center gap-1.5 bg-white dark:bg-[#111111] p-2 rounded-none border-2 border-black dark:border-[#333333] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_#222222]">
                   <span className="w-2 h-2 rounded-full bg-blue-500"></span>
                   Forecast Leave Calc
                 </li>
-                <li className="flex items-center gap-1.5 bg-card p-2 rounded-xl border border-border/40">
+                <li className="flex items-center gap-1.5 bg-white dark:bg-[#111111] p-2 rounded-none border-2 border-black dark:border-[#333333] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_#222222]">
                   <span className="w-2 h-2 rounded-full bg-purple-500"></span>
                   OCR Timetable Importer
                 </li>
-                <li className="flex items-center gap-1.5 bg-card p-2 rounded-xl border border-border/40">
+                <li className="flex items-center gap-1.5 bg-white dark:bg-[#111111] p-2 rounded-none border-2 border-black dark:border-[#333333] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_#222222]">
                   <span className="w-2 h-2 rounded-full bg-amber-500"></span>
                   Classroom Hub Sync
                 </li>
@@ -1921,7 +1930,7 @@ const renderDocuments = (type: string) => {
             <div className="pt-2 text-center">
               <button
                 onClick={() => setShowAppInfoModal(false)}
-                className="w-full py-2.5 rounded-xl bg-primary text-primary-foreground font-bold text-xs shadow-md shadow-primary/20 hover:opacity-90 transition-opacity"
+                className="w-full py-4 rounded-none bg-[#48CAE4] text-[#050505] font-black uppercase tracking-widest text-xs border-2 border-black dark:border-none shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] dark:shadow-[4px_4px_0px_0px_#111111] hover:-translate-y-1 hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] dark:hover:shadow-[6px_6px_0px_0px_#111111] transition-all"
               >
                 Close App Info
               </button>

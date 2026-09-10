@@ -175,7 +175,7 @@ export const SemesterHubPage = () => {
 
   const handleClearEvents = async () => {
     try {
-      await api.post("/events/clear?target=academic_calendar");
+      await api.post(`/events/clear?target=all&semesterId=${activeSemester?.id || ''}`);
       fetchData(); // re-fetch events
       fetchCalendar();
       window.dispatchEvent(new Event("attendance-updated"));

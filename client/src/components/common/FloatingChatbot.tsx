@@ -523,18 +523,18 @@ export const FloatingChatbot: React.FC = () => {
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
           onClick={() => setIsOpen(prev => !prev)}
-          className="group relative flex items-center gap-2.5 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 text-white px-4 py-3 rounded-full shadow-xl shadow-purple-500/25 border border-white/20 transition-all cursor-pointer text-xs font-semibold"
+          className="group relative flex items-center gap-2.5 bg-gradient-to-r from-[#D35C6D] to-[#74313A] text-white px-4 py-3 rounded-full shadow-xl shadow-[#74313A]/25 border border-white/20 transition-all cursor-pointer text-xs font-semibold"
           aria-label="Open AttendX AI"
         >
           <div className="relative">
             <Sparkles className="w-4 h-4 text-amber-300 animate-pulse" />
             <span className="absolute -top-1 -right-1 flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400"></span>
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-none bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-none h-2 w-2 bg-emerald-400"></span>
             </span>
           </div>
           <span className="font-bold tracking-wide">AttendX AI</span>
-          <span className="hidden sm:inline-block text-[10px] text-white/80 bg-white/20 px-1.5 py-0.5 rounded-full font-mono">
+          <span className="hidden sm:inline-block text-[10px] text-white/80 bg-white/20 px-1.5 py-0.5 rounded-none font-mono">
             Ctrl+/
           </span>
         </motion.button>
@@ -559,35 +559,35 @@ export const FloatingChatbot: React.FC = () => {
             transition={{ type: "spring", damping: 22, stiffness: 280 }}
             className={`fixed z-50 flex flex-col bg-gradient-to-b from-[#f7f5ff] via-[#fdfdff] to-[#f4f1fa] dark:from-[#0d1222] dark:via-[#090d18] dark:to-[#120f21] border border-purple-500/20 dark:border-indigo-500/30 shadow-2xl shadow-purple-950/20 overflow-hidden text-foreground ${
               isExpanded
-                ? "bottom-4 right-4 sm:bottom-6 sm:right-6 w-[calc(100vw-2rem)] sm:w-[680px] h-[88vh] max-h-[780px] rounded-3xl"
-                : "bottom-24 md:bottom-20 right-4 sm:right-6 w-[calc(100vw-2rem)] sm:w-[440px] h-[80vh] max-h-[620px] rounded-3xl"
+                ? "bottom-4 right-4 sm:bottom-6 sm:right-6 w-[calc(100vw-2rem)] sm:w-[680px] h-[88vh] max-h-[780px] rounded-none"
+                : "bottom-24 md:bottom-20 right-4 sm:right-6 w-[calc(100vw-2rem)] sm:w-[440px] h-[80vh] max-h-[620px] rounded-none"
             }`}
           >
             {/* Header with Frosted Glass Top Bar */}
-            <div className="px-5 py-3.5 border-b border-purple-500/10 dark:border-white/10 bg-white/70 dark:bg-[#11172a]/70 backdrop-blur-md flex items-center justify-between">
+            <div className="px-5 py-3.5 border-b border-purple-500/10 dark:border-black dark:border-white bg-white/70 dark:bg-[#11172a]/70 backdrop-blur-md flex items-center justify-between">
               <div className="flex items-center gap-3 min-w-0">
                 {messages.length > 0 && (
                   <button
                     onClick={() => setMessages([])}
-                    className="p-1.5 rounded-xl hover:bg-purple-500/10 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                    className="p-1.5 rounded-none hover:bg-purple-500/10 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
                     title="New Chat"
                   >
                     <RotateCcw className="w-4 h-4" />
                   </button>
                 )}
                 <div className="relative">
-                  <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-purple-600 to-pink-500 flex items-center justify-center text-white font-bold shadow-md shadow-purple-500/20">
+                  <div className="w-8 h-8 rounded-none bg-gradient-to-tr from-purple-600 to-pink-500 flex items-center justify-center text-white font-bold shadow-md shadow-purple-500/20">
                     <Bot className="w-4 h-4" />
                   </div>
                   <span className="absolute -bottom-0.5 -right-0.5 flex h-2.5 w-2.5">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500 border-2 border-white dark:border-slate-900"></span>
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-none bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-none h-2.5 w-2.5 bg-emerald-500 border-2 border-white dark:border-slate-900"></span>
                   </span>
                 </div>
                 <div className="min-w-0">
                   <h3 className="text-xs font-bold tracking-tight text-foreground flex items-center gap-1.5">
                     AttendX Policy AI
-                    <span className="text-[9px] font-mono font-bold text-purple-700 dark:text-purple-300 bg-purple-500/10 px-1.5 py-0.5 rounded-full border border-purple-500/20">
+                    <span className="text-[9px] font-mono font-bold text-purple-700 dark:text-purple-300 bg-purple-500/10 px-1.5 py-0.5 rounded-none border border-purple-500/20">
                       IIITUGORD02
                     </span>
                   </h3>
@@ -602,7 +602,7 @@ export const FloatingChatbot: React.FC = () => {
                 {/* Voice Call Mode Button */}
                 <button
                   onClick={() => setIsVoiceOpen(true)}
-                  className="flex items-center gap-1 text-[11px] font-bold bg-gradient-to-r from-fuchsia-500/15 to-purple-500/15 hover:from-fuchsia-500/25 hover:to-purple-500/25 text-purple-700 dark:text-purple-300 border border-purple-500/30 px-2.5 py-1 rounded-full transition-all cursor-pointer shadow-xs"
+                  className="flex items-center gap-1 text-[11px] font-bold bg-gradient-to-r from-fuchsia-500/15 to-purple-500/15 hover:from-fuchsia-500/25 hover:to-purple-500/25 text-purple-700 dark:text-purple-300 border border-purple-500/30 px-2.5 py-1 rounded-none transition-all cursor-pointer shadow-xs"
                   title="Talk with AI using voice"
                 >
                   <Mic className="w-3.5 h-3.5 text-fuchsia-500 animate-pulse" />
@@ -612,7 +612,7 @@ export const FloatingChatbot: React.FC = () => {
                 {messages.length > 0 && (
                   <button
                     onClick={handleResetChat}
-                    className="p-1.5 rounded-xl hover:bg-purple-500/10 hover:text-foreground transition-colors cursor-pointer"
+                    className="p-1.5 rounded-none hover:bg-purple-500/10 hover:text-foreground transition-colors cursor-pointer"
                     title="Clear conversation"
                   >
                     <RotateCcw className="w-3.5 h-3.5" />
@@ -621,7 +621,7 @@ export const FloatingChatbot: React.FC = () => {
 
                 <button
                   onClick={() => setIsExpanded(prev => !prev)}
-                  className="hidden sm:inline-flex p-1.5 rounded-xl hover:bg-purple-500/10 hover:text-foreground transition-colors cursor-pointer"
+                  className="hidden sm:inline-flex p-1.5 rounded-none hover:bg-purple-500/10 hover:text-foreground transition-colors cursor-pointer"
                   title={isExpanded ? "Collapse view" : "Expand view"}
                 >
                   {isExpanded ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
@@ -629,7 +629,7 @@ export const FloatingChatbot: React.FC = () => {
 
                 <button
                   onClick={() => setIsOpen(false)}
-                  className="p-1.5 rounded-xl hover:bg-purple-500/10 hover:text-foreground transition-colors cursor-pointer"
+                  className="p-1.5 rounded-none hover:bg-purple-500/10 hover:text-foreground transition-colors cursor-pointer"
                   title="Close (Esc)"
                 >
                   <X className="w-4 h-4" />
@@ -649,7 +649,7 @@ export const FloatingChatbot: React.FC = () => {
                   }}
                   className="flex-1 flex flex-col items-center justify-center p-8 text-center space-y-4"
                 >
-                  <div className="w-16 h-16 bg-blue-500/10 rounded-full flex items-center justify-center mb-2">
+                  <div className="w-16 h-16 bg-blue-500/10 rounded-none flex items-center justify-center mb-2">
                     <Bot className="w-8 h-8 text-blue-500" />
                   </div>
                   <h2 className="text-2xl font-bold tracking-tight text-foreground">
@@ -672,7 +672,7 @@ export const FloatingChatbot: React.FC = () => {
                     >
                       {msg.role === "user" ? (
                         // User Message: Soft yellow/gold pill in light mode or high-contrast in dark mode
-                        <div className="max-w-[85%] rounded-2xl rounded-tr-xs bg-amber-100/90 dark:bg-primary text-amber-950 dark:text-primary-foreground border border-amber-300/60 dark:border-primary/40 px-4 py-2.5 text-[13px] font-medium shadow-sm">
+                        <div className="max-w-[85%] rounded-none rounded-tr-xs bg-amber-100/90 dark:bg-primary text-amber-950 dark:text-primary-foreground border border-amber-300/60 dark:border-primary/40 px-4 py-2.5 text-[13px] font-medium shadow-sm">
                           <FormattedChatMessage content={msg.content} isUser={true} />
                           <div className="text-right text-[9px] opacity-70 mt-1 font-mono">{msg.timestamp}</div>
                         </div>
@@ -681,7 +681,7 @@ export const FloatingChatbot: React.FC = () => {
                         <div className="w-full space-y-2">
                           <div className="flex items-center justify-between text-[11px] text-muted-foreground">
                             <span className="font-bold text-foreground flex items-center gap-1.5">
-                              <div className="w-4 h-4 rounded-full bg-purple-500/20 text-purple-600 dark:text-purple-400 flex items-center justify-center">
+                              <div className="w-4 h-4 rounded-none bg-purple-500/20 text-purple-600 dark:text-purple-400 flex items-center justify-center">
                                 <Bot className="w-2.5 h-2.5" />
                               </div>
                               AttendX AI
@@ -689,7 +689,7 @@ export const FloatingChatbot: React.FC = () => {
                             <span className="text-[10px] font-mono opacity-70">{msg.timestamp}</span>
                           </div>
 
-                          <div className="p-4 rounded-2xl bg-white/90 dark:bg-[#151b2e]/90 border border-purple-500/15 dark:border-white/10 text-foreground/90 leading-relaxed shadow-sm">
+                          <div className="p-4 rounded-none bg-white/90 dark:bg-[#151b2e]/90 border border-black dark:border-black dark:border-white text-foreground/90 leading-relaxed shadow-sm">
                             <FormattedChatMessage content={msg.content} isUser={false} />
 
                             {/* Verified Citations */}
@@ -701,7 +701,7 @@ export const FloatingChatbot: React.FC = () => {
                                 {msg.citations.map((cite, i) => (
                                   <span
                                     key={i}
-                                    className="text-[10px] bg-purple-500/10 text-purple-700 dark:text-purple-300 border border-purple-500/20 px-2 py-0.5 rounded-md font-mono font-semibold"
+                                    className="text-[10px] bg-purple-500/10 text-purple-700 dark:text-purple-300 border border-purple-500/20 px-2 py-0.5 rounded-none font-mono font-semibold"
                                   >
                                     {cite}
                                   </span>
@@ -712,7 +712,7 @@ export const FloatingChatbot: React.FC = () => {
                             {/* Simulation Sandbox Card */}
                             {msg.simulation && (
                               <div className="mt-3.5 pt-3 border-t border-blue-500/30">
-                                <div className="p-3 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-900 dark:text-blue-100">
+                                <div className="p-3 rounded-none bg-blue-500/10 border border-blue-500/20 text-blue-900 dark:text-blue-100">
                                   <div className="flex items-center gap-2 mb-2">
                                     <Activity className="w-4 h-4 text-blue-500" />
                                     <span className="text-xs font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400">Simulation Complete</span>
@@ -720,7 +720,7 @@ export const FloatingChatbot: React.FC = () => {
                                   <p className="text-[13px] font-medium mb-3">
                                     If you skip <span className="font-bold">{msg.simulation.skipCount}</span> class(es) of <span className="font-bold">{msg.simulation.subjectName}</span>:
                                   </p>
-                                  <div className="flex items-center justify-between p-2 rounded-lg bg-white/50 dark:bg-black/20 text-xs">
+                                  <div className="flex items-center justify-between p-2 rounded-none bg-white/50 dark:bg-black/20 text-xs">
                                     <div>
                                       <div className="text-muted-foreground mb-1">New Attendance</div>
                                       <div className="font-mono">{msg.simulation.currentAttended} / {msg.simulation.currentTotal + msg.simulation.skipCount}</div>
@@ -744,7 +744,7 @@ export const FloatingChatbot: React.FC = () => {
                             {/* Semester Projection Sandbox Card */}
                             {msg.semesterProjection && (
                               <div className="mt-3.5 pt-3 border-t border-purple-500/30">
-                                <div className="p-3 rounded-xl bg-purple-500/10 border border-purple-500/20 text-purple-900 dark:text-purple-100">
+                                <div className="p-3 rounded-none bg-purple-500/10 border border-purple-500/20 text-purple-900 dark:text-purple-100">
                                   <div className="flex items-center gap-2 mb-2">
                                     <Activity className="w-4 h-4 text-purple-500" />
                                     <span className="text-xs font-bold uppercase tracking-wider text-purple-600 dark:text-purple-400">Semester Projection</span>
@@ -754,7 +754,7 @@ export const FloatingChatbot: React.FC = () => {
                                   </p>
                                   <div className="space-y-2">
                                     {msg.semesterProjection.subjects.map((sub, idx) => (
-                                      <div key={idx} className="flex items-center justify-between p-2 rounded-lg bg-white/50 dark:bg-black/20 text-xs">
+                                      <div key={idx} className="flex items-center justify-between p-2 rounded-none bg-white/50 dark:bg-black/20 text-xs">
                                         <div className="flex-1 truncate pr-2">
                                           <div className="font-bold truncate" title={sub.subjectName}>{sub.subjectName}</div>
                                           <div className="text-muted-foreground text-[10px]">{sub.remainingClasses} classes left</div>
@@ -774,7 +774,7 @@ export const FloatingChatbot: React.FC = () => {
                             {/* Action Confirmation Card */}
                             {msg.pendingActions && !msg.actionsExecuted && (
                               <div className="mt-3.5 pt-3 border-t border-rose-500/30">
-                                <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-600 dark:text-rose-400">
+                                <div className="p-3 rounded-none bg-rose-500/10 border border-rose-500/20 text-rose-600 dark:text-rose-400">
                                   <div className="flex items-center gap-2 mb-2">
                                     <span className="text-xs font-bold uppercase tracking-wider">Action Required</span>
                                   </div>
@@ -787,7 +787,7 @@ export const FloatingChatbot: React.FC = () => {
                                         }
                                       }}
                                       disabled={msg.isExecutingAction}
-                                      className={`px-3 py-1.5 text-white rounded-lg text-xs font-bold shadow-sm transition-colors flex items-center gap-2 ${msg.isExecutingAction ? "bg-rose-500/50 cursor-not-allowed" : "bg-rose-500 hover:bg-rose-600"}`}
+                                      className={`px-3 py-1.5 text-white rounded-none text-xs font-bold shadow-sm transition-colors flex items-center gap-2 ${msg.isExecutingAction ? "bg-rose-500/50 cursor-not-allowed" : "bg-rose-500 hover:bg-rose-600"}`}
                                     >
                                       {msg.isExecutingAction ? (
                                         <><Loader2 className="w-3 h-3 animate-spin" /> Executing...</>
@@ -801,7 +801,7 @@ export const FloatingChatbot: React.FC = () => {
                             )}
                             {msg.pendingActions && msg.actionsExecuted && (
                               <div className="mt-3.5 pt-3 border-t border-emerald-500/30">
-                                <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center gap-2 text-xs font-bold">
+                                <div className="p-2 rounded-none bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center gap-2 text-xs font-bold">
                                   <Check className="w-4 h-4" /> Action Executed Successfully
                                 </div>
                               </div>
@@ -812,7 +812,7 @@ export const FloatingChatbot: React.FC = () => {
                               <div className="flex items-center gap-2">
                                 <button
                                   onClick={() => handleSpeakMessage(msg.id, msg.content)}
-                                  className={`inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-lg hover:bg-purple-500/10 transition-colors cursor-pointer ${
+                                  className={`inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-none hover:bg-purple-500/10 transition-colors cursor-pointer ${
                                     speakingId === msg.id ? "text-emerald-500 font-bold" : "hover:text-foreground"
                                   }`}
                                   title={speakingId === msg.id ? "Stop listening" : "Listen to answer (Voice)"}
@@ -823,7 +823,7 @@ export const FloatingChatbot: React.FC = () => {
 
                                 <button
                                   onClick={() => handleCopy(msg.id, msg.content)}
-                                  className="inline-flex items-center gap-1 text-[11px] hover:text-foreground px-2 py-1 rounded-lg hover:bg-purple-500/10 transition-colors cursor-pointer"
+                                  className="inline-flex items-center gap-1 text-[11px] hover:text-foreground px-2 py-1 rounded-none hover:bg-purple-500/10 transition-colors cursor-pointer"
                                   title="Copy answer"
                                 >
                                   {copiedId === msg.id ? (
@@ -853,12 +853,12 @@ export const FloatingChatbot: React.FC = () => {
                     <motion.div
                       initial={{ opacity: 0, y: 5 }}
                       animate={{ opacity: 1, y: 0 }}
-                      className="px-4 py-3 bg-muted/40 rounded-2xl rounded-tl-sm max-w-[fit-content] mr-auto"
+                      className="px-4 py-3 bg-muted/40 rounded-none rounded-tl-sm max-w-[fit-content] mr-auto"
                     >
                       <div className="flex items-center gap-1.5 h-4">
-                        <span className="w-1.5 h-1.5 rounded-full bg-foreground/40 animate-bounce [animation-delay:-0.3s]"></span>
-                        <span className="w-1.5 h-1.5 rounded-full bg-foreground/40 animate-bounce [animation-delay:-0.15s]"></span>
-                        <span className="w-1.5 h-1.5 rounded-full bg-foreground/40 animate-bounce"></span>
+                        <span className="w-1.5 h-1.5 rounded-none bg-foreground/40 animate-bounce [animation-delay:-0.3s]"></span>
+                        <span className="w-1.5 h-1.5 rounded-none bg-foreground/40 animate-bounce [animation-delay:-0.15s]"></span>
+                        <span className="w-1.5 h-1.5 rounded-none bg-foreground/40 animate-bounce"></span>
                       </div>
                     </motion.div>
                   )}
@@ -869,7 +869,7 @@ export const FloatingChatbot: React.FC = () => {
             </div>
 
             {/* Bottom Composer Bar */}
-            <div className="p-3.5 border-t border-purple-500/10 dark:border-white/10 bg-white/80 dark:bg-[#11172a]/80 backdrop-blur-md">
+            <div className="p-3.5 border-t border-purple-500/10 dark:border-black dark:border-white bg-white/80 dark:bg-[#11172a]/80 backdrop-blur-md">
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
@@ -881,7 +881,7 @@ export const FloatingChatbot: React.FC = () => {
                 <button
                   type="button"
                   onClick={toggleMic}
-                  className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all cursor-pointer shrink-0 shadow-xs ${
+                  className={`w-9 h-9 rounded-none flex items-center justify-center transition-all cursor-pointer shrink-0 shadow-xs ${
                     isListeningMic
                       ? "bg-rose-500 text-white animate-pulse shadow-rose-500/30"
                       : "bg-purple-500/10 hover:bg-purple-500/20 text-purple-700 dark:text-purple-300 border border-purple-500/20"
@@ -898,14 +898,14 @@ export const FloatingChatbot: React.FC = () => {
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                     
-                    className="w-full bg-muted/50 border border-purple-500/20 focus:border-purple-500 focus:outline-none rounded-xl pl-3.5 pr-10 py-2.5 text-xs text-foreground transition-all shadow-inner"
+                    className="w-full bg-muted/50 border border-purple-500/20 focus:border-purple-500 focus:outline-none rounded-none pl-3.5 pr-10 py-2.5 text-xs text-foreground transition-all shadow-inner"
                     disabled={isLoading}
                   />
 
                   <button
                     type="submit"
                     disabled={!input.trim() || isLoading}
-                    className="absolute right-1.5 top-1/2 -translate-y-1/2 w-7 h-7 rounded-lg bg-gradient-to-r from-purple-600 to-pink-600 hover:opacity-90 disabled:opacity-30 text-white flex items-center justify-center transition-all cursor-pointer shadow-xs"
+                    className="absolute right-1.5 top-1/2 -translate-y-1/2 w-7 h-7 rounded-none bg-gradient-to-r from-purple-600 to-pink-600 hover:opacity-90 disabled:opacity-30 text-white flex items-center justify-center transition-all cursor-pointer shadow-xs"
                     title="Send"
                   >
                     <Send className="w-3.5 h-3.5" />

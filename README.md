@@ -1,161 +1,90 @@
-# 🎓 AttendX
+<div align="center">
+  <img src="client/public/icons.svg" alt="AttendX Logo" width="120" />
+  <h1>🎓 AttendX</h1>
+  <p><b>Next-Generation Academic Attendance, Timetable & Predictive Intelligence Platform</b></p>
+  
+  <p>
+    <img src="https://img.shields.io/badge/version-3.0.0-blue.svg" alt="Version 3.0.0" />
+    <img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License MIT" />
+    <img src="https://img.shields.io/badge/platform-Web%20%7C%20Android-lightgrey.svg" alt="Platform" />
+  </p>
 
-> **Next-Generation Academic Attendance, Timetable & Predictive Intelligence Platform**  
-> Engineered for students, class representatives (CRs), and university administrators. Delivering a fast, mobile-first native experience across Progressive Web Apps (PWA), Desktop Web, and Android.
+  <br/>
+  <h3>Powered By</h3>
+  <br/>
+  <p>
+    <img src="assets/tech/react.svg" width="40" alt="React" title="React" style="margin: 0 10px;" />
+    <img src="assets/tech/nextdotjs.svg" width="40" alt="Next.js" title="Next.js" style="margin: 0 10px;" />
+    <img src="assets/tech/tailwindcss.svg" width="40" alt="Tailwind CSS" title="Tailwind CSS" style="margin: 0 10px;" />
+    <img src="assets/tech/nodejs.svg" width="40" alt="Node.js" title="Node.js" style="margin: 0 10px;" />
+    <img src="assets/tech/postgresql.svg" width="40" alt="PostgreSQL" title="PostgreSQL" style="margin: 0 10px;" />
+    <img src="assets/tech/redis.svg" width="40" alt="Redis" title="Redis" style="margin: 0 10px;" />
+    <img src="assets/tech/python.svg" width="40" alt="Python" title="Python" style="margin: 0 10px;" />
+    <img src="assets/tech/gemini.svg" width="40" alt="Google Gemini" title="Google Gemini Flash 3.8" style="margin: 0 10px;" />
+  </p>
+</div>
 
-![AttendX Version](https://img.shields.io/badge/version-2.3.0-blue.svg)
-![License](https://img.shields.io/badge/license-MIT-green.svg)
-![Build](https://img.shields.io/badge/build-passing-brightgreen.svg)
+<br/>
 
----
+## ✨ What is AttendX?
 
-## 📱 1. Executive Summary
+AttendX entirely eradicates the friction of university scheduling. Unlike generic calendar apps, AttendX understands the granular realities of academic life: lab groups, overlapping electives, complex holiday schedules, and predictive attendance mathematics.
 
-**AttendX** completely reimagines the academic experience by eliminating manual attendance registers, messy timetable screenshots, and cluttered WhatsApp groups. It delivers a blazing-fast, responsive platform for managing university schedules, tracking attendance targets, forecasting safe absences, securely syncing with peers, and automatically parsing academic timetables and calendars using AI vision.
+## 🚀 Core Features
 
-Built with a modern stack featuring React 18, Node.js, and Google's Gemini Flash 3.6, AttendX is designed to scale from a single student's daily driver to an entire campus's infrastructure.
+- **🧠 AI-Powered Timetable Extraction**: Upload a photo of your schedule, and the LangGraph orchestration pipeline invokes Gemini 3.8 Flash to intelligently generate a perfect JSON structural timetable in seconds.
+- **📈 Predictive Mathematics**: Treat attendance as an optimization problem. Set a global target (e.g., 75%), and the engine calculates exactly how many consecutive classes you need to attend or how many "Safe Leaves" you can take.
+- **🔄 Peer-to-Peer DataComm Synchronization**: Class Representatives (CRs) can bundle their timetable and generate an ephemeral 6-digit TTL code. Peers input the code and seamlessly merge the structural data instantly.
+- **⚡ Brutalist, Anti-Slop UI**: A pristine, high-contrast brutalist design system engineered for tactile feedback and 60fps performance on low-end Android devices.
+- **📱 Over-The-Air (OTA) Updates**: Bypasses traditional app store bottlenecks by streaming ZIP payloads directly to the Android WebView wrapper.
 
----
+## 🛠️ Local Development Setup
 
-## ✨ 2. Deep Dive: Core Features
+To run AttendX locally, you will need **Node.js v20+**, **Python 3.11+**, **PostgreSQL**, and **Redis**.
 
-### 📅 Action-Driven Daily Attendance & Agenda
-- **Smart Status Toggles**: A fluid, gesture-friendly interface allowing one-tap toggling between **Attended**, **Missed**, and **Off** states.
-- **Void & Revert Capabilities**: Instantly undo or clear any marked record back to an unlogged state without database corruption.
-- **Dynamic Extra Classes**: Seamlessly add ad-hoc, rescheduled, or weekend lectures directly from the daily view. The system handles cascading data cleanup automatically.
-- **Real-Time Global Synchronization**: Every action dispatches a global `attendance-updated` event. Changes made in Today's agenda instantly and optimistically synchronize across the Calendar, Subject overviews, Predictive Engine, and Navigation badges without requiring a page reload.
+### 1. Clone & Install Dependencies
+```bash
+git clone https://github.com/nrai18/AttendX.git
+cd AttendX
 
-### 🤖 AI-Powered Timetable & Calendar OCR
-- **Multimodal AI Parser**: Users can upload timetable PDFs, raw images, or screenshots of Academic Calendars. AttendX uses **Google Gemini 3.6 Flash** for high-precision, structural data extraction.
-- **Multi-Branch & Semester Intelligence**: Automatically identifies branches (e.g., *CSE, ECE, IT*), semesters, and overlapping elective blocks from complex university grid formats.
-- **Holiday & Event Extraction**: Parses extensive holiday lists, mid-term schedules, and academic events directly into the Matrix Calendar.
-- **Interactive Setup Wizard**: An intuitive multi-step wizard allows users to verify, edit, and select their specific electives with real-time visual previews before committing the structure to the database.
+# Install Backend Dependencies
+cd server
+npm install
 
-### 🔄 Secure Peer-to-Peer Sync & Data Transfer
-- **Direct P2P Protocol**: Share schedule structures, holiday calendars, or full historical attendance logs with friends using cryptographically secure, ephemeral 6-digit codes.
-- **Sync Previews (Two-Step Verification)**: Before importing, the receiver sees the sender's avatar, name, and the specific date range of the payload, preventing accidental data overwrites.
-- **Contextual Export Types**: 
-  - *Schedule Status Mirror*: Safely syncs only the structural timetable.
-  - *Timetable & Calendar*: Syncs the structural timetable plus all academic events.
-  - *Full Export*: Complete data transfer including historical attendance records.
-
-### 📊 Predictive Attendance Engine & Scenario Simulator
-- **Unified Global Target**: A single source of truth for your attendance goal (e.g., `75%`, `80%`, `85%`). Adjusting this immediately recalibrates all safe-leave mathematics across the app.
-- **Mathematical Safe Leaves**: Computes the exact, consecutive number of classes you can safely miss without dipping below your target percentage.
-- **Catch-Up Calculator**: Accurately forecasts the mandatory consecutive classes required to recover from an attendance deficit.
-- **Interactive Future Simulator**: A sandbox mode where users can toggle future classes (Attended/Missed) to dynamically forecast their end-of-semester percentage in real-time.
-
-### 🗓️ Timezone-Resilient Dot-Matrix Calendar
-- **Monthly Matrix View**: A highly visual calendar utilizing color-coded status dots:
-  - 🟢 **Attended**: 100% attendance for scheduled classes that day.
-  - 🔴 **Missed**: 0% attendance for scheduled classes that day.
-  - 🟡 **Mixed**: Partial attendance across the day's lectures.
-  - 🟠 **Off / Holiday**: Institute holidays, weekends, or declared off-days.
-  - ⚪ **Future**: Upcoming scheduled slots.
-- **Strict UTC/Local Resilience**: Built around strict ISO date string matching (`YYYY-MM-DD`) to completely eliminate timezone drift, ensuring midnight boundary crossovers are flawless regardless of device locale.
-
-### 📚 Subject Management & Device Security
-- **Granular Analytics**: Deep-dive analytics for every subject, detailing exact lecture counts, safety buffers, and historical trends.
-- **Advanced Session Management**: Users can view all active devices logged into their account (complete with OS and browser footprint) and remotely revoke rogue sessions.
-- **Native OS Integration**: Features Web Share API integration allowing users to share the APK directly via WhatsApp, Telegram, or Email using native share sheets.
-
----
-
-## 🛠️ 3. Technology Stack & Architecture
-
-```text
-                             FRONTEND                            
- React 18  •  TypeScript  •  Vite  •  Tailwind CSS          
- Zustand   •  Lucide Icons •  Capacitor (Android Native)    
-============================================================
-                               REST / JSON (Axios)
-============================================================
-                             BACKEND                             
- Node.js   •  Express.js  •  TypeScript  •  Prisma ORM      
- JWT Auth  •  Multer      •  Google GenAI (Gemini 3.6 Flash)
-============================================================
-                               PostgreSQL
-============================================================
-                             DATABASE                            
- PostgreSQL (Neon Cloud / Local) with strict relational     
- integrity and cascading constraints                        
+# Install Frontend Dependencies
+cd ../client
+npm install
 ```
 
-### Frontend (`client/`)
-- **Core**: React 18, TypeScript, Vite.
-- **Styling**: Tailored CSS Variables & Tailwind CSS enabling a True Dual Theme (Pristine Light Mode & Sleek Dark Mode).
-- **State**: Zustand for reactive global stores (Auth, Attendance, UI state).
-- **Networking**: Axios interceptors handling bearer token injection and silent 30-day rolling refresh token rotation.
-- **Mobile**: Capacitor runtime for generating native Android APKs.
+### 2. Environment Configuration
+Create a `.env` file in the `/server` directory and configure the following required variables:
 
-### Backend (`server/`)
-- **Core**: Node.js, Express.js, TypeScript.
-- **Database**: PostgreSQL orchestrated via Prisma ORM for type-safe queries and cascading relational integrity.
-- **Security**: Helmet, CORS protection, bcrypt password hashing, and HttpOnly cookie-based refresh tokens.
-- **AI Integration**: Official `@google/genai` SDK interfacing with the Gemini 3.6 Flash multimodal model.
+```env
+DATABASE_URL="postgresql://user:password@localhost:5432/attendx"
+REDIS_URL="redis://localhost:6379"
+JWT_SECRET="your_secure_jwt_secret"
+GEMINI_API_KEY="your_google_gemini_api_key"
+```
 
----
+### 3. Database Initialization
+```bash
+cd server
+npx prisma db push
+npx prisma db seed
+```
 
-## 🚀 4. Local Development & Setup
+### 4. Start the Application
+Start the backend and frontend development servers concurrently:
 
-### Prerequisites
-- **Node.js**: v20.x or later.
-- **Database**: A PostgreSQL instance (v15.x+), either local or hosted (e.g., Neon).
-- **API Keys**: Google Gemini API key for OCR features.
+```bash
+# Terminal 1: Start Backend (Port 3000)
+cd server
+npm run dev
 
-### Installation Steps
+# Terminal 2: Start Frontend (Port 5173)
+cd client
+npm run dev
+```
 
-1. **Clone the Repository**
-   ```bash
-   git clone https://github.com/nrai18/AttendX.git
-   cd AttendX
-   ```
-
-2. **Backend Setup**
-   ```bash
-   cd server
-   npm install
-   ```
-   Create a `.env` file in the `server/` directory:
-   ```env
-   DATABASE_URL="postgresql://user:password@localhost:5432/attendx?schema=public"
-   PORT=3000
-   JWT_SECRET="your_highly_secure_jwt_secret"
-   JWT_REFRESH_SECRET="your_highly_secure_refresh_secret"
-   FRONTEND_URL="http://localhost:5173"
-   GEMINI_API_KEY="your_google_gemini_api_key"
-   ```
-   Apply the Prisma schema to your database:
-   ```bash
-   npx prisma db push
-   ```
-   Start the backend development server:
-   ```bash
-   npm run dev
-   ```
-
-3. **Frontend Setup**
-   Open a new terminal session:
-   ```bash
-   cd client
-   npm install
-   ```
-   Start the Vite frontend development server:
-   ```bash
-   npm run dev
-   ```
-   Open your browser at `http://localhost:5173`.
-
----
-
-## 🔒 5. Core System Invariants & Synchronization Rules
-
-- **Target Attendance Immutability**: When the global Target Attendance is modified, no historical data is mutated. Instead, all threshold badges, calculation engines, and predictive metrics re-evaluate dynamically on the client side.
-- **Event-Driven UI**: All data mutations (Marks, Voids, Deletions) immediately emit an `attendance-updated` event, instructing all mounted React components to optimistically pull fresh data from the Zustand cache.
-- **Timezone Drift Prevention**: All calendar and attendance date comparisons must strictly use the format `YYYY-MM-DD`. JavaScript `Date` objects are intercepted and normalized to prevent cross-timezone bleeding.
-
----
-
-## 📄 6. License
-
-This project is open-source and licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
+## 📜 License
+Copyright © 2026 AttendX. Licensed under the MIT License.

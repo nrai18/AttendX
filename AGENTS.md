@@ -1,10 +1,10 @@
 # Model Invariants & Google GenAI API Integration Rules (2026)
 
 Whenever writing backend or frontend code referencing Gemini Developer API models:
-- **NEVER** use `gemini-1.5-flash`, `gemini-1.5-pro`, or `gemini-2.0-flash`. They are fully deprecated and shut down (will return 404).
-- **Default Recommended Model**: Always use **`gemini-3.6-flash`** for standard text, multimodal, and layout-aware HTML/timetable extraction parsing.
-- **Fast / High-Throughput Alternative**: Use **`gemini-3.5-flash-lite`** for low-latency tasks.
-- **Deep Reasoning / Coding Tasks**: Use **`gemini-3.5-flash`** or **`gemini-3.1-pro-preview`** if complex reasoning is needed.
+- **NEVER** use `gemini-1.5-flash`, `gemini-1.5-pro`, `gemini-2.0-flash`, or `gemini-3.5-flash`. They are fully deprecated and shut down (will return 404).
+- **Default Recommended Model**: Always use **`gemini-3.8-flash`** for standard text, multimodal, and layout-aware HTML/timetable extraction parsing.
+- **Fast / High-Throughput Alternative**: Use **`gemini-3.7-flash`** for low-latency tasks.
+- **Deep Reasoning / Coding Tasks**: Use **`gemini-3.1-pro`** or **`gemini-3.8-flash`** if complex reasoning is needed.
 
 ## Android Build Workflow
 - **APK Output Location**: Whenever you successfully compile or build the Android APK, you MUST automatically copy the resulting pp-debug.apk to C:\Users\Raina\OneDrive\Desktop\AttendX.apk. Do not make the user manually retrieve it from the build folders.
@@ -20,5 +20,5 @@ Never generate UI that uses the following AI default tropes:
 1. No purple/cyan gradients, decorative glassmorphism, or neon-on-dark.
 2. No "Side-Tab" cards (thick border on one side of a rounded card), nested cards, or ghost shadows (hairline border + wide shadow).
 3. No tiny uppercase letter-spaced eyebrows above oversized italic serif hero headlines.
-4. No "Inter everywhere" — ensure distinct type hierarchies and do not use gradient text.
+4. No "Inter everywhere" ï¿½ ensure distinct type hierarchies and do not use gradient text.
 5. No marketing buzzwords (supercharge, empower, next-generation). Use literal verbs.

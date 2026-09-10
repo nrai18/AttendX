@@ -10,8 +10,9 @@ import { CreateSemesterModal } from "../../components/semester/CreateSemesterMod
 import { SortableSlot } from "./SortableSlot";
 import { DeleteSlotModal } from "./DeleteSlotModal";
 import { ClearTimetableModal } from "./ClearTimetableModal";
+import { ArchiveTimetableModal } from "./ArchiveTimetableModal";
 import { SubjectReconciliationModal } from "../../components/subjects/SubjectReconciliationModal";
-import { Wand2 } from "lucide-react";
+import { Wand2, Calendar } from "lucide-react";
 import { DndContext, closestCenter, DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { normalizeTimeString } from "../../utils/timeUtils";
@@ -95,10 +96,12 @@ export const TimetablePage = () => {
   // Wizard & Semester State
   const [isWizardOpen, setIsWizardOpen] = useState(false);
   const [wizardPayload, setWizardPayload] = useState<any>(null);
+  const [uploadStartDate, setUploadStartDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [isCreateSemesterOpen, setIsCreateSemesterOpen] = useState(false);
 
   // Clear All Timetable Modal State & Toast
   const [isClearModalOpen, setIsClearModalOpen] = useState(false);
+  const [isArchiveModalOpen, setIsArchiveModalOpen] = useState(false);
   const [isReconciliationOpen, setIsReconciliationOpen] = useState(false);
   const [newSubjectIds, setNewSubjectIds] = useState<string[]>([]);
   const [existingSubjectIds, setExistingSubjectIds] = useState<string[]>([]);
@@ -459,7 +462,8 @@ export const TimetablePage = () => {
       await api.post("/timetable/save-wizard", {
         semesterId: activeSemester.id,
         selections,
-        rawSlots: slotsToSave
+        rawSlots: slotsToSave,
+        startDate: uploadStartDate
       });
       setIsWizardOpen(false);
       setWizardPayload(null);
@@ -592,8 +596,16 @@ export const TimetablePage = () => {
             </button>
 
             <button
-              onClick={() => {
-                api.get(`/subjects?semesterId=${activeSemester?.id}`).then(res => {
+                onClick={() => setIsArchiveModalOpen(true)}
+                title="View Archived Timetables"
+                className="flex items-center gap-1.5 bg-secondary/30 hover:bg-secondary/50 text-secondary-foreground border border-border px-3.5 py-2 rounded-xl text-xs font-semibold transition-colors cursor-pointer"
+              >
+                <img src="/src/assets/archive.svg" alt="Archive" className="w-3.5 h-3.5 dark:invert opacity-70" />
+                <span className="hidden sm:inline">Archived</span>
+              </button>
+              <button
+                onClick={() => {
+                  api.get(`/subjects?semesterId=${activeSemester?.id}`).then(res => {
                   const subs = Array.isArray(res.data) ? res.data : [];
                   if (subs.length >= 2) {
                     const allIds = subs.map((s: any) => s.id);
@@ -656,8 +668,23 @@ export const TimetablePage = () => {
                 Upload your timetable PDF or Image file. We will extract all branch and semester schedules automatically!
               </div>
               
-              <div 
-                onClick={() => fileInputRef.current?.click()}
+              
+                <div className="space-y-2">
+                  <label className="text-sm font-bold text-foreground flex items-center gap-2">
+                    <Calendar className="w-4 h-4 text-primary" />
+                    Effective Start Date
+                  </label>
+                  <p className="text-xs text-muted-foreground">Select the exact date this new timetable becomes active. Your existing timetable will be archived to end the day before.</p>
+                  <input
+                    type="date"
+                    value={uploadStartDate}
+                    onChange={(e) => setUploadStartDate(e.target.value)}
+                    className="flex h-11 w-full rounded-xl border border-input bg-background/50 px-3 py-2 text-sm ring-offset-background transition-all hover:bg-background shadow-sm"
+                  />
+                </div>
+                
+                <div 
+                  onClick={() => fileInputRef.current?.click()}
                 className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-colors ${
                   imagePreview ? 'border-blue-500/50 bg-blue-500/5' : 'border-border hover:border-primary/50 hover:bg-muted/50'
                 }`}
@@ -740,7 +767,14 @@ export const TimetablePage = () => {
         onConfirmDelete={handleConfirmDelete}
       />
 
-      {/* Clear All Timetable Slots Modal */}
+      {/* Archive Modal */}
+        <ArchiveTimetableModal
+          isOpen={isArchiveModalOpen}
+          onClose={() => setIsArchiveModalOpen(false)}
+          semesterId={activeSemester?.id}
+        />
+
+        {/* Clear All Timetable Slots Modal */}
       <ClearTimetableModal
         isOpen={isClearModalOpen}
         onClose={() => setIsClearModalOpen(false)}
