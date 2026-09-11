@@ -17,8 +17,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@google/genai": "^2.15.0",
-    "@langchain/core": "^1.2.8",
+    "@google/genai": "^2.22.0",
     "@langchain/google-genai": "^2.2.0",
     "@prisma/adapter-pg": "^7.9.1",
     "@prisma/client": "^7.9.1",
@@ -40,7 +39,7 @@
     "ioredis": "^6.0.0",
     "jsonwebtoken": "^9.0.3",
     "jwks-rsa": "^4.1.0",
-    "langchain": "^1.5.9",
+    "langchain": "^1.5.11",
     "morgan": "^1.11.0",
     "multer": "^2.2.0",
     "passport": "^0.7.0",
