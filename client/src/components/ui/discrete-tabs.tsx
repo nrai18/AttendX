@@ -46,7 +46,7 @@ export const DiscreteTabs: FC<DiscreteTabsProps> = ({ tabs, onTabChange, default
             <motion.div
               layout="position"
               transition={{ type: "spring", stiffness: 210, damping: 18, mass: 1 }}
-              className={`relative flex h-16 ${isActive ? "w-40" : "w-full"} items-center justify-center`}
+              className={`relative flex h-16 ${isActive ? "w-auto pr-3" : "w-full"} items-center justify-center`}
             >
               {isActive && (
                 <motion.div

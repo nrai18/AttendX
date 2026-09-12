@@ -77,7 +77,7 @@ export const FrequencySelector: React.FC<FrequencySelectorProps> = ({
   return (
     <LayoutGroup id="frequency-root">
       <div
-        className={`flex w-full items-center justify-center p-4 antialiased select-none ${className}`}
+        className={`flex w-full items-center justify-center antialiased select-none ${className}`}
       >
         <AnimatePresence mode="wait">
           {!isOpen ? (
@@ -89,11 +89,11 @@ export const FrequencySelector: React.FC<FrequencySelectorProps> = ({
               exit={{ filter: 'blur(4px)', opacity: 0 }}
               onClick={handleOpen}
               transition={smoothSpring}
-              className="flex min-h-14 w-full max-w-md cursor-pointer items-center justify-between rounded-full bg-neutral-100 p-1 pl-4 sm:pl-6  gap-4 dark:bg-neutral-900"
+              className="flex min-h-14 w-full max-w-md cursor-pointer items-center justify-between rounded-full bg-white/60 dark:bg-black/60 backdrop-blur-2xl border border-black/10 dark:border-white/10 p-1 pl-4 sm:pl-6 gap-4 hover:bg-white/80 dark:hover:bg-black/80 transition-colors shadow-sm"
             >
               <motion.span
                 layout
-                className="text-base font-bold text-neutral-500 sm:text-lg dark:text-neutral-400"
+                className="text-base font-bold text-slate-600 dark:text-slate-400 sm:text-lg"
               >
                 Frequency
               </motion.span>
@@ -101,14 +101,14 @@ export const FrequencySelector: React.FC<FrequencySelectorProps> = ({
               <motion.div
                 layoutId="trigger-pill"
                 transition={smoothSpring}
-                className="flex min-h-12 flex-1 items-center justify-between gap-2 rounded-full border border-black/5 bg-white px-3 py-1.5 shadow-sm sm:flex-initial sm:gap-3 sm:px-4 dark:border-white/5 dark:bg-neutral-800"
+                className="flex min-h-12 flex-1 items-center justify-between gap-2 rounded-full border border-black/10 dark:border-white/10 bg-white/80 dark:bg-white/10 px-3 py-1.5 shadow-sm sm:flex-initial sm:gap-3 sm:px-4"
               >
-                <span className="text-base font-bold sm:text-lg">
+                <span className="text-base font-bold sm:text-lg text-slate-900 dark:text-white">
                   {value.type}
                   {value.subValue ? `, ${value.subValue}` : ''}
                 </span>
 
-                <ChevronRight size={18} className="shrink-0 text-neutral-400" />
+                <ChevronRight size={18} className="shrink-0 text-slate-500 dark:text-slate-400" />
               </motion.div>
             </motion.div>
           ) : (
@@ -119,14 +119,14 @@ export const FrequencySelector: React.FC<FrequencySelectorProps> = ({
               animate={{ filter: 'blur(0px)', opacity: 1 }}
               exit={{ filter: 'blur(4px)', opacity: 0 }}
               transition={smoothSpring}
-              className="flex w-full max-w-lg flex-col gap-3 rounded-[32px] border border-black/5 bg-neutral-100 p-2 shadow-xl dark:border-white/5 dark:bg-neutral-900"
+              className="flex w-full max-w-lg flex-col gap-3 rounded-[32px] border border-black/10 dark:border-white/10 bg-white/70 dark:bg-black/70 p-2 shadow-2xl backdrop-blur-2xl"
             >
               {/* Top Row */}
               <div className="flex items-center gap-2">
                 <motion.div
                   layoutId="trigger-pill"
                   transition={smoothSpring}
-                  className="custom-scrollbar relative flex h-11 flex-1 items-center gap-2 overflow-x-auto rounded-full bg-white p-1 shadow-inner sm:h-13 sm:gap-2 dark:bg-neutral-800"
+                  className="custom-scrollbar relative flex h-11 flex-1 items-center gap-2 overflow-x-auto rounded-full bg-black/5 dark:bg-white/5 border border-black/5 dark:border-white/5 p-1 shadow-inner sm:h-13 sm:gap-2"
                 >
                   {FREQUENCIES.map((type) => (
                     <button
@@ -135,13 +135,15 @@ export const FrequencySelector: React.FC<FrequencySelectorProps> = ({
                         setTempType(type);
                         setTempSubValue(SUB_OPTIONS[type][0]);
                       }}
-                      className="relative flex h-full flex-none items-center justify-center px-4 text-xs font-bold sm:flex-1 sm:min-w-fit sm:px-6 sm:text-[15px]"
+                      className={`relative flex h-full flex-none items-center justify-center px-4 text-xs font-bold transition-colors sm:flex-1 sm:min-w-fit sm:px-6 sm:text-[15px] ${
+                        tempType === type ? 'text-slate-900 dark:text-white' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
+                      }`}
                     >
                       {tempType === type && (
                         <motion.div
                           layoutId="active-tab"
                           transition={smoothSpring}
-                          className="absolute inset-0 z-0 rounded-full bg-neutral-200 dark:bg-neutral-700"
+                          className="absolute inset-0 z-0 rounded-full bg-white dark:bg-black shadow-sm border border-black/10 dark:border-white/10"
                         />
                       )}
 
@@ -153,7 +155,7 @@ export const FrequencySelector: React.FC<FrequencySelectorProps> = ({
                 <motion.button
                   whileTap={{ scale: 0.9 }}
                   onClick={handleConfirm}
-                  className="flex h-10 w-10 items-center justify-center rounded-full bg-neutral-900 text-white sm:h-12 sm:w-12 dark:bg-white dark:text-neutral-900"
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-900 text-white dark:bg-white dark:text-slate-900 sm:h-12 sm:w-12 shadow-md hover:opacity-90 transition-opacity"
                 >
                   <Check size={18} />
                 </motion.button>
@@ -172,7 +174,7 @@ export const FrequencySelector: React.FC<FrequencySelectorProps> = ({
                         key={tempType}
                         layout
                         transition={smoothSpring}
-                        className={`grid gap-2 rounded-2xl bg-white p-3 shadow-inner dark:bg-neutral-800 ${
+                        className={`grid gap-2 rounded-2xl bg-black/5 dark:bg-white/5 border border-black/5 dark:border-white/5 p-3 shadow-inner ${
                           tempType === 'Monthly'
                             ? 'grid-cols-7'
                             : tempType === 'Yearly'
@@ -184,13 +186,15 @@ export const FrequencySelector: React.FC<FrequencySelectorProps> = ({
                           <button
                             key={option}
                             onClick={() => setTempSubValue(option)}
-                            className="relative flex h-8 items-center justify-center rounded-full text-[10px] font-bold sm:h-9 sm:text-sm"
+                            className={`relative flex h-8 items-center justify-center rounded-full text-[10px] font-bold transition-colors sm:h-9 sm:text-sm ${
+                              tempSubValue === option ? 'text-slate-900 dark:text-white' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
+                            }`}
                           >
                             {tempSubValue === option && (
                               <motion.div
                                 layoutId="active-sub"
                                 transition={smoothSpring}
-                                className="absolute inset-0 z-0 rounded-full bg-neutral-200 dark:bg-neutral-700"
+                                className="absolute inset-0 z-0 rounded-full bg-white dark:bg-black shadow-sm border border-black/10 dark:border-white/10"
                               />
                             )}
 

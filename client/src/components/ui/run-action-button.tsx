@@ -153,7 +153,7 @@ export function RunActionButton({
         initial={{ width: widths.idle }}
         animate={{ width: widths[status] }}
         transition={spring}
-        className={`relative flex h-[64px] items-center justify-between overflow-hidden rounded-full ${
+        className={`relative flex h-[64px] items-center justify-between overflow-hidden rounded-lg ${
           status === "running"
             ? "border-2 border-dashed border-[#D6D6DD] dark:border-white/20"
             : "border-2 border-transparent"
@@ -209,7 +209,7 @@ export function RunActionButton({
                 animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
                 exit={{ opacity: 0, scale: 0.8, filter: "blur(4px)" }}
                 transition={{ ...spring, delay: 0.15 }}
-                className="ml-1 rounded-full bg-[#D6D5E2] dark:bg-white p-1.5"
+                className="ml-1 rounded-lg bg-[#D6D5E2] dark:bg-white p-1.5"
               >
                 <IoCloseSharp className="h-4 w-4 text-white dark:text-black" />
               </motion.button>
@@ -224,7 +224,7 @@ export function RunActionButton({
               animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
               exit={{ opacity: 0, scale: 0.8, filter: "blur(4px)" }}
               transition={spring}
-              className="flex flex-1 items-center gap-2 rounded-full bg-[#EAF9EA] dark:bg-green-200 px-5 py-3 whitespace-nowrap"
+              className="flex flex-1 items-center gap-2 rounded-lg bg-[#EAF9EA] dark:bg-green-200 px-5 py-3 whitespace-nowrap"
             >
               <HiBadgeCheck className="h-6 w-6 text-[#22c55e]" />
 

@@ -26,6 +26,7 @@ export const LoginPage: React.FC = () => {
   const [resetEmailSent, setResetEmailSent] = useState(false);
   const [resetToken, setResetToken] = useState("");
   const [otp, setOtp] = useState("");
+  const [otpValidated, setOtpValidated] = useState(false);
   const [newPassword, setNewPassword] = useState("");
   const [passwordChanged, setPasswordChanged] = useState(false);
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -141,6 +142,20 @@ export const LoginPage: React.FC = () => {
       setResendTimer(60);
     } catch (e: any) {
       setError(e.response?.data?.message || "Failed to resend OTP");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleValidateOtp = async () => {
+    if (!otp || !resetToken || otp.length !== 6) return;
+    try {
+      setLoading(true);
+      setError(null);
+      await api.post("/auth/validate-otp", { token: resetToken, otp });
+      setOtpValidated(true);
+    } catch (e: any) {
+      setError(e.response?.data?.message || "Invalid OTP");
     } finally {
       setLoading(false);
     }
@@ -267,7 +282,7 @@ export const LoginPage: React.FC = () => {
                       <button 
                         type="button" 
                         onClick={handleResendOtp}
-                        disabled={resendTimer > 0 || loading}
+                        disabled={resendTimer > 0 || loading || otpValidated}
                         className="text-emerald-600 hover:text-emerald-500 disabled:opacity-50 transition-colors font-bold underline"
                       >
                         {resendTimer > 0 ? `Resend in ${resendTimer}s` : "Resend"}
@@ -285,48 +300,53 @@ export const LoginPage: React.FC = () => {
                           value={otp}
                           onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
                           required
-                          className="pl-9 text-center tracking-widest font-mono text-lg bg-slate-50 dark:bg-[#050505]/50 border-slate-300 dark:border-[#333333] focus:border-primary text-slate-900 dark:text-slate-50"
+                          disabled={otpValidated}
+                          className="pl-9 text-center tracking-widest font-mono text-lg bg-slate-50 dark:bg-[#050505]/50 border-slate-300 dark:border-[#333333] focus:border-primary text-slate-900 dark:text-slate-50 disabled:opacity-50"
                           placeholder="000000"
                         />
                       </div>
                     </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="new-password">New Password</Label>
-                      <div className="relative">
-                        <Lock className="absolute left-3 top-3 w-4 h-4 text-slate-600 dark:text-slate-50/60" />
-                        <Input
-                          id="new-password"
-                          type={showPassword ? "text" : "password"}
-                          value={newPassword}
-                          onChange={(e) => setNewPassword(e.target.value)}
-                          required
-                          className="pl-9 pr-10 bg-slate-50 dark:bg-[#050505]/50 border-slate-300 dark:border-[#333333] focus:border-primary text-slate-900 dark:text-slate-50"
-                          placeholder="Enter new password"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setShowPassword(!showPassword)}
-                          className="absolute right-3 top-3 text-slate-600 dark:text-slate-50/60 hover:text-slate-900 dark:text-slate-50 transition-colors"
-                        >
-                          {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                        </button>
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="confirm-password">Confirm Password</Label>
-                      <div className="relative">
-                        <Lock className="absolute left-3 top-3 w-4 h-4 text-slate-600 dark:text-slate-50/60" />
-                        <Input
-                          id="confirm-password"
-                          type={showPassword ? "text" : "password"}
-                          value={confirmPassword}
-                          onChange={(e) => setConfirmPassword(e.target.value)}
-                          required
-                          className="pl-9 pr-10 bg-slate-50 dark:bg-[#050505]/50 border-slate-300 dark:border-[#333333] focus:border-primary text-slate-900 dark:text-slate-50"
-                          placeholder="Confirm new password"
-                        />
-                      </div>
-                    </div>
+                    {otpValidated && (
+                      <>
+                        <div className="space-y-2">
+                          <Label htmlFor="new-password">New Password</Label>
+                          <div className="relative">
+                            <Lock className="absolute left-3 top-3 w-4 h-4 text-slate-600 dark:text-slate-50/60" />
+                            <Input
+                              id="new-password"
+                              type={showPassword ? "text" : "password"}
+                              value={newPassword}
+                              onChange={(e) => setNewPassword(e.target.value)}
+                              required
+                              className="pl-9 pr-10 bg-slate-50 dark:bg-[#050505]/50 border-slate-300 dark:border-[#333333] focus:border-primary text-slate-900 dark:text-slate-50"
+                              placeholder="Enter new password"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setShowPassword(!showPassword)}
+                              className="absolute right-3 top-3 text-slate-600 dark:text-slate-50/60 hover:text-slate-900 dark:text-slate-50 transition-colors"
+                            >
+                              {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                            </button>
+                          </div>
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="confirm-password">Confirm Password</Label>
+                          <div className="relative">
+                            <Lock className="absolute left-3 top-3 w-4 h-4 text-slate-600 dark:text-slate-50/60" />
+                            <Input
+                              id="confirm-password"
+                              type={showPassword ? "text" : "password"}
+                              value={confirmPassword}
+                              onChange={(e) => setConfirmPassword(e.target.value)}
+                              required
+                              className="pl-9 pr-10 bg-slate-50 dark:bg-[#050505]/50 border-slate-300 dark:border-[#333333] focus:border-primary text-slate-900 dark:text-slate-50"
+                              placeholder="Confirm new password"
+                            />
+                          </div>
+                        </div>
+                      </>
+                    )}
                   </div>
                 ) : (
                   <div className="space-y-2">
@@ -342,7 +362,6 @@ export const LoginPage: React.FC = () => {
                         onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEmail(e.target.value)}
                         required
                         className="pl-9 bg-slate-50 dark:bg-[#050505]/50 border-slate-300 dark:border-[#333333] focus:border-primary text-slate-900 dark:text-slate-50"
-                        placeholder="your.email@iiitu.ac.in"
                       />
                     </div>
                   </div>
@@ -352,14 +371,25 @@ export const LoginPage: React.FC = () => {
               <CardFooter className="flex flex-col space-y-4 pt-2">
                 {!passwordChanged && (
                   resetEmailSent ? (
-                    <Button 
-                      type="button" 
-                      onClick={handleResetPassword} 
-                      disabled={loading || otp.length !== 6 || newPassword.length < 6 || confirmPassword.length < 6} 
-                      className="w-full bg-[#E63946] hover:bg-[#E63946]/90 text-slate-900 dark:text-slate-50 rounded-none hover:bg-[#E63946] hover:bg-[#E63946]/90 text-slate-900 dark:text-slate-50 rounded-none font-semibold h-11 rounded-xl"
-                    >
-                      {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Reset Password"}
-                    </Button>
+                    otpValidated ? (
+                      <Button 
+                        type="button" 
+                        onClick={handleResetPassword} 
+                        disabled={loading || newPassword.length < 6 || confirmPassword.length < 6} 
+                        className="w-full bg-[#E63946] hover:bg-[#E63946]/90 text-slate-900 dark:text-slate-50 rounded-none hover:bg-[#E63946] hover:bg-[#E63946]/90 text-slate-900 dark:text-slate-50 rounded-none font-semibold h-11 rounded-xl"
+                      >
+                        {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Reset Password"}
+                      </Button>
+                    ) : (
+                      <Button 
+                        type="button" 
+                        onClick={handleValidateOtp} 
+                        disabled={loading || otp.length !== 6} 
+                        className="w-full bg-[#E63946] hover:bg-[#E63946]/90 text-slate-900 dark:text-slate-50 rounded-none hover:bg-[#E63946] hover:bg-[#E63946]/90 text-slate-900 dark:text-slate-50 rounded-none font-semibold h-11 rounded-xl"
+                      >
+                        {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Verify OTP"}
+                      </Button>
+                    )
                   ) : (
                     <Button type="submit" disabled={loading} className="w-full bg-[#E63946] hover:bg-[#E63946]/90 text-slate-900 dark:text-slate-50 rounded-none hover:bg-[#E63946] hover:bg-[#E63946]/90 text-slate-900 dark:text-slate-50 rounded-none font-semibold h-11 rounded-xl">
                       {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Send Reset Link"}

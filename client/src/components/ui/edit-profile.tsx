@@ -1,10 +1,11 @@
-﻿import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Pencil, Clock, ChevronDown, CheckCircle2, Lock, ShieldAlert, Eye, EyeOff } from 'lucide-react';
 import { useAuthStore } from '../../stores/authStore';
 import { api } from '../../lib/api';
 import { toast } from 'sonner';
 import { Player } from '@lottiefiles/react-lottie-player';
+import { useScrollLock } from "../../hooks/useScrollLock";
 
 export interface ProfileData {
   fullName: string;
@@ -24,6 +25,7 @@ interface EditProfileProps {
 }
 
 export const EditProfile: React.FC<EditProfileProps> = ({ isOpen, onClose, initialData, onSave, isLoading }) => {
+  useScrollLock(isOpen);
   const [formData, setFormData] = useState<ProfileData>(initialData);
   const [passwords, setPasswords] = useState({ oldPassword: '', newPassword: '' });
   const [showPasswordSection, setShowPasswordSection] = useState(false);
@@ -124,7 +126,7 @@ export const EditProfile: React.FC<EditProfileProps> = ({ isOpen, onClose, initi
   return (
     <AnimatePresence>
       {isOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 overflow-y-auto">
+        <div className="theme-nova-green fixed inset-0 z-[100] flex items-center justify-center p-4 overflow-y-auto">
           {/* Backdrop */}
           <motion.div
             initial={{ opacity: 0 }}
@@ -297,20 +299,13 @@ export const EditProfile: React.FC<EditProfileProps> = ({ isOpen, onClose, initi
                               <div className="space-y-1.5">
                                 <label className="text-xs font-semibold text-muted-foreground">Current Password</label>
                                 <div className="relative">
-                                  <input
-                                    type={showPasswords ? "text" : "password"}
+                                  <input 
+                                    type="password"
                                     name="oldPassword"
                                     value={passwords.oldPassword}
                                     onChange={handlePasswordChange}
-                                    className="w-full pl-4 pr-12 py-3 rounded-2xl border-2 outline-none transition-all text-lg font-bold font-mono text-[#4A1711] dark:text-[#E6E1D6] bg-white/50 dark:bg-black/20 border-[#5A4A46]/20 dark:border-[#5A4A46]/50 focus:border-[#4A1711] dark:focus:border-[#E6E1D6]"
+                                    className="w-full pl-4 pr-4 py-3 rounded-2xl border-2 outline-none transition-all text-lg font-bold font-mono text-[#4A1711] dark:text-[#E6E1D6] bg-white/50 dark:bg-black/20 border-[#5A4A46]/20 dark:border-[#5A4A46]/50 focus:border-[#4A1711] dark:focus:border-[#E6E1D6]"
                                   />
-                                  <button
-                                    type="button"
-                                    onClick={() => setShowPasswords(!showPasswords)}
-                                    className="absolute right-4 top-1/2 -translate-y-1/2 text-[#5A4A46]/60 hover:text-[#5A4A46] dark:text-[#E6E1D6]/40 dark:hover:text-[#E6E1D6]/80 transition-colors"
-                                  >
-                                    {showPasswords ? <EyeOff size={18} /> : <Eye size={18} />}
-                                  </button>
                                 </div>
                               </div>
                             )}
@@ -318,19 +313,12 @@ export const EditProfile: React.FC<EditProfileProps> = ({ isOpen, onClose, initi
                               <label className="text-xs font-semibold text-muted-foreground">New Password</label>
                               <div className="relative">
                                 <input
-                                  type={showPasswords ? "text" : "password"}
+                                  type="password"
                                   name="newPassword"
                                   value={passwords.newPassword}
                                   onChange={handlePasswordChange}
-                                  className="w-full pl-4 pr-12 py-3 rounded-2xl border-2 outline-none transition-all text-lg font-bold font-mono text-[#4A1711] dark:text-[#E6E1D6] bg-white/50 dark:bg-black/20 border-[#5A4A46]/20 dark:border-[#5A4A46]/50 focus:border-[#4A1711] dark:focus:border-[#E6E1D6]"
+                                  className="w-full pl-4 pr-4 py-3 rounded-2xl border-2 outline-none transition-all text-lg font-bold font-mono text-[#4A1711] dark:text-[#E6E1D6] bg-white/50 dark:bg-black/20 border-[#5A4A46]/20 dark:border-[#5A4A46]/50 focus:border-[#4A1711] dark:focus:border-[#E6E1D6]"
                                 />
-                                <button
-                                  type="button"
-                                  onClick={() => setShowPasswords(!showPasswords)}
-                                  className="absolute right-4 top-1/2 -translate-y-1/2 text-[#5A4A46]/60 hover:text-[#5A4A46] dark:text-[#E6E1D6]/40 dark:hover:text-[#E6E1D6]/80 transition-colors"
-                                >
-                                  {showPasswords ? <EyeOff size={18} /> : <Eye size={18} />}
-                                </button>
                               </div>
                             </div>
                             <div className="pt-2">

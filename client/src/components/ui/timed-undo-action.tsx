@@ -74,7 +74,7 @@ export const TimedUndoAction: FC<TimedUndoActionProps> = ({
         >
           <motion.div
             className={cn(
-              "relative flex items-center justify-start overflow-hidden rounded-full bg-red-500 transition-colors duration-300 dark:bg-red-500",
+              "relative flex items-center justify-start overflow-hidden rounded-lg bg-red-500 transition-colors duration-300 dark:bg-red-500",
               isDeleting ? "bg-red-500/10 dark:bg-red-500/20" : "",
               disabled ? "opacity-50 cursor-not-allowed pointer-events-none" : "cursor-pointer"
             )}
@@ -93,7 +93,7 @@ export const TimedUndoAction: FC<TimedUndoActionProps> = ({
               <AnimatePresence mode="popLayout">
                 {isDeleting && (
                   <motion.div
-                    className="rounded-full bg-red-500 p-2"
+                    className="rounded-lg bg-red-500 p-2"
                     initial={{
                       opacity: 0,
                       filter: "blur(2px)",
@@ -125,7 +125,7 @@ export const TimedUndoAction: FC<TimedUndoActionProps> = ({
               <AnimatePresence mode="popLayout">
                 {isDeleting && (
                   <motion.div
-                    className="flex items-center justify-center rounded-full bg-red-500 px-3 py-1 text-neutral-50 tabular-nums"
+                    className="flex items-center justify-center rounded-lg bg-red-500 px-3 py-1 text-neutral-50 tabular-nums"
                     initial={{
                       opacity: 0,
                       filter: "blur(2px)",

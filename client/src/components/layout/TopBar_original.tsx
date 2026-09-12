@@ -20,12 +20,6 @@ export const TopBar: React.FC<TopBarProps> = ({
   const logout = useAuthStore((state) => state.logout);
   const location = useLocation();
   const isReports = location.pathname.startsWith("/report");
-  const isSemester = location.pathname.startsWith("/semester");
-  const isSubjects = location.pathname === "/subjects" || location.pathname.startsWith("/subjects/");
-  const isSettings = location.pathname.startsWith("/settings");
-  const isToday = location.pathname.startsWith("/today");
-  const isTimetable = location.pathname.startsWith("/timetable");
-  const isPredictive = location.pathname.startsWith("/predictive");
   
   const [isLoggingOut, setIsLoggingOut] = React.useState(false);
   const handleLogout = async () => {
@@ -41,12 +35,11 @@ export const TopBar: React.FC<TopBarProps> = ({
   const { theme, toggleTheme } = useThemeStore();
 
   // Route-specific styling
-  const headerBg = isReports || isPredictive ? "bg-[#EED3CF]/80 dark:bg-[#1A090C]/80 border-[#74313A]/20 dark:border-[#EED3CF]/20" : (isSemester || isSettings || isToday || isTimetable || isSubjects) ? "bg-transparent border-border/30 backdrop-blur-xl" : "bg-background/80 border-border";
-  const positionClass = "sticky top-0";
-  const textColor = (isReports || isPredictive) ? "text-[#111827] dark:text-[#FDF8F5]" : isSubjects ? "text-foreground dark:text-white" : "text-foreground";
-  const mutedTextColor = (isReports || isPredictive) ? "text-[#74313A]/60 dark:text-[#EED3CF]/60" : isSubjects ? "text-muted-foreground dark:text-white/80" : "text-muted-foreground";
-  const hoverBg = (isReports || isPredictive) ? "hover:bg-[#74313A]/5 dark:hover:bg-[#EED3CF]/5" : "hover:bg-muted/80";
-  const hoverText = (isReports || isPredictive) ? "hover:text-[#74313A] dark:hover:text-[#EED3CF]" : isSubjects ? "hover:text-foreground dark:hover:text-white" : "hover:text-foreground";
+  const headerBg = isReports ? "bg-[#FDF8F5]/80 dark:bg-[#1A090C]/80 border-[#EED3CF]/30 dark:border-[#74313A]/30" : "bg-background/80 border-border";
+  const textColor = isReports ? "text-[#111827] dark:text-[#FDF8F5]" : "text-foreground";
+  const mutedTextColor = isReports ? "text-[#74313A]/60 dark:text-[#EED3CF]/60" : "text-muted-foreground";
+  const hoverBg = isReports ? "hover:bg-[#74313A]/5 dark:hover:bg-[#EED3CF]/5" : "hover:bg-muted/80";
+  const hoverText = isReports ? "hover:text-[#74313A] dark:hover:text-[#EED3CF]" : "hover:text-foreground";
 
   // Badge styling
   const badgeBg = isReports 
@@ -62,8 +55,8 @@ export const TopBar: React.FC<TopBarProps> = ({
     : "text-rose-500 dark:text-rose-400";
 
   return (
-    <header className={`${positionClass} z-40 backdrop-blur-md border-b px-4 py-3 pt-[calc(0.75rem+env(safe-area-inset-top))] transition-colors ${headerBg}`}>
-      <div className="flex items-center justify-between w-full">
+    <header className={`sticky top-0 z-40 backdrop-blur-md border-b px-4 py-3 pt-[calc(0.75rem+env(safe-area-inset-top))] transition-colors ${headerBg}`}>
+      <div className="flex items-center justify-between max-w-5xl mx-auto">
         {/* Title / User Greeting */}
         <div>
           <h1 className={`text-xl font-bold tracking-tight ${textColor}`}>
@@ -79,8 +72,8 @@ export const TopBar: React.FC<TopBarProps> = ({
               <span className={`font-bold ${overallPercentage >= targetPercentage ? badgeGoodText : badgeBadText}`}>
                 {(overallPercentage ?? 0).toFixed(2)}%
               </span>
-              <span className={(isReports || isPredictive) ? "text-[#74313A]/20 dark:text-[#EED3CF]/20" : "text-muted-foreground/40"}>|</span>
-              <span className={(isReports || isPredictive) ? "text-[#74313A]/50 dark:text-[#EED3CF]/50" : "text-muted-foreground"}>{targetPercentage}%</span>
+              <span className={isReports ? "text-[#74313A]/20 dark:text-[#EED3CF]/20" : "text-muted-foreground/40"}>|</span>
+              <span className={isReports ? "text-[#74313A]/50 dark:text-[#EED3CF]/50" : "text-muted-foreground"}>{targetPercentage}%</span>
             </div>
           )}
 
@@ -93,9 +86,9 @@ export const TopBar: React.FC<TopBarProps> = ({
             title={`Current: ${theme} theme. Click to toggle.`}
           >
             {theme === "light" ? (
-              <Sun className={(isReports || isPredictive) ? "w-4 h-4" : "w-4 h-4 text-amber-500"} />
+              <Sun className={isReports ? "w-4 h-4" : "w-4 h-4 text-amber-500"} />
             ) : (
-              <Moon className={(isReports || isPredictive) ? "w-4 h-4" : isSubjects ? "w-4 h-4 text-indigo-400 dark:text-white/90" : "w-4 h-4 text-indigo-400"} />
+              <Moon className={isReports ? "w-4 h-4" : "w-4 h-4 text-indigo-400"} />
             )}
           </Button>
 

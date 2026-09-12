@@ -89,7 +89,7 @@ const useSessionPoller = () => {
 
 export function App() {
   useSilentRefresh();
-  
+    
   useTheme();
   const theme = useThemeStore((state) => state.theme);
   // We want the Lottie splash screen to play on mobile devices (web and native)
@@ -169,7 +169,7 @@ export function App() {
       />
       {Capacitor.isNativePlatform() && (
         <OTAUpdateModal
-          localVersion={localStorage.getItem("app_version") || "3.5"}
+          localVersion={localStorage.getItem("app_version") || import.meta.env.VITE_APP_VERSION || "3.7"}
         />
       )}
       {splashFinished && (

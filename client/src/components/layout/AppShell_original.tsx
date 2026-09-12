@@ -1,4 +1,4 @@
-import React, { useEffect, useLayoutEffect } from "react";
+import React, { useEffect } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import { BottomNav } from "./BottomNav";
 import { Sidebar } from "./Sidebar";
@@ -40,47 +40,19 @@ export const AppShell: React.FC<AppShellProps> = ({ title, onAddClick }) => {
   }, [fetchStats]);
 
   const isReports = location.pathname.startsWith("/report");
-  const isSubjects = location.pathname === "/subjects" || location.pathname.startsWith("/subjects/");
-  const isSettings = location.pathname.startsWith("/settings");
-  const isSemester = location.pathname.startsWith("/semester");
-  const isToday = location.pathname.startsWith("/today");
-  const isTimetable = location.pathname.startsWith("/timetable");
-  const isPredictive = location.pathname.startsWith("/predictive");
-  const isCalendar = location.pathname.startsWith("/calendar");
-
-  useLayoutEffect(() => {
-    // Reset all dynamically applied page themes
-    document.body.classList.remove("theme-nova-green", "theme-terrascape", "theme-aether", "theme-frovia", "theme-orbital");
-
-    if (isSettings) {
-      document.body.classList.add("theme-nova-green");
-    } else if (isToday) {
-      document.body.classList.add("theme-terrascape");
-    } else if (isTimetable) {
-      document.body.classList.add("theme-aether");
-    } else if (isPredictive) {
-      document.body.classList.add("theme-frovia");
-    } else if (isCalendar) {
-      document.body.classList.add("theme-orbital");
-    }
-
-    return () => {
-      document.body.classList.remove("theme-nova-green", "theme-terrascape", "theme-aether", "theme-frovia", "theme-orbital");
-    };
-  }, [location.pathname, isSettings, isToday, isTimetable, isPredictive, isCalendar]);
 
   return (
-    <div className={`min-h-screen ${isSemester ? "theme-peakpath bg-transparent" : isSettings ? "bg-transparent" : isReports ? "bg-[#FDF8F5] dark:bg-[#1A090C]" : "bg-transparent"} text-foreground flex flex-col md:flex-row antialiased ${isSettings || isSemester ? "selection:bg-primary text-primary-foreground" : "selection:bg-[#74313A] selection:text-white"} transition-colors duration-200 `}>
+    <div className={`min-h-screen ${isReports ? "bg-[#FDF8F5] dark:bg-[#1A090C]" : "bg-background"} text-foreground flex flex-col md:flex-row antialiased selection:bg-[#74313A] selection:text-white transition-colors duration-200 overflow-x-hidden`}>
       {/* Sidebar for Desktop */}
       <Sidebar />
 
       {/* Main Content Area */}
-      <div className={`flex-1 flex flex-col min-w-0 pb-[calc(5rem+env(safe-area-inset-bottom))] md:pb-6 ${isSubjects ? "bg-subjects-gradient" : ""}`}>
+      <div className="flex-1 flex flex-col min-w-0 pb-[calc(5rem+env(safe-area-inset-bottom))] md:pb-6">
         {/* Top Header */}
         <TopBar title={title} onAddClick={onAddClick} />
 
         {/* Page Content */}
-        <main className="flex-1 w-full overflow-x-hidden max-w-5xl mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
+        <main className={`flex-1 w-full mx-auto ${isReports ? "" : "max-w-5xl p-4 sm:p-6 space-y-6"}`}>
           <Outlet />
         </main>
       </div>

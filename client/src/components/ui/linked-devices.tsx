@@ -247,7 +247,7 @@ export const LinkedDevicesModal: React.FC<LinkedDevicesProps> = ({ isOpen, onClo
   return (
     <AnimatePresence>
       {isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center sm:p-4 bg-background sm:bg-black/40 sm:backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center sm:p-4 bg-background sm:bg-white/60 dark:sm:bg-black/60 sm:backdrop-blur-sm">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
