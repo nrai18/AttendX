@@ -1,5 +1,6 @@
 import { prisma } from "../lib/prisma";
-import { GoogleGenAI } from "@google/genai";
+
+
 // pdf-parse is loaded lazily inside processOcrImage to avoid startup crashes in production
 // (pdf-parse tries to load test files from disk at module init time)
 import { COURSE_CURRICULUM, resolveSubjectName, SUBJECT_DICTIONARY, BRANCH_NAMES } from "../utils/subjectDictionary";
@@ -253,8 +254,6 @@ export class TimetableService {
   }
 
   static async processOcrImage(fileBuffer: Buffer, mimeType: string, fileName: string, semesterId: string, userId: string) {
-    let extractedText = "";
-
     let validMimeType = mimeType;
     if (!validMimeType || validMimeType === "application/octet-stream") {
       validMimeType = fileName.toLowerCase().endsWith(".pdf") ? "application/pdf" : "image/png";
@@ -267,216 +266,83 @@ export class TimetableService {
     });
     const targetSemName = targetSemester?.name || "the user's semester";
 
-    // 1. If PDF file, extract text via pdf-parse first
-    if (validMimeType.includes("pdf") || fileName.endsWith(".pdf")) {
-      const originalWarn = console.warn;
-      const originalLog = console.log;
-      const filterMsg = (args: any[]) => {
-        if (typeof args[0] === 'string' && args[0].includes('Ran out of space in font private use area')) return true;
-        return false;
-      };
+    try {
+      const { GoogleGenAI } = require("@google/genai");
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
       
-      try {
-        const pdfParse = require("pdf-parse");
-        console.warn = (...args) => { if (!filterMsg(args)) originalWarn.apply(console, args); };
-        console.log = (...args) => { if (!filterMsg(args)) originalLog.apply(console, args); };
-        const parsed = await pdfParse(fileBuffer);
-        console.warn = originalWarn;
-        console.log = originalLog;
-        extractedText = parsed.text || "";
-      } catch (e) {
-        console.warn = originalWarn;
-        console.log = originalLog;
-        console.warn("pdf-parse extraction warning:", e);
-      }
-    }
-
-    // 2. AI Gemini Vision / OCR processing if GEMINI_API_KEY is available
-    if (process.env.GEMINI_API_KEY) {
-      try {
-        const ai = new GoogleGenAI({
-          apiKey: process.env.GEMINI_API_KEY,
-          httpOptions: {
-            headers: {
-              "User-Agent": "aistudio-build",
-            },
-          },
-        });
-        const prompt = `
-You are an expert academic timetable OCR parser for a technical university institute (such as IIIT Una).
-Parse this uploaded timetable document (${fileName}).
-Carefully extract the weekly class schedule, subjects, electives, rooms, sections, and practical lab batches.
-
-CRITICAL INSTRUCTION: ONLY extract the timetable for the following specific branch and semester: "${targetSemName}".
-Ignore all other branches, semesters, or pages in the document to keep the output concise.
-
-${extractedText ? `Extracted Document Raw Text:\n${extractedText.slice(0, 10000)}\n` : ""}
+      const prompt = `You are an expert academic timetable parser.
+Parse the attached timetable document/image.
+Extract the weekly class schedule, subjects, electives, rooms, sections, and practical lab batches ONLY for semester/branch: "${targetSemName}".
 
 CRITICAL TIMING & PERIOD RULES:
-1. University Slot Timing Definitions (Standard Bell Schedule):
-   - Slot 1: "09:00" to "09:50"
-   - Slot 2: "09:50" to "10:40"
-   - (10:40 to 11:00 is Morning Break)
-   - Slot 3: "11:00" to "11:50"
-   - Slot 4: "11:50" to "12:40"
-   - (12:40 to 14:00 is Lunch Break)
-   - Slot 5: "14:00" to "14:50"
-   - Slot 6: "14:50" to "15:40"
-   - Slot 7: "15:40" to "16:30"
-   - Slot 8: "16:30" to "17:20"
+1. Slot 1: "09:00" to "09:50"
+2. Slot 2: "09:50" to "10:40"
+3. Slot 3: "11:00" to "11:50"
+4. Slot 4: "11:50" to "12:40"
+5. Slot 5: "14:00" to "14:50"
+6. Slot 6: "14:50" to "15:40"
+7. Slot 7: "16:00" to "16:50"
 
-2. Continuous Practical / Lab (P) Spans:
-   - When a practical or lab spans across 2 consecutive slots:
-     - Morning Lab (Slot 3 & 4): startTime MUST be "11:00", endTime MUST be "12:40"
-     - Afternoon Lab (Slot 5 & 6): startTime MUST be "14:00", endTime MUST be "15:40"
-     - Evening Lab (Slot 7 & 8): startTime MUST be "15:40", endTime MUST be "17:20"
-     - Morning Lab (Slot 1 & 2): startTime MUST be "09:00", endTime MUST be "10:40"
-
-3. Lab Groups & Batch Notation Rules:
-   - Institute Guidelines define subgroups using alphanumeric codes. The LAST DIGIT of the subgroup code specifies the group number:
-     - Codes ending in "1" (e.g., "3ECA1", "2CSA1", "PE2-A1", "PE2-B1") -> Group 1. Set "group": "G1".
-     - Codes ending in "2" (e.g., "3ECA2", "2CSA2", "PE2-A2", "PE2-B2") -> Group 2. Set "group": "G2".
-     - Combined codes (e.g., "3ECA1/3ECA2") -> Set "group": "G1/G2".
-   - Standard notation: "G1/G2", "G1 / G2", "G1, G2", "Both" -> Set "group": "G1/G2".
-   - "G1": Set "group": "G1".
-   - "G2": Set "group": "G2".
-   - If a cell contains parallel batches for different groups, generate TWO SEPARATE slot objects.
-   - Regular lectures without group specifications must have "group": "ALL".
-
-4. Electives & Multi-Subject Cells:
-   - Mark "isProgramElective": true for program electives (e.g. ECSE303, CSSE301).
-   - Mark "isMinorElective": true for minor/open electives (e.g. SCMS301).
-
-Task Instructions:
-1. Locate the schedule for "${targetSemName}".
-2. Build its schedule object with:
-   - "hasSections": boolean
-   - "sections": array of section names found
-   - "hasElectives": boolean
-   - "programElectives": array of elective group objects, each containing { "id", "name", "options": [{"code", "title", "credits"}] }
-   - "minorElectives": array of minor/open elective group objects
-   - "labGroups": array of batch names found (e.g. ["G1", "G2"])
-   - "rawSlots": array of ALL class slots extracted for THIS branch/semester. Each slot must contain:
-       {
-         "code": "Course Code or Subject Name",
-         "faculty": "Faculty/Professor initials",
-         "dayOfWeek": number (0=Mon, 1=Tue, 2=Wed, 3=Thu, 4=Fri, 5=Sat, 6=Sun),
-         "startTime": "HH:MM",
-         "endTime": "HH:MM",
-         "type": "lecture" | "practical" | "tutorial",
-         "room": "Room number",
-         "group": "G1" | "G2" | "G1/G2" | "ALL",
-         "section": "Section name or ALL",
-         "isProgramElective": boolean,
-         "isMinorElective": boolean
-       }
-
-Course Curriculum Dictionary for subject code resolution:
-${JSON.stringify(COURSE_CURRICULUM, null, 2)}
-
-Return ONLY strict JSON matching this structure:
+Return a JSON object containing:
 {
-  "status": "needs_setup",
-  "detectedBranches": ["<FoundBranch>"],
-  "detectedSemesters": [<FoundSemester>],
-  "schedules": {
-    "<BRANCH>": {
-      "<SEMESTER>": {
-        "hasSections": boolean,
-        "sections": ["Section A"],
-        "hasElectives": boolean,
-        "programElectives": [...],
-        "minorElectives": [...],
-        "labGroups": ["G1", "G2"],
-        "rawSlots": [...]
-      }
+  "detectedBranches": ["CSE", "IT", "ECE"],
+  "detectedSemesters": ["Semester 1", "Semester 3"],
+  "schedules": [
+    {
+      "branch": "CSE",
+      "semester": "Semester 3",
+      "slots": [
+        {
+          "subjectCode": "CS201",
+          "subjectName": "Data Structures",
+          "type": "Theory",
+          "dayOfWeek": 0,
+          "startTime": "09:00",
+          "endTime": "09:50",
+          "room": "Room 101",
+          "section": "A",
+          "labGroup": "ALL",
+          "isElective": false
+        }
+      ]
     }
-  }
-}
-        `;
+  ]
+}`;
 
-        const contents: any[] = [{ text: prompt }];
-        if (validMimeType.includes("pdf")) {
-          contents.push({
-            inlineData: {
-              mimeType: "application/pdf",
-              data: fileBuffer.toString("base64")
-            }
-          });
-        } else {
-          contents.push({
-            inlineData: {
-              mimeType: validMimeType,
-              data: fileBuffer.toString("base64")
-            }
-          });
-        }
-
-        // Updated to use only 3.7 and 3.8 flash per user request
-        const candidateModels = ["gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.1-pro-preview", "gemini-3.6-flash"];
-        let response: any = null;
-        let lastError: any = null;
-
-        for (const modelName of candidateModels) {
-          for (let attempt = 0; attempt < 2; attempt++) {
-            try {
-              response = await ai.models.generateContent({
-                model: modelName,
-                contents,
-                config: {
-                  responseMimeType: "application/json"
+      const response = await ai.models.generateContent({
+        model: "gemini-3.8-flash",
+        contents: [
+          {
+            role: "user",
+            parts: [
+              { text: prompt },
+              {
+                inlineData: {
+                  data: fileBuffer.toString("base64"),
+                  mimeType: validMimeType
                 }
-              });
-              if (response && response.text) break;
-            } catch (err: any) {
-              lastError = err;
-              const isTransient = err?.status === "UNAVAILABLE" || err?.code === 503 || err?.code === 429 || String(err?.message || "").includes("demand");
-              if (isTransient && attempt === 0) {
-                // Short wait before retry
-                await new Promise((res) => setTimeout(res, 800));
-                continue;
               }
-              // If not recoverable or second attempt, break to try next candidate model
-              break;
-            }
+            ]
           }
-          if (response && response.text) break;
+        ],
+        config: {
+          responseMimeType: "application/json",
+          temperature: 0.1
         }
+      });
 
-        if (!response && lastError) {
-          throw lastError;
-        }
-
-        const textResponse = response?.text || "";
-        let parsedAiResult: any = null;
-        try {
-          parsedAiResult = JSON.parse(textResponse);
-        } catch (e) {
-          const jsonMatch = textResponse.match(/\{[\s\S]*\}/);
-          if (jsonMatch) {
-            parsedAiResult = JSON.parse(jsonMatch[0]);
-          }
-        }
-
-        if (parsedAiResult && parsedAiResult.schedules && Object.keys(parsedAiResult.schedules).length > 0) {
-          const detectedBranches = parsedAiResult.detectedBranches || Object.keys(parsedAiResult.schedules);
-          const detectedSemesters = parsedAiResult.detectedSemesters || Array.from(new Set(
-            Object.values(parsedAiResult.schedules).flatMap((bData: any) => Object.keys(bData).map(Number))
-          ));
-
-          return {
-            status: "needs_setup",
-            detectedBranches,
-            detectedSemesters,
-            schedules: parsedAiResult.schedules
-          };
-        }
-      } catch (error) {
-        console.error("AI Timetable Extraction failed:", error);
-          throw new Error("AI Timetable Extraction failed: Could not parse timetable. Please ensure the image is clear and try again.");
-        }
-      }
-      throw new Error("GEMINI_API_KEY is missing. Real-time OCR parsing requires Gemini API.");
+      const text = response.text();
+      const parsedAiResult = JSON.parse(text || "{}");
+      
+      return {
+        detectedBranches: parsedAiResult.detectedBranches || [],
+        detectedSemesters: parsedAiResult.detectedSemesters || [],
+        schedules: parsedAiResult.schedules || []
+      };
+    } catch (error) {
+      console.error("Gemini Timetable Extraction failed:", error);
+      throw new Error("Timetable Extraction failed: Could not parse document. Try again later.");
+    }
   }
 
   static async saveWizardTimetable(userId: string, semesterId: string, selections: any, rawSlots: any[], startDateStr?: string) {
@@ -798,101 +664,17 @@ Return ONLY strict JSON matching this structure:
 
     const whereCond = { OR: conditions };
 
-    const slots = await prisma.timetableSlot.findMany({
-      where: { ...whereCond, validUntil: null },
-      select: { id: true }
-    });
-    const slotIds = slots.map(s => s.id);
-
-    const overrides = await prisma.timetableOverride.findMany({
-      where: whereCond,
-      select: { id: true }
-    });
-    const overrideIds = overrides.map(o => o.id);
-
-    if (slotIds.length > 0) {
-      try {
-        await prisma.attendance.updateMany({
-          where: { timetableSlotId: { in: slotIds } },
-          data: { timetableSlotId: null }
-        });
-      } catch (attErr) {
-        console.warn("Batch attendance unlinking failed, using individual safe unlinking:", attErr);
-        const attList = await prisma.attendance.findMany({
-          where: { timetableSlotId: { in: slotIds } }
-        });
-        for (const att of attList) {
-          try {
-            await prisma.attendance.update({
-              where: { id: att.id },
-              data: { timetableSlotId: null }
-            });
-          } catch (itemErr) {
-            try {
-              // Delete duplicate if another null slot record exists for same user/subject/date
-              const existingNull = await prisma.attendance.findFirst({
-                where: {
-                  userId: att.userId,
-                  subjectId: att.subjectId,
-                  date: att.date,
-                  timetableSlotId: null,
-                  id: { not: att.id }
-                }
-              });
-              if (existingNull) {
-                await prisma.attendance.delete({ where: { id: att.id } });
-              }
-            } catch (cleanupErr) {
-              console.warn("Cleanup fallback error:", cleanupErr);
-            }
-          }
-        }
-      }
-
-      try {
-        await prisma.timetableOverride.updateMany({
-          where: { originalSlotId: { in: slotIds } },
-          data: { originalSlotId: null }
-        });
-      } catch (err) {
-        console.warn("Override originalSlotId unlinking warning:", err);
-      }
-    }
-
-    if (overrideIds.length > 0) {
-      try {
-        await prisma.attendance.updateMany({
-          where: { overrideId: { in: overrideIds } },
-          data: { overrideId: null }
-        });
-      } catch (overrideAttErr) {
-        console.warn("Override attendance unlinking warning:", overrideAttErr);
-      }
-    }
-
+    // Instead of hard-deleting the slots, we archive them by setting validUntil to now.
+    // This preserves historical attendance links and adds the timetable to the Archive modal.
     try {
-      await prisma.timetableOverride.deleteMany({
-        where: whereCond
+      await prisma.timetableSlot.updateMany({
+        where: { ...whereCond, validUntil: null },
+        data: { validUntil: new Date() }
       });
-    } catch (overrideDelErr) {
-      console.warn("TimetableOverride delete error:", overrideDelErr);
-      if (semesterId) {
-        await prisma.timetableOverride.deleteMany({ where: { semesterId } }).catch(() => {});
-      }
-    }
-
-    try {
-      await prisma.timetableSlot.deleteMany({
-        where: { ...whereCond, validUntil: null }
-      });
-    } catch (slotDelErr) {
-      console.warn("TimetableSlot delete error:", slotDelErr);
-      if (semesterId) {
-        await prisma.timetableSlot.deleteMany({ where: { semesterId, validUntil: null } }).catch(() => {});
-      }
+    } catch (err) {
+      console.error("Failed to archive timetable during clear:", err);
     }
   }
-
   static async exportTimetable(userId: string, semesterId: string) {
     const semester = await prisma.semester.findFirst({
       where: { id: semesterId, userId },

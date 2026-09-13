@@ -33,6 +33,8 @@ import { FormattedChatMessage } from "./FormattedChatMessage";
 import { VoiceModeOverlay } from "./VoiceModeOverlay";
 import { useAttendanceStore } from "../../stores/attendanceStore";
 import { useAuthStore } from "../../stores/authStore";
+import { NativeVoiceService } from "../../services/NativeVoiceService";
+import { Capacitor } from "@capacitor/core";
 import { useCacheStore } from "../../stores/cacheStore";
 import { NotificationService } from "../../services/NotificationService";
 import { App } from "@capacitor/app";
@@ -82,7 +84,7 @@ interface Message {
 
 const SEARCH_STAGES = [
   "Searching 47-page IIIT Una Ordinances...",
-  "Querying vector embeddings with gemini-embedding-2...",
+  "Querying vector embeddings with local offline vector embeddings...",
   "Synthesizing precise regulation citations...",
   "Formatting verified policy response..."
 ];
@@ -194,16 +196,30 @@ export const FloatingChatbot: React.FC = () => {
   }, []);
 
   const toggleMic = () => {
+    
+    if (Capacitor.isNativePlatform()) {
+      if (isListeningMic) {
+        NativeVoiceService.stopListening();
+        setIsListeningMic(false);
+      } else {
+        setInput("");
+        setIsListeningMic(true);
+        NativeVoiceService.startListening((text) => setInput(text), () => setIsListeningMic(false));
+      }
+      return;
+    }
+
     if (!("webkitSpeechRecognition" in window || "SpeechRecognition" in window)) {
       toast.error("Speech recognition is not supported in this browser. Please use Chrome or Edge.");
       return;
     }
     if (isListeningMic) {
-      recognitionRef.current.stop();
+      if (recognitionRef.current) recognitionRef.current.stop();
     } else {
       setInput("");
-      recognitionRef.current.start();
+      if (recognitionRef.current) recognitionRef.current.start();
     }
+    
   };
 
   const handleCopy = (id: string, text: string) => {
@@ -213,29 +229,35 @@ export const FloatingChatbot: React.FC = () => {
   };
 
   const handleSpeakMessage = (id: string, text: string) => {
-    if (typeof window === "undefined" || !window.speechSynthesis) return;
-
+    
     if (speakingId === id) {
-      window.speechSynthesis.cancel();
+      if (Capacitor.isNativePlatform()) NativeVoiceService.stopSpeaking();
+      else if (window.speechSynthesis) window.speechSynthesis.cancel();
       setSpeakingId(null);
       return;
     }
-
-    window.speechSynthesis.cancel();
-    const cleanText = text.replace(/[#*_`]/g, "").replace(/\[.*?\]/g, "").trim();
-    const utterance = new SpeechSynthesisUtterance(cleanText);
-    utterance.lang = "en-IN";
-    utterance.onend = () => setSpeakingId(null);
-    utterance.onerror = () => setSpeakingId(null);
-
+    
     setSpeakingId(id);
-    window.speechSynthesis.speak(utterance);
+    
+    if (Capacitor.isNativePlatform()) {
+      NativeVoiceService.speak(text).then(() => setSpeakingId(null));
+    } else if (window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+      const cleanText = text.replace(/[#*_`]/g, "").replace(/\[.*?\]/g, "").trim();
+      const utterance = new SpeechSynthesisUtterance(cleanText);
+      utterance.lang = "en-IN";
+      utterance.onend = () => setSpeakingId(null);
+      utterance.onerror = () => setSpeakingId(null);
+      window.speechSynthesis.speak(utterance);
+    }
+    
   };
 
   const handleResetChat = () => {
-    if (typeof window !== "undefined" && window.speechSynthesis) {
-      window.speechSynthesis.cancel();
-    }
+    
+    if (Capacitor.isNativePlatform()) NativeVoiceService.stopSpeaking();
+    else if (typeof window !== "undefined" && window.speechSynthesis) window.speechSynthesis.cancel();
+    
     setSpeakingId(null);
     setMessages([]);
   };
@@ -256,7 +278,6 @@ export const FloatingChatbot: React.FC = () => {
     setIsLoading(true);
 
     try {
-      const mlApiUrl = import.meta.env.VITE_ML_API_URL || "http://localhost:8000";
       const history = messages.slice(-4).map(m => ({
         role: m.role,
         content: m.content
@@ -295,21 +316,28 @@ export const FloatingChatbot: React.FC = () => {
         calendar_events: currentEvents.slice(0, 50)
       };
 
-      const res = await fetch(`${mlApiUrl}/ai/chat`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message: query,
-          history: history,
-          student_context: studentContext
-        })
+      const res = await api.post(`/ai/chat`, {
+        message: query,
+        history: history,
+        student_context: studentContext
       });
 
-      if (!res.ok) {
-        throw new Error(`ML server returned error ${res.status}`);
-      }
+      const data = res.data;
 
-      const data = await res.json();
+      // Speak the response aloud natively (Offline TTS)
+      
+      if (data.reply) {
+        if (Capacitor.isNativePlatform()) {
+          NativeVoiceService.stopSpeaking().then(() => NativeVoiceService.speak(data.reply));
+        } else if ("speechSynthesis" in window) {
+          window.speechSynthesis.cancel();
+          const utterance = new SpeechSynthesisUtterance(data.reply);
+          utterance.rate = 1.05;
+          utterance.pitch = 1.0;
+          window.speechSynthesis.speak(utterance);
+        }
+      }
+    
       
       const executeAction = async (action: any) => {
         let refresh = false;
@@ -523,7 +551,7 @@ export const FloatingChatbot: React.FC = () => {
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
           onClick={() => setIsOpen(prev => !prev)}
-          className="group relative flex items-center gap-2.5 bg-gradient-to-r from-[#D35C6D] to-[#74313A] text-white px-4 py-3 rounded-full shadow-xl shadow-[#74313A]/25 border border-white/20 transition-all cursor-pointer text-xs font-semibold"
+          className="chatbot-btn group relative flex items-center gap-2.5 bg-primary text-white px-4 py-3 rounded-full shadow-xl shadow-primary/25 border border-white/20 transition-all cursor-pointer text-xs font-semibold"
           aria-label="Open AttendX AI"
         >
           <div className="relative">
@@ -557,26 +585,26 @@ export const FloatingChatbot: React.FC = () => {
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.88, y: 25 }}
             transition={{ type: "spring", damping: 22, stiffness: 280 }}
-            className={`fixed z-50 flex flex-col bg-gradient-to-b from-[#f7f5ff] via-[#fdfdff] to-[#f4f1fa] dark:from-[#0d1222] dark:via-[#090d18] dark:to-[#120f21] border border-purple-500/20 dark:border-indigo-500/30 shadow-2xl shadow-purple-950/20 overflow-hidden text-foreground ${
+            className={`fixed z-50 flex flex-col bg-card border border-primary/20 dark:border-primary/30 shadow-2xl shadow-primary/20 overflow-hidden text-foreground ${
               isExpanded
                 ? "bottom-4 right-4 sm:bottom-6 sm:right-6 w-[calc(100vw-2rem)] sm:w-[680px] h-[88vh] max-h-[780px] rounded-none"
                 : "bottom-24 md:bottom-20 right-4 sm:right-6 w-[calc(100vw-2rem)] sm:w-[440px] h-[80vh] max-h-[620px] rounded-none"
             }`}
           >
             {/* Header with Frosted Glass Top Bar */}
-            <div className="px-5 py-3.5 border-b border-purple-500/10 dark:border-black dark:border-white bg-white/70 dark:bg-[#11172a]/70 backdrop-blur-md flex items-center justify-between">
+            <div className="px-5 py-3.5 border-b border-primary/10 dark:border-black dark:border-white bg-white/70 dark:bg-[#11172a]/70 backdrop-blur-md flex items-center justify-between">
               <div className="flex items-center gap-3 min-w-0">
                 {messages.length > 0 && (
                   <button
                     onClick={() => setMessages([])}
-                    className="p-1.5 rounded-none hover:bg-purple-500/10 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                    className="p-1.5 rounded-none hover:bg-primary/10 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
                     title="New Chat"
                   >
                     <RotateCcw className="w-4 h-4" />
                   </button>
                 )}
                 <div className="relative">
-                  <div className="w-8 h-8 rounded-none bg-gradient-to-tr from-purple-600 to-pink-500 flex items-center justify-center text-white font-bold shadow-md shadow-purple-500/20">
+                  <div className="w-8 h-8 rounded-none bg-primary flex items-center justify-center text-white font-bold shadow-md shadow-primary/20">
                     <Bot className="w-4 h-4" />
                   </div>
                   <span className="absolute -bottom-0.5 -right-0.5 flex h-2.5 w-2.5">
@@ -587,13 +615,9 @@ export const FloatingChatbot: React.FC = () => {
                 <div className="min-w-0">
                   <h3 className="text-xs font-bold tracking-tight text-foreground flex items-center gap-1.5">
                     AttendX Policy AI
-                    <span className="text-[9px] font-mono font-bold text-purple-700 dark:text-purple-300 bg-purple-500/10 px-1.5 py-0.5 rounded-none border border-purple-500/20">
-                      IIITUGORD02
-                    </span>
+                    
                   </h3>
-                  <p className="text-[11px] text-muted-foreground truncate">
-                    Institute Ordinances & Policy Advisor
-                  </p>
+                  
                 </div>
               </div>
 
@@ -602,7 +626,7 @@ export const FloatingChatbot: React.FC = () => {
                 {/* Voice Call Mode Button */}
                 <button
                   onClick={() => setIsVoiceOpen(true)}
-                  className="flex items-center gap-1 text-[11px] font-bold bg-gradient-to-r from-fuchsia-500/15 to-purple-500/15 hover:from-fuchsia-500/25 hover:to-purple-500/25 text-purple-700 dark:text-purple-300 border border-purple-500/30 px-2.5 py-1 rounded-none transition-all cursor-pointer shadow-xs"
+                  className="flex items-center gap-1 text-[11px] font-bold bg-primary/15 hover:bg-primary/25 text-primary dark:text-primary-foreground border border-primary/30 px-2.5 py-1 rounded-none transition-all cursor-pointer shadow-xs"
                   title="Talk with AI using voice"
                 >
                   <Mic className="w-3.5 h-3.5 text-fuchsia-500 animate-pulse" />
@@ -612,7 +636,7 @@ export const FloatingChatbot: React.FC = () => {
                 {messages.length > 0 && (
                   <button
                     onClick={handleResetChat}
-                    className="p-1.5 rounded-none hover:bg-purple-500/10 hover:text-foreground transition-colors cursor-pointer"
+                    className="p-1.5 rounded-none hover:bg-primary/10 hover:text-foreground transition-colors cursor-pointer"
                     title="Clear conversation"
                   >
                     <RotateCcw className="w-3.5 h-3.5" />
@@ -621,7 +645,7 @@ export const FloatingChatbot: React.FC = () => {
 
                 <button
                   onClick={() => setIsExpanded(prev => !prev)}
-                  className="hidden sm:inline-flex p-1.5 rounded-none hover:bg-purple-500/10 hover:text-foreground transition-colors cursor-pointer"
+                  className="hidden sm:inline-flex p-1.5 rounded-none hover:bg-primary/10 hover:text-foreground transition-colors cursor-pointer"
                   title={isExpanded ? "Collapse view" : "Expand view"}
                 >
                   {isExpanded ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
@@ -629,7 +653,7 @@ export const FloatingChatbot: React.FC = () => {
 
                 <button
                   onClick={() => setIsOpen(false)}
-                  className="p-1.5 rounded-none hover:bg-purple-500/10 hover:text-foreground transition-colors cursor-pointer"
+                  className="p-1.5 rounded-none hover:bg-primary/10 hover:text-foreground transition-colors cursor-pointer"
                   title="Close (Esc)"
                 >
                   <X className="w-4 h-4" />
@@ -681,7 +705,7 @@ export const FloatingChatbot: React.FC = () => {
                         <div className="w-full space-y-2">
                           <div className="flex items-center justify-between text-[11px] text-muted-foreground">
                             <span className="font-bold text-foreground flex items-center gap-1.5">
-                              <div className="w-4 h-4 rounded-none bg-purple-500/20 text-purple-600 dark:text-purple-400 flex items-center justify-center">
+                              <div className="w-4 h-4 rounded-none bg-primary/20 text-primary dark:text-primary flex items-center justify-center">
                                 <Bot className="w-2.5 h-2.5" />
                               </div>
                               AttendX AI
@@ -691,23 +715,6 @@ export const FloatingChatbot: React.FC = () => {
 
                           <div className="p-4 rounded-none bg-white/90 dark:bg-[#151b2e]/90 border border-black dark:border-black dark:border-white text-foreground/90 leading-relaxed shadow-sm">
                             <FormattedChatMessage content={msg.content} isUser={false} />
-
-                            {/* Verified Citations */}
-                            {msg.citations && msg.citations.length > 0 && (
-                              <div className="mt-3.5 pt-2.5 border-t border-border/60 flex flex-wrap items-center gap-1.5">
-                                <span className="text-[10px] text-muted-foreground flex items-center gap-1 font-bold">
-                                  <BookOpen className="w-3 h-3 text-purple-500" /> Official Clauses:
-                                </span>
-                                {msg.citations.map((cite, i) => (
-                                  <span
-                                    key={i}
-                                    className="text-[10px] bg-purple-500/10 text-purple-700 dark:text-purple-300 border border-purple-500/20 px-2 py-0.5 rounded-none font-mono font-semibold"
-                                  >
-                                    {cite}
-                                  </span>
-                                ))}
-                              </div>
-                            )}
 
                             {/* Simulation Sandbox Card */}
                             {msg.simulation && (
@@ -743,11 +750,11 @@ export const FloatingChatbot: React.FC = () => {
                             
                             {/* Semester Projection Sandbox Card */}
                             {msg.semesterProjection && (
-                              <div className="mt-3.5 pt-3 border-t border-purple-500/30">
-                                <div className="p-3 rounded-none bg-purple-500/10 border border-purple-500/20 text-purple-900 dark:text-purple-100">
+                              <div className="mt-3.5 pt-3 border-t border-primary/30">
+                                <div className="p-3 rounded-none bg-primary/10 border border-primary/20 text-foreground dark:text-purple-100">
                                   <div className="flex items-center gap-2 mb-2">
-                                    <Activity className="w-4 h-4 text-purple-500" />
-                                    <span className="text-xs font-bold uppercase tracking-wider text-purple-600 dark:text-purple-400">Semester Projection</span>
+                                    <Activity className="w-4 h-4 text-primary" />
+                                    <span className="text-xs font-bold uppercase tracking-wider text-primary dark:text-primary">Semester Projection</span>
                                   </div>
                                   <p className="text-[13px] font-medium mb-3">
                                     If you {msg.semesterProjection.skipCountPerSubject > 0 ? `skip ${msg.semesterProjection.skipCountPerSubject} classes` : 'attend all remaining classes'} per subject until {msg.semesterProjection.endDate}:
@@ -812,7 +819,7 @@ export const FloatingChatbot: React.FC = () => {
                               <div className="flex items-center gap-2">
                                 <button
                                   onClick={() => handleSpeakMessage(msg.id, msg.content)}
-                                  className={`inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-none hover:bg-purple-500/10 transition-colors cursor-pointer ${
+                                  className={`inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-none hover:bg-primary/10 transition-colors cursor-pointer ${
                                     speakingId === msg.id ? "text-emerald-500 font-bold" : "hover:text-foreground"
                                   }`}
                                   title={speakingId === msg.id ? "Stop listening" : "Listen to answer (Voice)"}
@@ -823,7 +830,7 @@ export const FloatingChatbot: React.FC = () => {
 
                                 <button
                                   onClick={() => handleCopy(msg.id, msg.content)}
-                                  className="inline-flex items-center gap-1 text-[11px] hover:text-foreground px-2 py-1 rounded-none hover:bg-purple-500/10 transition-colors cursor-pointer"
+                                  className="inline-flex items-center gap-1 text-[11px] hover:text-foreground px-2 py-1 rounded-none hover:bg-primary/10 transition-colors cursor-pointer"
                                   title="Copy answer"
                                 >
                                   {copiedId === msg.id ? (
@@ -840,7 +847,7 @@ export const FloatingChatbot: React.FC = () => {
                                 </button>
                               </div>
 
-                              <span className="text-[10px] text-muted-foreground font-mono">IIITUGORD02 Grounded</span>
+                              
                             </div>
                           </div>
                         </div>
@@ -869,7 +876,7 @@ export const FloatingChatbot: React.FC = () => {
             </div>
 
             {/* Bottom Composer Bar */}
-            <div className="p-3.5 border-t border-purple-500/10 dark:border-black dark:border-white bg-white/80 dark:bg-[#11172a]/80 backdrop-blur-md">
+            <div className="p-3.5 border-t border-primary/10 dark:border-black dark:border-white bg-white/80 dark:bg-[#11172a]/80 backdrop-blur-md">
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
@@ -884,7 +891,7 @@ export const FloatingChatbot: React.FC = () => {
                   className={`w-9 h-9 rounded-none flex items-center justify-center transition-all cursor-pointer shrink-0 shadow-xs ${
                     isListeningMic
                       ? "bg-rose-500 text-white animate-pulse shadow-rose-500/30"
-                      : "bg-purple-500/10 hover:bg-purple-500/20 text-purple-700 dark:text-purple-300 border border-purple-500/20"
+                      : "bg-primary/10 hover:bg-primary/20 text-primary dark:text-primary-foreground border border-primary/20"
                   }`}
                   title={isListeningMic ? "Listening... click to stop" : "Speak to AI (Microphone)"}
                 >
@@ -898,14 +905,14 @@ export const FloatingChatbot: React.FC = () => {
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                     
-                    className="w-full bg-muted/50 border border-purple-500/20 focus:border-purple-500 focus:outline-none rounded-none pl-3.5 pr-10 py-2.5 text-xs text-foreground transition-all shadow-inner"
+                    className="w-full bg-muted/50 border border-primary/20 focus:border-primary focus:outline-none rounded-none pl-3.5 pr-10 py-2.5 text-xs text-foreground transition-all shadow-inner"
                     disabled={isLoading}
                   />
 
                   <button
                     type="submit"
                     disabled={!input.trim() || isLoading}
-                    className="absolute right-1.5 top-1/2 -translate-y-1/2 w-7 h-7 rounded-none bg-gradient-to-r from-purple-600 to-pink-600 hover:opacity-90 disabled:opacity-30 text-white flex items-center justify-center transition-all cursor-pointer shadow-xs"
+                    className="absolute right-1.5 top-1/2 -translate-y-1/2 w-7 h-7 rounded-none bg-primary hover:opacity-90 disabled:opacity-30 text-white flex items-center justify-center transition-all cursor-pointer shadow-xs"
                     title="Send"
                   >
                     <Send className="w-3.5 h-3.5" />
