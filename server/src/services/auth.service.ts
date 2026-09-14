@@ -41,7 +41,8 @@ export class AuthService {
         email: normalizedEmail,
         passwordHash,
         name: data.name,
-        avatarUrl: `https://api.dicebear.com/7.x/notionists/svg?seed=${encodeURIComponent(data.name)}`,
+          avatarUrl: `https://api.dicebear.com/7.x/notionists/svg?seed=${encodeURIComponent(data.name)}`,
+          targetAttendance: parseInt(process.env.DEFAULT_TARGET_ATTENDANCE || "75"),
       },
     });
 
@@ -81,9 +82,14 @@ export class AuthService {
     const email = payload.email?.toLowerCase().trim();
     if (!email) throw new Error("No email found in Google token");
 
-    if (!email.endsWith("@iiitu.ac.in") && !email.endsWith("@gmail.com")) {
-      throw new Error("Only @iiitu.ac.in or @gmail.com emails are allowed.");
+    
+    const allowedDomainsStr = process.env.ALLOWED_DOMAINS || "iiitu.ac.in,gmail.com";
+    const allowedDomains = allowedDomainsStr.split(",").map(d => d.trim());
+    const emailDomain = email.split("@")[1];
+    if (!emailDomain || !allowedDomains.includes(emailDomain)) {
+      throw new Error("Only " + allowedDomainsStr.replace(",", " or ") + " emails are allowed.");
     }
+
 
     let user = await prisma.user.findUnique({ where: { email } });
 
@@ -93,7 +99,8 @@ export class AuthService {
           email,
           googleId: payload.sub,
           name: payload.name || "User",
-          avatarUrl: payload.picture || `https://api.dicebear.com/7.x/notionists/svg?seed=${encodeURIComponent(payload.name || "User")}`,
+            avatarUrl: payload.picture || `https://api.dicebear.com/7.x/notionists/svg?seed=${encodeURIComponent(payload.name || "User")}`,
+            targetAttendance: parseInt(process.env.DEFAULT_TARGET_ATTENDANCE || "75"),
         },
       });
 
@@ -131,6 +138,17 @@ export class AuthService {
     }
     
     
+    // Check if this is a new device by looking for existing sessions with the same userAgent
+    const existingSession = await prisma.refreshToken.findFirst({
+      where: { userId: user.id, userAgent }
+    });
+    
+    if (!existingSession) {
+      const timeStr = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+      const deviceName = `${browser} on ${os}`;
+      EmailService.sendNewDeviceLoginEmail(user.email, user.name, deviceName, timeStr);
+    }
+
     // Auto-terminate inactive sessions on login
     if (user.autoTerminateMonths) {
       const cutoffDate = new Date();
@@ -255,6 +273,29 @@ export class AuthService {
     return { token };
   }
 
+  static async validateOtp(token: string, otp: string) {
+    const crypto = require('crypto');
+    if (!otp) throw new Error("OTP is required");
+    if (!token) throw new Error("Invalid token");
+    
+    const decoded = jwt.decode(token) as { id: string, otpHash: string } | null;
+    if (!decoded || !decoded.id) throw new Error("Invalid or expired reset token");
+    
+    const user = await prisma.user.findUnique({ where: { id: decoded.id } });
+    if (!user) throw new Error("User not found");
+    
+    const secret = (process.env.JWT_SECRET as string) + (user.passwordHash as string);
+    try {
+      jwt.verify(token, secret);
+    } catch (e) {
+      throw new Error("Invalid or expired reset token");
+    }
+    
+    const providedHash = crypto.createHmac('sha256', process.env.JWT_SECRET as string).update(otp).digest('hex');
+    if (providedHash !== decoded.otpHash) throw new Error("Invalid OTP");
+    return true;
+  }
+
   static async resetPassword(token: string, otp: string, newPassword: string) {
     const crypto = require('crypto');
     if (!otp) throw new Error("OTP is required");
@@ -284,6 +325,8 @@ export class AuthService {
       where: { id: user.id },
       data: { passwordHash },
     });
+    
+    EmailService.sendPasswordResetSuccessEmail(user.email, user.name);
   }
 
 }

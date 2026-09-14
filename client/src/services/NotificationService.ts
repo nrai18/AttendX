@@ -358,12 +358,69 @@ export class NotificationService {
 
         if (config.endOfDaySummary && maxEndTimeObj && daySlots.length > 0) {
            if (maxEndTimeObj.getTime() > Date.now()) {
+              
+              let endOfDayTitle = "Done for the day!";
+              let endOfDayBody = "All classes have ended. Enjoy your evening!";
+              let endOfDayLargeBody = "?? All classes for today have concluded. You can pack up and enjoy the rest of your day. See you tomorrow!";
+
+              const tomorrow = addDays(currentDay, 1);
+              const tomorrowEvents = allEvents.filter(e => isSameDay(startOfDay(new Date(e.date)), tomorrow));
+              
+              let tomorrowHolidayTitle: string | null = null;
+              for (const e of tomorrowEvents) {
+                const lowerTitle = (e.title || "").toLowerCase();
+                if (e.type === 'HOLIDAY' || lowerTitle.includes('holiday') || lowerTitle.includes('exam') || lowerTitle.includes('fest') || lowerTitle.includes('break') || lowerTitle.includes('vacation')) {
+                  if (e.type !== 'RESTRICTED' && !lowerTitle.includes('restricted')) {
+                    tomorrowHolidayTitle = e.title;
+                    break;
+                  }
+                }
+              }
+
+              const getSlotsForDay = (d: Date) => {
+                 let dDay = d.getDay() - 1;
+                 if (dDay === -1) dDay = 6;
+                 return slots.filter(s => s.dayOfWeek === dDay);
+              };
+
+              const tomorrowSlots = getSlotsForDay(tomorrow);
+              const tomorrowIsOff = tomorrowHolidayTitle !== null || tomorrowSlots.length === 0;
+
+              if (tomorrowHolidayTitle) {
+                 endOfDayLargeBody = `?? All classes for today have concluded. Prepare for the upcoming ${tomorrowHolidayTitle} tomorrow!`;
+                 endOfDayBody = `Classes ended. Enjoy ${tomorrowHolidayTitle} tomorrow!`;
+              } else if (currentDay.getDay() === 5) { // Friday
+                 const saturdaySlots = tomorrowSlots;
+                 const sunday = addDays(currentDay, 2);
+                 const sundaySlots = getSlotsForDay(sunday);
+                 const sundayEvents = allEvents.filter(e => isSameDay(startOfDay(new Date(e.date)), sunday));
+                 let sundayHoliday = false;
+                 for (const e of sundayEvents) {
+                    const lowerTitle = (e.title || "").toLowerCase();
+                    if (e.type === 'HOLIDAY' || lowerTitle.includes('holiday')) {
+                       if (e.type !== 'RESTRICTED') sundayHoliday = true;
+                    }
+                 }
+                 const sundayIsOff = sundayHoliday || sundaySlots.length === 0;
+
+                 if (saturdaySlots.length === 0 && sundayIsOff) {
+                    endOfDayLargeBody = `?? All classes for the week have concluded. Pack up and enjoy your weekend!`;
+                    endOfDayBody = `All classes ended. Enjoy the weekend!`;
+                 }
+              } else if (currentDay.getDay() === 6 && tomorrowIsOff) { // Saturday
+                 endOfDayLargeBody = `?? All classes for today have concluded. Pack up and enjoy your Sunday off!`;
+                 endOfDayBody = `All classes ended. Enjoy your day off tomorrow!`;
+              } else if (tomorrowIsOff) {
+                 endOfDayLargeBody = `?? All classes for today have concluded. Enjoy your day off tomorrow!`;
+                 endOfDayBody = `All classes ended. Enjoy your day off tomorrow!`;
+              }
+
               await LocalNotifications.schedule({
                 notifications: [{
                   id: Math.floor(Math.random() * 900000) + 100000,
-                  title: "Done for the day!",
-                  body: "All classes have ended. Enjoy your evening!",
-                  largeBody: "🎉 All classes for today have concluded. You can pack up and enjoy the rest of your day. See you tomorrow!",
+                  title: endOfDayTitle,
+                  body: endOfDayBody,
+                  largeBody: endOfDayLargeBody,
                   schedule: { at: maxEndTimeObj, allowWhileIdle: true },
                   summaryText: "End of Day",
                   smallIcon: "ic_stat_adobe",
@@ -460,7 +517,7 @@ export class NotificationService {
       const notificationsToSchedule = [];
 
       if (frequency.type === 'Daily') {
-        for (let i = 1; i <= 7; i++) {
+        for (let i = 0; i <= 7; i++) {
            const notifyDate = setMinutes(setHours(addDays(today, i), summaryHour), summaryMinute);
            if (notifyDate.getTime() > Date.now()) {
              notificationsToSchedule.push({

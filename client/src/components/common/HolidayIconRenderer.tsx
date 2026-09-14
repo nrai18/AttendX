@@ -21,7 +21,7 @@ export const HolidayIconRenderer: React.FC<HolidayIconRendererProps> = ({ src, c
             onAnimationComplete?.();
           }
         }}
-        style={{ width: '100%', height: '100%' }}
+        style={{ width: '100%', height: '100%', objectFit: 'contain' }}
       />
     );
   }

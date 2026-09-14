@@ -21,11 +21,11 @@ const forgotPasswordLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-router.post("/register", loginLimiter, AuthController.register);
 router.post("/login", loginLimiter, AuthController.login);
 router.post("/refresh", AuthController.refresh);
 router.post("/logout", AuthController.logout);
 router.post("/forgot-password", forgotPasswordLimiter, AuthController.forgotPassword);
+router.post("/validate-otp", loginLimiter, AuthController.validateOtp);
 router.post("/reset-password", loginLimiter, AuthController.resetPassword);
 
 // Google OAuth routes (Native Mobile)

@@ -16,6 +16,19 @@ export class AuthController {
     }
   }
 
+  
+  static async validateOtp(req: Request, res: Response) {
+    try {
+      const { token, otp } = req.body;
+      if (!token || !otp) return res.status(400).json({ message: "Token and OTP are required" });
+      const isValid = await AuthService.validateOtp(token, otp);
+      if (!isValid) return res.status(400).json({ message: "Invalid OTP" });
+      res.status(200).json({ message: "OTP valid" });
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  }
+
   static async resetPassword(req: Request, res: Response) {
     try {
       const { token, otp, newPassword } = req.body;
@@ -28,25 +41,15 @@ export class AuthController {
     }
   }
 
-  static async register(req: Request, res: Response) {
-    try {
-      const email = req.body.email || "";
-      if (!email.endsWith("@iiitu.ac.in") && !email.endsWith("@gmail.com")) {
-        return res.status(400).json({ message: "Only @iiitu.ac.in or @gmail.com emails are allowed." });
-      }
-      const { user, accessToken, refreshToken } = await AuthService.register(req.body, req);
-      setRefreshCookie(res, refreshToken);
-      res.status(201).json({ user, accessToken });
-    } catch (error: any) {
-      res.status(400).json({ message: error.message });
-    }
-  }
-
   static async login(req: Request, res: Response) {
     try {
       const email = req.body.email || "";
-      if (!email.endsWith("@iiitu.ac.in") && !email.endsWith("@gmail.com")) {
-        return res.status(401).json({ message: "Only @iiitu.ac.in or @gmail.com emails are allowed." });
+      
+      const allowedDomainsStr = process.env.ALLOWED_DOMAINS || "iiitu.ac.in,gmail.com";
+      const allowedDomains = allowedDomainsStr.split(",").map(d => d.trim());
+      const emailDomain = email.split("@")[1];
+      if (!emailDomain || !allowedDomains.includes(emailDomain)) {
+        return res.status(401).json({ message: "Domain not allowed. Allowed domains: " + allowedDomainsStr });
       }
       const { user, accessToken, refreshToken } = await AuthService.login(req.body, req);
       setRefreshCookie(res, refreshToken);

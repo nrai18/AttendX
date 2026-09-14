@@ -201,4 +201,104 @@ export class EmailService {
       console.error("Failed to send password reset email:", error);
     }
   }
+
+  static async sendPasswordResetSuccessEmail(email: string, name: string) {
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <style>
+          body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f3f4f6; margin: 0; padding: 40px 0; }
+          .container { max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+          .header { background: #10b981; padding: 40px 20px; text-align: center; color: white; }
+          .header h1 { margin: 0; font-size: 28px; font-weight: 800; letter-spacing: -0.5px; }
+          .content { padding: 40px; text-align: left; color: #374151; line-height: 1.6; }
+          .content p { font-size: 16px; margin-bottom: 24px; }
+          .footer { background: #f9fafb; padding: 30px; text-align: center; color: #6b7280; font-size: 14px; border-top: 1px solid #e5e7eb; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>Password Changed Successfully</h1>
+          </div>
+          <div class="content">
+            <p>Hi ${name},</p>
+            <p>Your AttendX account password has been successfully updated.</p>
+            <p>If you made this change, you can safely ignore this email.</p>
+            <p><strong>If you did not make this change</strong>, please contact our support team immediately and secure your account.</p>
+          </div>
+          <div class="footer">
+            <p>&copy; ${new Date().getFullYear()} AttendX. All rights reserved.</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+
+    try {
+      await resend.emails.send({
+        from: process.env.RESEND_SECURITY_EMAIL || process.env.RESEND_FROM_EMAIL || 'AttendX Security <security@mail.attendx.tech>',
+        to: email,
+        subject: 'Your password was successfully updated',
+        html,
+      });
+    } catch (error) {
+      console.error("Failed to send password reset success email:", error);
+    }
+  }
+
+  static async sendNewDeviceLoginEmail(email: string, name: string, userAgent: string, time: string) {
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <style>
+          body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f3f4f6; margin: 0; padding: 40px 0; }
+          .container { max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+          .header { background: #f59e0b; padding: 40px 20px; text-align: center; color: white; }
+          .header h1 { margin: 0; font-size: 28px; font-weight: 800; letter-spacing: -0.5px; }
+          .content { padding: 40px; text-align: left; color: #374151; line-height: 1.6; }
+          .content p { font-size: 16px; margin-bottom: 24px; }
+          .device-box { background: #fffbeb; border: 1px solid #fde68a; padding: 20px; border-radius: 8px; margin-bottom: 24px; }
+          .footer { background: #f9fafb; padding: 30px; text-align: center; color: #6b7280; font-size: 14px; border-top: 1px solid #e5e7eb; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>New Login Alert</h1>
+          </div>
+          <div class="content">
+            <p>Hi ${name},</p>
+            <p>We noticed a new login to your AttendX account from a device or location we don't recognize.</p>
+            <div class="device-box">
+              <p style="margin:0;"><strong>Time:</strong> ${time}</p>
+              <p style="margin:8px 0 0 0;"><strong>Device/Browser:</strong> ${userAgent}</p>
+            </div>
+            <p>If this was you, you can safely ignore this email.</p>
+            <p><strong>If this wasn't you</strong>, please reset your password immediately to secure your account.</p>
+          </div>
+          <div class="footer">
+            <p>&copy; ${new Date().getFullYear()} AttendX. All rights reserved.</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+
+    try {
+      await resend.emails.send({
+        from: process.env.RESEND_SECURITY_EMAIL || process.env.RESEND_FROM_EMAIL || 'AttendX Security <security@mail.attendx.tech>',
+        to: email,
+        subject: 'Security Alert: New login to your AttendX account',
+        html,
+      });
+    } catch (error) {
+      console.error("Failed to send new device login email:", error);
+    }
+  }
+
 }

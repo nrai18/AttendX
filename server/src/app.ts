@@ -1,3 +1,4 @@
+process.env.TZ = "Asia/Kolkata"; // Fix timing and date-rollover issues
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
@@ -21,9 +22,12 @@ import transferRoutes from "./routes/transfer.routes";
 import supportRoutes from "./routes/support.routes";
 import systemRoutes from "./routes/system.routes";
 import assignmentRoutes from "./routes/assignment.routes";
+import aiRoutes from "./routes/ai.routes";
+import adminRoutes from "./routes/admin.routes";
 import { CURRICULUM_META } from "./utils/subjectDictionary";
 
 import passport from "./config/passport";
+import { sanitizeErrorsMiddleware } from "./middleware/sanitizeErrors";
 
 const app = express();
 app.set("trust proxy", 1); // Trust Render's reverse proxy for correct https redirects
@@ -31,6 +35,10 @@ app.set("trust proxy", 1); // Trust Render's reverse proxy for correct https red
 // Security & Utility Middleware
 app.use(passport.initialize());
 app.use(helmet({ contentSecurityPolicy: false }));
+
+// Aggressively scrub all database queries and raw stack traces before they are sent to the client
+app.use(sanitizeErrorsMiddleware);
+
 app.use(
   cors({
     origin: true,
@@ -40,11 +48,13 @@ app.use(
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 app.use(cookieParser());
-app.use(
-  morgan("dev", {
-    skip: (req, res) => req.url.startsWith("/api/auth") || req.url.includes("password"),
-  })
-);
+if (process.env.NODE_ENV !== "production") {
+  app.use(
+    morgan("dev", {
+      skip: (req, res) => req.url.startsWith("/api/auth") || req.url.includes("password"),
+    })
+  );
+}
 
 // Rate Limiting
 const limiter = rateLimit({
@@ -78,8 +88,10 @@ app.use("/api/transfer", transferRoutes);
 app.use("/api/support", supportRoutes);
 app.use("/api/system", systemRoutes);
 app.use("/api/assignments", assignmentRoutes);
+app.use("/api/ai", aiRoutes);
+app.use("/api/admin", adminRoutes);
 
-// Public: curriculum metadata — branches & semesters derived from actual curriculum
+// Public: curriculum metadata - branches & semesters derived from actual curriculum
 // No auth required; used by the timetable import wizard on the client
 app.get("/api/curriculum/meta", (_req, res) => {
   res.status(200).json(CURRICULUM_META);
@@ -92,11 +104,15 @@ app.get("/api/health", (_req, res) => {
 
 // Error Handling Middleware for API
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
-  console.error(err.stack);
+  if (process.env.NODE_ENV !== "production") {
+    console.error(`[Global Error] ${req.method} ${req.url}`, err.message);
+  } else {
+    console.error(`[Error] ${req.method} ${req.url} failed.`);
+  }
   if (req.path.startsWith("/api")) {
     return res.status(err.status || 500).json({
-      message: err.message || "Internal Server Error",
-      ...(process.env.NODE_ENV === "development" && { stack: err.stack }),
+      message: "Internal Server Error",
+      error: process.env.NODE_ENV === "development" ? "Error details hidden for security." : undefined
     });
   }
   next(err);
@@ -104,7 +120,7 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
 
 export async function startServer() {
   console.log("startServer() invoked...");
-  const PORT = 3000;
+  const PORT = process.env.PORT || 3000;
 
   if (process.env.NODE_ENV !== "production") {
     console.log("Skipping Vite middleware in dev since we run a separate client dev server.");
@@ -112,7 +128,7 @@ export async function startServer() {
     // tsup bundles to server/dist/server.js so:
     //   __dirname = /opt/render/project/src/server/dist
     //   ../../    = /opt/render/project/src
-    //   ../../client/dist = /opt/render/project/src/client/dist  ✓
+    //   ../../client/dist = /opt/render/project/src/client/dist
     const distPath = path.resolve(__dirname, "../../client/dist");
     app.use(express.static(distPath));
     app.get("*", (req, res, next) => {
@@ -123,9 +139,10 @@ export async function startServer() {
 
   console.log("Calling app.listen...");
   const server = app.listen(Number(PORT), "0.0.0.0", () => {
-    console.log(`🚀 Server ready at: http://0.0.0.0:${PORT}`);
+    console.log(`Server ready at: http://0.0.0.0:${PORT}`);
   });
   server.timeout = 300000; // 5 minutes
 }
 
 export default app;
+
