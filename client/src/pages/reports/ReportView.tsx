@@ -186,7 +186,7 @@ export const ReportView: React.FC = () => {
 
   return (
     <div className="min-h-screen text-[#111827] dark:text-[#FDF8F5] p-4 md:p-8 font-sans overflow-x-hidden selection:bg-[#74313A] selection:text-white">
-      <div className="max-w-5xl mx-auto space-y-8 pb-20">
+      <div className="w-full mx-auto space-y-8 pb-20">
         
         {/* Header */}
         <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} className="flex items-center justify-between">
@@ -215,7 +215,8 @@ export const ReportView: React.FC = () => {
               <pointLight position={[-10, -10, -10]} intensity={0.5} />
               <GlowingRing percentage={overallPercentage} />
               <ContactShadows position={[0, -2, 0]} opacity={0.4} scale={10} blur={2} far={4} color="#74313A" />
-              <Environment preset="city" />
+              <Environment files="/potsdamer_platz_1k.hdr" />
+              
             </Canvas>
           </div>
           </motion.div>

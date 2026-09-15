@@ -7,6 +7,7 @@ import { api } from "../../lib/api";
 import { CreateSemesterModal } from "../../components/semester/CreateSemesterModal";
 import { SubjectModal } from "../../components/subjects/SubjectModal";
 import { useAuthStore } from "../../stores/authStore";
+import { useAttendanceStore } from "../../stores/attendanceStore";
 import { useNavigate } from "react-router-dom";
 
 interface Subject {
@@ -35,15 +36,15 @@ interface SubjectStat {
 }
 
 const getStatusMessage = (stat: SubjectStat): { text: string; color: string } => {
-  if (stat.total === 0) return { text: "No classes recorded yet", color: "text-muted-foreground" };
+  if (stat.total === 0) return { text: "No classes recorded yet", color: "text-foreground dark:text-white/70" };
   if (stat.percentage >= stat.target) {
     return stat.canMiss > 0
-      ? { text: `Can miss ${stat.canMiss} lecture${stat.canMiss > 1 ? "s" : ""}`, color: "text-emerald-400" }
-      : { text: "Can't miss the next lecture", color: "text-yellow-400" };
+      ? { text: `Can miss ${stat.canMiss} lecture${stat.canMiss > 1 ? "s" : ""}`, color: "text-emerald-600 dark:text-emerald-300" }
+      : { text: "Can't miss the next lecture", color: "text-amber-600 dark:text-yellow-300" };
   }
   return {
     text: `Need to attend ${stat.needAttend} lecture${stat.needAttend > 1 ? "s" : ""}`,
-    color: "text-red-400",
+    color: "text-red-600 dark:text-red-300",
   };
 };
 
@@ -52,13 +53,13 @@ const StatBadge: React.FC<{ stat: SubjectStat }> = ({ stat }) => {
   const isGood = stat.percentage >= stat.target;
   const isWarning = stat.percentage >= stat.target && stat.canMiss === 0;
 
-  let bgColor = isGood ? (isWarning ? "bg-yellow-500/10 border-yellow-500/20" : "bg-emerald-500/10 border-emerald-500/20") : "bg-red-500/10 border-red-500/20";
-  let textColor = isGood ? (isWarning ? "text-yellow-400" : "text-emerald-400") : "text-red-400";
+  let bgColor = isGood ? (isWarning ? "bg-yellow-500/20 border-yellow-500/30" : "bg-emerald-500/20 border-emerald-500/30") : "bg-red-500/20 border-red-500/30";
+  let textColor = isGood ? (isWarning ? "text-amber-600 dark:text-yellow-300" : "text-emerald-600 dark:text-emerald-300") : "text-red-600 dark:text-red-300";
 
   return (
     <div className={`flex flex-col items-center justify-center rounded-xl border px-3 py-2 min-w-[72px] ${bgColor}`}>
       <span className={`text-xl font-bold leading-none ${textColor}`}>{pct}</span>
-      <div className="w-full h-px bg-white/10 my-1" />
+      <div className="w-full h-px bg-black/10 dark:bg-white/10 my-1" />
       <span className={`text-xs font-semibold ${textColor}`}>{stat.target}</span>
     </div>
   );
@@ -76,21 +77,21 @@ const SubjectCard: React.FC<{
   return (
     <div 
       onClick={() => navigate(`/subjects/${stat.id}`)}
-      className="bg-card border border-border rounded-2xl p-4 hover:border-primary/30 transition-all group relative overflow-hidden cursor-pointer shadow-sm"
+      className="bg-white/60 dark:bg-black/30 backdrop-blur-xl border border-white/60 dark:border-white/10 rounded-2xl p-4 hover:border-white/80 dark:hover:border-white/40 transition-all group relative overflow-hidden cursor-pointer shadow-lg"
     >
       <div className="absolute top-0 left-0 w-1.5 h-full rounded-l-2xl" style={{ backgroundColor: stat.colorHex || "#8b5cf6" }} />
       <div className="pl-3 space-y-3">
         {/* Top row: name + badge */}
         <div className="flex items-start justify-between gap-3">
           <div className="flex-1 min-w-0">
-            <h3 className="text-base font-bold text-foreground leading-tight truncate group-hover:text-primary transition-colors">{stat.name}</h3>
+            <h3 className="text-base font-bold text-foreground dark:text-white leading-tight truncate transition-colors">{stat.name}</h3>
             <p className={`text-xs mt-0.5 font-medium ${statusMsg.color}`}>{statusMsg.text}</p>
           </div>
           <StatBadge stat={stat} />
         </div>
 
         {/* Progress bar */}
-        <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+        <div className="h-1.5 bg-black/20 rounded-full overflow-hidden">
           <div
             className="h-full rounded-full transition-all duration-500"
             style={{
@@ -115,7 +116,7 @@ const SubjectCard: React.FC<{
               <span className="w-1.5 h-1.5 rounded-full bg-amber-500 inline-block" />
               Off: <span className="text-foreground font-semibold">{stat.off}</span>
             </span>
-            <span className="text-muted-foreground">
+            <span className="text-foreground dark:text-white/70">
               Tot: <span className="text-foreground font-semibold">{stat.total}</span>
             </span>
           </div>
@@ -178,9 +179,17 @@ export const SubjectsPage = () => {
     } catch (error) {
       console.error("Failed to fetch subjects:", error);
       const cache = useCacheStore.getState().subjects;
-      if (cache) {
+      if (cache && cache.activeSemesterId) {
         setSubjects(cache.subjects || []);
         setSubjectStats(cache.stats || []);
+        setActiveSemesterId(cache.activeSemesterId);
+      } else {
+        const attendanceState = useAttendanceStore.getState();
+        if (attendanceState.hasActiveSemester && attendanceState.activeSemesterId) {
+          setActiveSemesterId(attendanceState.activeSemesterId);
+          setSubjects(attendanceState.subjects as any);
+          setSubjectStats(attendanceState.subjects as any);
+        }
       }
     } finally {
       setIsLoading(false);
@@ -271,15 +280,16 @@ export const SubjectsPage = () => {
   });
 
   return (
-    <div className="p-4 md:p-8 space-y-5 max-w-4xl mx-auto w-full pb-24 md:pb-8">
+    <div className="relative min-h-full w-full flex flex-col">
+      <div className="relative z-10 w-full flex-1 space-y-6">
         <div className="flex justify-between items-center">
           <div>
-            <h1 className="text-2xl font-bold text-foreground">Subjects</h1>
-            <p className="text-sm text-muted-foreground">Your semester attendance overview.</p>
+            <h1 className="text-5xl md:text-7xl lg:text-8xl font-black text-foreground dark:text-white leading-[0.9] drop-shadow-2xl" style={{fontFamily: "Impact, sans-serif"}}>SUBJ<span className="text-[#FFD700]">E</span>CTS</h1>
+            <p className="text-sm md:text-base text-foreground dark:text-white/80 font-medium">Your semester attendance overview.</p>
           </div>
           <button
             onClick={() => { setEditingSubject(null); setIsAdding(true); }}
-            className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-primary-foreground px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+            className="flex items-center gap-2 bg-foreground hover:bg-foreground/90 text-background px-4 py-2 rounded-full text-sm font-bold transition-all shadow-md"
           >
             <Plus className="w-4 h-4" />
             <span className="hidden sm:inline">Add Subject</span>
@@ -290,7 +300,7 @@ export const SubjectsPage = () => {
         <div className="grid grid-cols-2 gap-3 mb-2">
           <div 
             onClick={() => navigate("/semester")}
-            className="bg-card border border-border/70 hover:border-primary/40 rounded-xl p-3 flex items-center gap-3 cursor-pointer transition-all active:scale-[0.98]"
+            className="bg-white/60 dark:bg-black/30 backdrop-blur-md border border-white/60 dark:border-white/10 hover:border-white/80 dark:hover:border-white/40 rounded-xl p-3 flex items-center gap-3 cursor-pointer transition-all active:scale-[0.98]"
           >
             <div className="p-2 rounded-lg bg-indigo-500/10 text-indigo-500">
               <LayoutDashboard className="w-5 h-5" />
@@ -302,7 +312,7 @@ export const SubjectsPage = () => {
           </div>
           <div 
             onClick={() => navigate("/predictive")}
-            className="bg-card border border-border/70 hover:border-primary/40 rounded-xl p-3 flex items-center gap-3 cursor-pointer transition-all active:scale-[0.98]"
+            className="bg-white/60 dark:bg-black/30 backdrop-blur-md border border-white/60 dark:border-white/10 hover:border-white/80 dark:hover:border-white/40 rounded-xl p-3 flex items-center gap-3 cursor-pointer transition-all active:scale-[0.98]"
           >
             <div className="p-2 rounded-lg bg-purple-500/10 text-purple-500">
               <Sparkles className="w-5 h-5" />
@@ -317,14 +327,14 @@ export const SubjectsPage = () => {
         {!activeSemesterId && (
         <div className="bg-indigo-950/20 border border-indigo-500/30 rounded-2xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <h3 className="text-base font-bold text-white">No Active Semester</h3>
+            <h3 className="text-base font-bold text-foreground dark:text-white">No Active Semester</h3>
             <p className="text-xs text-muted-foreground mt-0.5">
               Create an active semester to enable attendance percentage calculations and safe buffer metrics.
             </p>
           </div>
           <button
             onClick={() => setIsCreateSemesterOpen(true)}
-            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-lg shadow-indigo-600/30 shrink-0 cursor-pointer"
+            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-full text-xs font-bold transition-all shadow-lg shadow-indigo-600/30 shrink-0 cursor-pointer"
           >
             <Plus className="w-4 h-4" />
             <span>Create Semester</span>
@@ -333,10 +343,10 @@ export const SubjectsPage = () => {
       )}
 
       {mergedStats.length === 0 && !isLoading && !isAdding ? (
-        <div className="text-center py-12 bg-card border border-border rounded-2xl">
-          <AlertCircle className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-foreground mb-2">No subjects yet</h3>
-          <p className="text-muted-foreground max-w-sm mx-auto mb-6">
+        <div className="text-center py-12 bg-white/60 dark:bg-black/30 backdrop-blur-xl border border-white/60 dark:border-white/10 rounded-2xl">
+          <AlertCircle className="w-12 h-12 text-foreground dark:text-muted-foreground dark:text-white/40 mx-auto mb-4" />
+          <h3 className="text-lg font-medium text-foreground dark:text-white mb-2">No subjects yet</h3>
+          <p className="text-foreground dark:text-white/60 max-w-sm mx-auto mb-6">
             You haven't added any subjects to track. Start by adding the subjects you are studying this semester.
           </p>
           <button
@@ -362,7 +372,7 @@ export const SubjectsPage = () => {
             return (
               <div 
                 onClick={() => navigate("/subjects/overall")}
-                className={`relative rounded-3xl border border-border overflow-hidden bg-card/80 backdrop-blur-sm p-6 shadow-sm hover:border-primary/40 cursor-pointer transition-all group`}
+                className={`relative rounded-3xl border border-border overflow-hidden bg-white/60 dark:bg-black/30 backdrop-blur-2xl p-6 shadow-2xl border-white/60 dark:border-white/10 hover:border-white/80 dark:hover:border-white/40 cursor-pointer transition-all group`}
               >
                 {/* Subtle background glow */}
                 <div
@@ -417,7 +427,7 @@ export const SubjectsPage = () => {
                     <div>
                       <div className="flex items-center justify-center md:justify-start gap-2 mb-1">
                         <Shield className="w-4 h-4" style={{ color: ringColor }} />
-                        <h2 className="text-lg font-bold text-foreground">Overall Attendance</h2>
+                        <h2 className="text-lg font-bold text-foreground dark:text-white drop-shadow-md">Overall Attendance</h2>
                       </div>
                       <p className={`text-sm font-semibold`} style={{ color: ringColor }}>
                         {getStatusMessage(overallStat).text}
@@ -425,7 +435,7 @@ export const SubjectsPage = () => {
                       <p className="text-xs text-muted-foreground mt-1">
                         Target: <span className="text-foreground font-semibold">{overallTarget}%</span>
                         {isGood
-                          ? <span className="text-emerald-600 dark:text-emerald-400 font-semibold ml-2">+{((overallPct ?? 0) - (overallTarget ?? 75)).toFixed(1)}% buffer</span>
+                          ? <span className="text-emerald-600 dark:text-emerald-300 font-semibold ml-2">+{((overallPct ?? 0) - (overallTarget ?? 75)).toFixed(1)}% buffer</span>
                           : <span className="text-rose-600 dark:text-rose-400 font-semibold ml-2">{((overallTarget ?? 75) - (overallPct ?? 0)).toFixed(1)}% short</span>
                         }
                       </p>
@@ -434,7 +444,7 @@ export const SubjectsPage = () => {
                     {/* Stats grid */}
                     <div className="grid grid-cols-4 gap-2">
                       {[
-                        { label: "Attended", value: overallAttended, color: "text-emerald-600 dark:text-emerald-400", bg: "bg-emerald-500/10" },
+                        { label: "Attended", value: overallAttended, color: "text-emerald-600 dark:text-emerald-300", bg: "bg-emerald-500/10" },
                         { label: "Missed", value: overallMissed, color: "text-rose-600 dark:text-rose-400", bg: "bg-rose-500/10" },
                         { label: "Off", value: overallOff, color: "text-amber-600 dark:text-amber-400", bg: "bg-amber-500/10" },
                         { label: "Total", value: overallTotal, color: "text-foreground", bg: "bg-muted" },
@@ -453,7 +463,7 @@ export const SubjectsPage = () => {
                         <span>Target {overallTarget}%</span>
                         <span>100%</span>
                       </div>
-                      <div className="h-2 bg-muted rounded-full overflow-hidden relative">
+                      <div className="h-2 bg-black/20 rounded-full overflow-hidden relative">
                         {/* Target line */}
                         <div
                           className="absolute top-0 bottom-0 w-0.5 bg-muted-foreground/40 z-10"
@@ -497,6 +507,7 @@ export const SubjectsPage = () => {
         onSuccess={fetchData}
         subject={editingSubject}
       />
+      </div>
     </div>
   );
 };

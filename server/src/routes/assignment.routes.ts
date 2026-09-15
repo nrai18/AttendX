@@ -45,7 +45,7 @@ router.post("/", authenticate, async (req, res) => {
 router.delete("/:id", authenticate, async (req, res) => {
   try {
     await prisma.assignment.delete({
-      where: { id: req.params.id, userId: (req as any).user.userId },
+      where: { id: (req.params.id as string), userId: (req as any).user.userId },
     });
     res.json({ success: true });
   } catch (error) {
@@ -56,11 +56,11 @@ router.delete("/:id", authenticate, async (req, res) => {
 
 router.post("/:id/toggle", authenticate, async (req, res) => {
   try {
-    const assignmentId = req.params.id;
+    const assignmentId = (req.params.id as string);
     const userId = (req as any).user.userId;
     
     const existing = await prisma.assignmentCompletion.findUnique({
-      where: { assignmentId_userId: { assignmentId, userId } }
+      where: { assignmentId_userId: { assignmentId: assignmentId as string, userId } }
     });
 
     if (existing) {
@@ -70,7 +70,7 @@ router.post("/:id/toggle", authenticate, async (req, res) => {
       res.json({ completed: false });
     } else {
       await prisma.assignmentCompletion.create({
-        data: { assignmentId, userId }
+        data: { assignmentId: assignmentId as string, userId }
       });
       res.json({ completed: true });
     }

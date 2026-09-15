@@ -19,22 +19,6 @@ export class DocumentService {
       await fs.mkdir(uploadDir, { recursive: true });
     } catch (e) {}
 
-    if (type === 'TIMETABLE' || type === 'CALENDAR' || type === 'timetable' || type === 'calendar') {
-      const existingDocs = await prisma.storedDocument.findMany({
-        where: { userId, type }
-      });
-      
-      for (const doc of existingDocs) {
-        try {
-          const oldFilePath = path.join(process.cwd(), doc.fileUrl);
-          await fs.unlink(oldFilePath);
-        } catch (e) {
-          console.error("Failed to delete old document file:", e);
-        }
-        await prisma.storedDocument.delete({ where: { id: doc.id } });
-      }
-    }
-
     const filePath = path.join(uploadDir, fileName);
     await fs.writeFile(filePath, buffer);
 
@@ -48,9 +32,28 @@ export class DocumentService {
         fileUrl,
         mimeType,
         size: buffer.length,
-        fileData: buffer
+        fileData: new Uint8Array(buffer)
       }
     });
+
+    // Enforce rolling limit of 5 documents per type
+    const allDocs = await prisma.storedDocument.findMany({
+      where: { userId, type },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    if (allDocs.length > 5) {
+      const toDelete = allDocs.slice(5);
+      for (const oldDoc of toDelete) {
+        try {
+          const oldFilePath = path.join(process.cwd(), oldDoc.fileUrl);
+          await fs.unlink(oldFilePath);
+        } catch (e) {
+          console.error("Failed to delete old document file:", e);
+        }
+        await prisma.storedDocument.delete({ where: { id: oldDoc.id } });
+      }
+    }
 
     return doc;
   }

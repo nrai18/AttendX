@@ -1,0 +1,30 @@
+import { AnimationType } from "../stores/animationPopupStore";
+
+export const HOLIDAY_ASSETS: Partial<Record<AnimationType, string>> = {
+  diwali: "/lottie/diwali.json",
+  republic_day: "/lottie/republic_day.json",
+  independence_day: "/lottie/independence_day.json",
+  christmas_eve: "/lottie/christmas_eve.json",
+  christmas: "/lottie/christmas.json",
+  bakrid: "/lottie/bakrid.json",
+  bhai_duj: "/lottie/bhai_duj.json",
+  buddha_purnima: "/lottie/buddha_purnima.json",
+  dussehra: "/lottie/dussehra.json",
+  eid: "/lottie/eid_al_fitr.json",
+  good_friday: "/lottie/good_friday.json",
+  holi: "/lottie/holi.json",
+  makar_sankranti: "/lottie/makar_sankranti.json",
+  new_year: "/lottie/new_year.json",
+  pongal: "/lottie/pongal.json",
+  ram_navami: "/lottie/ram_navami.json",
+  maha_shivaratri: "/lottie/maha_shivaratri.json",
+  mahavir_jayanti: "/lottie/mahavir_jayanti.json",
+  milad_un_nabi: "/lottie/milad_un_nabi.json",
+  rakshabandhan: "/lottie/rakshabandhan.json",
+  gandhi_jayanti: "/lottie/gandhi_jayanti.json",
+  ganesh_chaturthi: "/lottie/janmashtami.json", // Fallback if no ganesh
+  guru_nanak: "/lottie/guru_nanak_jayanti.json",
+  janmashtami: "/lottie/janmashtami.json",
+  muharram: "/lottie/muharram.json",
+  birthday: "/lottie/happy-birthday.json"
+};

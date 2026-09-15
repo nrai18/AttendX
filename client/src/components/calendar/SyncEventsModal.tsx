@@ -7,6 +7,7 @@ import { parse, format } from "date-fns";
 import { FIXED_HOLIDAYS, RESTRICTED_HOLIDAYS } from "../../pages/semester/HolidayListTab";
 import { useAttendanceStore } from "../../stores/attendanceStore";
 import { CalendarImportModal } from "./CalendarImportModal";
+import { useScrollLock } from "../../hooks/useScrollLock";
 
 interface SyncEventsModalProps {
   isOpen: boolean;
@@ -15,6 +16,7 @@ interface SyncEventsModalProps {
 }
 
 export const SyncEventsModal: React.FC<SyncEventsModalProps> = ({ isOpen, onClose, onSuccess }) => {
+  useScrollLock(isOpen);
   const [syncHolidayList, setSyncHolidayList] = useState(true);
   const [syncAcademicCalendar, setSyncAcademicCalendar] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -91,6 +93,19 @@ export const SyncEventsModal: React.FC<SyncEventsModalProps> = ({ isOpen, onClos
       setIsSyncing(false);
     }
   };
+
+  
+  // Anti-scroll lock
+  React.useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, [isOpen]);
 
   return (
     <AnimatePresence>

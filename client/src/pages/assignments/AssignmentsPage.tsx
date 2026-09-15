@@ -14,13 +14,13 @@ export function AssignmentsPage() {
   }, [fetchAssignments]);
 
   return (
-    <div className="min-h-screen bg-background text-foreground pb-32">
-      <header className="pt-12 pb-6 px-6 bg-background/95 backdrop-blur-md sticky top-0 z-10 border-b border-border">
+    <div className="min-h-screen bg-slate-50 dark:bg-[#050505] text-slate-900 dark:text-slate-50 pb-32">
+      <header className="pt-12 pb-6 px-6 bg-white/95 dark:bg-[#111111]/95 backdrop-blur-md sticky top-0 z-10 border-b-2 border-slate-300 dark:border-[#333333]">
         <div className="flex justify-between items-center">
           <h1 className="text-3xl font-bold">Assignments</h1>
           <button 
             onClick={() => setIsAddOpen(true)}
-            className="p-2 bg-violet-600 rounded-full hover:bg-violet-700 transition"
+            className="p-3 bg-[#E63946] text-slate-50 rounded-none border-2 border-[#E63946] hover:bg-[#E63946]/90 transition-all shadow-[4px_4px_0_0_rgba(230,57,70,0.3)] font-bold"
           >
             <Plus size={24} />
           </button>
@@ -38,15 +38,15 @@ export function AssignmentsPage() {
           assignments.map((assignment) => (
             <div 
               key={assignment.id} 
-              className={`p-4 rounded-xl border ${assignment.completions?.length ? "bg-green-900/20 border-green-500/30" : "bg-card border-border"} flex items-start gap-4`}
+              className={`p-5 rounded-none border-2 shadow-[4px_4px_0_0_rgba(0,0,0,0.1)] dark:shadow-[4px_4px_0_0_rgba(255,255,255,0.05)] flex items-start gap-4 transition-all ${assignment.completions?.length ? "bg-slate-100 dark:bg-[#1A1A1A] border-slate-300 dark:border-[#333333] opacity-60" : "bg-white dark:bg-[#111111] border-slate-300 dark:border-[#333333] hover:-translate-y-1 hover:shadow-[6px_6px_0_0_rgba(0,0,0,0.1)] dark:hover:shadow-[6px_6px_0_0_rgba(255,255,255,0.05)]"}`}
             >
               <button 
                 onClick={() => toggleCompletion(assignment.id)}
-                className={`mt-1 flex-shrink-0 w-6 h-6 rounded-full border flex items-center justify-center
-                  ${assignment.completions?.length ? "bg-green-500 border-green-500" : "border-muted-foreground/50"}
+                className={`mt-1 flex-shrink-0 w-6 h-6 rounded-none border-2 flex items-center justify-center transition-colors
+                  ${assignment.completions?.length ? "bg-[#E63946] border-[#E63946] text-white" : "border-slate-300 dark:border-[#333333] hover:border-[#E63946]/50 bg-white dark:bg-[#111111]"}
                 `}
               >
-                {assignment.completions?.length ? <Check size={14} stroke="white" /> : null}
+                {assignment.completions?.length ? <Check size={14} stroke="currentColor" /> : null}
               </button>
               
               <div className="flex-1">
@@ -56,11 +56,11 @@ export function AssignmentsPage() {
                 {assignment.description && (
                   <p className="text-sm text-muted-foreground mt-1">{assignment.description}</p>
                 )}
-                <div className="flex items-center gap-2 mt-2 text-xs font-medium text-violet-400">
+                <div className="flex items-center gap-2 mt-3 text-xs font-medium text-muted-foreground">
                   <Clock size={12} />
                   <span>{format(new Date(assignment.deadline), "MMM d, h:mm a")}</span>
                   {isPast(new Date(assignment.deadline)) && !assignment.completions?.length && (
-                    <span className="text-red-400 flex items-center gap-1 ml-2">
+                    <span className="text-rose-500 font-bold flex items-center gap-1 ml-2">
                       <AlertCircle size={12} /> Overdue
                     </span>
                   )}

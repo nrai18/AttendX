@@ -161,7 +161,7 @@ export const ClassroomsPage = () => {
 
       {/* Join Modal */}
       {showJoinModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-white/40 dark:bg-black/60 backdrop-blur-sm">
           <div className="bg-card border border-border rounded-2xl p-6 w-full max-w-sm shadow-xl">
             <h3 className="text-lg font-bold text-foreground mb-4">Join Classroom</h3>
             <form onSubmit={handleJoin}>
@@ -188,7 +188,7 @@ export const ClassroomsPage = () => {
 
       {/* Create Modal */}
       {showCreateModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-white/40 dark:bg-black/60 backdrop-blur-sm">
           <div className="bg-card border border-border rounded-2xl p-6 w-full max-w-sm shadow-xl">
             <h3 className="text-lg font-bold text-foreground mb-4">Create Classroom</h3>
             <form onSubmit={handleCreate}>

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { APP_CHANGELOG, CURRENT_VERSION } from "../../lib/changelog";
+import { useScrollLock } from "../../hooks/useScrollLock";
 
 interface Props {
   isOpen: boolean;
@@ -12,6 +13,7 @@ export const ChangelogModal: React.FC<Props> = ({
   onClose,
   version,
 }) => {
+  useScrollLock(isOpen);
   const [isVisible, setIsVisible] = useState(false);
 
   useEffect(() => {
@@ -30,7 +32,7 @@ export const ChangelogModal: React.FC<Props> = ({
 
   return (
     <div
-      className={`fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 backdrop-blur-sm transition-opacity duration-300 p-0 sm:p-6 ${isOpen ? "opacity-100" : "opacity-0"}`}
+      className={`fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-white/40 dark:bg-black/60 backdrop-blur-sm transition-opacity duration-300 p-0 sm:p-6 ${isOpen ? "opacity-100" : "opacity-0"}`}
     >
       <div
         className={`w-full min-h-screen sm:min-h-0 sm:h-auto sm:max-w-md bg-[#121212] sm:rounded-[2.5rem] flex flex-col shadow-2xl transition-transform duration-300 my-auto ${isOpen ? "transform translate-y-0 scale-100" : "transform translate-y-8 scale-95"}`}

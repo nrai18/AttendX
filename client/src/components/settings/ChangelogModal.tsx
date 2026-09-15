@@ -33,7 +33,7 @@ export const ChangelogModal = ({
   return (
     <AnimatePresence>
       {isOpen && (
-        <div className="fixed inset-0 z-[100] flex flex-col justify-end md:justify-center items-center bg-black/40 backdrop-blur-sm p-0 md:p-4">
+        <div className="fixed inset-0 z-[100] flex flex-col justify-end md:justify-center items-center bg-white/60 dark:bg-black/60 backdrop-blur-sm p-0 md:p-4">
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -46,7 +46,7 @@ export const ChangelogModal = ({
             animate={{ y: 0, opacity: 1, scale: 1 }}
             exit={{ y: "100%", opacity: 0, scale: 0.95 }}
             transition={{ type: "spring", damping: 25, stiffness: 300 }}
-            className="bg-card w-full md:w-full max-w-lg md:rounded-2xl rounded-t-2xl shadow-xl z-10 overflow-hidden flex flex-col max-h-[90vh] border border-border"
+            className="bg-white/40 dark:bg-black/60 backdrop-blur-3xl w-full md:w-full max-w-lg md:rounded-2xl rounded-t-2xl shadow-xl z-10 overflow-hidden flex flex-col max-h-[90vh] border border-border"
           >
             <div className="p-4 md:p-6 border-b border-border flex justify-between items-center bg-muted/30 sticky top-0 z-20">
               <div className="flex items-center gap-3">

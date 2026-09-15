@@ -16,7 +16,11 @@ export class SupportController {
         try {
           const zipBuffer = await DataService.exportData(userId);
           const algorithm = "aes-256-cbc";
-          const key = process.env.LOG_ENCRYPTION_KEY || "12345678901234567890123456789012"; 
+          const key = process.env.LOG_ENCRYPTION_KEY;
+          if (!key || key.length !== 32) {
+            console.error("LOG_ENCRYPTION_KEY is missing or invalid in production.");
+            throw new Error("Failed to encrypt logs");
+          }
           const iv = crypto.randomBytes(16);
           const cipher = crypto.createCipheriv(algorithm, Buffer.from(key), iv);
           const encrypted = Buffer.concat([iv, cipher.update(zipBuffer), cipher.final()]);

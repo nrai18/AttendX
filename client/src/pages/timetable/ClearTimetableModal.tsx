@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { Trash2, AlertTriangle, ShieldCheck, Loader2, X } from "lucide-react";
+import { useScrollLock } from "../../hooks/useScrollLock";
 
 interface ClearTimetableModalProps {
   isOpen: boolean;
@@ -14,7 +15,21 @@ export const ClearTimetableModal: React.FC<ClearTimetableModalProps> = ({
   onConfirm,
   semesterName = "Active Semester",
 }) => {
+  useScrollLock(isOpen);
   const [isClearing, setIsClearing] = useState(false);
+
+  
+  // Anti-scroll lock
+  React.useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -31,7 +46,7 @@ export const ClearTimetableModal: React.FC<ClearTimetableModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-white/40 dark:bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
       <div className="bg-card border border-border rounded-2xl w-full max-w-md overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
         {/* Header */}
         <div className="p-5 border-b border-border flex justify-between items-center bg-rose-500/5">

@@ -95,22 +95,25 @@ async function main() {
     { day: 4, code: "ECSE303", start: "09:00", end: "09:50", room: "Room 326" },
     { day: 4, code: "ECMC301", start: "09:50", end: "10:40", room: "Room 126" },
     { day: 4, code: "ECSE303", start: "14:00", end: "14:50", room: "Room 126" },
+    { day: 4, code: "ECSE304", start: "14:00", end: "15:40", room: "Lab 5", type: "practical" as const, validFrom: "2026-07-14", validUntil: "2026-09-06" },
     { day: 4, code: "ICVA301", start: "16:30", end: "17:20", room: "Room 329" },
   ];
 
   for (const slot of slotsData) {
     if (subjects[slot.code]) {
-      await prisma.timetableSlot.create({
-        data: {
-          semesterId: semester.id,
-          subjectId: subjects[slot.code],
-          dayOfWeek: slot.day,
-          startTime: slot.start,
-          endTime: slot.end,
-          room: slot.room,
-          slotType: slot.type || "lecture",
-        },
-      });
+      const data: any = {
+        semesterId: semester.id,
+        subjectId: subjects[slot.code],
+        dayOfWeek: slot.day,
+        startTime: slot.start,
+        endTime: slot.end,
+        room: slot.room,
+        slotType: slot.type || "lecture",
+      };
+      if (slot.validFrom) data.validFrom = new Date(slot.validFrom);
+      if (slot.validUntil) data.validUntil = new Date(slot.validUntil);
+      
+      await prisma.timetableSlot.create({ data });
     }
   }
   console.log(`⏰ Seeded ${slotsData.length} timetable slots matching IIIT Una layout`);

@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Trash2, ShieldCheck, AlertCircle, Calendar, CalendarRange, X } from "lucide-react";
 import { formatTimeRange } from "../../utils/timeUtils";
+import { useScrollLock } from "../../hooks/useScrollLock";
 
 interface Subject {
   id: string;
@@ -38,6 +39,7 @@ export const DeleteSlotModal: React.FC<DeleteSlotModalProps> = ({
   dayName,
   onConfirmDelete,
 }) => {
+  useScrollLock(isOpen);
   const [scope, setScope] = useState<"this_day_only" | "all_occurrences">("this_day_only");
   const [preserveHistory, setPreserveHistory] = useState(true);
   const [isDeleting, setIsDeleting] = useState(false);

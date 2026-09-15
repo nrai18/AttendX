@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { api } from "../../lib/api";
+import { useScrollLock } from "../../hooks/useScrollLock";
 import {
   Calendar,
   Plus,
@@ -30,6 +31,7 @@ export const CreateSemesterModal: React.FC<CreateSemesterModalProps> = ({
   onClose,
   onSuccess,
 }) => {
+  useScrollLock(isOpen);
   const [semesters, setSemesters] = useState<Semester[]>([]);
   const [loadingSemesters, setLoadingSemesters] = useState(false);
 
@@ -69,6 +71,19 @@ export const CreateSemesterModal: React.FC<CreateSemesterModalProps> = ({
     const y = parseInt(year);
     setSemesterOption(String(y * 2 - 1)); // default to odd semester for that year
   }, [year]);
+
+  
+  // Anti-scroll lock
+  React.useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -116,7 +131,7 @@ export const CreateSemesterModal: React.FC<CreateSemesterModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-white/40 dark:bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
       <div className="bg-card border border-border rounded-2xl p-6 max-w-lg w-full shadow-2xl space-y-6 relative overflow-hidden">
         {/* Glow accent */}
         <div className="absolute -top-24 -right-24 w-48 h-48 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />

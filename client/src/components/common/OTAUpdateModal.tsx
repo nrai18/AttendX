@@ -3,6 +3,7 @@ import { api, API_BASE_URL } from "../../lib/api";
 import { CapacitorUpdater } from '@capgo/capacitor-updater';
 import { Capacitor } from '@capacitor/core';
 import { toast } from 'sonner';
+import { useScrollLock } from "../../hooks/useScrollLock";
 
 interface Props {
   localVersion: string;
@@ -10,6 +11,7 @@ interface Props {
 
 export const OTAUpdateModal: React.FC<Props> = ({ localVersion }) => {
   const [isOpen, setIsOpen] = useState(false);
+  useScrollLock(isOpen);
   const [remoteData, setRemoteData] = useState<any>(null);
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState(0);
@@ -109,7 +111,7 @@ export const OTAUpdateModal: React.FC<Props> = ({ localVersion }) => {
 
   return (
     <div className="fixed inset-0 z-[9999] flex items-start justify-center overflow-y-auto bg-black/95 backdrop-blur-md transition-opacity duration-300 opacity-100 p-0 sm:p-6">
-      <div className="w-full min-h-screen sm:min-h-0 sm:h-auto sm:max-w-md bg-[#121212] sm:rounded-[2.5rem] flex flex-col shadow-2xl transition-transform duration-300 transform translate-y-0 scale-100 my-auto">
+      <div className="w-full min-h-screen sm:min-h-0 sm:h-auto sm:max-w-md bg-[#121212] sm:rounded-[2.5rem] flex flex-col shadow-sm transition-transform duration-300 transform translate-y-0 scale-100 my-auto">
         {/* Header matching Nothing OS */}
         <div className="pt-12 pb-6 px-8 shrink-0">
           <div className="w-6 h-10 border-2 border-white/20 rounded-md mb-6 flex flex-col items-center justify-end p-1">
@@ -163,9 +165,9 @@ export const OTAUpdateModal: React.FC<Props> = ({ localVersion }) => {
                 <span>Downloading...</span>
                 <span>{Math.floor(downloadProgress)}%</span>
               </div>
-              <div className="w-full bg-white/10 rounded-full h-1.5">
+              <div className="w-full bg-white/10 rounded-lg h-1.5">
                 <div
-                  className="bg-blue-500 h-1.5 rounded-full transition-all duration-300"
+                  className="bg-blue-500 h-1.5 rounded-lg transition-all duration-300"
                   style={{ width: `${downloadProgress}%` }}
                 ></div>
               </div>
@@ -174,13 +176,13 @@ export const OTAUpdateModal: React.FC<Props> = ({ localVersion }) => {
             <div className="flex flex-col gap-3">
               <button
                 onClick={handleDownload}
-                className="w-full py-3 bg-white hover:bg-white/90 active:scale-95 transition-all text-black text-sm font-bold rounded-full"
+                className="w-full py-3 bg-white hover:bg-white/90 active:scale-95 transition-all text-black text-sm font-bold rounded-lg"
               >
                 Download and install
               </button>
               <button
                 onClick={() => setIsOpen(false)}
-                className="w-full py-3 bg-transparent hover:bg-white/5 active:scale-95 transition-all text-white/70 text-sm font-bold rounded-full"
+                className="w-full py-3 bg-transparent hover:bg-white/5 active:scale-95 transition-all text-white/70 text-sm font-bold rounded-lg"
               >
                 Not right now
               </button>

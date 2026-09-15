@@ -155,7 +155,7 @@ export class SubjectService {
             );
             
             if (collision) {
-              if (collision.status === "void" && log.status !== "void") {
+              if (collision.status === "cancelled" && log.status !== "cancelled") {
                 await tx.attendance.update({
                   where: { id: collision.id },
                   data: { status: log.status, remarks: log.remarks }

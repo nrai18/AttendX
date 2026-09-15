@@ -25,7 +25,7 @@ export class DataService {
         if (log.status === "absent") missed++;
         if (log.status === "off") off++;
       });
-      const total = attended + missed + off;
+      const total = attended + missed; // Off classes don't count towards total
       const pct = total > 0 ? ((attended / total) * 100).toFixed(2) + "%" : "0.00%";
       return {
         "Sr. No.": idx + 1,
@@ -39,7 +39,7 @@ export class DataService {
       };
     });
 
-    // Fetch Timetable
+    // Fetch Timetable (all slots including archived)
     const slots = await prisma.timetableSlot.findMany({
       where: { semesterId: activeSem.id },
       include: { subject: true },
@@ -63,7 +63,9 @@ export class DataService {
         "Subject": slot.subject.name,
         "Timing": `${slot.startTime} - ${slot.endTime}`,
         "Room": slot.room || "",
-        "Type": slot.slotType === "practical" ? "Practical" : "Lecture"
+        "Type": slot.slotType === "practical" ? "Practical" : "Lecture",
+        "Valid From": slot.validFrom ? slot.validFrom.toISOString().split('T')[0] : "",
+        "Valid Until": slot.validUntil ? slot.validUntil.toISOString().split('T')[0] : ""
       };
     });
 
@@ -77,13 +79,15 @@ export class DataService {
     let currentDate = "";
     let logLectureNo = 1;
     const logRows = logs.map((log: any, idx: number) => {
-      const dateStr = log.date.toISOString().split("T")[0];
-      if (dateStr !== currentDate) {
-        currentDate = dateStr;
+      const rawDate = log.date.toISOString().split("T")[0];
+      if (rawDate !== currentDate) {
+        currentDate = rawDate;
         logLectureNo = 1;
       } else {
         logLectureNo++;
       }
+      
+      const dateStr = rawDate; // ISO format: YYYY-MM-DD
       
       let attStatus = "Attended";
       if (log.status === "absent") attStatus = "Missed";
@@ -98,7 +102,8 @@ export class DataService {
         "Attendance": attStatus,
         "Att Modified": "",
         "Miss Modified": "",
-        "Off Modified": ""
+        "Off Modified": "",
+        "Remarks": log.remarks || ""
       };
     });
 
@@ -159,8 +164,6 @@ export class DataService {
       const daysMap: Record<string, number> = {
         "Monday": 0, "Tuesday": 1, "Wednesday": 2, "Thursday": 3, "Friday": 4, "Saturday": 5, "Sunday": 6
       };
-      
-      const daySlotCounts: Record<number, number> = { 0:0, 1:0, 2:0, 3:0, 4:0, 5:0, 6:0 };
 
       for (const row of timetableData) {
         const dayName = row["Day of Week"];
@@ -169,11 +172,21 @@ export class DataService {
         const subId = subjectMap.get(subjectName);
         if (!subId) continue;
 
-        // Faking absolute times based on slot count
-        const startHour = 9 + daySlotCounts[dayIdx];
-        const startStr = `${startHour.toString().padStart(2, '0')}:00`;
-        const endStr = `${startHour.toString().padStart(2, '0')}:50`;
-        daySlotCounts[dayIdx]++;
+        // Parse exact timing from CSV instead of faking it
+        const timing = row["Timing"]; // e.g., "09:00 - 09:50"
+        let startStr = "09:00";
+        let endStr = "10:00";
+        if (timing && timing.includes("-")) {
+          const parts = timing.split("-");
+          startStr = parts[0].trim();
+          endStr = parts[1].trim();
+        }
+
+        // Handle archived timetable attributes
+        const validFromStr = row["Valid From"];
+        const validUntilStr = row["Valid Until"];
+        const validFrom = validFromStr ? new Date(validFromStr) : new Date();
+        const validUntil = validUntilStr ? new Date(validUntilStr) : null;
 
         await tx.timetableSlot.create({
           data: {
@@ -182,7 +195,10 @@ export class DataService {
             dayOfWeek: dayIdx,
             startTime: startStr,
             endTime: endStr,
-            slotType: "lecture"
+            slotType: row["Type"]?.toLowerCase() === "practical" ? "practical" : "lecture",
+            validFrom,
+            validUntil,
+            room: row["Room"] || ""
           }
         });
       }
@@ -193,7 +209,7 @@ export class DataService {
         const subId = subjectMap.get(subName);
         if (!subId) continue;
 
-        const dateStr = row["Date"]; // YYYY-MM-DD
+        const dateStr = row["Date"]; // e.g. "17 Sep 2026" or "YYYY-MM-DD"
         const dateObj = new Date(dateStr);
         
         const attStr = row["Attendance"];
@@ -223,7 +239,8 @@ export class DataService {
             subjectId: subId,
             date: dateObj,
             status,
-            overrideId: overrideId
+            overrideId: overrideId,
+            remarks: row["Remarks"] || null
           }
         });
       }

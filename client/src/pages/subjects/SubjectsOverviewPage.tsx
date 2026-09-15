@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { Loader2, TrendingUp, AlertTriangle, ShieldCheck, Settings2 } from "lucide-react";
 import { api } from "../../lib/api";
+import { useAttendanceStore } from "../../stores/attendanceStore";
 
 interface SubjectStats {
   id: string;

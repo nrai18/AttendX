@@ -9,9 +9,11 @@ import { HolidayListTab } from "./HolidayListTab";
 import { Link, useSearchParams } from "react-router-dom";
 import { useAuthStore } from "../../stores/authStore";
 import { useCacheStore } from "../../stores/cacheStore";
+import { useAttendanceStore } from "../../stores/attendanceStore";
 import { DiscreteTabs } from "../../components/ui/discrete-tabs";
 import { toast } from "sonner";
 import { TimedUndoAction } from "../../components/ui/timed-undo-action";
+import { PeakpathRays } from "../../components/ui/peakpath-rays";
 
 interface AppEvent {
   id: string;
@@ -94,6 +96,19 @@ export const SemesterHubPage = () => {
       });
     } catch (error) {
       console.error("Failed to fetch academic data:", error);
+      const cache = useCacheStore.getState().semester;
+      if (cache && cache.activeSemester) {
+        setActiveSemester(cache.activeSemester);
+        setEvents(cache.events || []);
+      } else {
+        const attendanceState = useAttendanceStore.getState();
+        if (attendanceState.hasActiveSemester && attendanceState.activeSemesterId) {
+          const bounds = attendanceState.simulationBounds;
+          const startDate = bounds?.startDate || new Date(new Date().setMonth(new Date().getMonth() - 2)).toISOString();
+          const endDate = bounds?.endDate || new Date(new Date().setMonth(new Date().getMonth() + 4)).toISOString();
+          setActiveSemester({ id: attendanceState.activeSemesterId, name: "Active Semester", startDate, endDate } as any);
+        }
+      }
     } finally {
       setIsLoading(false);
     }
@@ -112,6 +127,10 @@ export const SemesterHubPage = () => {
       });
     } catch (error) {
       console.error("Failed to fetch calendar:", error);
+      const cache = useCacheStore.getState().semester;
+      if (cache && cache.calendarData) {
+        setCalendarData(cache.calendarData);
+      }
     }
   };
 
@@ -192,7 +211,7 @@ export const SemesterHubPage = () => {
       if (event?.isHolidayList) return "bg-blue-500";
       return "bg-emerald-500";
     }
-    if (type === "restricted_holiday" || (type === "other" && event?.isHolidayList)) return "bg-cyan-500";
+    if (type === "restricted_holiday" || (type === "other" && event?.isHolidayList)) return "bg-accent";
     
     switch (type) {
       case "midsem": return "bg-orange-500";
@@ -213,12 +232,12 @@ export const SemesterHubPage = () => {
       const colors = [
         "bg-fuchsia-500/20 text-fuchsia-400 border-fuchsia-500/30",
         "bg-pink-500/20 text-pink-400 border-pink-500/30",
-        "bg-indigo-500/20 text-indigo-400 border-indigo-500/30",
-        "bg-cyan-500/20 text-cyan-400 border-cyan-500/30",
+        "bg-primary/20 text-primary border-primary/30",
+        "bg-accent/20 text-accent border-accent/30",
         "bg-teal-500/20 text-teal-400 border-teal-500/30",
         "bg-violet-500/20 text-violet-400 border-violet-500/30",
         "bg-fuchsia-600/20 text-fuchsia-500 border-fuchsia-600/30",
-        "bg-purple-600/20 text-purple-400 border-purple-500/30"
+        "bg-primary/20 text-primary border-primary/30"
       ];
       return colors[hash % colors.length];
     }
@@ -230,7 +249,7 @@ export const SemesterHubPage = () => {
       return "bg-emerald-500/20 text-emerald-400 border-emerald-500/30"; // Emerald for Academic Calendar
     }
     if (type === "restricted_holiday" || (type === "other" && event?.isHolidayList)) {
-      return "bg-cyan-500/20 text-cyan-400 border-cyan-500/30"; // Cyan for restricted
+      return "bg-accent/20 text-accent border-accent/30"; // Cyan for restricted
     }
     
     switch (type) {
@@ -249,7 +268,7 @@ export const SemesterHubPage = () => {
     switch (status) {
       case "attended": return "bg-emerald-500";
       case "missed": return "bg-rose-500";
-      case "mixed": return "bg-purple-500";
+      case "mixed": return "bg-primary";
       case "off": return "bg-yellow-500";
       case "not_marked":
       case "future": return "bg-zinc-500";
@@ -316,7 +335,9 @@ export const SemesterHubPage = () => {
   }
 
   return (
-    <div className="p-4 md:p-8 max-w-7xl mx-auto w-full pb-24 md:pb-8 flex flex-col min-h-full space-y-6 overflow-x-hidden">
+    <>
+      <PeakpathRays />
+      <div className="p-4 md:p-8 w-full mx-auto pb-24 md:pb-8 flex flex-col min-h-full space-y-6 overflow-x-hidden">
       
       {/* Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -342,7 +363,7 @@ export const SemesterHubPage = () => {
           <button 
             onClick={() => setIsImportModalOpen(true)}
             disabled={!activeSemester}
-            className="flex-1 md:flex-none flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold bg-primary text-primary-foreground hover:bg-primary/90 transition-all disabled:opacity-50"
+            className="flex-1 md:flex-none flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold bg-primary text-[#03110E] hover:bg-primary/90 transition-all disabled:opacity-50"
           >
             <Sparkles className="w-4 h-4" />
             AI Import
@@ -392,7 +413,7 @@ export const SemesterHubPage = () => {
           </div>
         </div>
       ) : (
-        <div className="bg-indigo-500/10 border border-indigo-500/30 rounded-2xl p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="bg-primary/10 border border-primary/30 rounded-2xl p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h3 className="text-base font-bold text-foreground">No Active Semester</h3>
             <p className="text-xs text-muted-foreground mt-1">
@@ -401,7 +422,7 @@ export const SemesterHubPage = () => {
           </div>
           <button
             onClick={() => setIsCreateSemesterOpen(true)}
-            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-foreground px-5 py-2.5 rounded-xl text-xs font-bold transition-all shadow-lg shadow-indigo-600/30 shrink-0 cursor-pointer"
+            className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-primary-foreground px-5 py-2.5 rounded-xl text-xs font-bold transition-all shadow-lg shadow-primary/30 shrink-0 cursor-pointer"
           >
             <Plus className="w-4 h-4" />
             <span>Create Semester</span>
@@ -415,7 +436,7 @@ export const SemesterHubPage = () => {
         onTabChange={(id) => setActiveTab(id as any)}
         tabs={[
           { id: 'timeline', icon: <AlignLeft size={20} />, label: 'Timeline', activeColor: 'text-blue-500' },
-          { id: 'calendar', icon: <CalendarDays size={20} />, label: 'Calendar', activeColor: 'text-indigo-500' },
+          { id: 'calendar', icon: <CalendarDays size={20} />, label: 'Calendar', activeColor: 'text-primary' },
           { id: 'countdowns', icon: <Timer size={20} />, label: 'Countdowns', activeColor: 'text-amber-500' },
           { id: 'events', icon: <ListFilter size={20} />, label: 'Events', activeColor: 'text-rose-500' },
           { id: 'holidays', icon: <Palmtree size={20} />, label: 'Holidays', activeColor: 'text-emerald-500' }
@@ -538,7 +559,7 @@ export const SemesterHubPage = () => {
                     <div>
                       <div className="text-lg font-bold text-foreground mb-0.5">{calendarData.stats.days.mixed}</div>
                       <div className="flex items-center justify-center gap-1.5">
-                        <div className="w-1.5 h-1.5 rounded-full bg-purple-500" />
+                        <div className="w-1.5 h-1.5 rounded-full bg-primary" />
                         <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Mixed</span>
                       </div>
                     </div>
@@ -571,7 +592,7 @@ export const SemesterHubPage = () => {
                       <div className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Percent</div>
                     </div>
                   </div>
-                  <div className="bg-white/[0.03] text-center py-2 text-xs font-semibold text-foreground/50 uppercase tracking-widest border-t border-border/50">
+                  <div className="bg-black/[0.03] dark:bg-white/[0.03] text-center py-2 text-xs font-semibold text-foreground/50 uppercase tracking-widest border-t border-border/50">
                     Lectures Summary
                   </div>
                 </div>
@@ -694,7 +715,6 @@ export const SemesterHubPage = () => {
         onSuccess={fetchData}
       />
     </div>
+    </>
   );
 };
-
-

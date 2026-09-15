@@ -5,6 +5,7 @@ import { api } from "../../lib/api";
 import { toast } from "sonner";
 import { useAuthStore } from "../../stores/authStore";
 import { Stepper } from "../ui/stepper";
+import { useScrollLock } from "../../hooks/useScrollLock";
 
 interface SubjectModalProps {
   isOpen: boolean;
@@ -23,6 +24,7 @@ interface SubjectModalProps {
 const COLORS = ["#8b5cf6", "#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#ec4899", "#14b8a6", "#f43f5e"];
 
 export const SubjectModal: React.FC<SubjectModalProps> = ({ isOpen, onClose, onSuccess, subject }) => {
+  useScrollLock(isOpen);
   const { user } = useAuthStore();
   const [name, setName] = useState("");
   const [code, setCode] = useState("");
@@ -87,6 +89,19 @@ export const SubjectModal: React.FC<SubjectModalProps> = ({ isOpen, onClose, onS
       setIsSubmitting(false);
     }
   };
+
+  
+  // Anti-scroll lock
+  React.useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, [isOpen]);
 
   return (
     <AnimatePresence>
@@ -214,7 +229,7 @@ export const SubjectModal: React.FC<SubjectModalProps> = ({ isOpen, onClose, onS
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="px-5 py-2.5 rounded-xl text-sm font-semibold bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center gap-2"
+                  className="px-5 py-2.5 rounded-xl text-sm font-semibold bg-foreground hover:bg-foreground/90 text-background transition-colors disabled:opacity-50 flex items-center gap-2 shadow-md shadow-black/10 dark:shadow-white/10"
                 >
                   {isSubmitting ? "Saving..." : "Save Subject"}
                 </button>

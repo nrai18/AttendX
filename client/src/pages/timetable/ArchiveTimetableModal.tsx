@@ -1,7 +1,10 @@
 import React, { useState, useEffect } from "react";
-import { X, Calendar as CalendarIcon, Clock, BookOpen, MapPin } from "lucide-react";
+import { X, Calendar as CalendarIcon, Clock, BookOpen, MapPin, Archive } from "lucide-react";
 import { api } from "../../lib/api";
+import { useCacheStore } from "../../stores/cacheStore";
+
 import { format } from "date-fns";
+import { useScrollLock } from "../../hooks/useScrollLock";
 
 interface ArchiveTimetableModalProps {
   isOpen: boolean;
@@ -12,6 +15,7 @@ interface ArchiveTimetableModalProps {
 const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
 export const ArchiveTimetableModal: React.FC<ArchiveTimetableModalProps> = ({ isOpen, onClose, semesterId }) => {
+  useScrollLock(isOpen);
   const [versions, setVersions] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
@@ -25,10 +29,25 @@ export const ArchiveTimetableModal: React.FC<ArchiveTimetableModalProps> = ({ is
   const fetchArchivedVersions = async () => {
     try {
       setIsLoading(true);
+      
+      // Load from offline cache first
+      const cacheStore = useCacheStore.getState();
+      if (cacheStore.archived_timetables) {
+        setVersions(cacheStore.archived_timetables);
+        if (cacheStore.archived_timetables.length > 0) {
+          setSelectedVersionId(cacheStore.archived_timetables[0].id);
+        }
+      }
+      
       const res = await api.get(`/timetable/semester/${semesterId}/archived`);
-      setVersions(res.data || []);
-      if (res.data && res.data.length > 0) {
-        setSelectedVersionId(res.data[0].id);
+      const newData = res.data || [];
+      
+      // Update cache
+      useCacheStore.getState().setCache('archived_timetables', newData);
+      
+      setVersions(newData);
+      if (newData.length > 0 && !cacheStore.archived_timetables) {
+        setSelectedVersionId(newData[0].id);
       }
     } catch (error) {
       console.error("Failed to load archived timetables:", error);
@@ -36,6 +55,19 @@ export const ArchiveTimetableModal: React.FC<ArchiveTimetableModalProps> = ({ is
       setIsLoading(false);
     }
   };
+
+  
+  // Anti-scroll lock
+  React.useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -51,11 +83,11 @@ export const ArchiveTimetableModal: React.FC<ArchiveTimetableModalProps> = ({ is
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-white/40 dark:bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
       <div className="bg-card border border-border rounded-2xl w-full max-w-4xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
         <div className="p-4 border-b border-border flex justify-between items-center bg-muted/30">
           <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
-            <img src="/src/assets/archive.svg" alt="Archive" className="w-5 h-5 dark:invert" />
+            <Archive className="w-5 h-5 text-muted-foreground" />
             Archived Timetables
           </h2>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors">
@@ -65,13 +97,13 @@ export const ArchiveTimetableModal: React.FC<ArchiveTimetableModalProps> = ({ is
 
         <div className="flex flex-col md:flex-row flex-1 overflow-hidden">
           {/* Sidebar - Versions */}
-          <div className="w-full md:w-64 border-r border-border bg-muted/10 overflow-y-auto">
+          <div className="w-full md:w-64 border-b md:border-b-0 md:border-r border-border bg-muted/10 overflow-y-auto flex-none max-h-[140px] md:max-h-none">
             {isLoading ? (
               <div className="p-8 text-center text-sm text-muted-foreground animate-pulse">Loading archive...</div>
             ) : versions.length === 0 ? (
               <div className="p-8 text-center text-sm text-muted-foreground">No archived timetables found.</div>
             ) : (
-              <div className="flex flex-col p-3 gap-2">
+              <div className="flex flex-col md:flex-col p-3 gap-2">
                 {versions.map((v, i) => (
                   <button
                     key={v.id}
@@ -86,7 +118,10 @@ export const ArchiveTimetableModal: React.FC<ArchiveTimetableModalProps> = ({ is
                     <div className="text-xs space-y-1">
                       <div className="flex items-center gap-1.5">
                         <CalendarIcon className="w-3 h-3" />
-                        <span>{format(new Date(v.validFrom), "MMM d, yyyy")} - {v.validUntil ? format(new Date(v.validUntil), "MMM d, yyyy") : "Present"}</span>
+                        <span>
+                          {format(new Date(v.validFrom.split("T")[0] + "T00:00:00"), "MMM d, yyyy")} - 
+                          {v.validUntil ? format(new Date(v.validUntil.split("T")[0] + "T00:00:00"), "MMM d, yyyy") : "Present"}
+                        </span>
                       </div>
                       
                     </div>

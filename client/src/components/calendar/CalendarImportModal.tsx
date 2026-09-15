@@ -7,6 +7,7 @@ import { useAttendanceStore } from "../../stores/attendanceStore";
 import { RunActionButton } from "../ui/run-action-button";
 import { SaveToggle } from "../ui/save-toggle";
 import { FileText, Cpu, CheckCircle2, Tags } from "lucide-react";
+import { useScrollLock } from "../../hooks/useScrollLock";
 
 interface CalendarImportModalProps {
   isOpen: boolean;
@@ -28,6 +29,7 @@ interface ParsedEventGroup {
 }
 
 export const CalendarImportModal: React.FC<CalendarImportModalProps> = ({ isOpen, onClose, onSuccess }) => {
+  useScrollLock(isOpen);
   const { activeSemesterId } = useAttendanceStore();
   const [file, setFile] = useState<File | null>(null);
   const [isParsing, setIsParsing] = useState(false);
@@ -164,6 +166,19 @@ export const CalendarImportModal: React.FC<CalendarImportModalProps> = ({ isOpen
 
 
 
+  
+  // Anti-scroll lock
+  React.useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, [isOpen]);
+
   return (
     <AnimatePresence>
       {isOpen && (
@@ -199,7 +214,7 @@ export const CalendarImportModal: React.FC<CalendarImportModalProps> = ({ isOpen
               {!parsedGroups ? (
                 <div className="space-y-6">
                   <p className="text-sm text-muted-foreground">
-                    Powered by Google Gemini 3.6 Flash. This tool will extract all academic events, holidays, and exams directly from your institution's PDF calendar.
+                    Powered by Google Gemini 3.8 Flash. This tool will extract all academic events, holidays, and exams directly from your institution's PDF calendar.
                   </p>
                   
                   <div className="relative group cursor-pointer">

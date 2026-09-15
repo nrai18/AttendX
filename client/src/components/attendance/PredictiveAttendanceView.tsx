@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { api } from "../../lib/api";
 import { useAuthStore } from "../../stores/authStore";
+import { useCacheStore } from "../../stores/cacheStore";
 import { useAttendanceStore } from "../../stores/attendanceStore";
 import { Stepper } from "../ui/stepper";
 import { Input } from "../ui/input";
@@ -87,10 +88,19 @@ export const PredictiveAttendanceView: React.FC<PredictiveAttendanceViewProps> =
   const fetchAiInsights = async (force = false) => {
     setIsAiLoading(true);
     try {
+      const cacheState = useCacheStore.getState();
+      if (!force && cacheState.insights) {
+         setAiInsights(cacheState.insights);
+      }
       const res = await api.get(`/attendance/insights${force ? '?force=true' : ''}`);
       setAiInsights(res.data);
+      useCacheStore.getState().setCache('insights', res.data);
     } catch (e) {
       console.error(e);
+      const cacheState = useCacheStore.getState();
+      if (cacheState.insights) {
+         setAiInsights(cacheState.insights);
+      }
     } finally {
       setIsAiLoading(false);
     }
@@ -199,9 +209,11 @@ export const PredictiveAttendanceView: React.FC<PredictiveAttendanceViewProps> =
 
   if (isLoading) {
     return (
-      <div className="p-8 text-center bg-white border-4 border-black shadow-[8px_8px_0_0_#000] rounded-none">
-        <Sparkles className="w-8 h-8 text-primary animate-pulse mx-auto mb-2" />
-        <p className="text-xs text-zinc-600 font-bold font-medium">Analyzing attendance logs...</p>
+      <div className="flex flex-col items-center justify-center py-20 animate-in fade-in zoom-in duration-500">
+        <div className="w-16 h-16 rounded-[16px] bg-amber-500/10 border-2 border-amber-500/20 shadow-sm flex items-center justify-center text-amber-500 mb-2">
+          <Sparkles className="w-8 h-8 text-amber-500 animate-pulse mx-auto" />
+        </div>
+        <p className="text-sm font-semibold text-muted-foreground animate-pulse mt-2">Running Predictions...</p>
       </div>
     );
   }
@@ -209,11 +221,11 @@ export const PredictiveAttendanceView: React.FC<PredictiveAttendanceViewProps> =
   if (!hasActiveSemester) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center p-8 text-center space-y-4 my-12">
-        <div className="w-16 h-16 rounded-none bg-indigo-200 border-4 border-black shadow-[4px_4px_0_0_#000] flex items-center justify-center text-indigo-400 mb-2">
+        <div className="w-16 h-16 rounded-[16px] bg-slate-900/10 dark:bg-slate-800/40 border-2 border-slate-200 dark:border-slate-700 shadow-sm flex items-center justify-center text-slate-500 mb-2">
           <Calendar className="w-8 h-8" />
         </div>
         <h2 className="text-2xl font-bold text-foreground">No Active Semester</h2>
-        <p className="text-sm text-zinc-600 font-bold max-w-md">
+        <p className="text-sm text-muted-foreground font-medium max-w-md">
           Please create and activate a semester first to start generating attendance forecasts.
         </p>
       </div>
@@ -222,40 +234,44 @@ export const PredictiveAttendanceView: React.FC<PredictiveAttendanceViewProps> =
 
   return (
     <div className="space-y-6">
-      {/* Top Banner & Target Selector */}
-      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-indigo-900/30 via-card to-background border border-indigo-500/20 p-6 shadow-lg">
-        {/* Glow */}
-        <div className="absolute top-0 right-0 w-64 h-64 bg-primary/10 rounded-full blur-3xl pointer-events-none" />
+      
 
-        <div className="relative z-10 space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="p-3 bg-primary/20 border border-primary/30 rounded-2xl text-primary">
-                <Sparkles className="w-6 h-6" />
+      {/* Top Banner & Target Selector */}
+      <div className="relative overflow-hidden rounded-[24px] bg-slate-100 dark:bg-[#050508] border border-slate-200 dark:border-white/10 p-6 shadow-xl">
+        {/* Ambient 3D Cinematic Background */}
+        <div className="absolute top-0 right-0 w-64 h-64 bg-primary/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute -bottom-24 -left-24 w-80 h-80 bg-rose-500/10 rounded-full blur-[80px] pointer-events-none opacity-60" />
+        <div className="absolute inset-0 opacity-[0.03] dark:opacity-[0.05]" style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg viewBox=%220 0 200 200%22 xmlns=%22http://www.w3.org/2000/svg%22%3E%3Cfilter id=%22noiseFilter%22%3E%3CfeTurbulence type=%22fractalNoise%22 baseFrequency=%220.8%22 numOctaves=%223%22 stitchTiles=%22stitch%22/%3E%3C/filter%3E%3Crect width=%22100%25%22 height=%22100%25%22 filter=%22url(%23noiseFilter)%22/%3E%3C/svg%3E")' }} />
+
+        <div className="relative z-10 space-y-5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-5">
+            <div className="flex items-center gap-4">
+              <div className="p-3.5 bg-gradient-to-br from-primary to-primary/90 rounded-2xl text-[#FFFFFF] shadow-lg shadow-primary/30 border border-primary/50">
+                <Sparkles className="w-6 h-6 text-[#FFFFFF]" />
               </div>
               <div>
-                <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
-                  Attendance Forecast Engine
+                <h2 className="cinematic-font text-2xl md:text-3xl text-slate-900 dark:text-white flex items-center gap-2 drop-shadow-sm">
+                  FORECAST ENGINE
                 </h2>
-                <p className="text-xs text-zinc-600 font-bold">
-                  Smart forecast based on your past attendance logs
+                <p className="text-xs text-slate-600 dark:text-slate-400 font-semibold tracking-widest uppercase mt-0.5">
+                  Predictive Analysis
                 </p>
               </div>
             </div>
 
             {/* Target Percentage Selector */}
-            <div className="flex items-center gap-3 bg-muted/60 border border-border px-3.5 py-2 rounded-2xl shrink-0">
-              <Sliders className="w-4 h-4 text-primary" />
-              <span className="text-xs font-semibold text-zinc-600 font-bold">Target Goal:</span>
-              <div className="flex items-center gap-1">
+            <div className="flex items-center gap-3 bg-white/60 dark:bg-black/40 backdrop-blur-md border border-slate-200/60 dark:border-white/10 shadow-sm px-3.5 py-2 rounded-2xl shrink-0">
+              <Sliders className="w-4 h-4 text-slate-500 dark:text-slate-400" />
+              <span className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-widest">Target Goal</span>
+              <div className="flex items-center gap-1.5">
                 {[75, 80, 85, 90].map((t) => (
                   <button
                     key={t}
                     onClick={() => handleTargetChange(t)}
-                    className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all ${
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
                       globalTarget === t
-                        ? "bg-primary text-primary-foreground shadow-sm"
-                        : "text-zinc-600 font-bold hover:text-foreground hover:bg-muted"
+                        ? "bg-slate-900 text-[#FFFFFF] dark:bg-white dark:text-slate-900 shadow-md scale-105"
+                        : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-white/10"
                     }`}
                   >
                     {t}%
@@ -266,18 +282,18 @@ export const PredictiveAttendanceView: React.FC<PredictiveAttendanceViewProps> =
           </div>
 
           {/* AI Insights Panel */}
-          <div className="mt-4 bg-white border-4 border-black shadow-[6px_6px_0_0_#000] rounded-none p-4 md:p-5 flex flex-col relative">
+          <div className="mt-4 bg-gradient-to-br from-rose-500/10 via-background/80 to-orange-500/5 backdrop-blur-md border border-rose-500/20 shadow-xl rounded-3xl p-5 md:p-6 flex flex-col relative overflow-hidden">
+            <div className="absolute -top-24 -right-24 w-64 h-64 bg-rose-500/10 rounded-full blur-3xl pointer-events-none" />
             
-            
-            <div className="flex items-center justify-between mb-3 z-10">
+            <div className="flex items-center justify-between mb-4 z-10">
               <div className="flex items-center gap-2">
-                <Brain className="w-5 h-5 text-primary" />
+                <Brain className="w-5 h-5 text-rose-500" />
                 <h3 className="text-sm font-bold text-foreground">AI Attendance Analysis</h3>
               </div>
               <button 
                 onClick={() => fetchAiInsights(true)}
                 disabled={isAiLoading}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-black text-white hover:bg-zinc-800 text-xs font-bold uppercase tracking-wider px-3 py-1.5 transition-none border-2 border-black shadow-[2px_2px_0_0_#000] hover:translate-y-[2px] hover:translate-x-[2px] hover:shadow-none rounded-none"
+                className="flex items-center gap-1.5 px-4 py-2 bg-rose-500/10 text-rose-600 dark:text-rose-400 hover:bg-rose-500/20 text-[10px] font-bold uppercase tracking-wider rounded-xl transition-all"
               >
                 {isAiLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
                 Refresh
@@ -285,33 +301,33 @@ export const PredictiveAttendanceView: React.FC<PredictiveAttendanceViewProps> =
             </div>
 
             {isAiLoading && !aiInsights ? (
-              <div className="flex items-center justify-center py-6">
-                <Loader2 className="w-6 h-6 text-primary animate-spin" />
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="w-6 h-6 text-rose-500 animate-spin" />
               </div>
             ) : aiInsights ? (
-              <div className="space-y-4 z-10">
-                <p className="text-sm text-black font-medium leading-relaxed bg-zinc-100 p-3 border-2 border-black rounded-none">
+              <div className="space-y-5 z-10">
+                <p className="text-sm text-slate-900 dark:text-slate-100 font-semibold leading-relaxed bg-white/50 dark:bg-black/20 p-4 rounded-2xl border border-slate-200 dark:border-white/10 shadow-sm">
                   {aiInsights.summary}
                 </p>
                 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <span className="text-[11px] font-bold text-zinc-600 font-bold uppercase tracking-wider">Key Absence Reasons</span>
-                    <ul className="space-y-1.5">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5 px-1">
+                  <div className="space-y-3">
+                    <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-widest">Key Absence Reasons</span>
+                    <ul className="space-y-2.5">
                       {aiInsights.keyReasons.map((reason: string, i: number) => (
-                        <li key={i} className="flex items-start gap-2 text-xs text-foreground">
-                          <div className="w-1.5 h-1.5 rounded-full bg-rose-500 mt-1.5 shrink-0" />
+                        <li key={i} className="flex items-start gap-2.5 text-xs text-slate-900 dark:text-slate-100 font-medium">
+                          <div className="w-1.5 h-1.5 rounded-full bg-rose-500 dark:bg-rose-400 mt-1 shrink-0 shadow-[0_0_8px_rgba(251,113,133,0.5)]" />
                           <span>{reason}</span>
                         </li>
                       ))}
                     </ul>
                   </div>
-                  <div className="space-y-2">
-                    <span className="text-[11px] font-bold text-zinc-600 font-bold uppercase tracking-wider">Vulnerable Timings</span>
-                    <ul className="space-y-1.5">
+                  <div className="space-y-3">
+                    <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-widest">Vulnerable Timings</span>
+                    <ul className="space-y-2.5">
                       {aiInsights.vulnerableTimings.map((timing: string, i: number) => (
-                        <li key={i} className="flex items-start gap-2 text-xs text-foreground">
-                          <div className="w-1.5 h-1.5 rounded-full bg-amber-500 mt-1.5 shrink-0" />
+                        <li key={i} className="flex items-start gap-2.5 text-xs text-slate-900 dark:text-slate-100 font-medium">
+                          <div className="w-1.5 h-1.5 rounded-full bg-amber-500 dark:bg-amber-400 mt-1 shrink-0 shadow-[0_0_8px_rgba(251,191,36,0.5)]" />
                           <span>{timing}</span>
                         </li>
                       ))}
@@ -320,37 +336,35 @@ export const PredictiveAttendanceView: React.FC<PredictiveAttendanceViewProps> =
                 </div>
 
                 <div className="pt-2">
-                  <div className="flex items-start gap-2 bg-emerald-300 border-2 border-black p-3 rounded-none">
-                    <Sparkles className="w-4 h-4 text-emerald-500 mt-0.5 shrink-0" />
-                    <p className="text-xs font-semibold text-black font-black">
+                  <div className="flex items-start gap-3 bg-gradient-to-br from-orange-900/10 dark:from-orange-700/10 to-transparent border border-orange-900/20 dark:border-orange-700/20 p-4 rounded-2xl shadow-sm relative overflow-hidden">
+                    <Sparkles className="w-5 h-5 text-orange-900 dark:text-orange-600 shrink-0 mt-0.5" />
+                    <p className="text-sm text-orange-950 dark:text-orange-100/90 font-medium leading-relaxed">
                       {aiInsights.recommendation}
                     </p>
                   </div>
                 </div>
               </div>
             ) : (
-              <p className="text-xs text-zinc-600 font-bold">Unable to load AI insights at the moment.</p>
+              <p className="text-xs text-muted-foreground font-medium text-center py-4">Unable to load AI insights at the moment.</p>
             )}
           </div>
 
           {/* Main Forecast Hero Box */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
             {/* Box 1: Overall Status */}
-            <div className="p-4 bg-card/80 border border-border/80 rounded-2xl space-y-1">
-              <span className="text-[10px] font-bold text-zinc-600 font-bold uppercase tracking-wider">
-                Current Overall
-              </span>
+            <div className="bg-slate-900/10 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 md:p-5 shadow-sm">
+              <h4 className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-1.5">Current Overall</h4>
               <div className="flex items-baseline gap-2">
-                <span className="text-2xl font-black text-foreground">
+                <span className="text-2xl font-black text-slate-900 dark:text-white">
                   {overallPercentage.toFixed(1)}%
                 </span>
-                <span className="text-xs text-zinc-600 font-bold">
+                <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">
                   ({totalAttended}/{totalRecorded} classes)
                 </span>
               </div>
               <p
                 className={`text-xs font-bold ${
-                  isOverallOnTrack ? "text-emerald-500" : "text-rose-500"
+                  isOverallOnTrack ? "text-emerald-600 dark:text-emerald-500" : "text-rose-600 dark:text-rose-500"
                 }`}
               >
                 {isOverallOnTrack
@@ -360,33 +374,34 @@ export const PredictiveAttendanceView: React.FC<PredictiveAttendanceViewProps> =
             </div>
 
             {/* Box 2: Recommendation Action Callout */}
-            <div className="md:col-span-2 p-4 bg-primary/10 border border-primary/20 rounded-2xl flex flex-col justify-center space-y-2">
+            <div className={`md:col-span-2 p-4 border rounded-2xl flex flex-col justify-center space-y-2 relative overflow-hidden ${isOverallOnTrack ? 'bg-gradient-to-br from-emerald-500/10 to-teal-500/5 border-emerald-500/20' : 'bg-gradient-to-br from-amber-500/10 to-orange-500/5 border-amber-500/20'}`}>
+              <div className={`absolute -top-10 -right-10 w-40 h-40 rounded-full blur-2xl pointer-events-none ${isOverallOnTrack ? 'bg-emerald-500/10' : 'bg-amber-500/10'}`} />
               <div className="flex items-center gap-2">
                 {isOverallOnTrack ? (
-                  <ShieldCheck className="w-5 h-5 text-emerald-500 shrink-0" />
+                  <ShieldCheck className="w-5 h-5 text-emerald-600 dark:text-emerald-500 shrink-0" />
                 ) : (
-                  <Zap className="w-5 h-5 text-amber-500 shrink-0" />
+                  <Zap className="w-5 h-5 text-amber-600 dark:text-amber-500 shrink-0" />
                 )}
-                <h3 className="text-sm font-bold text-foreground">
+                <h3 className={`text-sm font-bold ${isOverallOnTrack ? 'text-emerald-950 dark:text-emerald-50' : 'text-amber-950 dark:text-amber-50'}`}>
                   {isOverallOnTrack ? "Goal Achieved Buffer" : "Action Required"}
                 </h3>
               </div>
 
               {isOverallOnTrack ? (
-                <p className="text-xs text-zinc-600 font-bold leading-relaxed">
-                  Great job! You are currently above your <span className="font-bold text-foreground">{globalTarget}%</span> target. You can safely miss up to{" "}
-                  <span className="font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-500/20">
+                <p className="text-xs text-emerald-800 dark:text-emerald-200/70 font-medium leading-relaxed">
+                  Great job! You are currently above your <span className="font-bold text-emerald-950 dark:text-emerald-50">{globalTarget}%</span> target. You can safely miss up to{" "}
+                  <span className="font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-500/20 dark:bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-500/30 dark:border-emerald-500/20">
                     {overallSafeMisses} consecutive class{overallSafeMisses !== 1 ? "es" : ""}
                   </span>{" "}
                   without dropping below {globalTarget}%.
                 </p>
               ) : (
-                <p className="text-xs text-zinc-600 font-bold leading-relaxed">
-                  To reach your target of <span className="font-bold text-foreground">{globalTarget}%</span>, you need to attend{" "}
-                  <span className="font-bold text-amber-400 bg-amber-500/10 px-2.5 py-1 rounded-md border border-amber-500/20 text-sm">
+                <p className="text-xs text-amber-800 dark:text-amber-200/70 font-medium leading-relaxed">
+                  To reach your target of <span className="font-bold text-amber-950 dark:text-amber-50">{globalTarget}%</span>, you need to attend{" "}
+                  <span className="font-bold text-amber-700 dark:text-amber-400 bg-amber-500/20 dark:bg-amber-500/10 px-2.5 py-1 rounded-md border border-amber-500/30 dark:border-amber-500/20 text-sm">
                     {overallNeeded} consecutive class{overallNeeded !== 1 ? "es" : ""}
-                  </span>{" "}
-                  without missing any.
+                  </span>
+                  .
                 </p>
               )}
             </div>
@@ -396,17 +411,17 @@ export const PredictiveAttendanceView: React.FC<PredictiveAttendanceViewProps> =
 
       {/* Simulation Bounds Panel */}
       {simulationBounds && (
-        <div className="bg-card border border-border rounded-2xl p-4 md:p-5 shadow-sm space-y-3 relative overflow-hidden">
+        <div className="bg-gradient-to-br from-rose-500/10 to-transparent border border-rose-500/20 rounded-2xl p-4 md:p-5 shadow-sm space-y-3 relative overflow-hidden">
           {/* Gradient accent */}
-          <div className="absolute top-0 right-0 w-24 h-24 bg-amber-500/10 rounded-full blur-2xl pointer-events-none" />
+          <div className="absolute top-0 right-0 w-32 h-32 bg-rose-500/10 rounded-full blur-2xl pointer-events-none" />
 
           <div className="flex items-center justify-between z-10 relative">
             <div>
-              <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
-                <Calendar className="w-4 h-4 text-primary" />
+              <h3 className="text-sm font-bold text-rose-950 dark:text-rose-50 flex items-center gap-2">
+                <Calendar className="w-4 h-4 text-rose-600 dark:text-rose-500" />
                 Simulation Bounds
               </h3>
-              <p className="text-xs text-zinc-600 font-bold mt-0.5">
+              <p className="text-xs text-rose-900/70 dark:text-rose-100/60 font-medium mt-0.5">
                 The precise dates used to calculate your remaining classes.
               </p>
             </div>
@@ -419,7 +434,7 @@ export const PredictiveAttendanceView: React.FC<PredictiveAttendanceViewProps> =
               <button
                 onClick={handleSaveBounds}
                 disabled={!localStart || !localEnd}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground text-xs font-bold rounded-lg shadow-sm hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 text-[#FFFFFF] text-xs font-bold rounded-lg shadow-sm hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
               >
                 <CheckCircle2 className="w-3.5 h-3.5" /> Save Dates
               </button>
@@ -428,7 +443,7 @@ export const PredictiveAttendanceView: React.FC<PredictiveAttendanceViewProps> =
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 z-10 relative pt-2">
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-zinc-600 font-bold">Commencement of Classes</label>
+              <label className="text-xs font-semibold text-rose-900/80 dark:text-rose-200/70">Commencement of Classes</label>
               <Input 
                 type="date"
                 value={localStart}
@@ -436,12 +451,12 @@ export const PredictiveAttendanceView: React.FC<PredictiveAttendanceViewProps> =
                   setLocalStart(e.target.value);
                   setHasUnsavedBounds(true);
                 }}
-                className="bg-background/50 h-9"
+                className="bg-rose-500/5 border-rose-500/20 focus-visible:ring-rose-500 h-9"
                 placeholder="Not set"
               />
             </div>
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-zinc-600 font-bold">Last Teaching Day</label>
+              <label className="text-xs font-semibold text-rose-900/80 dark:text-rose-200/70">Last Teaching Day</label>
               <Input 
                 type="date"
                 value={localEnd}
@@ -449,7 +464,7 @@ export const PredictiveAttendanceView: React.FC<PredictiveAttendanceViewProps> =
                   setLocalEnd(e.target.value);
                   setHasUnsavedBounds(true);
                 }}
-                className="bg-background/50 h-9"
+                className="bg-rose-500/5 border-rose-500/20 focus-visible:ring-rose-500 h-9"
                 placeholder="Not set"
               />
             </div>
@@ -461,18 +476,18 @@ export const PredictiveAttendanceView: React.FC<PredictiveAttendanceViewProps> =
       <div className="space-y-4">
         <div className="flex items-center justify-between px-1">
           <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
-            <BookOpen className="w-4 h-4 text-primary" />
+            <BookOpen className="w-4 h-4 text-amber-500" />
             <span>Subject-by-Subject Forecast</span>
           </h3>
-          <span className="text-xs text-zinc-600 font-bold">
+          <span className="text-xs text-muted-foreground font-medium">
             Targeting {globalTarget}% per subject
           </span>
         </div>
 
         {subjects.length === 0 ? (
           <div className="text-center py-8 bg-card border border-border rounded-2xl">
-            <Info className="w-8 h-8 text-zinc-600 font-bold mx-auto mb-2 opacity-60" />
-            <p className="text-xs text-zinc-600 font-bold">No subject logs recorded yet to make predictions.</p>
+            <Info className="w-8 h-8 text-muted-foreground font-medium mx-auto mb-2 opacity-60" />
+            <p className="text-xs text-muted-foreground font-medium">No subject logs recorded yet to make predictions.</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-3">
@@ -527,12 +542,12 @@ export const PredictiveAttendanceView: React.FC<PredictiveAttendanceViewProps> =
                         <div className="flex items-center gap-2">
                           <h4 className="text-base font-bold text-foreground">{sub.name}</h4>
                           {sub.code && (
-                            <span className="text-[10px] font-semibold text-zinc-600 font-bold bg-muted px-2 py-0.5 rounded-md">
+                            <span className="text-[10px] font-semibold text-muted-foreground bg-muted px-2 py-0.5 rounded-md">
                               {sub.code}
                             </span>
                           )}
                         </div>
-                        <p className="text-xs text-zinc-600 font-bold mt-0.5">
+                        <p className="text-xs text-muted-foreground font-medium mt-0.5">
                           Forecasted attendance <span className="font-semibold text-foreground">{simAttended}</span> /{" "}
                           <span className="font-semibold text-foreground">{simTotal}</span> classes (<span className={simPct >= subTarget ? "text-emerald-500 font-bold" : "text-amber-500 font-bold"}>{simPct.toFixed(1)}%</span>)
                           <span className="ml-2 opacity-70">
@@ -542,8 +557,8 @@ export const PredictiveAttendanceView: React.FC<PredictiveAttendanceViewProps> =
                       </div>
 
                       <div className="shrink-0 text-right">
-                        <div className="text-xs font-bold text-zinc-600 font-bold mb-0.5">Expected Total Classes</div>
-                        <div className="text-xl font-black text-foreground">{simTotal} <span className="text-xs text-zinc-600 font-bold font-medium">({remainingText})</span></div>
+                        <div className="text-xs font-bold text-muted-foreground mb-0.5">Expected Total Classes</div>
+                        <div className="text-xl font-black text-foreground">{simTotal} <span className="text-xs text-muted-foreground font-medium">({remainingText})</span></div>
                       </div>
                     </div>
 
@@ -562,11 +577,11 @@ export const PredictiveAttendanceView: React.FC<PredictiveAttendanceViewProps> =
                           <Calendar className="w-3.5 h-3.5" /> End of Semester Simulator
                         </span>
                         <div className="flex items-center gap-2">
-                          <span className="text-[11px] text-zinc-600 font-bold">Mark the {maxRemaining} remaining classes</span>
+                          <span className="text-[11px] text-muted-foreground font-medium">Mark the {maxRemaining} remaining classes</span>
                           {sub.futureBreakdown && sub.futureBreakdown.length > 0 && (
                             <button 
                               onClick={() => openModal(sub)}
-                              className="text-[10px] bg-primary/10 text-primary hover:bg-primary/20 px-2 py-0.5 rounded-full font-semibold transition-colors flex items-center gap-1"
+                              className="text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 px-2 py-0.5 rounded-full font-semibold transition-colors flex items-center gap-1"
                             >
                               <Info className="w-3 h-3" /> View Logic
                             </button>

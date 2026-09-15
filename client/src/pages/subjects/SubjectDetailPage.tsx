@@ -94,6 +94,15 @@ export const SubjectDetailPage = () => {
   const [simAttended, setSimAttended] = useState(0);
   const [simMissed, setSimMissed] = useState(0);
 
+  const storeSubjects = useAttendanceStore(state => state.subjects);
+  
+  useEffect(() => {
+    if (headerStats && !isOverall) {
+      setSimAttended(headerStats.attended);
+      setSimMissed(headerStats.total - headerStats.attended);
+    }
+  }, [headerStats, isOverall]);
+
   const fetchLogsData = async () => {
     const querySubject = isOverall ? "all" : id;
     try {
@@ -103,8 +112,8 @@ export const SubjectDetailPage = () => {
       const subjects = res.data.subjects || [];
 
       // Cache the response for offline use
-      const existingCache = useCacheStore.getState().subjects || {};
-      useCacheStore.getState().setCache('subjects', { ...existingCache, [querySubject]: res.data });
+      const existingCache = useCacheStore.getState().subject_logs || {};
+      useCacheStore.getState().setCache('subject_logs', { ...existingCache, [querySubject]: res.data });
 
       setLogs(rawLogs);
       setSubjectsList(subjects);
@@ -159,13 +168,31 @@ export const SubjectDetailPage = () => {
     } catch (error) {
       console.error("Failed to fetch attendance logs:", error);
       // Offline Fallback
-      const existingCache = useCacheStore.getState().subjects || {};
+      const existingCache = useCacheStore.getState().subject_logs || {};
       const cachedData = existingCache[querySubject];
-      if (cachedData) {
-        const rawLogs: AttendanceLogItem[] = cachedData.logs || [];
-        const subjects = cachedData.subjects || [];
-        setLogs(rawLogs);
-        setSubjectsList(subjects);
+        
+        let rawLogs: AttendanceLogItem[] = [];
+        let subjects: any[] = [];
+        
+        if (cachedData) {
+          rawLogs = cachedData.logs || [];
+          subjects = cachedData.subjects || [];
+        } else {
+          // If specific subject cache is missing, fallback to the "overall" cache which contains all subjects
+          const allCache = existingCache["all"];
+          if (allCache) {
+            rawLogs = (allCache.logs || []).filter((l: AttendanceLogItem) => l.subjectId === id);
+            subjects = allCache.subjects || [];
+          } else {
+            // Ultimate fallback to just render an empty state gracefully instead of crashing
+            rawLogs = [];
+            subjects = useAttendanceStore.getState().subjects;
+          }
+        }
+
+        if (true) {
+          setLogs(rawLogs);
+          setSubjectsList(subjects);
 
         if (isOverall) {
           let totalAttended = 0;
@@ -331,51 +358,86 @@ export const SubjectDetailPage = () => {
   const pct = headerStats ? headerStats.percentage : 0;
   const targetPct = headerStats ? headerStats.target : (useAuthStore.getState().user?.targetAttendance ?? 75);
 
+  const getRemainingClasses = () => {
+    if (!headerStats) return 30; // fallback
+    if (isOverall) {
+      return storeSubjects.reduce((acc, sub) => acc + (sub.remainingClasses || 0), 0);
+    } else {
+      const sub = storeSubjects.find(s => s.id === id);
+      return sub?.remainingClasses || 30;
+    }
+  };
+  const remaining = getRemainingClasses();
+
+
   return (
-    <div className="min-h-screen bg-background text-foreground pb-40 md:pb-28">
-      {/* Top Header matching dark screenshot theme */}
-      <div className="sticky top-0 z-30 bg-background/95 backdrop-blur-md border-b border-border px-4 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top))]">
-        <div className="max-w-3xl mx-auto flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
+    <div className="min-h-screen pb-40 md:pb-28 relative bg-[#F4EED0] dark:bg-[#050508] text-foreground">
+      
+      
+      {/* 3D Fluid Background */}
+      <div className="fixed inset-0 z-0 pointer-events-none overflow-hidden">
+        
+        
+        
+        {/* Grain overlay for cinematic feel */}
+        <div className="absolute inset-0 opacity-[0.04] dark:opacity-[0.06]" style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg viewBox=%220 0 200 200%22 xmlns=%22http://www.w3.org/2000/svg%22%3E%3Cfilter id=%22noiseFilter%22%3E%3CfeTurbulence type=%22fractalNoise%22 baseFrequency=%220.8%22 numOctaves=%223%22 stitchTiles=%22stitch%22/%3E%3C/filter%3E%3Crect width=%22100%25%22 height=%22100%25%22 filter=%22url(%23noiseFilter)%22/%3E%3C/svg%3E")' }} />
+      </div>
+
+      <div className="relative z-10">
+        {/* Transparent Glassmorphism Header */}
+        <div className="sticky top-0 z-30 bg-[#F4EED0]/60 dark:bg-[#050508]/60 backdrop-blur-xl border-b border-black/5 dark:border-white/5 px-4 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top))]">
+          <div className="max-w-3xl mx-auto flex items-center justify-between gap-3">
             <Link
               to="/subjects"
-              className="p-1.5 hover:bg-muted rounded-full transition-colors text-muted-foreground hover:text-foreground"
+              className="p-2 hover:bg-black/10 dark:hover:bg-white/10 rounded-full transition-colors text-black/70 dark:text-white/70"
             >
               <ArrowLeft className="w-5 h-5" />
             </Link>
+            <button
+              onClick={() => setShowStatusMenu(!showStatusMenu)}
+              className="p-2 rounded-xl text-black/70 dark:text-white/70 hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
+              title="Filter options"
+            >
+              <SlidersHorizontal className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
 
-            {/* Fraction Badge e.g. 80.00 / 75 */}
-            <div className="flex flex-col items-center justify-center border-b-2 border-foreground/30 px-2 py-0.5 min-w-[54px]">
-              <span className="text-sm font-bold text-foreground leading-none">
-                {pct.toFixed(2)}
+        {/* Cinematic Edge-to-Edge Hero Section */}
+        <div className="px-6 pt-16 pb-12 max-w-4xl mx-auto text-center flex flex-col items-center justify-center min-h-[35vh]">
+          <h1 className="cinematic-font text-5xl md:text-7xl lg:text-8xl text-black dark:text-white leading-[0.9] text-balance drop-shadow-2xl flex flex-wrap justify-center items-center gap-x-3">
+            {(() => {
+              const name = headerStats?.name || (isOverall ? "Overall" : (storeSubjects.find(s => s.id === id)?.name || "Subject"));
+              // Split by 'and' or '&' to inject the gold accent
+              const parts = name.split(/(\bAND\b|\&)/i);
+              return parts.map((part, i) => (
+                part.toUpperCase() === 'AND' || part === '&' 
+                  ? <span key={i} className="text-[#D4AF37] dark:text-[#FFD700]">&amp;</span>
+                  : <span key={i}>{part}</span>
+              ));
+            })()}
+          </h1>
+          
+          <div className="mt-10 flex items-center justify-center gap-8">
+            <div className="flex flex-col items-center">
+              <span className="cinematic-font text-4xl md:text-5xl text-[#D4AF37] dark:text-[#FFD700] drop-shadow-lg">
+                {pct.toFixed(1)}%
               </span>
-              <span className="text-[10px] font-semibold text-muted-foreground leading-none border-t border-border mt-0.5 pt-0.5 w-full text-center">
-                {targetPct}
-              </span>
+              <span className="text-[10px] font-bold text-black/50 dark:text-white/50 tracking-[0.2em] uppercase mt-1">Current</span>
             </div>
-
-            {/* Subject Title & Subtitle */}
-            <div>
-              <h1 className="text-base font-bold text-foreground leading-tight">
-                {headerStats?.name || (isOverall ? "Overall" : "Subject")}
-              </h1>
-              <p className="text-xs text-emerald-500 font-medium">
-                {headerStats?.statusText || "can miss 0 lectures"}
-              </p>
+            <div className="w-px h-12 bg-black/10 dark:bg-white/10" />
+            <div className="flex flex-col items-center">
+              <span className="cinematic-font text-4xl md:text-5xl text-black dark:text-white drop-shadow-lg">
+                {targetPct}%
+              </span>
+              <span className="text-[10px] font-bold text-black/50 dark:text-white/50 tracking-[0.2em] uppercase mt-1">Target</span>
             </div>
           </div>
-
-          <button
-            onClick={() => {
-              setShowStatusMenu(!showStatusMenu);
-            }}
-            className="p-2 rounded-xl text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-            title="Filter options"
-          >
-            <SlidersHorizontal className="w-5 h-5" />
-          </button>
+          
+          <p className="mt-8 text-sm md:text-base font-medium px-5 py-2.5 bg-black/5 dark:bg-white/5 backdrop-blur-md rounded-full border border-black/10 dark:border-white/10 text-black/80 dark:text-white/80 shadow-xl">
+            {headerStats?.statusText || "can miss 0 lectures"}
+          </p>
         </div>
-      </div>
 
       <div className="max-w-3xl mx-auto px-4 pt-4 space-y-4">
         {/* Toggle between Logs & Simulator for single subject */}
@@ -421,7 +483,7 @@ export const SubjectDetailPage = () => {
             {/* Filter Pills Bar */}
             <div className="flex flex-wrap items-center gap-2 pb-1 text-xs relative z-40">
               {/* Total Records Pill */}
-              <span className="bg-emerald-900/30 text-emerald-400 border border-emerald-500/20 px-3 py-1.5 rounded-xl font-medium shrink-0">
+              <span className="bg-emerald-500/10 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 px-3 py-1.5 rounded-xl font-medium shrink-0">
                 {filteredLogs.length} record{filteredLogs.length !== 1 ? "s" : ""}
               </span>
 
@@ -485,7 +547,7 @@ export const SubjectDetailPage = () => {
                     <span>
                       {selectedSubjectFilter === "all"
                         ? "All subjects"
-                        : subjectsList.find((s) => s.id === selectedSubjectFilter)?.name || "Subject"}
+                        : subjectsList.find((s) => s.id === selectedSubjectFilter)?.name || storeSubjects.find((s) => s.id === selectedSubjectFilter)?.name || "Subject"}
                     </span>
                     <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
                   </button>
@@ -613,10 +675,10 @@ export const SubjectDetailPage = () => {
                               style={{ backgroundColor: item.subjectColor || "#8b5cf6" }}
                             />
 
-                            <div className="pl-2 space-y-3">
+                            <div className="pl-2 space-y-1">
                               {/* If overall view: show Subject Mini Card Header */}
                               {isOverall && (
-                                <div className="flex items-start justify-between gap-3 border-b border-border/50 pb-2.5">
+                                <div className="flex items-start justify-between gap-3 pb-1">
                                   <div className="flex items-center gap-3">
                                     {/* Subject badge e.g. 90.00 / 75 */}
                                     <div className="flex flex-col items-center justify-center bg-emerald-500/10 border border-emerald-500/20 rounded-xl px-2 py-1 min-w-[50px]">
@@ -624,7 +686,7 @@ export const SubjectDetailPage = () => {
                                         {item.currentPercentage.toFixed(2)}
                                       </span>
                                       <div className="w-full h-px bg-emerald-500/20 my-0.5" />
-                                      <span className="text-[9px] font-semibold text-emerald-400 leading-none">
+                                      <span className="text-[9px] font-semibold text-emerald-600 dark:text-emerald-400 leading-none">
                                         {item.target}
                                       </span>
                                     </div>
@@ -644,12 +706,12 @@ export const SubjectDetailPage = () => {
                               {/* Slot Line & Attendance Actions */}
                               <div className="flex items-center justify-between gap-3 pt-0.5">
                                 <div className="flex items-center gap-2 flex-wrap">
-                                  <span className={`text-sm font-semibold ${item.isExtra || item.slotType === "Extra" ? "text-amber-400 font-bold" : "text-emerald-400"}`}>
+                                  <span className={`text-sm font-semibold ${item.isExtra || item.slotType === "Extra" ? "text-amber-600 dark:text-amber-400 font-bold" : "text-emerald-600 dark:text-emerald-400"}`}>
                                     {item.slotType}
                                   </span>
                                   {(item.isExtra || item.slotType === "Extra") && (
-                                    <span className="bg-amber-500/20 text-amber-400 border border-amber-500/30 text-[10px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1 shadow-sm">
-                                      <Sparkles className="w-3 h-3 text-amber-400" />
+                                    <span className="bg-amber-500/10 dark:bg-amber-500/20 text-amber-700 dark:text-amber-400 border border-amber-500/30 text-[10px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1 shadow-sm">
+                                      <Sparkles className="w-3 h-3 text-amber-600 dark:text-amber-400" />
                                       Extra Lecture
                                     </span>
                                   )}
@@ -725,11 +787,11 @@ export const SubjectDetailPage = () => {
                                     }}
                                     className={`px-3 py-1.5 rounded-2xl text-xs font-bold border flex items-center gap-1.5 transition-all shadow-sm ${
                                       isAttended
-                                        ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20"
+                                        ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/20"
                                         : isMissed
-                                        ? "border-rose-500/40 bg-rose-500/10 text-rose-400 hover:bg-rose-500/20"
+                                        ? "border-rose-500/40 bg-rose-500/10 text-rose-700 dark:text-rose-400 hover:bg-rose-500/20"
                                         : isOff
-                                        ? "border-amber-500/40 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20"
+                                        ? "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-400 hover:bg-amber-500/20"
                                         : "border-border bg-muted/40 text-muted-foreground hover:bg-muted"
                                     }`}
                                   >
@@ -798,10 +860,17 @@ export const SubjectDetailPage = () => {
                     </div>
                     <input
                       type="range"
-                      min="0"
-                      max="30"
+                      min={headerStats?.attended || 0}
+                      max={(headerStats?.attended || 0) + remaining}
                       value={simAttended}
-                      onChange={(e) => setSimAttended(Number(e.target.value))}
+                      onChange={(e) => {
+                        const val = Number(e.target.value);
+                        setSimAttended(val);
+                        const expectedTotal = (headerStats?.total || 0) + remaining;
+                        if (val + simMissed > expectedTotal) {
+                          setSimMissed(expectedTotal - val);
+                        }
+                      }}
                       className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer accent-emerald-500"
                     />
                   </div>
@@ -815,10 +884,17 @@ export const SubjectDetailPage = () => {
                     </div>
                     <input
                       type="range"
-                      min="0"
-                      max="30"
+                      min={(headerStats?.total || 0) - (headerStats?.attended || 0)}
+                      max={((headerStats?.total || 0) - (headerStats?.attended || 0)) + remaining}
                       value={simMissed}
-                      onChange={(e) => setSimMissed(Number(e.target.value))}
+                      onChange={(e) => {
+                        const val = Number(e.target.value);
+                        setSimMissed(val);
+                        const expectedTotal = (headerStats?.total || 0) + remaining;
+                        if (val + simAttended > expectedTotal) {
+                          setSimAttended(expectedTotal - val);
+                        }
+                      }}
                       className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer accent-rose-500"
                     />
                   </div>
@@ -827,8 +903,8 @@ export const SubjectDetailPage = () => {
 
               {/* Simulation Result */}
               {headerStats && (() => {
-                const projAtt = headerStats.attended + simAttended;
-                const projTot = headerStats.total + simAttended + simMissed;
+                const projAtt = simAttended;
+                const projTot = simAttended + simMissed;
                 const projPct = projTot > 0 ? (projAtt / projTot) * 100 : 0;
                 const isSafe = projPct >= headerStats.target;
 
@@ -844,9 +920,14 @@ export const SubjectDetailPage = () => {
                     >
                       {projPct.toFixed(1)}%
                     </span>
-                    <span className="text-xs text-muted-foreground mt-1">
-                      Target: {headerStats.target}%
-                    </span>
+                    <div className="flex flex-col items-center gap-1 mt-1 text-center">
+                      <span className="text-xs text-muted-foreground">
+                        Target: {headerStats.target}%
+                      </span>
+                      <span className="text-[10px] text-muted-foreground/80 max-w-[200px]">
+                        Expected Classes by End of Semester: {headerStats.total + remaining}
+                      </span>
+                    </div>
 
                     <div className="mt-4">
                       {isSafe ? (
@@ -890,6 +971,7 @@ export const SubjectDetailPage = () => {
           )}
         </button>
       </div>
+    </div>
     </div>
   );
 };

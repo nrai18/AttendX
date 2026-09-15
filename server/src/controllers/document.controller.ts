@@ -27,7 +27,7 @@ export class DocumentController {
 
   static async downloadDocument(req: Request, res: Response) {
     try {
-      const { id } = req.params;
+      const id = (req.params.id as string) as string;
       const doc = await prisma.storedDocument.findUnique({ where: { id } });
       
       if (!doc) {
@@ -64,14 +64,14 @@ export class DocumentController {
       if (!req.user) return res.status(401).json({ message: 'Unauthorized' });
       
       const doc = await prisma.storedDocument.findUnique({
-        where: { id: req.params.id }
+        where: { id: (req.params.id as string) }
       });
       
       if (!doc || doc.userId !== req.user.userId) {
         return res.status(404).json({ message: 'Document not found' });
       }
       
-      await prisma.storedDocument.delete({ where: { id: req.params.id } });
+      await prisma.storedDocument.delete({ where: { id: (req.params.id as string) } });
       
       // Attempt to delete physical file if it's stored in /uploads
       if (doc.fileUrl.startsWith('/uploads/')) {

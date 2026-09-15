@@ -9,6 +9,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+  
 }
 
 // ─────────────────────────────────────────────────────────
@@ -125,7 +126,7 @@ model User {
   role             UserRole  @default(student)
   department       String?
   batch            String? // e.g. "2022-2026"
-  targetAttendance Int       @default(75)
+  targetAttendance Int
   theme            Theme     @default(system)
   fcmToken         String?
   gender           String?   // "male" | "female" | "other"

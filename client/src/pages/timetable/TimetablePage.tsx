@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Plus, Trash2, Loader2, CalendarPlus, Upload, Image as ImageIcon, X, Download, FileSpreadsheet, Edit3, ArrowLeft, CheckSquare, Square, CheckCircle2, Zap } from "lucide-react";
+import { Plus, Trash2, Loader2, CalendarPlus, Upload, Image as ImageIcon, X, Download, FileSpreadsheet, Edit3, ArrowLeft, CheckSquare, Square, CheckCircle2, Zap, Archive } from "lucide-react";
 import { PageSkeleton } from "../../components/common/PageSkeleton";
 import { toast } from "sonner";
 import { api } from "../../lib/api";
@@ -19,6 +19,7 @@ import { normalizeTimeString } from "../../utils/timeUtils";
 import { downloadBlob } from "../../lib/download";
 import { useAttendanceStore } from "../../stores/attendanceStore";
 import { useCacheStore } from "../../stores/cacheStore";
+import { useScrollLock } from "../../hooks/useScrollLock";
 
 interface Subject {
   id: string;
@@ -62,7 +63,14 @@ export const TimetablePage = () => {
 
 
   // Selection & Delete Modal State
+  
   const [isSelectMode, setIsSelectMode] = useState(false);
+  const [isDesktop, setIsDesktop] = React.useState(window.innerWidth >= 1024);
+  React.useEffect(() => {
+    const handleResize = () => setIsDesktop(window.innerWidth >= 1024);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
   const [selectedSlotIds, setSelectedSlotIds] = useState<string[]>([]);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [slotsPendingDelete, setSlotsPendingDelete] = useState<TimetableSlot[]>([]);
@@ -88,6 +96,7 @@ export const TimetablePage = () => {
   // OCR Upload State
   const [isUploading, setIsUploading] = useState(false);
   const [isOcrModalOpen, setIsOcrModalOpen] = useState(false);
+  useScrollLock(isOcrModalOpen);
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -149,6 +158,19 @@ export const TimetablePage = () => {
       fetchStats();
     } catch (error) {
       console.error("Failed to fetch timetable data:", error);
+      const cache = useCacheStore.getState().timetable;
+      if (cache && cache.activeSemester) {
+        setActiveSemester(cache.activeSemester);
+        setSubjects(cache.subjects || []);
+        setSlots(cache.slots || []);
+      } else {
+        const attendanceState = useAttendanceStore.getState();
+        if (attendanceState.hasActiveSemester && attendanceState.activeSemesterId) {
+          // We at least know there is an active semester from the global store
+          setActiveSemester({ id: attendanceState.activeSemesterId, name: "Active Semester", startDate: new Date().toISOString(), endDate: new Date().toISOString() } as any);
+          setSubjects(attendanceState.subjects as any);
+        }
+      }
     } finally {
       setIsLoading(false);
     }
@@ -342,6 +364,34 @@ export const TimetablePage = () => {
     setIsDeleteModalOpen(true);
   };
 
+  const handleMergeSlots = async () => {
+    const selectedSlots = slots.filter((s) => selectedSlotIds.includes(s.id));
+    if (selectedSlots.length !== 2) {
+      toast.error("Please select exactly 2 slots to merge.");
+      return;
+    }
+    const [s1, s2] = selectedSlots;
+    if (s1.subjectId !== s2.subjectId || s1.dayOfWeek !== s2.dayOfWeek) {
+      toast.error("Slots must be of the same subject on the same day.");
+      return;
+    }
+    
+    // Sort by start time
+    const sorted = [s1, s2].sort((a, b) => a.startTime.localeCompare(b.startTime));
+    const [first, second] = sorted;
+    
+    try {
+      await api.patch(`/timetable/slots/${first.id}`, { endTime: second.endTime });
+      await api.delete(`/timetable/slots/${second.id}`);
+      toast.success("Slots merged successfully!");
+      setSelectedSlotIds([]);
+      setIsSelectMode(false);
+      fetchData();
+    } catch (error) {
+      toast.error("Failed to merge slots.");
+    }
+  };
+
   // Execute deletion with chosen scope and preservation option
   const handleConfirmDelete = async ({
     scope,
@@ -510,92 +560,55 @@ export const TimetablePage = () => {
   const slotsByDay = DAYS.map((_, index) => slots.filter(s => s.dayOfWeek === index));
 
   return (
-    <div className="p-4 md:p-8 space-y-6 max-w-7xl mx-auto w-full pb-24 md:pb-8">
-      {/* Top Header Bar */}
-      {isSelectMode ? (
-        /* Selection Mode Action Bar */
-        <div className="flex items-center justify-between bg-card border border-primary/30 rounded-2xl p-3.5 px-5 shadow-lg animate-in fade-in slide-in-from-top-2 duration-200">
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => {
-                setIsSelectMode(false);
-                setSelectedSlotIds([]);
-              }}
-              className="p-2 -ml-2 rounded-xl text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
-              title="Exit selection mode"
-            >
-              <ArrowLeft className="w-5 h-5" />
-            </button>
-            <div className="flex items-center gap-2">
-              <span className="text-lg font-bold text-foreground font-mono">
-                {selectedSlotIds.length}
-              </span>
-              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                Selected
-              </span>
-            </div>
-          </div>
+    <div className="theme-aether p-4 md:p-8 space-y-6 w-full mx-auto pb-24 md:pb-8 min-h-screen">
 
-          <div className="flex items-center gap-2">
-            <button
-              onClick={handleSelectAllCurrentDay}
-              className="px-3 py-1.5 rounded-xl text-xs font-bold text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer flex items-center gap-1.5"
-            >
-              {selectedSlotIds.length === currentDaySlots.length && currentDaySlots.length > 0 ? (
-                <>
-                  <CheckSquare className="w-4 h-4 text-primary" />
-                  <span>Deselect All</span>
-                </>
-              ) : (
-                <>
-                  <Square className="w-4 h-4" />
-                  <span>Select All</span>
-                </>
-              )}
-            </button>
-            <button
-              onClick={handleInitiateDeleteSelected}
-              disabled={selectedSlotIds.length === 0}
-              className="flex items-center gap-1.5 bg-rose-600 hover:bg-rose-500 disabled:opacity-40 disabled:cursor-not-allowed text-white px-4 py-2 rounded-xl text-xs font-bold shadow-md shadow-rose-600/20 transition-all cursor-pointer"
-              title="Delete selected lectures"
-            >
-              <Trash2 className="w-4 h-4" />
-              <span>Delete</span>
-            </button>
-          </div>
+      
+            {/* Top Header Bar */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center pb-8 border-b border-[rgba(255,255,255,0.1)] mb-8 gap-6">
+        <div className="flex items-center gap-4">
+          <h1 className="text-4xl font-medium tracking-tight uppercase" style={{ color: "var(--aether-text)" }}>
+            TIMETABLE
+          </h1>
         </div>
-      ) : (
-        /* Normal Header Bar */
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-          <div className="flex items-center gap-3">
-            <div>
-              <div className="flex items-center gap-3">
-                <h1 className="text-2xl sm:text-3xl font-bold text-foreground tracking-tight">Timetable</h1>
-                {overallPercentage !== undefined && overallPercentage !== null && (
-                  <div className="px-3 py-1 bg-muted border border-border rounded-full flex items-center gap-1.5 text-xs font-mono font-bold text-foreground">
-                    <span className="text-teal-600 dark:text-teal-400">{overallPercentage.toFixed(1)}%</span>
-                    <span className="text-muted-foreground">|</span>
-                    <span className="text-muted-foreground">{targetPercentage}%</span>
-                  </div>
-                )}
-              </div>
-              <div className="flex flex-wrap items-center gap-2.5 mt-1">
-                <p className="text-sm text-muted-foreground">Manage schedule for {activeSemester.name}.</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              onClick={() => setIsSelectMode(true)}
-              title="Select multiple lectures to delete or manage"
-              className="flex items-center gap-1.5 bg-muted hover:bg-muted/80 text-foreground border border-border px-3.5 py-2 rounded-xl text-xs font-semibold transition-colors cursor-pointer"
-            >
-              <Edit3 className="w-3.5 h-3.5 text-muted-foreground" />
-              <span>Edit / Select</span>
-            </button>
-
-            <button
+        
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => {
+              if (isSelectMode) setSelectedSlotIds([]);
+              setIsSelectMode(!isSelectMode);
+            }}
+            title={isSelectMode ? "Cancel selection" : "Select multiple lectures to delete or manage"}
+            className="flex items-center gap-1.5 bg-muted hover:bg-muted/80 text-foreground border border-border px-3.5 py-2 rounded-xl text-xs font-semibold transition-colors cursor-pointer"
+          >
+            {isSelectMode ? <X className="w-3.5 h-3.5 text-muted-foreground" /> : <Edit3 className="w-3.5 h-3.5 text-muted-foreground" />}
+            <span>{isSelectMode ? "Cancel" : "Edit / Select"}</span>
+          </button>
+          
+          {isSelectMode && selectedSlotIds.length > 0 && (
+            <>
+              <button 
+                onClick={handleInitiateDeleteSelected}
+                className="flex items-center gap-2 bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-500/30 px-3 py-2 rounded-xl text-xs font-semibold transition-colors cursor-pointer"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Delete ({selectedSlotIds.length})</span>
+              </button>
+              
+              {selectedSlotIds.length === 2 && (
+                <button 
+                  onClick={handleMergeSlots}
+                  className="flex items-center gap-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 dark:bg-blue-500/10 dark:text-blue-400 border border-blue-200 dark:border-blue-500/30 px-3.5 py-2 rounded-xl text-xs font-semibold transition-colors cursor-pointer"
+                >
+                  <FileSpreadsheet className="w-3.5 h-3.5" />
+                  <span>Merge Slots</span>
+                </button>
+              )}
+            </>
+          )}
+          
+          {!isSelectMode && (
+            <>
+              <button
                 onClick={() => setIsArchiveModalOpen(true)}
                 title="View Archived Timetables"
                 className="flex items-center gap-1.5 bg-secondary/30 hover:bg-secondary/50 text-secondary-foreground border border-border px-3.5 py-2 rounded-xl text-xs font-semibold transition-colors cursor-pointer"
@@ -603,55 +616,57 @@ export const TimetablePage = () => {
                 <img src="/src/assets/archive.svg" alt="Archive" className="w-3.5 h-3.5 dark:invert opacity-70" />
                 <span className="hidden sm:inline">Archived</span>
               </button>
+
+              <button
+                onClick={() => setIsReconciliationOpen(true)}
+                title="Manually map duplicate subjects"
+                className="flex items-center gap-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-500/30 px-3.5 py-2 rounded-xl text-xs font-semibold transition-colors cursor-pointer"
+              >
+                <Wand2 className="w-3.5 h-3.5" />
+                <span>Merge</span>
+              </button>
+
+              <button
+                onClick={() => setIsClearModalOpen(true)}
+                title="Clear Timetable Schedule"
+                className="flex items-center gap-2 bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-500/30 px-3 py-2 rounded-xl text-xs font-semibold transition-colors cursor-pointer"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Clear All</span>
+              </button>
+              
+              <button
+                onClick={() => setIsOcrModalOpen(true)}
+                className="flex items-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white px-3.5 py-2 rounded-xl text-xs font-semibold shadow-md transition-all cursor-pointer"
+              >
+                <Upload className="w-3.5 h-3.5" />
+                <span>OCR Import</span>
+              </button>
+              
               <button
                 onClick={() => {
-                  api.get(`/subjects?semesterId=${activeSemester?.id}`).then(res => {
-                  const subs = Array.isArray(res.data) ? res.data : [];
-                  if (subs.length >= 2) {
-                    const allIds = subs.map((s: any) => s.id);
-                    setNewSubjectIds(allIds);
-                    setExistingSubjectIds(allIds);
-                    setIsReconciliationOpen(true);
-                  } else {
-                    toast.error("No subjects to reconcile! You need at least two subjects in your semester to merge them.");
-                  }
-                });
-              }}
-              title="Manually map duplicate subjects"
-              className="flex items-center gap-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 px-3.5 py-2 rounded-xl text-xs font-semibold transition-colors cursor-pointer"
-            >
-              <Wand2 className="w-3.5 h-3.5" />
-              <span>Merge</span>
-            </button>
-            <button
-              onClick={handleSafeDeleteTimetable}
-              title="Clear Timetable Schedule"
-              className="flex items-center gap-2 bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-500/30 px-3 py-2 rounded-xl text-xs font-semibold transition-colors cursor-pointer"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Clear All</span>
-            </button>
-            <button
-              onClick={() => setIsOcrModalOpen(true)}
-              className="flex items-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white px-3.5 py-2 rounded-xl text-xs font-semibold shadow-md transition-all cursor-pointer"
-            >
-              <Upload className="w-3.5 h-3.5" />
-              <span>OCR Import</span>
-            </button>
-            <button
-              onClick={() => { setIsAdding(true); setDayOfWeek(activeTab); }}
-              className="flex items-center gap-2 bg-primary text-primary-foreground hover:bg-primary/90 px-4 py-2 rounded-xl text-xs font-bold shadow-md transition-colors cursor-pointer"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Add Slot</span>
-            </button>
-          </div>
+                  resetForm();
+                  setIsAdding(true);
+                  setDayOfWeek(activeTab);
+                  setTimeout(() => document.getElementById('add-slot-form')?.scrollIntoView({ behavior: 'smooth' }), 100);
+                }}
+                className="flex items-center gap-2 bg-primary text-primary-foreground hover:bg-primary/90 px-4 py-2 rounded-xl text-xs font-bold shadow-md transition-colors cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Add Slot</span>
+              </button>
+            </>
+          )}
         </div>
-      )}
+      </div>
       
-      {/* OCR Modal */}
+      <div className="flex justify-between items-center mb-8 aether-mono text-xs font-semibold" style={{ color: "var(--aether-text-muted)" }}>
+        <span>{activeSemester?.name || "No Active Semester"}</span>
+      </div>
+
+{/* OCR Modal */}
       {isOcrModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-white/40 dark:bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-card border border-border rounded-2xl w-full max-w-md overflow-hidden shadow-2xl">
             <div className="p-4 border-b border-border flex justify-between items-center">
               <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
@@ -792,7 +807,7 @@ export const TimetablePage = () => {
 
       {/* Forms (Add Slot) */}
       {isAdding && (
-        <form onSubmit={handleAddSlot} className="bg-card border border-border rounded-2xl p-6 space-y-5 shadow-xl animate-in slide-in-from-top-4 duration-300">
+        <form id="add-slot-form" onSubmit={handleAddSlot} className="bg-card border border-border rounded-2xl p-6 space-y-5 shadow-xl animate-in slide-in-from-top-4 duration-300">
           <h2 className="text-lg font-bold text-foreground border-b border-border pb-4">{editingSlotId ? "Edit Timetable Slot" : "Add Timetable Slot"}</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-5">
             <div className="space-y-1.5">
@@ -802,7 +817,7 @@ export const TimetablePage = () => {
                 onChange={(e) => setDayOfWeek(Number(e.target.value))}
                 className="w-full bg-background border border-border rounded-xl px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 text-sm"
               >
-                {DAYS.map((day, idx) => <option key={day} value={idx}>{day}</option>)}
+                {DAYS.map((day, idx) => <option key={day} value={idx} className="bg-white text-black dark:bg-[#0a0a0a] dark:text-white">{day}</option>)}
               </select>
             </div>
             <div className="space-y-1.5">
@@ -813,8 +828,8 @@ export const TimetablePage = () => {
                 onChange={(e) => setSubjectId(e.target.value)}
                 className="w-full bg-background border border-border rounded-xl px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 text-sm"
               >
-                <option value="">Select...</option>
-                {subjects.map(sub => <option key={sub.id} value={sub.id}>{sub.name}</option>)}
+                <option value="" className="bg-white text-black dark:bg-[#0a0a0a] dark:text-white">Select...</option>
+                {subjects.map(sub => <option key={sub.id} value={sub.id} className="bg-white text-black dark:bg-[#0a0a0a] dark:text-white">{sub.name}</option>)}
               </select>
             </div>
             <div className="space-y-1.5">
@@ -854,9 +869,9 @@ export const TimetablePage = () => {
                 onChange={(e) => setSlotType(e.target.value)}
                 className="w-full bg-background border border-border rounded-xl px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 text-sm"
               >
-                <option value="lecture">Lecture</option>
-                <option value="tutorial">Tutorial</option>
-                <option value="practical">Practical</option>
+                <option value="lecture" className="bg-white text-black dark:bg-[#0a0a0a] dark:text-white">Lecture</option>
+                <option value="tutorial" className="bg-white text-black dark:bg-[#0a0a0a] dark:text-white">Tutorial</option>
+                <option value="practical" className="bg-white text-black dark:bg-[#0a0a0a] dark:text-white">Practical</option>
               </select>
             </div>
           </div>
@@ -874,19 +889,21 @@ export const TimetablePage = () => {
 
       {/* Desktop Weekly Grid View (hidden on mobile) */}
       <div className="hidden lg:block bg-card border border-border rounded-3xl overflow-hidden shadow-xl">
-        <div className="grid grid-cols-7 border-b border-border bg-muted/50">
-          {DAYS.map((day) => (
-            <div key={day} className="py-3 text-center border-r border-border last:border-0">
-              <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{day}</span>
+        <div className="grid grid-cols-7 border-b border-border bg-transparent">
+          {DAYS.map((day, idx) => (
+            <div key={day} className="pt-6 pb-2 border-r border-border last:border-0 relative flex flex-col items-end pr-4">
+              <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider aether-mono relative z-10">
+                {day}
+              </span>
             </div>
           ))}
         </div>
         <div className="grid grid-cols-7 min-h-[500px]">
           {slotsByDay.map((daySlots, idx) => (
-            <div key={idx} className="border-r border-border last:border-0 p-3 space-y-3 bg-card">
+            <div key={idx} className="border-r border-border last:border-0 p-3 space-y-3 bg-transparent">
               {daySlots.length === 0 ? (
                 <div className="h-full flex items-center justify-center">
-                  <span className="text-xs text-muted-foreground/50 font-medium">No Classes</span>
+                  <span className="text-xs font-semibold" style={{ color: "var(--aether-text-muted)" }}>No Classes</span>
                 </div>
               ) : (
                 <DndContext collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
@@ -914,18 +931,18 @@ export const TimetablePage = () => {
       {/* Mobile Daily View (hidden on desktop) */}
       <div className="block lg:hidden space-y-4">
         {/* Day Tabs */}
-        <div className="flex overflow-x-auto hide-scrollbar gap-2 pb-2 -mx-4 px-4">
+        <div className="flex overflow-x-auto hide-scrollbar gap-2 pb-2 -mx-4 px-4 border-b border-[#27272A] mb-4">
           {DAYS.map((day, idx) => (
             <button
               key={day}
               onClick={() => setActiveTab(idx)}
-              className={`whitespace-nowrap px-5 py-2.5 rounded-xl text-xs font-bold transition-all shadow-sm ${
+              className={`whitespace-nowrap px-5 py-3 text-xs font-bold transition-all aether-mono ${
                 activeTab === idx 
-                  ? "bg-primary text-primary-foreground shadow-primary/20" 
-                  : "bg-card border border-border text-muted-foreground hover:bg-muted hover:text-foreground"
+                  ? "bg-card text-foreground border-t border-l border-r border-border" 
+                  : "bg-transparent text-muted-foreground hover:text-foreground"
               }`}
             >
-              {day.slice(0, 3)}
+              {day}
             </button>
           ))}
         </div>

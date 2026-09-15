@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import { Capacitor } from "@capacitor/core";
 import { Filesystem, Directory } from "@capacitor/filesystem";
 import { Share } from "@capacitor/share";
@@ -14,6 +14,7 @@ import { RunActionButton } from "../../components/ui/run-action-button";
 import { SaveToggle } from "../../components/ui/save-toggle";
 import { TimedUndoAction } from "../../components/ui/timed-undo-action";
 import { EditProfile, ProfileData } from "../../components/ui/edit-profile";
+import { VolumetricRays } from "../../components/ui/volumetric-rays";
 import { LinkedDevicesModal } from "../../components/ui/linked-devices";
 import {
   Settings,
@@ -133,6 +134,7 @@ const renderDocuments = (type: string) => {
     );
   };
   const { user, setUser } = useAuthStore();
+  const navigate = useNavigate();
   const [activeView, setActiveView] = useState<"main" | "backup" | "contact" | "sync">(
     "main",
   );
@@ -223,9 +225,9 @@ const renderDocuments = (type: string) => {
   const { config: notifConfig, updateConfig } = useNotificationStore();
 
   useEffect(() => {
-    // Schedule updates whenever frequency changes
+    // Schedule updates whenever frequency or time changes
     NotificationService.scheduleAcademicUpdates(reminderFrequency);
-  }, [reminderFrequency]);  // Reset Section Toggle
+  }, [reminderFrequency, notifConfig.summaryTime]);  // Reset Section Toggle
   const [enableReset, setEnableReset] = useState(false);
 
   // Reset Modals State
@@ -588,7 +590,9 @@ const renderDocuments = (type: string) => {
   // ------------------ SUB-VIEW: BACKUP / RESTORE ------------------
   if (activeView === "sync") {
     return (
-      <div className="p-4 md:p-8 max-w-2xl mx-auto w-full pb-36 md:pb-8 space-y-6 animate-in fade-in duration-200">
+      <>
+      <VolumetricRays />
+      <div className="w-full pb-36 md:pb-8 space-y-6 animate-in fade-in duration-200">
         <div className="flex items-center gap-3 mb-6">
           <button
             onClick={() => setActiveView("main")}
@@ -601,14 +605,17 @@ const renderDocuments = (type: string) => {
           </h1>
         </div>
         
-        <PeerSyncModal />
       </div>
+      <PeerSyncModal />
+      </>
     );
   }
 
   if (activeView === "backup") {
     return (
-      <div className="p-4 md:p-8 max-w-2xl mx-auto w-full pb-36 md:pb-8 space-y-6 animate-in fade-in duration-200">
+      <>
+      <VolumetricRays />
+      <div className="w-full pb-36 md:pb-8 space-y-6 animate-in fade-in duration-200">
         <input
           type="file"
           accept=".json"
@@ -763,13 +770,16 @@ const renderDocuments = (type: string) => {
           </div>
         </div>
       </div>
+      </>
     );
   }
 
   // ------------------ SUB-VIEW: CONTACT US ------------------
   if (activeView === "contact") {
     return (
-      <div className="p-4 md:p-8 max-w-2xl mx-auto w-full pb-36 md:pb-8 space-y-6 animate-in fade-in duration-200">
+      <>
+      <VolumetricRays />
+      <div className="w-full pb-36 md:pb-8 space-y-6 animate-in fade-in duration-200">
         <div className="flex items-center gap-3">
           <button
             onClick={() => setActiveView("main")}
@@ -833,8 +843,9 @@ const renderDocuments = (type: string) => {
 
         <form onSubmit={handleSendContact} className="space-y-5">
           {/* Topic Select */}
-          <div className="space-y-1.5">
-            <label className="text-xs font-bold text-emerald-500 uppercase tracking-wider">
+          <div className="space-y-2">
+            <label className="flex items-center gap-2 text-xs font-bold text-emerald-600 dark:text-emerald-500 uppercase tracking-wider">
+              <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
               Topic
             </label>
             <select
@@ -850,35 +861,41 @@ const renderDocuments = (type: string) => {
           </div>
 
           {/* Subject */}
-          <div className="space-y-1.5">
+          <div className="space-y-2">
+            <label className="flex items-center gap-2 text-xs font-bold text-emerald-600 dark:text-emerald-500 uppercase tracking-wider">
+              <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+              Subject
+            </label>
             <input
               type="text"
               required
-              
+              placeholder="e.g. Issue with timetable sync"
               value={contactSubject}
               onChange={(e) => setContactSubject(e.target.value)}
-              className="w-full bg-card border border-border/80 rounded-xl px-4 py-3 text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm"
+              className="w-full bg-card border border-emerald-500/50 rounded-xl px-4 py-3 text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm font-semibold transition-all hover:border-emerald-500/70"
             />
           </div>
 
           {/* Message */}
-          <div className="space-y-1.5">
+          <div className="space-y-2">
+            <label className="flex items-center gap-2 text-xs font-bold text-emerald-600 dark:text-emerald-500 uppercase tracking-wider">
+              <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+              Message
+            </label>
             <textarea
               required
               rows={6}
-              
+              placeholder="Describe your issue or suggestion in detail..."
               value={contactMessage}
               onChange={(e) => setContactMessage(e.target.value)}
-              className="w-full bg-card border border-border/80 rounded-xl p-4 text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm resize-none"
+              className="w-full bg-card border border-emerald-500/50 rounded-xl p-4 text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm font-semibold transition-all hover:border-emerald-500/70 resize-none"
             />
           </div>
 
           <div className="text-center pt-2">
             <button
               type="button"
-              onClick={() =>
-                toast.info("FAQs:\n1. How to import timetable? Use OCR or JSON import in Settings/Timetable.\n2. How attendance criteria works? Keep above target % (e.g. 75%).")
-              }
+              onClick={() => navigate("/settings/faq")}
               className="text-xs text-emerald-500 hover:underline cursor-pointer"
             >
               Check out our FAQs for quick answers
@@ -894,12 +911,15 @@ const renderDocuments = (type: string) => {
           </button>
         </form>
       </div>
+      </>
     );
   }
 
   // ------------------ MAIN SETTINGS VIEW ------------------
   return (
-    <div className="p-4 md:p-8 max-w-3xl mx-auto w-full pb-36 md:pb-8 space-y-8 animate-in fade-in duration-200">
+    <>
+      <VolumetricRays />
+      <div className="p-4 md:p-8 max-w-3xl mx-auto w-full pb-36 md:pb-8 space-y-8 animate-in fade-in duration-200">
       <input
         type="file"
         accept=".zip"
@@ -1063,15 +1083,15 @@ const renderDocuments = (type: string) => {
 
       {/* CATEGORY 2: Summary Reports */}
       <div className="space-y-3">
-        <h2 className="text-xs font-bold text-muted-foreground uppercase tracking-wider px-1">
+        <h2 className="text-xs font-bold text-slate-500 uppercase tracking-wider px-1">
           Summary Reports
         </h2>
-        <div className="bg-card border border-border/70 rounded-2xl p-4 shadow-md space-y-4">
+        <div className="bg-white dark:bg-[#111113] border border-black/10 dark:border-white/10 rounded-2xl p-4 shadow-sm space-y-4">
           <div>
-            <h3 className="text-sm font-bold text-foreground">
+            <h3 className="text-sm font-bold text-slate-900 dark:text-white">
               Reminder Frequency
             </h3>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-xs text-slate-500 dark:text-slate-400">
               Select how often you want to receive academic updates.
             </p>
           </div>
@@ -1082,16 +1102,16 @@ const renderDocuments = (type: string) => {
             />
           </div>
           {['Weekly', 'Monthly', 'Yearly'].includes(reminderFrequency.type) && (
-            <div className="w-full flex items-center justify-between p-4 mt-2 bg-muted/20 border-t border-border/50">
+            <div className="w-full flex items-center justify-between p-4 mt-2 bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-black/5 dark:border-white/5">
               <div className="flex flex-col gap-0.5">
-                <span className="text-sm font-bold text-foreground">Summary Time</span>
-                <span className="text-xs text-muted-foreground">When to send reports</span>
+                <span className="text-sm font-bold text-slate-900 dark:text-white">Summary Time</span>
+                <span className="text-xs text-slate-500 dark:text-slate-400">When to send reports</span>
               </div>
               <input
                 type="time"
                 value={notifConfig.summaryTime || "18:00"}
                 onChange={(e) => updateConfig({ summaryTime: e.target.value })}
-                className="bg-muted text-foreground text-sm font-semibold rounded-lg px-3 py-1.5 border border-border/50 outline-none focus:ring-2 focus:ring-primary/50"
+                className="bg-white dark:bg-black text-slate-900 dark:text-white text-sm font-semibold rounded-lg px-3 py-1.5 border border-black/10 dark:border-white/10 outline-none focus:ring-2 focus:ring-slate-900 dark:focus:ring-white"
               />
             </div>
           )}
@@ -1100,25 +1120,25 @@ const renderDocuments = (type: string) => {
 
       {reminderFrequency.type === 'Daily' && (
       <div className="space-y-3">
-        <h2 className="text-xs font-bold text-muted-foreground uppercase tracking-wider px-1">
+        <h2 className="text-xs font-bold text-slate-500 uppercase tracking-wider px-1">
           Timetable Alerts
         </h2>
-        <div className="bg-card border border-border/70 rounded-2xl p-4 shadow-md space-y-4">
+        <div className="bg-white dark:bg-[#111113] border border-black/10 dark:border-white/10 rounded-2xl p-4 shadow-sm space-y-4">
           <div className="w-full flex flex-col gap-4">
             <div className="flex flex-col gap-1">
-              <h3 className="text-sm font-bold text-foreground">Class Reminders</h3>
-              <p className="text-xs text-muted-foreground">Time before class</p>
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white">Class Reminders</h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400">Time before class</p>
             </div>
             
-            <div className="flex w-full bg-muted/50 p-1 rounded-xl">
+            <div className="flex w-full bg-slate-100 dark:bg-slate-900 p-1 rounded-xl">
               {[5, 10, 15].map((mins) => (
                 <button
                   key={mins}
                   onClick={() => { updateConfig({ classReminderOffset: mins }); NotificationService.autoScheduleFromTimetable(); }}
                   className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all ${
                     notifConfig.classReminderOffset === mins
-                      ? 'bg-primary text-primary-foreground shadow-sm'
-                      : 'text-muted-foreground hover:text-foreground'
+                      ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow-sm'
+                      : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
                   }`}
                 >
                   {mins} min
@@ -1128,8 +1148,8 @@ const renderDocuments = (type: string) => {
 
             <div className="flex items-center justify-between mt-2">
               <div className="flex flex-col gap-0.5">
-                <span className="text-sm font-semibold text-foreground">Show Location</span>
-                <span className="text-xs text-muted-foreground">Include room in notifications</span>
+                <span className="text-sm font-semibold text-slate-900 dark:text-white">Show Location</span>
+                <span className="text-xs text-slate-500 dark:text-slate-400">Include room in notifications</span>
               </div>
               <button
                 onClick={() => updateConfig({ showLocation: !notifConfig.showLocation })}
@@ -1409,7 +1429,7 @@ const renderDocuments = (type: string) => {
                   App info
                 </h3>
                 <p className="text-xs text-muted-foreground">
-                  Version v3.0.0 & Developer details
+                  Version v & Developer details
                 </p>
               </div>
             </div>
@@ -1462,6 +1482,22 @@ const renderDocuments = (type: string) => {
               </div>
             </div>
             <ChevronRight className="w-5 h-5 text-muted-foreground/50 group-hover:text-primary transition-colors" />
+          </div>
+          <div onClick={() => navigate("/settings/faq")} className="w-full text-left p-4 hover:bg-muted/50 transition-colors flex items-center justify-between cursor-pointer group">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg>
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-foreground group-hover:text-amber-500 transition-colors">
+                  FAQs & Help
+                </h3>
+                <p className="text-xs text-muted-foreground">
+                  Frequently asked questions and guides.
+                </p>
+              </div>
+            </div>
+            <ChevronRight className="w-5 h-5 text-muted-foreground/50 group-hover:text-amber-500 transition-colors" />
           </div>
           <div onClick={() => setIsChangelogOpen(true)} className="w-full text-left p-4 hover:bg-muted/50 transition-colors flex items-center justify-between cursor-pointer group">
             <div className="flex items-center gap-3">
@@ -1815,10 +1851,12 @@ const renderDocuments = (type: string) => {
           </div>
         </div>
       )}
+      </div>
+      
       {/* App Info Modal */}
       {showAppInfoModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="bg-white dark:bg-[#111111] border-2 border-black dark:border-[#333333] rounded-none max-w-md w-full p-6 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] dark:shadow-[8px_8px_0px_0px_#222222] space-y-6 relative overflow-hidden">
+        <div className="fixed inset-0 bg-white/60 dark:bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white/40 dark:bg-black/60 backdrop-blur-3xl border-2 border-black dark:border-[#333333] rounded-none max-w-md w-full p-6 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] dark:shadow-[8px_8px_0px_0px_#222222] space-y-6 relative overflow-hidden">
             <button
               onClick={() => setShowAppInfoModal(false)}
               className="absolute top-4 right-4 p-2 rounded-full hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
@@ -1846,7 +1884,7 @@ const renderDocuments = (type: string) => {
             </div>
 
             {/* Creator Profile */}
-            <div className="bg-slate-50 dark:bg-[#050505] border-2 border-black dark:border-[#333333] rounded-none p-4 space-y-3 shadow-[4px_4px_0px_0px_rgba(0,0,0,0.1)] dark:shadow-[4px_4px_0px_0px_#050505]">
+            <div className="bg-white/40 dark:bg-black/40 backdrop-blur-md border-2 border-black dark:border-[#333333] rounded-none p-4 space-y-3 shadow-[4px_4px_0px_0px_rgba(0,0,0,0.1)] dark:shadow-[4px_4px_0px_0px_#050505]">
               <div className="flex items-center gap-3">
                 <img
                   src="/developer-photo.jpg"
@@ -1887,14 +1925,14 @@ const renderDocuments = (type: string) => {
                   href="https://mail.google.com/mail/?view=cm&fs=1&to=support@mail.attendx.tech"
                   target="_blank"
                   rel="noreferrer"
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-none bg-white dark:bg-[#111111] border-2 border-black dark:border-[#333333] text-foreground hover:bg-slate-50 dark:hover:bg-[#050505] transition-colors font-bold shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_#222222] hover:-translate-y-0.5 hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] dark:hover:shadow-[4px_4px_0px_0px_#222222]"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-none bg-white/40 dark:bg-black/40 backdrop-blur-md border-2 border-black dark:border-[#333333] text-foreground hover:bg-white/60 dark:hover:bg-black/60 transition-colors font-bold shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_#222222] hover:-translate-y-0.5 hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] dark:hover:shadow-[4px_4px_0px_0px_#222222]"
                 >
                   <Mail className="w-3.5 h-3.5 text-primary" />
                   <span>support@mail.attendx.tech</span>
                 </a>
                 <a
                   href="tel:+918076408958"
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-none bg-white dark:bg-[#111111] border-2 border-black dark:border-[#333333] text-foreground hover:bg-slate-50 dark:hover:bg-[#050505] transition-colors font-bold shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_#222222] hover:-translate-y-0.5 hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] dark:hover:shadow-[4px_4px_0px_0px_#222222]"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-none bg-white/40 dark:bg-black/40 backdrop-blur-md border-2 border-black dark:border-[#333333] text-foreground hover:bg-white/60 dark:hover:bg-black/60 transition-colors font-bold shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_#222222] hover:-translate-y-0.5 hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] dark:hover:shadow-[4px_4px_0px_0px_#222222]"
                 >
                   <Phone className="w-3.5 h-3.5 text-emerald-500" />
                   <span>+91 8076408958</span>
@@ -1908,19 +1946,19 @@ const renderDocuments = (type: string) => {
                 Key Capabilities
               </h4>
               <ul className="grid grid-cols-2 gap-2 text-muted-foreground font-medium">
-                <li className="flex items-center gap-1.5 bg-white dark:bg-[#111111] p-2 rounded-none border-2 border-black dark:border-[#333333] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_#222222]">
+                <li className="flex items-center gap-1.5 bg-white/40 dark:bg-black/40 backdrop-blur-md p-2 rounded-none border-2 border-black dark:border-[#333333] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_#222222]">
                   <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
                   Dynamic Criteria Target
                 </li>
-                <li className="flex items-center gap-1.5 bg-white dark:bg-[#111111] p-2 rounded-none border-2 border-black dark:border-[#333333] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_#222222]">
+                <li className="flex items-center gap-1.5 bg-white/40 dark:bg-black/40 backdrop-blur-md p-2 rounded-none border-2 border-black dark:border-[#333333] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_#222222]">
                   <span className="w-2 h-2 rounded-full bg-blue-500"></span>
                   Forecast Leave Calc
                 </li>
-                <li className="flex items-center gap-1.5 bg-white dark:bg-[#111111] p-2 rounded-none border-2 border-black dark:border-[#333333] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_#222222]">
+                <li className="flex items-center gap-1.5 bg-white/40 dark:bg-black/40 backdrop-blur-md p-2 rounded-none border-2 border-black dark:border-[#333333] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_#222222]">
                   <span className="w-2 h-2 rounded-full bg-purple-500"></span>
                   OCR Timetable Importer
                 </li>
-                <li className="flex items-center gap-1.5 bg-white dark:bg-[#111111] p-2 rounded-none border-2 border-black dark:border-[#333333] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_#222222]">
+                <li className="flex items-center gap-1.5 bg-white/40 dark:bg-black/40 backdrop-blur-md p-2 rounded-none border-2 border-black dark:border-[#333333] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_#222222]">
                   <span className="w-2 h-2 rounded-full bg-amber-500"></span>
                   Classroom Hub Sync
                 </li>
@@ -1952,6 +1990,6 @@ const renderDocuments = (type: string) => {
         isOpen={isLinkedDevicesOpen} 
         onClose={() => setIsLinkedDevicesOpen(false)} 
       />
-    </div>
+    </>
   );
 };

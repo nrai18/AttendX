@@ -5,10 +5,23 @@ import fs from "fs";
 export class SystemController {
   static async getUpdateManifest(req: Request, res: Response) {
     const manifest = {
-      latestVersion: "3.5",
-      title: "The Security & Architecture Update",
+      latestVersion: process.env.LATEST_APP_VERSION || "3.7",
+      title: "The UI Polish & Theming Update",
       changelog: [
-        
+        {
+          version: "3.7",
+          date: "2026-09-13",
+          sizeMb: 31.0,
+          sections: [
+            {
+              title: "What's New (UI Polish & Theming)",
+              items: [
+                { icon: "🎨", text: "Complete Calendar redesign with Orbital Operations Center aesthetic and true dark mode isolation." },
+                { icon: "✨", text: "Restored missing cinematic 'E' to the Subjects hero title and fixed glassmorphism modal backgrounds globally." }
+              ]
+            }
+          ]
+        },
         {
           version: "3.5",
           date: "2026-09-10",

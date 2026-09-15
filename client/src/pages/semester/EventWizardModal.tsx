@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Loader2, CalendarRange, CheckCircle2, X } from "lucide-react";
 import { api } from "../../lib/api";
 import { SaveToggle } from "../../components/ui/save-toggle";
+import { useScrollLock } from "../../hooks/useScrollLock";
 
 interface EventItem {
   title: string;
@@ -29,6 +30,7 @@ interface WizardProps {
 }
 
 export const EventWizardModal: React.FC<WizardProps> = ({ isOpen, onClose, onSave, eventsPayload }) => {
+  useScrollLock(isOpen);
   const [isSaving, setIsSaving] = useState(false);
   const [semesters, setSemesters] = useState<Semester[]>([]);
   const [selectedSemester, setSelectedSemester] = useState<string>("");
@@ -143,6 +145,19 @@ export const EventWizardModal: React.FC<WizardProps> = ({ isOpen, onClose, onSav
   const formatDate = (dateStr: string) => {
     return new Date(dateStr).toLocaleDateString("en-US", { day: "numeric", month: "short" });
   };
+
+  
+  // Anti-scroll lock
+  React.useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, [isOpen]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">

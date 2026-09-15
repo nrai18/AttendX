@@ -204,7 +204,7 @@ export const PeerSyncModal = () => {
             )}
 
             {showDatePicker && (
-              <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+              <div className="theme-nova-green fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
                 <div className="bg-white dark:bg-neutral-950 rounded-3xl shadow-xl border border-neutral-200 dark:border-neutral-800 max-w-[95vw] overflow-hidden">
                   <ScheduleDate
                     onApply={(range) => {
@@ -251,7 +251,7 @@ export const PeerSyncModal = () => {
             <button 
               onClick={handleGenerateCode}
               disabled={loading}
-              className="flex-1 bg-primary text-primary-foreground hover:bg-primary/90 w-full py-3 rounded-lg font-medium flex justify-center items-center text-sm transition-all shadow-sm"
+              className="w-full py-3 rounded-xl font-bold text-sm flex justify-center items-center transition-all bg-[#00D2FF] text-black hover:bg-[#00D2FF]/90 disabled:opacity-40 disabled:cursor-not-allowed shadow-[0_0_15px_rgba(0,210,255,0.4)]"
             >
               {loading && <Loader2 className="animate-spin mr-2 h-4 w-4" />}
               {activeCode ? "Update & Regenerate" : "Generate 6-Digit Code"}
@@ -343,7 +343,7 @@ export const PeerSyncModal = () => {
                 <button 
                   onClick={handleRetrieveCode}
                   disabled={loading || inputCode.length !== 6}
-                  className="bg-primary text-primary-foreground disabled:bg-primary text-primary-foreground/50 hover:bg-primary/90 text-foreground w-full py-3 rounded-lg font-medium flex justify-center items-center transition-all"
+                  className="w-full py-3 rounded-xl font-bold text-sm flex justify-center items-center transition-all bg-[#00D2FF] text-black hover:bg-[#00D2FF]/90 disabled:opacity-40 disabled:cursor-not-allowed shadow-[0_0_15px_rgba(0,210,255,0.4)]"
                 >
                   {loading && <Loader2 className="animate-spin mr-2 h-4 w-4" />}
                   Download & Sync Schedule

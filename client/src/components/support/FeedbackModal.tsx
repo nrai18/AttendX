@@ -99,8 +99,8 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm">
-      <div className="w-full sm:max-w-lg bg-card border border-border rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[90vh] overflow-y-auto relative animate-in slide-in-from-bottom-4 sm:zoom-in-95">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-white/60 dark:bg-black/60 backdrop-blur-sm">
+      <div className="w-full sm:max-w-lg bg-white/40 dark:bg-black/60 backdrop-blur-3xl border border-border rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[90vh] overflow-y-auto relative animate-in slide-in-from-bottom-4 sm:zoom-in-95">
         {/* Header */}
         <div className="flex justify-between items-center px-6 pt-6 pb-4">
           <h2 className="text-xl font-bold text-foreground">Send feedback</h2>
