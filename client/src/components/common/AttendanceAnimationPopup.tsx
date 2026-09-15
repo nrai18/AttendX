@@ -47,7 +47,7 @@ export const AttendanceAnimationPopup: React.FC = () => {
     <AnimatePresence>
       {isOpen && type && (
         <div 
-          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm cursor-pointer select-none"
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 cursor-pointer select-none"
           onClick={closeAnimation}
         >
           <motion.div
@@ -56,7 +56,7 @@ export const AttendanceAnimationPopup: React.FC = () => {
             animate={{ scale: 1, opacity: 1, y: 0 }}
             exit={{ scale: 0.5, opacity: 0, y: -20 }}
             transition={{ type: "spring", damping: 15, stiffness: 300 }}
-            className="relative bg-card/95 border border-border/80 shadow-2xl rounded-3xl p-6 sm:p-8 max-w-sm w-full text-center flex flex-col items-center gap-4 overflow-hidden backdrop-blur-xl"
+            className="relative bg-card/95 border border-border/80 shadow-2xl rounded-3xl p-6 sm:p-8 max-w-sm w-full text-center flex flex-col items-center gap-4 overflow-hidden"
           >
             <button 
               onClick={closeAnimation} 

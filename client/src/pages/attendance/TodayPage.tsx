@@ -13,16 +13,17 @@ import { OnboardingChecklist } from "../../components/ui/onboarding-checklist";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { useAttendanceStore } from "../../stores/attendanceStore";
 import { triggerAttendancePopup, AnimationType } from "../../stores/animationPopupStore";
-import { HOLIDAY_ASSETS } from "../../components/common/AttendanceAnimationPopup";
+import { HOLIDAY_ASSETS } from "../../constants/holidayAssets";
 import { HolidayIconRenderer } from "../../components/common/HolidayIconRenderer";
 import { HolidayGreetingOverlay } from "../../components/common/HolidayGreetingOverlay";
+import { NeurosyncWaves } from "../../components/ui/neurosync-waves";
 import { format } from "date-fns";
 import { FIXED_HOLIDAYS, RESTRICTED_HOLIDAYS } from "../semester/HolidayListTab";
 
 
 interface AgendaItem {
   id: string;
-  type: "slot" | "override";
+  type: "slot" | "override" | "manual";
   isExtra?: boolean;
   subject: {
     id: string;
@@ -172,6 +173,30 @@ export const TodayPage = () => {
     if (agenda.length === 0) return;
     try {
       setIsMarkingFullDayOff(true);
+
+      // --- OFFLINE OPTIMISTIC UPDATE ---
+      const store = useAttendanceStore.getState();
+      const subjects = [...store.subjects];
+      agenda.forEach(item => {
+        const subjectIndex = subjects.findIndex(s => s.subjectId === item.subject?.id || s.id === item.subject?.id);
+        if (subjectIndex !== -1) {
+          const s = { ...subjects[subjectIndex] };
+          if (item.status === "present" || item.status === "medical" || item.status === "od") {
+            s.attended -= 1;
+            s.total -= 1;
+          } else if (item.status === "absent") {
+            s.total -= 1;
+          }
+          s.percentage = s.total > 0 ? Number(((s.attended / s.total) * 100).toFixed(1)) : 0;
+          subjects[subjectIndex] = s;
+        }
+      });
+      const totalAttended = subjects.reduce((sum, sub) => sum + sub.attended, 0);
+      const totalClasses = subjects.reduce((sum, sub) => sum + sub.total, 0);
+      const overallPercentage = totalClasses > 0 ? (totalAttended / totalClasses) * 100 : 0;
+      useAttendanceStore.setState({ subjects, totalAttended, totalClasses, overallPercentage });
+      // ---------------------------------
+
       // Optimistically mark all agenda items as "off"
       setAgenda(prev => prev.map(a => ({ ...a, status: "off" as any })));
 
@@ -194,6 +219,7 @@ export const TodayPage = () => {
 
       fetchData();
       fetchStats();
+      useCacheStore.getState().setCache('insights', null);
       window.dispatchEvent(new Event("attendance-updated"));
     } catch (error) {
       console.error("Failed to mark full day off:", error);
@@ -317,30 +343,102 @@ export const TodayPage = () => {
       
       const todayCache = useCacheStore.getState().today?.[targetDateStr];
       const isToday = targetDateStr === format(new Date(), "yyyy-MM-dd");
+      
+      // Attempt to load active semester from global cache if not in today cache
+      const semesterCache = useCacheStore.getState().semester;
+      setActiveSemester(todayCache?.activeSemester || semesterCache?.active || null);
 
       if (todayCache && todayCache.agenda && todayCache.agenda.length > 0) {
         setAgenda(todayCache.agenda);
         setTodayStatus(todayCache.todayStatus || null);
       } else {
-        // Attempt to construct agenda from cached timetable
-        const timetableCache = useCacheStore.getState().timetable;
-        if (timetableCache && timetableCache.slots) {
-          const dateObj = new Date(targetDateStr);
-          const jsDay = dateObj.getDay();
-          const ttDay = jsDay === 0 ? 6 : jsDay - 1;
+        // Construct agenda by merging timetable slots with attendance logs for the day
+        const subjectsCache = useCacheStore.getState().subject_logs || {};
+        const allLogs = subjectsCache["all"]?.logs || [];
+        const logsForDay = allLogs.filter((l: any) => l.date && l.date.startsWith(targetDateStr));
 
-          const slotsForDay = timetableCache.slots.filter((s: any) => s.dayOfWeek === ttDay);
-          const pseudoAgenda: AgendaItem[] = slotsForDay.map((slot: any) => {
-            const subject = timetableCache.subjects?.find((sub: any) => sub.id === slot.subjectId) || { id: slot.subjectId, name: "Unknown" };
+        const timetableCache = useCacheStore.getState().timetable;
+        const dateObj = new Date(targetDateStr);
+        const jsDay = dateObj.getDay();
+        const ttDay = jsDay === 0 ? 6 : jsDay - 1;
+
+        let pseudoAgenda: AgendaItem[] = [];
+
+        if (timetableCache && timetableCache.slots) {
+          // Merge active and archived slots
+          const archivedVersions = timetableCache.archivedSlots || [];
+          const archivedSlotsArray = archivedVersions.flatMap((v: any) => v.slots || []);
+          const allSlots = [...timetableCache.slots, ...archivedSlotsArray];
+
+          // Filter slots active on this historical date
+          const slotsForDay = allSlots.filter((s: any) => {
+            if (s.dayOfWeek !== ttDay) return false;
+            if (!s.validFrom) return true;
+            const validFrom = new Date(s.validFrom);
+            validFrom.setHours(0,0,0,0);
+            const validUntil = s.validUntil ? new Date(s.validUntil) : new Date("2099-01-01");
+            validUntil.setHours(23,59,59,999);
+            const target = new Date(targetDateStr);
+            target.setHours(12,0,0,0);
+            return target >= validFrom && target <= validUntil;
+          });
+
+          // Deduplicate by startTime and subjectId
+          const uniqueSlotsMap = new Map();
+          slotsForDay.forEach((s: any) => {
+            const key = `${s.startTime}-${s.subjectId}`;
+            if (!uniqueSlotsMap.has(key)) uniqueSlotsMap.set(key, s);
+          });
+          const deduplicatedSlotsForDay = Array.from(uniqueSlotsMap.values());
+
+          pseudoAgenda = deduplicatedSlotsForDay.map((slot: any) => {
+            const subjectsOverview = useCacheStore.getState().subjects_overview || [];
+            const subject = subjectsOverview.find((sub: any) => sub.id === slot.subjectId) || { id: slot.subjectId, name: "Unknown" };
+            
+            // Find if there is a log for this specific timetable slot
+            const logMatch = logsForDay.find((l: any) => l.timetableSlotId === slot.id || (l.subjectId === slot.subjectId && l.startTime === slot.startTime));
+            
             return {
               id: slot.id,
               type: "slot",
               subject,
               startTime: slot.startTime,
               endTime: slot.endTime,
-              status: null
+              room: slot.room || undefined,
+              slotType: slot.type || "Lecture",
+              status: logMatch && logMatch.status !== "not_marked" ? logMatch.status : null,
+              remarks: logMatch ? logMatch.remarks : undefined,
+              attendanceId: logMatch && logMatch.status !== "not_marked" ? logMatch.id : null
             };
           });
+        }
+
+        // Add any logs that didn't match a timetable slot (Extra classes, overrides)
+        logsForDay.forEach((l: any) => {
+          const exists = pseudoAgenda.some(item => item.id === l.timetableSlotId || (item.subject.id === l.subjectId && item.startTime === l.startTime));
+          if (!exists) {
+            pseudoAgenda.push({
+               id: l.overrideId || l.id,
+               type: l.isExtra ? "override" : "slot",
+               isExtra: l.isExtra,
+               subject: {
+                  id: l.subjectId,
+                  name: l.subjectName || "Unknown",
+                  code: l.subjectCode,
+                  colorHex: l.subjectColor
+               },
+               startTime: l.startTime,
+               endTime: l.endTime,
+               room: l.room,
+               slotType: l.slotType || "Extra",
+               status: l.status === "not_marked" ? null : l.status,
+               remarks: l.remarks,
+               attendanceId: l.status !== "not_marked" ? l.id : null,
+            });
+          }
+        });
+
+        if (pseudoAgenda.length > 0) {
           pseudoAgenda.sort((a,b) => a.startTime.localeCompare(b.startTime));
           setAgenda(pseudoAgenda);
           setTodayStatus(null);
@@ -353,6 +451,11 @@ export const TodayPage = () => {
       setIsLoading(false);
     }
   };
+
+  // Scroll to top when date changes
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [targetDateStr]);
 
   useEffect(() => {
     const cachedDay = useCacheStore.getState().today?.[targetDateStr];
@@ -399,6 +502,38 @@ export const TodayPage = () => {
       a.id === item.id ? { ...a, status: status as any, remarks: remarks || a.remarks } : a
     );
     setAgenda(updatedAgenda);
+
+    // --- OFFLINE OPTIMISTIC UPDATE ---
+    const store = useAttendanceStore.getState();
+    const subjects = [...store.subjects];
+    const subjectIndex = subjects.findIndex(s => s.subjectId === item.subject?.id || s.id === item.subject?.id);
+    if (subjectIndex !== -1) {
+      const s = { ...subjects[subjectIndex] };
+      if (item.status === "present" || item.status === "medical" || item.status === "od") {
+        s.attended -= 1;
+        s.total -= 1;
+      } else if (item.status === "absent") {
+        s.total -= 1;
+      }
+      
+      if (status === "present" || status === "medical" || status === "od") {
+        s.attended += 1;
+        s.total += 1;
+      } else if (status === "absent") {
+        s.total += 1;
+      }
+      
+      s.percentage = s.total > 0 ? Number(((s.attended / s.total) * 100).toFixed(1)) : 0;
+      subjects[subjectIndex] = s;
+      
+      const totalAttended = subjects.reduce((sum, sub) => sum + sub.attended, 0);
+      const totalClasses = subjects.reduce((sum, sub) => sum + sub.total, 0);
+      const overallPercentage = totalClasses > 0 ? (totalAttended / totalClasses) * 100 : 0;
+      
+      useAttendanceStore.setState({ subjects, totalAttended, totalClasses, overallPercentage });
+    }
+    // ---------------------------------
+
 
     // Trigger Popup Animation
     if (status === "absent") {
@@ -454,29 +589,90 @@ export const TodayPage = () => {
           : a
       ));
 
-      // Update cache
-      useCacheStore.getState().setCache('today', { 
-        ...useCacheStore.getState().today,
+      // Update global offline caches optimistically
+      const state = useCacheStore.getState();
+      
+      // 1. Update Today Cache
+      state.setCache('today', { 
+        ...state.today,
         [targetDateStr]: {
-          ...useCacheStore.getState().today?.[targetDateStr],
+          ...state.today?.[targetDateStr],
           agenda: updatedAgenda, 
           todayStatus 
         }
       });
       
+      // 2. Update Calendar Cache
+      const monthStr = targetDateStr.substring(0, 7);
+      const calCache = state.calendar?.[monthStr] || { details: {}, days: [], events: [], insights: [], isComplete: false };
+      
+      const details = calCache.details[targetDateStr] || [];
+      const existingIdx = details.findIndex((d: any) => d.subjectName === item.subject?.name);
+      
+      if (status === "clear") {
+         if (existingIdx >= 0) details.splice(existingIdx, 1);
+      } else {
+         if (existingIdx >= 0) {
+           details[existingIdx].status = status;
+           details[existingIdx].remarks = remarks;
+         } else {
+           details.push({
+             id: item.attendanceId || `optimistic-${Date.now()}`,
+             subjectName: item.subject?.name,
+             status,
+             remarks
+           });
+         }
+      }
+      
+      state.setCache('calendar', {
+        ...state.calendar,
+        [monthStr]: {
+          ...calCache,
+          details: {
+            ...calCache.details,
+            [targetDateStr]: details
+          }
+        }
+      });
+      
+      // 3. Update Subject Logs Cache
+      const updateSubjectLog = (cacheKey: string) => {
+         const subjCache = state.subject_logs?.[cacheKey];
+         if (subjCache && subjCache.logs) {
+           const logIdx = subjCache.logs.findIndex((l: any) => l.date === targetDateStr && l.subjectId === item.subject?.id);
+           if (status === "clear") {
+             if (logIdx >= 0) subjCache.logs.splice(logIdx, 1);
+           } else {
+             if (logIdx >= 0) {
+               subjCache.logs[logIdx].status = status;
+               subjCache.logs[logIdx].remarks = remarks;
+             } else {
+               subjCache.logs.unshift({
+                 id: item.attendanceId || `optimistic-${Date.now()}`,
+                 subjectId: item.subject?.id,
+                 subjectName: item.subject?.name,
+                 subjectColorHex: item.subject?.colorHex,
+                 date: targetDateStr,
+                 dateFormatted: new Date(targetDateStr).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+                 status,
+                 remarks,
+                 time: item.startTime
+               });
+             }
+           }
+           state.setCache('subject_logs', { ...state.subject_logs, [cacheKey]: subjCache });
+         }
+      };
+      
+      updateSubjectLog('all');
+      if (item.subject?.id) updateSubjectLog(item.subject.id);
+
       fetchStats();
       window.dispatchEvent(new Event("attendance-updated"));
     } catch (error) {
       console.error("Failed to mark attendance offline or error:", error);
-      // Offline fallback: keep optimistic UI update and save to cache
-      useCacheStore.getState().setCache('today', { 
-        ...useCacheStore.getState().today,
-        [targetDateStr]: {
-          ...useCacheStore.getState().today?.[targetDateStr],
-          agenda: updatedAgenda, 
-          todayStatus 
-        }
-      });
+      // Offline fallback relies on the global optimistic update we just fired above);
       window.dispatchEvent(new Event("attendance-updated"));
     }
   };
@@ -505,9 +701,7 @@ export const TodayPage = () => {
 
   const pendingCount = agenda.filter(a => a.status === null).length;
 
-  if (isLoading || !agenda) {
-    return <PageSkeleton type="today" />;
-  }
+
 
   // Determine if we should show the holiday/exam state instead of classes
   const isGlobalEventActive = activeEvent && ["holiday", "restricted_holiday", "vacation", "fest", "midsem", "endsem", "institute"].includes(activeEvent.eventType);
@@ -550,7 +744,20 @@ export const TodayPage = () => {
   const adjustedDate = new Date(displayDate.getTime() + userTimezoneOffset);
 
   return (
-    <div className="p-4 md:p-8 space-y-6 max-w-4xl mx-auto w-full pb-32 md:pb-8">
+    <div className="theme-terrascape min-h-screen transition-colors duration-300">
+      
+      
+      {/* Terrascape Ambient Gradient Background (replaces NeurosyncWaves) */}
+      <div className="fixed inset-0 pointer-events-none z-0 opacity-50 dark:opacity-60"
+           style={{
+             background: 'radial-gradient(circle at 30% 90%, #059669 0%, transparent 60%), radial-gradient(circle at 80% 80%, #D97706 0%, transparent 50%)',
+             filter: 'blur(90px)'
+           }} 
+      />
+
+      <div className="p-4 md:p-8 space-y-8 w-full pb-32 md:pb-8 relative z-10">
+
+
       
       <HolidayGreetingOverlay
         isOpen={showGreetingOverlay}
@@ -562,12 +769,12 @@ export const TodayPage = () => {
       />
       
       {todayStatus?.nextEvent && !activeEvent && (
-        <div className="bg-primary/10 border border-primary/20 rounded-2xl p-4 flex items-center justify-between">
+        <div className="bg-sky-50 dark:bg-sky-900/20 border border-sky-200/60 dark:border-sky-800/40 backdrop-blur-md rounded-2xl p-4 flex items-center justify-between shadow-sm">
           <div className="flex items-center gap-3">
-            <Timer className="w-5 h-5 text-primary" />
-            <span className="text-sm font-medium text-foreground">Upcoming: <span className="font-bold">{todayStatus.nextEvent.title}</span></span>
+            <Timer className="w-5 h-5 text-sky-600 dark:text-sky-400" />
+            <span className="text-sm font-medium text-sky-800 dark:text-sky-200">Upcoming: <span className="font-bold text-sky-900 dark:text-sky-100">{todayStatus.nextEvent.title}</span></span>
           </div>
-          <span className="text-xs font-bold bg-primary/20 text-primary px-3 py-1 rounded-full uppercase tracking-wider">
+          <span className="text-xs font-bold bg-sky-100/80 dark:bg-sky-800/40 text-sky-800 dark:text-sky-300 px-3 py-1 rounded-full uppercase tracking-wider">
             {new Date(todayStatus.nextEvent.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
           </span>
         </div>
@@ -608,26 +815,41 @@ export const TodayPage = () => {
           </div>
         </div>
 
-        {/* Forecast AI Quick Access Card */}
+        {/* Frovia Berry Landing - Forecast Engine */}
         <div 
           onClick={() => navigate("/predictive")}
-          className="rounded-2xl border border-primary/30 bg-gradient-to-r from-primary/10 via-card to-card p-4 flex items-center justify-between gap-3 cursor-pointer hover:border-primary/60 transition-all group shadow-sm"
+          className="relative overflow-hidden rounded-[16px] border border-[#74313A]/20 dark:border-[#EED3CF]/20 bg-[#EED3CF] dark:bg-[#74313A] p-5 flex items-center justify-between gap-3 cursor-pointer group shadow-sm transition-transform hover:scale-[1.01]"
+          style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}
         >
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="w-10 h-10 rounded-xl bg-primary/20 text-primary flex items-center justify-center flex-shrink-0 group-hover:scale-105 transition-transform">
+          {/* Frovia Ambient Animated Gradients */}
+          <div className="absolute inset-0 bg-gradient-to-br from-white/40 to-transparent dark:from-black/20 dark:to-transparent z-0 pointer-events-none" />
+          
+          {/* Frovia Berry Animation Container */}
+          <div className="absolute -right-4 -top-6 w-32 h-32 opacity-20 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none z-0">
+            <div className="absolute inset-0 flex items-center justify-center animate-spin-slow" style={{ animationDuration: '15s' }}>
+              <div className="w-8 h-8 bg-[#e11d48] rounded-full absolute top-4 left-4 shadow-xl flex flex-col items-center justify-start pt-0.5">
+                <div className="w-2.5 h-1 bg-green-500 rounded-full" />
+              </div>
+              <div className="w-6 h-6 bg-[#be123c] rounded-full absolute bottom-4 right-8 shadow-xl flex flex-col items-center justify-start pt-0.5">
+                <div className="w-2 h-1 bg-green-500 rounded-full" />
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-4 min-w-0 relative z-10">
+            <div className="w-12 h-12 rounded-[12px] bg-[#74313A] dark:bg-[#EED3CF] text-[#EED3CF] dark:text-[#74313A] flex items-center justify-center flex-shrink-0 group-hover:scale-105 transition-all shadow-md">
               <Sparkles className="w-5 h-5" />
             </div>
             <div className="min-w-0">
-              <div className="flex items-center gap-1.5">
-                <p className="text-sm font-bold text-foreground truncate">Forecast Engine</p>
-                <span className="text-[10px] font-extrabold text-primary bg-primary/20 px-1.5 py-0.2 rounded uppercase">Forecast</span>
+              <div className="flex items-center gap-2 mb-1">
+                <p className="text-base font-medium text-[#111827] dark:text-white truncate tracking-tight">Forecast Engine</p>
               </div>
-              <p className="text-xs text-muted-foreground truncate mt-0.5">
+              <p className="text-[13px] text-[#4B5563] dark:text-white/70 truncate transition-colors">
                 Calculate consecutive classes needed for {targetPercentage}% target
               </p>
             </div>
           </div>
-          <div className="p-2 rounded-xl bg-primary/10 text-primary group-hover:bg-primary group-hover:text-primary-foreground transition-all shrink-0">
+          <div className="p-2 rounded-full bg-[#7E2430]/10 dark:bg-black/20 text-[#74313A] dark:text-[#EED3CF] group-hover:bg-[#74313A] dark:group-hover:bg-[#EED3CF] group-hover:text-white dark:group-hover:text-[#74313A] transition-colors shrink-0 relative z-10">
             <ChevronRight className="w-4 h-4" />
           </div>
         </div>
@@ -679,7 +901,7 @@ export const TodayPage = () => {
         </div>
 
         {/* Row 2: Action Buttons */}
-        <div className="flex items-center justify-between gap-3 bg-card/50 border border-border/50 p-2.5 rounded-2xl">
+        <div className="flex items-center justify-between gap-3 bg-card/60 border border-border/50 p-2.5 rounded-2xl">
           <div className="flex items-center gap-2 flex-wrap">
             <button onClick={() => navigate('/assignments')} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-violet-600/15 text-violet-500 border border-violet-500/20 hover:bg-violet-600/25 transition-all shadow-sm cursor-pointer">
               <BookOpen size={14} /> View Assignments
@@ -687,7 +909,7 @@ export const TodayPage = () => {
             {activeSemester && (
               <button
                 onClick={openAddExtraModal}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 transition-all shadow-sm cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-yellow-500/10 text-yellow-500 border border-yellow-500/20 hover:bg-yellow-500/20 transition-all shadow-sm cursor-pointer"
               >
                 <Plus className="w-4 h-4" />
                 Add Extra
@@ -722,7 +944,7 @@ export const TodayPage = () => {
             : "bg-amber-500/10 border-amber-500/30"
         }`}>
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-card border border-border flex items-center justify-center text-xl shadow-xs shrink-0 overflow-hidden">
+            <div className="w-10 h-10 rounded-xl bg-foreground/10 border border-foreground/20 flex items-center justify-center text-xl shadow-xs shrink-0 overflow-hidden">
               {(() => {
                 const { animType } = getHolidayAnimation(activeEvent);
                 if (HOLIDAY_ASSETS[animType as AnimationType]) {
@@ -733,7 +955,7 @@ export const TodayPage = () => {
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-md bg-card border border-border text-foreground">
+                <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-md bg-foreground/10 border border-foreground/20 text-foreground">
                   {activeEvent.eventType || "Special"} Event
                 </span>
                 <span className="text-xs font-semibold text-primary">Today</span>
@@ -771,30 +993,33 @@ export const TodayPage = () => {
         </div>
       )}
 
-      {activeSemester && agenda.length === 0 ? (
-        <div className="text-center py-12 bg-card border border-border rounded-2xl shadow-sm">
+      {isLoading && !dayCache ? (
+        <div className="space-y-4 animate-pulse">
+           {[1, 2, 3].map(i => (
+             <div key={i} className="h-28 bg-[var(--ts-surface)] rounded-xl border border-[var(--ts-border)] w-full"></div>
+           ))}
+        </div>
+      ) : agenda.length === 0 ? (
+        <div className="text-center py-12 bg-card/60 border border-border/50 backdrop-blur-md rounded-2xl shadow-sm">
           <CheckCircle2 className="w-12 h-12 text-emerald-500 mx-auto mb-4 opacity-80" />
           <h3 className="text-lg font-medium text-foreground mb-2">No classes scheduled today!</h3>
           <p className="text-muted-foreground max-w-sm mx-auto text-sm">
             Enjoy your day off or catch up on reading and self-study.
           </p>
         </div>
-      ) : activeSemester ? (
+      ) : (
         <div className="space-y-4">
           {agenda.map(item => (
             <div 
               key={item.id} 
               className={`p-4 md:p-5 rounded-2xl border transition-all duration-200 flex flex-col md:flex-row md:items-center justify-between gap-4 ${
                 item.status 
-                  ? "bg-card/60 border-border/60 opacity-90" 
-                  : "bg-card border-border shadow-sm hover:shadow-md"
+                  ? "bg-card/40 border-border/50 opacity-80 backdrop-blur-sm" 
+                  : "bg-card/60 border-border/50 shadow-[0_0_15px_rgba(0,0,0,0.1)] backdrop-blur-md hover:bg-card/80 hover:border-border/80"
               }`}
             >
               <div className="flex items-center gap-4 min-w-0 flex-1">
-                <div 
-                  className="w-1.5 h-14 rounded-full flex-shrink-0" 
-                  style={{ backgroundColor: item.subject?.colorHex || "#6366f1" }} 
-                />
+                
                 <div className="min-w-0">
                   <h3 className="text-lg font-semibold text-foreground flex items-center gap-2 flex-wrap">
                     <span className="truncate">{item.subject?.name || "Unknown Subject"}</span>
@@ -822,10 +1047,10 @@ export const TodayPage = () => {
               <div className="flex flex-nowrap items-center gap-2 self-end md:self-auto shrink-0">
                 <button
                   onClick={() => handleStatusClick(item, "present")}
-                  className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
-                    item.status === "present"
+                  className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                    (item.status === "present" || item.status === "medical" || item.status === "od")
                       ? "bg-emerald-500 text-white font-bold shadow-md shadow-emerald-500/20"
-                      : "bg-muted text-muted-foreground hover:bg-emerald-500/10 hover:text-emerald-600 dark:hover:text-emerald-400"
+                      : "bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 hover:text-emerald-600"
                   }`}
                 >
                   <CheckCircle2 className="w-3.5 h-3.5" />
@@ -836,7 +1061,7 @@ export const TodayPage = () => {
                   className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
                     item.status === "absent"
                       ? "bg-rose-500 text-white font-bold shadow-md shadow-rose-500/20"
-                      : "bg-muted text-muted-foreground hover:bg-rose-500/10 hover:text-rose-600 dark:hover:text-rose-400"
+                      : "bg-rose-500/10 text-rose-500 hover:bg-rose-500/20 hover:text-rose-600"
                   }`}
                 >
                   <XCircle className="w-3.5 h-3.5" />
@@ -847,7 +1072,7 @@ export const TodayPage = () => {
                   className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
                     item.status === "off"
                       ? "bg-amber-500 text-white font-bold shadow-md shadow-amber-500/20"
-                      : "bg-muted text-muted-foreground hover:bg-amber-500/10 hover:text-amber-600 dark:hover:text-amber-400"
+                      : "bg-amber-500/10 text-amber-500 hover:bg-amber-500/20 hover:text-amber-600"
                   }`}
                 >
                   <AlertCircle className="w-3.5 h-3.5" />
@@ -867,12 +1092,12 @@ export const TodayPage = () => {
             </div>
           ))}
         </div>
-      ) : null}
+      )}
 
       {/* Contextual Remark Modal */}
       {selectedRemarkItem && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div className="bg-card border border-border rounded-2xl p-6 w-full max-w-md shadow-2xl space-y-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-white/40 dark:bg-black/60 backdrop-blur-sm">
+          <div className="bg-card/90 backdrop-blur-xl border border-border/50 rounded-2xl p-6 w-full max-w-md shadow-2xl space-y-4">
             <h3 className="text-lg font-bold text-foreground flex items-center gap-2">
               <MessageSquare className="w-5 h-5 text-primary" />
               Log Contextual Remark
@@ -887,7 +1112,7 @@ export const TodayPage = () => {
                 
                 value={remarkInput}
                 onChange={(e) => setRemarkInput(e.target.value)}
-                className="w-full px-3 py-2 bg-background border border-border rounded-xl text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                className="w-full px-3 py-2 bg-foreground/5 border border-foreground/10 rounded-xl text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary"
                 autoFocus
               />
               <div className="flex flex-wrap gap-1.5 mt-2">
@@ -896,7 +1121,7 @@ export const TodayPage = () => {
                     key={tag}
                     type="button"
                     onClick={() => setRemarkInput(tag)}
-                    className="px-2.5 py-1 rounded-lg text-xs bg-muted hover:bg-primary/20 hover:text-primary transition-colors text-muted-foreground font-medium cursor-pointer"
+                    className="px-2.5 py-1 rounded-lg text-xs bg-primary/10 border border-primary/20 hover:bg-primary/20 text-primary transition-colors font-semibold cursor-pointer"
                   >
                     + {tag}
                   </button>
@@ -965,6 +1190,7 @@ export const TodayPage = () => {
         onClose={() => setIsCreateSemesterOpen(false)}
         onSuccess={fetchData}
       />
+    </div>
     </div>
   );
 };

@@ -21,7 +21,24 @@ const isTokenExpired = (token: string) => {
   }
 };
 
+
 import { Capacitor } from "@capacitor/core";
+import { Device } from "@capacitor/device";
+import { App } from "@capacitor/app";
+
+let cachedHardwareInfo = "";
+let cachedAppVersion = "";
+
+if (Capacitor.isNativePlatform()) {
+  Device.getInfo().then(info => {
+    cachedHardwareInfo = info.model || info.manufacturer || "Native Device";
+  }).catch(() => {});
+  
+  App.getInfo().then(info => {
+    cachedAppVersion = info.version;
+  }).catch(() => {});
+}
+
 
 // Request interceptor: Attach in-memory Access Token and proactively refresh if expired
 api.interceptors.request.use(
@@ -36,15 +53,8 @@ api.interceptors.request.use(
     config.headers['X-Attendx-OS'] = Capacitor.getPlatform();
     config.headers['X-Attendx-Timezone'] = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
-    try {
-      const { Device } = await import('@capacitor/device');
-      const info = await Device.getInfo();
-      config.headers['X-Attendx-Hardware'] = info.model;
-      
-      const { App } = await import('@capacitor/app');
-      const appInfo = await App.getInfo();
-      config.headers['X-Attendx-Version'] = appInfo.version;
-    } catch(e) {}
+    if (cachedHardwareInfo) config.headers['X-Attendx-Hardware'] = cachedHardwareInfo;
+    if (cachedAppVersion) config.headers['X-Attendx-Version'] = cachedAppVersion;
 
     let browserName = "";
     // @ts-ignore
@@ -72,11 +82,7 @@ api.interceptors.request.use(
       if (!isRefreshing) {
         isRefreshing = true;
         try {
-          const response = await axios.post(
-            `${API_BASE_URL}/auth/refresh`,
-            {},
-            { withCredentials: true }
-          );
+          const response = await api.post("/auth/refresh");
           token = response.data.accessToken;
           useAuthStore.getState().setAccessToken(token);
           processQueue(null, token);
@@ -157,11 +163,7 @@ api.interceptors.response.use(
       isRefreshing = true;
 
       try {
-        const response = await axios.post(
-          `${API_BASE_URL}/auth/refresh`,
-          {},
-          { withCredentials: true }
-        );
+        const response = await api.post("/auth/refresh");
 
         const { accessToken } = response.data;
         useAuthStore.getState().setAccessToken(accessToken);

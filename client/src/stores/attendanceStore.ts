@@ -3,6 +3,7 @@ import { persist, createJSONStorage } from "zustand/middleware";
 import { Preferences } from "@capacitor/preferences";
 import { api } from "../lib/api";
 import { useAuthStore } from "./authStore";
+import { useCacheStore } from "./cacheStore";
 
 export interface SubjectStat {
   id: string;
@@ -107,11 +108,33 @@ export const useAttendanceStore = create<AttendanceState>()(
       }
 
       // Run independent queries in parallel
-      const [statsRes, logsRes, eventsRes] = await Promise.allSettled([
+      const [statsRes, logsRes, eventsRes, timetableRes] = await Promise.allSettled([
         api.get(`/attendance/stats?semesterId=${activeSemRes.data.id}`),
         api.get("/attendance/logs"),
-        api.get(`/events?semesterId=${activeSemRes.data.id}`)
+        api.get(`/events?semesterId=${activeSemRes.data.id}`),
+        api.get(`/timetable/${activeSemRes.data.id}`)
       ]);
+      
+      // Inject timetable into cacheStore silently so the Timetable page works completely offline even if unvisited
+      if (timetableRes.status === 'fulfilled') {
+        const slots = Array.isArray(timetableRes.value.data) ? timetableRes.value.data : [];
+        const normalizedSlots = slots.map((s: any) => ({
+          ...s,
+          startTime: s.startTime.slice(0, 5),
+          endTime: s.endTime.slice(0, 5)
+        }));
+        let subjectsToCache = [];
+        if (statsRes.status === 'fulfilled') {
+           const rSubs = Array.isArray(statsRes.value.data) ? statsRes.value.data : (statsRes.value.data?.subjects || []);
+           subjectsToCache = rSubs;
+        }
+        useCacheStore.getState().setCache('timetable', {
+          ...useCacheStore.getState().timetable,
+          activeSemester: activeSemRes.data,
+          subjects: subjectsToCache,
+          slots: normalizedSlots
+        });
+      }
 
       // 1. Process Subject Stats
       let rawSubjects = [];
@@ -156,6 +179,13 @@ export const useAttendanceStore = create<AttendanceState>()(
       // 2. Process Detailed Attendance History Logs
       let historyLogs: AttendanceHistoryEntry[] = [];
       if (logsRes.status === 'fulfilled') {
+
+        // --- SILENTLY CACHE FOR OFFLINE SUBJECT DETAIL PAGE ---
+        if (logsRes.value.data && !Array.isArray(logsRes.value.data) && logsRes.value.data.logs) {
+          const existingCache = useCacheStore.getState().subject_logs || {};
+          useCacheStore.getState().setCache("subject_logs", { ...existingCache, "all": logsRes.value.data });
+        }
+        // ------------------------------------------------------
         const rawLogs = Array.isArray(logsRes.value.data?.logs) 
           ? logsRes.value.data.logs 
           : (Array.isArray(logsRes.value.data) ? logsRes.value.data : []);

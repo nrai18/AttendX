@@ -10,6 +10,7 @@ import { SyncEventsModal } from "../../components/calendar/SyncEventsModal";
 import { InlineAction } from "../../components/ui/inline-action";
 import { toast } from "sonner";
 import { useCacheStore } from "../../stores/cacheStore";
+import { useAttendanceStore } from "../../stores/attendanceStore";
 
 interface DayDetail {
   id: string;
@@ -63,8 +64,8 @@ export const CalendarPage = () => {
   const navigate = useNavigate();
 
   const fetchCalendar = async (force: boolean = false) => {
+    const monthStr = format(currentDate, "yyyy-MM");
     try {
-      const monthStr = format(currentDate, "yyyy-MM");
       if (cachedData && cachedData[monthStr]) {
         setData(cachedData[monthStr]);
       } else {
@@ -82,7 +83,98 @@ export const CalendarPage = () => {
       return res.data;
     } catch (error) {
       console.error("Failed to fetch calendar:", error);
-      return null;
+      
+      // --- OFFLINE FALLBACK CALCULATION ---
+      try {
+        const logs = useAttendanceStore.getState().historyLogs || [];
+        const timetableStore = useCacheStore.getState().timetable;
+        const timetable = Array.isArray(timetableStore) ? timetableStore : (timetableStore?.slots || []);
+
+        const filteredLogs = logs.filter((log: any) => log.date?.startsWith(monthStr));
+
+        const days: Record<string, string> = {};
+        const details: Record<string, any[]> = {};
+        const events = cachedData?.[monthStr]?.events || {};
+
+        let attended = 0;
+        let missed = 0;
+        let mixed = 0;
+        let off = 0;
+        let not_marked = 0;
+
+        const startDate = startOfMonth(new Date(`${monthStr}-01T00:00:00`));
+        const endDate = endOfMonth(startDate);
+        const today = format(new Date(), "yyyy-MM-dd");
+
+        for (let d = startDate; d <= endDate; d = addDays(d, 1)) {
+          const dateStr = format(d, "yyyy-MM-dd");
+          const dayOfWeek = d.getDay();
+          const dbDay = dayOfWeek === 0 ? 6 : dayOfWeek - 1; // 0=Mon, 6=Sun
+          
+          const dayLogs = filteredLogs.filter((l: any) => l.date === dateStr);
+          
+          if (dateStr > today) {
+            days[dateStr] = "future";
+            continue;
+          }
+
+          if (dayLogs.length > 0) {
+            details[dateStr] = dayLogs.map((l: any) => ({
+              id: Math.random().toString(),
+              subjectName: l.subject,
+              status: l.status.toLowerCase(),
+              remarks: null,
+            }));
+
+            const hasAttended = dayLogs.some((l: any) => ['present', 'attended'].includes(l.status.toLowerCase()));
+            const hasMissed = dayLogs.some((l: any) => ['absent', 'missed'].includes(l.status.toLowerCase()));
+            
+            if (hasAttended && hasMissed) {
+              days[dateStr] = "mixed";
+              mixed++;
+            } else if (hasAttended) {
+              days[dateStr] = "attended";
+              attended++;
+            } else if (hasMissed) {
+              days[dateStr] = "missed";
+              missed++;
+            } else {
+              days[dateStr] = "off";
+              off++;
+            }
+          } else {
+            let hasClasses = false;
+            if (Array.isArray(timetable)) {
+              hasClasses = timetable.some((slot: any) => slot.dayOfWeek === dbDay);
+            }
+            
+            if (hasClasses && dateStr <= today) {
+              days[dateStr] = "not_marked";
+              not_marked++;
+            } else {
+              days[dateStr] = "off";
+              off++;
+            }
+          }
+        }
+
+        const fallbackData = {
+          hasCalendar: true,
+          days,
+          details,
+          events,
+          stats: {
+            days: { not_marked, off, missed, attended, mixed },
+            lectures: { off: 0, missed: 0, attended: 0, total: 0, percentage: 0 }
+          }
+        };
+
+        setData(fallbackData);
+        return fallbackData;
+      } catch (fallbackError) {
+        console.error("Offline fallback also failed", fallbackError);
+        return null;
+      }
     } finally {
       setIsLoading(false);
     }
@@ -232,7 +324,7 @@ export const CalendarPage = () => {
           } else if (isVacation) {
             animBorder = "ring-2 ring-cyan-500 bg-cyan-500/10 dark:bg-cyan-500/20";
           } else if (hasEvent) {
-            animBorder = "ring-2 ring-indigo-500 bg-indigo-500/10 dark:bg-indigo-500/20";
+            animBorder = "ring-2 ring-primary bg-primary/10 dark:bg-primary/20";
           }
 
           return (
@@ -259,7 +351,7 @@ export const CalendarPage = () => {
                       <MessageSquare className="w-2.5 h-2.5 text-primary" />
                     )}
                     {hasEvent && (
-                      <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-ping" />
+                      <span className="w-1.5 h-1.5 rounded-full bg-primary animate-ping" />
                     )}
                   </div>
 
@@ -285,8 +377,8 @@ export const CalendarPage = () => {
                     {dayEvents.length > 0 && (
                       <div className="flex flex-col gap-1">
                         {dayEvents.map((e, idx) => (
-                          <div key={idx} className="flex items-start gap-1.5 text-xs font-semibold text-indigo-400">
-                            <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 mt-1 shrink-0" />
+                          <div key={idx} className="flex items-start gap-1.5 text-xs font-semibold text-primary">
+                            <span className="w-1.5 h-1.5 rounded-full bg-primary mt-1 shrink-0" />
                             <span className="leading-tight">{e.title}</span>
                           </div>
                         ))}
@@ -467,8 +559,8 @@ export const CalendarPage = () => {
                       <div className="flex flex-col gap-2 mb-2">
                         <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Events</h4>
                         {dayEvents.map((e, idx) => (
-                          <div key={idx} className="flex items-start gap-2 text-sm font-semibold text-indigo-400 bg-indigo-500/10 p-2.5 rounded-xl border border-indigo-500/20">
-                            <span className="w-2 h-2 rounded-full bg-indigo-500 mt-1.5 shrink-0" />
+                          <div key={idx} className="flex items-start gap-2 text-sm font-semibold text-primary bg-primary/10 p-2.5 rounded-xl border border-primary/20">
+                            <span className="w-2 h-2 rounded-full bg-primary mt-1.5 shrink-0" />
                             <span className="leading-tight">{e.title}</span>
                           </div>
                         ))}

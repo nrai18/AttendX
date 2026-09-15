@@ -5,9 +5,13 @@ import { Preferences } from '@capacitor/preferences';
 interface CacheState {
   today: any;
   timetable: any;
+  archived_timetables?: any;
   semester: any;
   calendar: any;
   subjects: any;
+  subjects_overview?: any;
+  subject_logs?: any;
+  insights: any;
   all_logs?: any;
   setCache: (key: string, data: any) => void;
   clearCache: () => void;
@@ -33,13 +37,18 @@ export const useCacheStore = create<CacheState>()(
     (set) => ({
       today: null,
       timetable: null,
+      archived_timetables: null,
       semester: null,
       calendar: null,
       subjects: null,
+      subjects_overview: null,
+      subject_logs: null,
+      insights: null,
       reminderFrequency: { type: 'Weekly', subValue: 'Mon' },
       setReminderFrequency: (data) => set({ reminderFrequency: data }),
       setCache: (key, data) => set((state) => ({ ...state, [key]: data })),
-      clearCache: () => set({ today: null, timetable: null, semester: null, calendar: null, subjects: null })
+      clearCache: () => set({ today: null, timetable: null,
+      archived_timetables: null, semester: null, calendar: null, subjects: null, subjects_overview: null, subject_logs: null })
     }),
     {
       name: 'attendx-api-cache',
