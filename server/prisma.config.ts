@@ -1,9 +1,9 @@
-import "dotenv/config";
-import { defineConfig, env } from "prisma/config";
+import { readFileSync } from "fs";
+import { resolve } from "path";
 
-export default defineConfig({
-  schema: "prisma/schema.prisma",
+// Prisma 7 requires explicit config file for db push
+export default {
   datasource: {
-    url: env("DATABASE_URL"),
-  },
-});
+    url: process.env.DATABASE_URL
+  }
+};

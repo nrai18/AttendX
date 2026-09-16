@@ -29,15 +29,7 @@ import { App } from "@capacitor/app";
 let cachedHardwareInfo = "";
 let cachedAppVersion = "";
 
-if (Capacitor.isNativePlatform()) {
-  Device.getInfo().then(info => {
-    cachedHardwareInfo = info.model || info.manufacturer || "Native Device";
-  }).catch(() => {});
-  
-  App.getInfo().then(info => {
-    cachedAppVersion = info.version;
-  }).catch(() => {});
-}
+
 
 
 // Request interceptor: Attach in-memory Access Token and proactively refresh if expired
@@ -47,6 +39,30 @@ api.interceptors.request.use(
     if (config.method?.toLowerCase() === 'get') {
       config.params = config.params || {};
       config.params._t = Date.now();
+    }
+
+    if (Capacitor.isNativePlatform()) {
+      if (!cachedHardwareInfo) {
+        try {
+          const info = await Device.getInfo();
+          cachedHardwareInfo = (info.manufacturer || info.model) 
+            ? `${info.manufacturer || ""}::${info.model || ""}` 
+            : "Native Device";
+        } catch (e) {
+          cachedHardwareInfo = "Native Device";
+        }
+      }
+      
+      if (!cachedAppVersion || cachedAppVersion.split('.').length < 3) {
+        try {
+          const info = await App.getInfo();
+          const otaVersion = localStorage.getItem("app_version") || import.meta.env.VITE_APP_VERSION;
+          cachedAppVersion = otaVersion || info.version || "Unknown";
+        } catch (e) {
+          const otaVersion = localStorage.getItem("app_version") || import.meta.env.VITE_APP_VERSION;
+          cachedAppVersion = otaVersion || "Unknown";
+        }
+      }
     }
 
     config.headers['X-Attendx-Platform'] = Capacitor.isNativePlatform() ? 'Mobile App' : 'Web/Laptop';

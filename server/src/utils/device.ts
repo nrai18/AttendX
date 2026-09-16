@@ -1,3 +1,4 @@
+const getModelName = require('android-model-names');
 import { UAParser } from 'ua-parser-js';
 import geoip from 'geoip-lite';
 
@@ -86,7 +87,26 @@ export async function getDeviceDetails(req: any) {
      
      // Instead of generic 'AttendX App', use the actual physical phone model (e.g. Galaxy S23) if available
      const versionStr = appVersion ? ` ${appVersion}` : '';
-     browser = hardwareModel ? `AttendX${versionStr} (${hardwareModel})` : `AttendX Native App${versionStr}`;
+     
+     let finalDeviceString = hardwareModel;
+     if (hardwareModel && hardwareModel.includes('::')) {
+       try {
+         const [manufacturer, rawModel] = hardwareModel.split('::');
+         const marketName = getModelName(rawModel);
+         
+         // The library returns the raw string itself if it's not found in the dictionary
+         if (marketName && marketName !== rawModel) {
+           finalDeviceString = marketName;
+         } else {
+           const cleanManufacturer = manufacturer ? manufacturer.charAt(0).toUpperCase() + manufacturer.slice(1) : '';
+           finalDeviceString = cleanManufacturer ? `${cleanManufacturer} ${rawModel}` : rawModel;
+         }
+       } catch (error) {
+         console.error('Device parsing failed:', error);
+       }
+     }
+     
+     browser = finalDeviceString ? `AttendX${versionStr} (${finalDeviceString})` : `AttendX Native App${versionStr}`;
   } else {
     // Web Browser (Laptop or Mobile Web)
     deviceType = result.device.type || (uaString.includes('Mobile') ? 'mobile' : 'desktop');

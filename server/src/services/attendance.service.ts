@@ -926,17 +926,11 @@ export class AttendanceService {
         }
       }
 
-      if (dateKey === "2026-08-18") {
-        console.log("DEBUG 2026-08-18:");
-        console.log("expectedClasses:", expectedClasses);
-        console.log("dayAtts:", dayAtts.map(a => a.date));
-      }
-
       let status = "off";
 
       if (expectedClasses === 0) {
         status = "off";
-        // Note: we still check unmapped attendances if someone manually marks an off day 
+        // Note: we still check unmapped attendances if someone manually marks an off day
         const allDayAtts = attendances.filter(a => AttendanceService.toLocalIso(a.date) === dateKey);
         if (allDayAtts.length > 0) {
           let presentCount = 0;
