@@ -22,9 +22,12 @@ export const HOLIDAY_ASSETS: Partial<Record<AnimationType, string>> = {
   milad_un_nabi: "/lottie/milad_un_nabi.json",
   rakshabandhan: "/lottie/rakshabandhan.json",
   gandhi_jayanti: "/lottie/gandhi_jayanti.json",
-  ganesh_chaturthi: "/lottie/janmashtami.json", // Fallback if no ganesh
+  ganesh_chaturthi: undefined, // Removed misleading Janmashtami fallback
   guru_nanak: "/lottie/guru_nanak_jayanti.json",
   janmashtami: "/lottie/janmashtami.json",
   muharram: "/lottie/muharram.json",
-  birthday: "/lottie/happy-birthday.json"
+  birthday: "/lottie/happy-birthday.json",
+  exam: "/lottie/exam.json",
+  online_exam: "/lottie/online_exam.json",
+  lab_exam: "/lottie/lab_exam.json"
 };

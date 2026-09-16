@@ -208,11 +208,18 @@ export class AttendanceService {
     }
 
     if (data.status === "not_marked" || data.status === "clear") {
-      if (data.attendanceId) {
+      const isTempId = typeof data.attendanceId === 'string' && (
+        data.attendanceId.startsWith("temp-") || 
+        data.attendanceId.startsWith("optimistic-")
+      );
+
+      if (data.attendanceId && !isTempId) {
         const deleteResult = await prisma.attendance.deleteMany({
-          where: { id: data.attendanceId }
+          where: { id: data.attendanceId, userId }
         });
-        return { message: "Attendance cleared", count: deleteResult.count, status: "not_marked" };
+        if (deleteResult.count > 0) {
+          return { message: "Attendance cleared", count: deleteResult.count, status: "not_marked" };
+        }
       }
 
       const deleteResult = await prisma.attendance.deleteMany({
@@ -926,17 +933,11 @@ export class AttendanceService {
         }
       }
 
-      if (dateKey === "2026-08-18") {
-        console.log("DEBUG 2026-08-18:");
-        console.log("expectedClasses:", expectedClasses);
-        console.log("dayAtts:", dayAtts.map(a => a.date));
-      }
-
       let status = "off";
 
       if (expectedClasses === 0) {
         status = "off";
-        // Note: we still check unmapped attendances if someone manually marks an off day 
+        // Note: we still check unmapped attendances if someone manually marks an off day
         const allDayAtts = attendances.filter(a => AttendanceService.toLocalIso(a.date) === dateKey);
         if (allDayAtts.length > 0) {
           let presentCount = 0;

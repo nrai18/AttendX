@@ -2,7 +2,7 @@ import axios from "axios";
 import { useAuthStore } from "../stores/authStore";
 import { useOfflineStore } from "../stores/offlineStore";
 
-export const API_BASE_URL = import.meta.env.VITE_API_URL || "/api";
+export const API_BASE_URL = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_URL) ? import.meta.env.VITE_API_URL : "/api";
 
 export const api = axios.create({
   baseURL: API_BASE_URL,
@@ -29,15 +29,7 @@ import { App } from "@capacitor/app";
 let cachedHardwareInfo = "";
 let cachedAppVersion = "";
 
-if (Capacitor.isNativePlatform()) {
-  Device.getInfo().then(info => {
-    cachedHardwareInfo = info.model || info.manufacturer || "Native Device";
-  }).catch(() => {});
-  
-  App.getInfo().then(info => {
-    cachedAppVersion = info.version;
-  }).catch(() => {});
-}
+
 
 
 // Request interceptor: Attach in-memory Access Token and proactively refresh if expired
@@ -47,6 +39,30 @@ api.interceptors.request.use(
     if (config.method?.toLowerCase() === 'get') {
       config.params = config.params || {};
       config.params._t = Date.now();
+    }
+
+    if (Capacitor.isNativePlatform()) {
+      if (!cachedHardwareInfo) {
+        try {
+          const info = await Device.getInfo();
+          cachedHardwareInfo = (info.manufacturer || info.model) 
+            ? `${info.manufacturer || ""}::${info.model || ""}` 
+            : "Native Device";
+        } catch (e) {
+          cachedHardwareInfo = "Native Device";
+        }
+      }
+      
+      if (!cachedAppVersion || cachedAppVersion.split('.').length < 3) {
+        try {
+          const info = await App.getInfo();
+          const otaVersion = (typeof localStorage !== 'undefined' ? localStorage.getItem("app_version") : null) || (typeof import.meta !== 'undefined' && import.meta.env?.VITE_APP_VERSION ? import.meta.env.VITE_APP_VERSION : undefined);
+          cachedAppVersion = otaVersion || info.version || "Unknown";
+        } catch (e) {
+          const otaVersion = (typeof localStorage !== 'undefined' ? localStorage.getItem("app_version") : null) || (typeof import.meta !== 'undefined' && import.meta.env?.VITE_APP_VERSION ? import.meta.env.VITE_APP_VERSION : undefined);
+          cachedAppVersion = otaVersion || "Unknown";
+        }
+      }
     }
 
     config.headers['X-Attendx-Platform'] = Capacitor.isNativePlatform() ? 'Mobile App' : 'Web/Laptop';
@@ -132,6 +148,40 @@ const processQueue = (error: any, token: string | null = null) => {
   failedQueue = [];
 };
 
+export function extractOfflinePayload(data: any): any {
+  let parsedData: any = data;
+  if (typeof parsedData === "string") {
+    try {
+      parsedData = JSON.parse(parsedData);
+    } catch {
+      // keep string if not JSON
+    }
+  } else if (parsedData && typeof parsedData === "object") {
+    try {
+      parsedData = JSON.parse(JSON.stringify(parsedData));
+    } catch {
+      parsedData = { ...parsedData };
+    }
+  }
+  return parsedData;
+}
+
+export function sanitizeOfflineHeaders(headers: any): Record<string, any> {
+  const cleanHeaders: Record<string, any> = {};
+  if (headers) {
+    const rawHeaders = typeof headers.toJSON === 'function'
+      ? headers.toJSON()
+      : { ...headers };
+    for (const [key, value] of Object.entries(rawHeaders)) {
+      const lower = key.toLowerCase();
+      if (lower !== 'authorization' && lower !== 'x-offline-retry' && lower !== 'content-length') {
+        cleanHeaders[key] = value;
+      }
+    }
+  }
+  return cleanHeaders;
+}
+
 api.interceptors.response.use(
   (response) => {
     import("sonner").then(({ toast }) => toast.dismiss("server-wakeup"));
@@ -185,8 +235,8 @@ api.interceptors.response.use(
       }
     }
 
-        // Global Error Interceptor for non-401s and non-429s (Peer Sync recovery)
-    if (error.message === "Network Error" || [502, 503, 504].includes(error.response?.status)) {
+    // Global Error Interceptor for non-401s and non-429s (Peer Sync recovery)
+    if (!error.response || error.message === "Network Error" || [502, 503, 504].includes(error.response?.status)) {
       
       // Offline mutation interceptor
       if (originalRequest && !originalRequest.headers['X-Offline-Retry'] &&
@@ -194,14 +244,14 @@ api.interceptors.response.use(
           !originalRequest.url?.includes('/auth/') &&
           !originalRequest.url?.includes('/sync/')) {
           
-          let parsedData = undefined;
-          try { parsedData = originalRequest.data ? JSON.parse(originalRequest.data) : undefined; } catch(e) {}
+          const parsedData = extractOfflinePayload(originalRequest.data);
+          const cleanHeaders = sanitizeOfflineHeaders(originalRequest.headers);
 
           useOfflineStore.getState().enqueue({
              method: originalRequest.method,
              url: originalRequest.url,
              data: parsedData,
-             headers: originalRequest.headers
+             headers: cleanHeaders
           });
           
           import("sonner").then(({ toast }) => {

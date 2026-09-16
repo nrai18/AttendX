@@ -16,14 +16,19 @@ export class DataService {
       where: { semesterId: activeSem.id },
       include: { attendance: true },
     });
+    const subMap = new Map<string, string>(subjects.map((s: any) => [s.id, s.name]));
 
     // Generate subject_stats.csv
-    const subjectStatsRows = subjects.map((sub: any, idx: number) => {
+    const subjectStatsRows = await Promise.all(subjects.map(async (sub: any, idx: number) => {
+      let logs = sub.attendance;
+      if (!Array.isArray(logs)) {
+        logs = await prisma.attendance.findMany({ where: { subjectId: sub.id } });
+      }
       let attended = 0, missed = 0, off = 0;
-      sub.attendance.forEach((log: any) => {
-        if (log.status === "present") attended++;
-        if (log.status === "absent") missed++;
-        if (log.status === "off") off++;
+      (logs || []).forEach((log: any) => {
+        if (log.status === "present" || log.status === "od") attended++;
+        else if (log.status === "absent") missed++;
+        else if (log.status === "off" || log.status === "cancelled" || log.status === "medical") off++;
       });
       const total = attended + missed; // Off classes don't count towards total
       const pct = total > 0 ? ((attended / total) * 100).toFixed(2) + "%" : "0.00%";
@@ -37,7 +42,7 @@ export class DataService {
         "Percentage": pct,
         "Criteria": (sub.targetAttendance || 75) + "%"
       };
-    });
+    }));
 
     // Fetch Timetable (all slots including archived)
     const slots = await prisma.timetableSlot.findMany({
@@ -56,16 +61,17 @@ export class DataService {
       } else {
         lectureNo++;
       }
+      const subName = slot.subject?.name || subMap.get(slot.subjectId) || "Subject";
       return {
         "Sr. No.": idx + 1,
         "Day of Week": daysMap[slot.dayOfWeek],
         "Lecture No.": lectureNo,
-        "Subject": slot.subject.name,
+        "Subject": subName,
         "Timing": `${slot.startTime} - ${slot.endTime}`,
         "Room": slot.room || "",
         "Type": slot.slotType === "practical" ? "Practical" : "Lecture",
-        "Valid From": slot.validFrom ? slot.validFrom.toISOString().split('T')[0] : "",
-        "Valid Until": slot.validUntil ? slot.validUntil.toISOString().split('T')[0] : ""
+        "Valid From": slot.validFrom ? new Date(slot.validFrom).toISOString().split('T')[0] : "",
+        "Valid Until": slot.validUntil ? new Date(slot.validUntil).toISOString().split('T')[0] : ""
       };
     });
 
@@ -79,7 +85,7 @@ export class DataService {
     let currentDate = "";
     let logLectureNo = 1;
     const logRows = logs.map((log: any, idx: number) => {
-      const rawDate = log.date.toISOString().split("T")[0];
+      const rawDate = new Date(log.date).toISOString().split("T")[0];
       if (rawDate !== currentDate) {
         currentDate = rawDate;
         logLectureNo = 1;
@@ -88,17 +94,15 @@ export class DataService {
       }
       
       const dateStr = rawDate; // ISO format: YYYY-MM-DD
-      
-      let attStatus = "Attended";
-      if (log.status === "absent") attStatus = "Missed";
-      if (log.status === "off") attStatus = "Off";
+      const attStatus = log.status || "present";
+      const subName = log.subject?.name || subMap.get(log.subjectId) || "Subject";
 
       return {
         "Sr. No.": idx + 1,
         "Date": dateStr,
         "Type": log.overrideId ? "Extra" : "Slot",
         "Lecture No.": logLectureNo,
-        "Subject": log.subject.name,
+        "Subject": subName,
         "Attendance": attStatus,
         "Att Modified": "",
         "Miss Modified": "",
@@ -136,9 +140,11 @@ export class DataService {
     const logsData = parse(logsEntry.getData().toString('utf8'), parseOptions) as any as Record<string, string>[];
 
     await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-      // 1. Wipe current semester data
+      // 1. Wipe current semester data cleanly in dependency order to prevent FK violations
+      await tx.attendance.deleteMany({ where: { subject: { semesterId: activeSem.id } } });
+      await tx.timetableOverride.deleteMany({ where: { semesterId: activeSem.id } });
+      await tx.timetableSlot.deleteMany({ where: { semesterId: activeSem.id } });
       await tx.subject.deleteMany({ where: { semesterId: activeSem.id } });
-      // The deletion cascades to TimetableSlot and Attendance logs automatically
 
       // 2. Import Subjects
       const subjectMap = new Map<string, string>(); // Name -> ID
@@ -212,10 +218,17 @@ export class DataService {
         const dateStr = row["Date"]; // e.g. "17 Sep 2026" or "YYYY-MM-DD"
         const dateObj = new Date(dateStr);
         
-        const attStr = row["Attendance"];
+        const rawAttStr = (row["Attendance"] || "").trim().toLowerCase();
         let status: any = "present";
-        if (attStr === "Missed") status = "absent";
-        if (attStr === "Off") status = "off";
+        if (["present", "absent", "off", "cancelled", "medical", "od"].includes(rawAttStr)) {
+          status = rawAttStr;
+        } else if (rawAttStr === "attended") {
+          status = "present";
+        } else if (rawAttStr === "missed") {
+          status = "absent";
+        } else if (rawAttStr === "off") {
+          status = "off";
+        }
 
         const typeStr = row["Type"];
         let isOverride = typeStr === "Extra" || typeStr === "override";

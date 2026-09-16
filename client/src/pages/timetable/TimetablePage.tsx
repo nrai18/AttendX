@@ -246,7 +246,7 @@ export const TimetablePage = () => {
       }
       
       resetForm();
-      fetchData();
+      await fetchData();
       window.dispatchEvent(new Event("attendance-updated"));
     } catch (error) {
       console.error("Failed to save slot:", error);
@@ -279,7 +279,7 @@ export const TimetablePage = () => {
             onClick: async () => {
               try {
                 await api.post(`/timetable/import/${activeSemester.id}`, payload);
-                fetchData();
+                await fetchData();
                 window.dispatchEvent(new Event("attendance-updated"));
                 toast.success("Timetable imported successfully!");
               } catch (err: any) {
@@ -386,7 +386,8 @@ export const TimetablePage = () => {
       toast.success("Slots merged successfully!");
       setSelectedSlotIds([]);
       setIsSelectMode(false);
-      fetchData();
+      await fetchData();
+      window.dispatchEvent(new Event("attendance-updated"));
     } catch (error) {
       toast.error("Failed to merge slots.");
     }
@@ -475,14 +476,23 @@ export const TimetablePage = () => {
     if (!selectedImage || !activeSemester) return;
     
     setIsUploading(true);
-    const formData = new FormData();
-    formData.append("file", selectedImage);
-    formData.append("image", selectedImage);
-    formData.append("semesterId", activeSemester.id);
     
     try {
-      const res = await api.post("/timetable/ocr-import", formData, {
-        headers: { "Content-Type": "multipart/form-data" }
+      const base64Image = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(selectedImage);
+        reader.onload = () => {
+          const resultStr = reader.result as string;
+          resolve(resultStr.includes(',') ? resultStr.split(',')[1] : resultStr);
+        };
+        reader.onerror = error => reject(error);
+      });
+
+      const res = await api.post("/timetable/ocr-import", {
+        base64Image,
+        mimeType: selectedImage.type,
+        fileName: selectedImage.name,
+        semesterId: activeSemester.id
       });
       
       if (res.data.status === "needs_setup") {
@@ -613,7 +623,7 @@ export const TimetablePage = () => {
                 title="View Archived Timetables"
                 className="flex items-center gap-1.5 bg-secondary/30 hover:bg-secondary/50 text-secondary-foreground border border-border px-3.5 py-2 rounded-xl text-xs font-semibold transition-colors cursor-pointer"
               >
-                <img src="/src/assets/archive.svg" alt="Archive" className="w-3.5 h-3.5 dark:invert opacity-70" />
+                <Archive className="w-3.5 h-3.5 opacity-70" />
                 <span className="hidden sm:inline">Archived</span>
               </button>
 

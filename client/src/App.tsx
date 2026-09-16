@@ -3,6 +3,8 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { useSilentRefresh } from "./hooks/useSilentRefresh";
 import { useTheme } from "./hooks/useTheme";
 import { useAuthStore } from "./stores/authStore";
+import { useAttendanceStore } from "./stores/attendanceStore";
+import { useCacheStore } from "./stores/cacheStore";
 import { useThemeStore } from "./stores/themeStore";
 import { AppShell } from "./components/layout/AppShell";
 import { LoginPage } from "./pages/auth/LoginPage";
@@ -22,9 +24,11 @@ import { ErrorBoundary } from "./components/common/ErrorBoundary";
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
-  const { isAuthenticated, isLoading, _hasHydrated } = useAuthStore();
+  const { isAuthenticated, isLoading, _hasHydrated: authHydrated } = useAuthStore();
+  const attHydrated = useAttendanceStore(s => s._hasHydrated);
+  const cacheHydrated = useCacheStore(s => s._hasHydrated);
 
-  if (isLoading || !_hasHydrated) {
+  if (isLoading || !authHydrated || !attHydrated || !cacheHydrated) {
     return (
       <div className="min-h-screen bg-background text-foreground flex items-center justify-center">
         <Loader2 className="w-8 h-8 animate-spin text-primary" />
@@ -55,10 +59,11 @@ import { PrivacyPage } from "./pages/marketing/PrivacyPage";
 import { TermsPage } from "./pages/marketing/TermsPage";
 
 const RootRoute: React.FC = () => {
-  const { isAuthenticated, isLoading, _hasHydrated } = useAuthStore();
-  if (!Capacitor.isNativePlatform() && !_hasHydrated) return null; // Wait for zustand to read Capacitor Preferences
-  // If native platform, we can wait too to avoid Lottie crash in LandingPage while resolving auth
-  if (!_hasHydrated || isLoading) return null;
+  const { isAuthenticated, isLoading, _hasHydrated: authHydrated } = useAuthStore();
+  const attHydrated = useAttendanceStore(s => s._hasHydrated);
+  const cacheHydrated = useCacheStore(s => s._hasHydrated);
+  if (!Capacitor.isNativePlatform() && (!authHydrated || !attHydrated || !cacheHydrated)) return null; 
+  if (!authHydrated || !attHydrated || !cacheHydrated || isLoading) return null;
   return isAuthenticated ? <Navigate to="/today" replace /> : <LandingPage />;
 };
 
@@ -150,7 +155,17 @@ export function App() {
         console.error("Failed to init NotificationService", e);
       }
     };
+
+    const unsubHydration = useAttendanceStore.subscribe((state, prevState) => {
+      if (state._hasHydrated && !prevState._hasHydrated) {
+        NotificationService.autoScheduleFromTimetable().catch(() => {});
+      }
+    });
+
     initServices();
+    return () => {
+      unsubHydration();
+    };
   }, []);
 
   return (

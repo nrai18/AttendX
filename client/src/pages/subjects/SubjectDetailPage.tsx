@@ -1,4 +1,5 @@
 import { useCacheStore } from "../../stores/cacheStore";
+import { useOfflineStore } from "../../stores/offlineStore";
 import React, { useState, useEffect } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import {
@@ -190,6 +191,23 @@ export const SubjectDetailPage = () => {
           }
         }
 
+        // Overlay pending offline marks to guarantee optimistic state survives offline reload
+        const queue = useOfflineStore.getState().queue;
+        const pendingMarks = queue.filter((q) => q.url.includes("/attendance/mark"));
+        if (pendingMarks.length > 0) {
+          rawLogs = rawLogs.map((l) => {
+            const match = pendingMarks.slice().reverse().find((q) =>
+              (q.data?.attendanceId && q.data.attendanceId === l.id) ||
+              (q.data?.date === l.date && q.data?.subjectId === l.subjectId &&
+               q.data?.timetableSlotId === l.timetableSlotId && q.data?.overrideId === l.overrideId)
+            );
+            if (match && match.data?.status) {
+              return { ...l, status: match.data.status };
+            }
+            return l;
+          });
+        }
+
         if (true) {
           setLogs(rawLogs);
           setSubjectsList(subjects);
@@ -286,13 +304,30 @@ export const SubjectDetailPage = () => {
     }
 
     // Optimistic Update
-    setLogs((prev) =>
-      prev.map((l) =>
-        l.id === item.id || (l.date === item.date && l.subjectId === item.subjectId && l.timetableSlotId === item.timetableSlotId && l.overrideId === item.overrideId)
-          ? { ...l, status: newStatus }
-          : l
-      )
-    );
+    const updateLogItem = (l: AttendanceLogItem) =>
+      l.id === item.id || (l.date === item.date && l.subjectId === item.subjectId && l.timetableSlotId === item.timetableSlotId && l.overrideId === item.overrideId)
+        ? { ...l, status: newStatus }
+        : l;
+
+    setLogs((prev) => prev.map(updateLogItem));
+
+    // Also optimistically update useCacheStore.subject_logs so fetchLogsData() fallback doesn't revert UI
+    const querySubject = isOverall ? "all" : id;
+    const existingCache = useCacheStore.getState().subject_logs || {};
+    const updatedCache = { ...existingCache };
+    if (querySubject && updatedCache[querySubject]?.logs) {
+      updatedCache[querySubject] = {
+        ...updatedCache[querySubject],
+        logs: updatedCache[querySubject].logs.map(updateLogItem),
+      };
+    }
+    if (querySubject !== "all" && updatedCache["all"]?.logs) {
+      updatedCache["all"] = {
+        ...updatedCache["all"],
+        logs: updatedCache["all"].logs.map(updateLogItem),
+      };
+    }
+    useCacheStore.getState().setCache("subject_logs", updatedCache);
 
     try {
       await api.post("/attendance/mark", {
@@ -421,7 +456,7 @@ export const SubjectDetailPage = () => {
           <div className="mt-10 flex items-center justify-center gap-8">
             <div className="flex flex-col items-center">
               <span className="cinematic-font text-4xl md:text-5xl text-[#D4AF37] dark:text-[#FFD700] drop-shadow-lg">
-                {pct.toFixed(1)}%
+                {(pct ?? 0).toFixed(1)}%
               </span>
               <span className="text-[10px] font-bold text-black/50 dark:text-white/50 tracking-[0.2em] uppercase mt-1">Current</span>
             </div>
@@ -683,7 +718,7 @@ export const SubjectDetailPage = () => {
                                     {/* Subject badge e.g. 90.00 / 75 */}
                                     <div className="flex flex-col items-center justify-center bg-emerald-500/10 border border-emerald-500/20 rounded-xl px-2 py-1 min-w-[50px]">
                                       <span className="text-xs font-bold text-emerald-500 leading-none">
-                                        {item.currentPercentage.toFixed(2)}
+                                        {(item.currentPercentage ?? 0).toFixed(2)}
                                       </span>
                                       <div className="w-full h-px bg-emerald-500/20 my-0.5" />
                                       <span className="text-[9px] font-semibold text-emerald-600 dark:text-emerald-400 leading-none">
@@ -707,7 +742,7 @@ export const SubjectDetailPage = () => {
                               <div className="flex items-center justify-between gap-3 pt-0.5">
                                 <div className="flex items-center gap-2 flex-wrap">
                                   <span className={`text-sm font-semibold ${item.isExtra || item.slotType === "Extra" ? "text-amber-600 dark:text-amber-400 font-bold" : "text-emerald-600 dark:text-emerald-400"}`}>
-                                    {item.slotType}
+                                    {item.slotType ? item.slotType.charAt(0).toUpperCase() + item.slotType.slice(1) : ""}
                                   </span>
                                   {(item.isExtra || item.slotType === "Extra") && (
                                     <span className="bg-amber-500/10 dark:bg-amber-500/20 text-amber-700 dark:text-amber-400 border border-amber-500/30 text-[10px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1 shadow-sm">
@@ -918,7 +953,7 @@ export const SubjectDetailPage = () => {
                         isSafe ? "text-emerald-500" : "text-rose-500"
                       }`}
                     >
-                      {projPct.toFixed(1)}%
+                      {(projPct ?? 0).toFixed(1)}%
                     </span>
                     <div className="flex flex-col items-center gap-1 mt-1 text-center">
                       <span className="text-xs text-muted-foreground">

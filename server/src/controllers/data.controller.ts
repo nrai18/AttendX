@@ -35,14 +35,24 @@ export class DataController {
 
   static async importData(req: AuthenticatedRequest, res: Response) {
     try {
-      if (!req.file) {
+      let buffer: Buffer;
+      let filename = "backup.zip";
+      let mimetype = "application/zip";
+
+      if (req.file) {
+        buffer = req.file.buffer;
+        filename = req.file.originalname;
+        mimetype = req.file.mimetype;
+      } else if (req.body.base64Zip) {
+        buffer = Buffer.from(req.body.base64Zip, "base64");
+      } else {
         return res.status(400).json({ error: "No zip file uploaded" });
       }
 
-      await DataService.importData(req.user!.userId, req.file.buffer);
+      await DataService.importData(req.user!.userId, buffer);
       
       try {
-        await DocumentService.storeDocument(req.user!.userId, req.file.buffer, req.file.originalname, req.file.mimetype, "BACKUP");
+        await DocumentService.storeDocument(req.user!.userId, buffer, filename, mimetype, "BACKUP");
       } catch (e) {
         console.error("Failed to store imported backup document", e);
       }

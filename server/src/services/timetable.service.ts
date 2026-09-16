@@ -647,12 +647,12 @@ Return a JSON object containing:
     });
   }
 
-  static async safeDeleteTimetable(userId: string, semesterId?: string) {
-    const subjects = await prisma.subject.findMany({
+  static async safeDeleteTimetable(userId: string, semesterId?: string, txClient: any = prisma) {
+    const subjects = await txClient.subject.findMany({
       where: { userId, ...(semesterId ? { semesterId } : {}) },
       select: { id: true }
     });
-    const subjectIds = subjects.map(s => s.id);
+    const subjectIds = subjects.map((s: any) => s.id);
 
     const conditions: any[] = [];
     if (semesterId) conditions.push({ semesterId });
@@ -667,12 +667,13 @@ Return a JSON object containing:
     // Instead of hard-deleting the slots, we archive them by setting validUntil to now.
     // This preserves historical attendance links and adds the timetable to the Archive modal.
     try {
-      await prisma.timetableSlot.updateMany({
+      await txClient.timetableSlot.updateMany({
         where: { ...whereCond, validUntil: null },
         data: { validUntil: new Date() }
       });
     } catch (err) {
       console.error("Failed to archive timetable during clear:", err);
+      throw err;
     }
   }
   static async exportTimetable(userId: string, semesterId: string) {
@@ -727,122 +728,146 @@ Return a JSON object containing:
       throw new Error("Invalid timetable payload. Must contain 'subjects' and 'slots' arrays.");
     }
 
-    await this.safeDeleteTimetable(userId, semesterId);
+    return await prisma.$transaction(async (tx) => {
+      await this.safeDeleteTimetable(userId, semesterId, tx);
 
-    // â”€â”€ 1. Subjects (small set, sequential is fine) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    const subjectMap = new Map<string, string>();
-    for (const subData of payload.subjects) {
-      const codeKey = subData.code || subData.name;
-      let subject = await prisma.subject.findFirst({ where: { semesterId, userId, code: codeKey } });
-      if (!subject) {
-        subject = await prisma.subject.create({
-          data: {
-            semesterId, userId,
-            name: subData.name,
-            code: subData.code || null,
-            credits: subData.credits || 3,
-            faculty: subData.faculty || null,
-            colorHex: subData.colorHex || "#6366f1",
-            targetAttendance: subData.targetAttendance || null,
-          },
-        });
+      // ── 1. Subjects (small set, sequential is fine) ────────────────────────
+      const subjectMap = new Map<string, string>();
+      for (const subData of payload.subjects) {
+        const codeKey = subData.code || subData.name;
+        let subject = await tx.subject.findFirst({ where: { semesterId, userId, code: codeKey } });
+        if (!subject) {
+          subject = await tx.subject.create({
+            data: {
+              semesterId, userId,
+              name: subData.name,
+              code: subData.code || null,
+              credits: subData.credits || 3,
+              faculty: subData.faculty || null,
+              colorHex: subData.colorHex || "#6366f1",
+              targetAttendance: subData.targetAttendance || null,
+            },
+          });
+        }
+        subjectMap.set(codeKey, subject.id);
+        if (subData.name) subjectMap.set(subData.name, subject.id);
       }
-      subjectMap.set(codeKey, subject.id);
-      if (subData.name) subjectMap.set(subData.name, subject.id);
-    }
 
-    // â”€â”€ 2. Timetable Slots â€” single batch insert â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    const slotRows = payload.slots
-      .map((slotData: any) => {
-        const subjectId = subjectMap.get(slotData.subjectCode) || subjectMap.get(slotData.subjectName);
-        if (!subjectId) return null;
-        return {
-          semesterId, subjectId,
-          dayOfWeek: Number(slotData.dayOfWeek),
-          startTime: normalizeTimeString(slotData.startTime, "09:00"),
-          endTime: normalizeTimeString(slotData.endTime, "10:00"),
-          room: slotData.room || null,
-          slotType: slotData.slotType || "lecture",
-        };
-      })
-      .filter(Boolean);
-
-    if (slotRows.length > 0) {
-      await prisma.timetableSlot.createMany({ data: slotRows, skipDuplicates: true });
-    }
-
-    // â”€â”€ 3. Academic Calendar Events â€” single batch insert â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    let importedEvents = 0;
-    if (payload.academicCalendar && Array.isArray(payload.academicCalendar) && payload.academicCalendar.length > 0) {
-      const existingEvents = await prisma.event.findMany({
-        where: { userId },
-        select: { date: true, eventType: true }
-      });
-      const existingSet = new Set(existingEvents.map((e: any) => `${e.date.toISOString().split('T')[0]}_${e.eventType}`));
-
-      const eventRows = payload.academicCalendar
-        .map((event: any) => {
-          const resolvedType = event.eventType || event.type || "holiday";
-          const dateStr = new Date(event.date).toISOString().split('T')[0];
-          const key = `${dateStr}_${resolvedType}`;
-          if (existingSet.has(key)) return null;
-          existingSet.add(key);
+      // ── 2. Timetable Slots — single batch insert ───────────────────────────
+      const slotRows = payload.slots
+        .map((slotData: any) => {
+          const subjectId = subjectMap.get(slotData.subjectCode) || subjectMap.get(slotData.subjectName);
+          if (!subjectId) return null;
           return {
-            userId, semesterId,
-            title: event.title || event.description || "Event",
-            date: new Date(event.date),
-            eventType: resolvedType,
-            isHolidayList: event.isHolidayList || false,
+            semesterId, subjectId,
+            dayOfWeek: Number(slotData.dayOfWeek),
+            startTime: normalizeTimeString(slotData.startTime, "09:00"),
+            endTime: normalizeTimeString(slotData.endTime, "10:00"),
+            room: slotData.room || null,
+            slotType: slotData.slotType || "lecture",
           };
         })
         .filter(Boolean);
 
-      if (eventRows.length > 0) {
-        const result = await prisma.event.createMany({ data: eventRows, skipDuplicates: true });
-        importedEvents = result.count;
+      if (slotRows.length > 0) {
+        await tx.timetableSlot.createMany({ data: slotRows, skipDuplicates: true });
       }
-    }
 
-    // === 4. Attendance Logs ===
-    let importedLogs = 0;
-    if (payload.lectureLogs && Array.isArray(payload.lectureLogs) && payload.lectureLogs.length > 0) {
-      const existingLogs = await prisma.attendance.findMany({
-        where: { userId, subject: { semesterId } },
-        select: { date: true, subjectId: true }
-      });
-      const existingSet = new Set(existingLogs.map((l: any) => `${l.date.toISOString().split('T')[0]}_${l.subjectId}`));
+      // ── 3. Academic Calendar Events — single batch insert ────────────────
+      let importedEvents = 0;
+      if (payload.academicCalendar && Array.isArray(payload.academicCalendar) && payload.academicCalendar.length > 0) {
+        const existingEvents = await tx.event.findMany({
+          where: { userId },
+          select: { date: true, eventType: true }
+        });
+        const existingSet = new Set(existingEvents.map((e: any) => `${e.date.toISOString().split('T')[0]}_${e.eventType}`));
 
-      const logRows = payload.lectureLogs
-        .map((log: any) => {
-          const subjectCode = log.subject?.code || log.subjectCode;
-          const subjectName = log.subject?.name || log.subjectName;
-          const subjectId = subjectMap.get(subjectCode) || subjectMap.get(subjectName);
-          if (!subjectId) return null;
+        const eventRows = payload.academicCalendar
+          .map((event: any) => {
+            const resolvedType = event.eventType || event.type || "holiday";
+            const dateStr = new Date(event.date).toISOString().split('T')[0];
+            const key = `${dateStr}_${resolvedType}`;
+            if (existingSet.has(key)) return null;
+            existingSet.add(key);
+            return {
+              userId, semesterId,
+              title: event.title || event.description || "Event",
+              date: new Date(event.date),
+              eventType: resolvedType,
+              isHolidayList: event.isHolidayList || false,
+            };
+          })
+          .filter(Boolean);
 
-          let mappedStatus = log.status;
-          if (mappedStatus === "HELD") return null;
-          if (mappedStatus === "CANCELLED" || mappedStatus === "cancelled") mappedStatus = "off";
-
-          const dateStr = new Date(log.date).toISOString().split('T')[0];
-          const key = `${dateStr}_${subjectId}`;
-          if (existingSet.has(key)) return null;
-          existingSet.add(key);
-
-          return { userId, subjectId, date: new Date(log.date), status: mappedStatus };
-        })
-        .filter(Boolean);
-
-      if (logRows.length > 0) {
-        const result = await prisma.attendance.createMany({ data: logRows, skipDuplicates: true });
-        importedLogs = result.count;
+        if (eventRows.length > 0) {
+          const result = await tx.event.createMany({ data: eventRows, skipDuplicates: true });
+          importedEvents = result.count;
+        }
       }
-    }
 
-    return {
-      importedSubjects: payload.subjects.length,
-      importedSlots: slotRows.length,
-      importedEvents,
-      importedLogs
-    };
+      // === 4. Attendance Logs ===
+      let importedLogs = 0;
+      if (payload.lectureLogs && Array.isArray(payload.lectureLogs) && payload.lectureLogs.length > 0) {
+        const existingLogs = await tx.attendance.findMany({
+          where: { userId, subject: { semesterId } },
+          select: { 
+            date: true, 
+            subjectId: true,
+            timetableSlotId: true,
+            timetableSlot: { select: { startTime: true } }
+          }
+        });
+        const existingSet = new Set(existingLogs.map((l: any) => {
+          const dStr = l.date.toISOString().split('T')[0];
+          const sId = l.timetableSlotId || 'extra';
+          const stTime = l.timetableSlot?.startTime || '';
+          return `${dStr}_${l.subjectId}_${sId}_${stTime}`;
+        }));
+
+        const logRows = payload.lectureLogs
+          .map((log: any) => {
+            const subjectCode = log.subject?.code || log.subjectCode;
+            const subjectName = log.subject?.name || log.subjectName;
+            const subjectId = subjectMap.get(subjectCode) || subjectMap.get(subjectName);
+            if (!subjectId) return null;
+
+            let mappedStatus = log.status;
+            if (mappedStatus === "HELD") return null;
+            if (mappedStatus === "CANCELLED" || mappedStatus === "cancelled") mappedStatus = "off";
+
+            const slotId = log.slotId || log.timetableSlotId || log.slot?.id || null;
+            const startTime = log.startTime || log.timing?.split('-')[0]?.trim() || log.time || log.slot?.startTime || '';
+            const dateStr = new Date(log.date).toISOString().split('T')[0];
+            const key = `${dateStr}_${subjectId}_${slotId || 'extra'}_${startTime || ''}`;
+            if (existingSet.has(key)) return null;
+            existingSet.add(key);
+
+            return { 
+              userId, 
+              subjectId, 
+              date: new Date(log.date), 
+              status: mappedStatus,
+              timetableSlotId: slotId,
+              remarks: log.remarks || null
+            };
+          })
+          .filter(Boolean);
+
+        if (logRows.length > 0) {
+          const result = await tx.attendance.createMany({ data: logRows, skipDuplicates: true });
+          importedLogs = result.count;
+        }
+      }
+
+      return {
+        importedSubjects: payload.subjects.length,
+        importedSlots: slotRows.length,
+        importedEvents,
+        importedLogs
+      };
+    }, {
+      timeout: 30000,
+      maxWait: 10000
+    });
   }
 }

@@ -3,6 +3,8 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import { Preferences } from '@capacitor/preferences';
 
 interface CacheState {
+  _hasHydrated: boolean;
+  setHasHydrated: (h: boolean) => void;
   today: any;
   timetable: any;
   archived_timetables?: any;
@@ -44,6 +46,8 @@ export const useCacheStore = create<CacheState>()(
       subjects_overview: null,
       subject_logs: null,
       insights: null,
+      _hasHydrated: false,
+      setHasHydrated: (h: boolean) => set({ _hasHydrated: h }),
       reminderFrequency: { type: 'Weekly', subValue: 'Mon' },
       setReminderFrequency: (data) => set({ reminderFrequency: data }),
       setCache: (key, data) => set((state) => ({ ...state, [key]: data })),
@@ -53,6 +57,7 @@ export const useCacheStore = create<CacheState>()(
     {
       name: 'attendx-api-cache',
       storage: createJSONStorage(() => capacitorStorage),
+      onRehydrateStorage: () => (state) => { state?.setHasHydrated(true); },
     }
   )
 );

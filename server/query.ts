@@ -1,1 +1,0 @@
-import { prisma } from './src/lib/prisma'; prisma.event.findMany().then(e => { console.log(e.filter(ev => ev.title.includes('Republic') || ev.title.includes('Onam') || ev.title.includes('Milad'))); process.exit(0); });

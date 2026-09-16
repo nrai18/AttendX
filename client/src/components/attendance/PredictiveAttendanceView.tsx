@@ -87,6 +87,9 @@ export const PredictiveAttendanceView: React.FC<PredictiveAttendanceViewProps> =
 
   const fetchAiInsights = async (force = false) => {
     setIsAiLoading(true);
+    // Simulate slight delay for UI feel
+    await new Promise(r => setTimeout(r, 600));
+    
     try {
       const cacheState = useCacheStore.getState();
       if (!force && cacheState.insights) {
@@ -120,8 +123,16 @@ export const PredictiveAttendanceView: React.FC<PredictiveAttendanceViewProps> =
      let futureItems = [...(sub.futureBreakdown || [])];
      let loggedItems: any[] = [];
      
-     if (sub.attendance) {
-        sub.attendance.forEach((log: any) => {
+     // Offline fallback: The subjects array from attendanceStore might not have optimistic logs 
+     // attached to sub.attendance. We pull from subject_logs cache which is aggressively updated.
+     const state = useCacheStore.getState();
+     const subjLogsCache = state.subject_logs?.[sub.id]?.logs || state.subject_logs?.['all']?.logs?.filter((l: any) => l.subjectId === sub.id);
+     
+     // Merge logic: use cached logs if available, fallback to sub.attendance
+     const activeLogs = (subjLogsCache && subjLogsCache.length > 0) ? subjLogsCache : (sub.attendance || []);
+     
+     if (activeLogs) {
+        activeLogs.forEach((log: any) => {
            loggedItems.push({
               date: new Date(log.date).toISOString(),
               type: 'LOGGED',
@@ -156,8 +167,8 @@ export const PredictiveAttendanceView: React.FC<PredictiveAttendanceViewProps> =
   };
 
   // Compute Overall Stats
-  const totalAttended = subjects.reduce((sum, s) => sum + s.attended, 0);
-  const totalRecorded = subjects.reduce((sum, s) => sum + s.total, 0);
+  const totalAttended = subjects.reduce((sum, s) => sum + (s.attended || 0), 0);
+  const totalRecorded = subjects.reduce((sum, s) => sum + (s.total || 0), 0);
   const overallPercentage = totalRecorded > 0 ? (totalAttended / totalRecorded) * 100 : 0;
 
   // Formula for consecutive classes needed to reach globalTarget:

@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import { Preferences } from "@capacitor/preferences";
+import { useOfflineStore } from "./offlineStore";
 
 export interface User {
   id: string;
@@ -67,19 +68,23 @@ export const useAuthStore = create<AuthState>()(
           isAuthenticated: true,
           isLoading: false,
         }),
-
       logout: () => {
         const keysToRemove = [
           'attendx-auth',
           'attendx-attendance-cache',
           'attendx-api-cache',
           'attendx-assignments',
-          'attendx-sync-storage'
+          'attendx-sync-storage',
+          'attendx-offline-queue',
         ];
         keysToRemove.forEach(k => {
           Preferences.remove({ key: k }).catch(() => {});
           localStorage.removeItem(k);
         });
+        useOfflineStore.getState().clearQueue();
+        import('../services/NotificationService')
+          .then(m => m.NotificationService.cancelAll())
+          .catch((err) => console.error('Failed to cancel notifications on logout:', err));
         set({
           user: null,
           accessToken: null,
@@ -100,4 +105,3 @@ export const useAuthStore = create<AuthState>()(
     }
   )
 );
-

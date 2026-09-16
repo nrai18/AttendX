@@ -1,0 +1,5002 @@
+[
+  {
+    "id": 1,
+    "query": "What does the policy say about 75% attendance?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 2,
+    "query": "If I miss 2 classes of DBMS, what will my percentage be?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 3,
+    "query": "Simulate missing 5 days of Algorithms.",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 4,
+    "query": "Navigate to timetable.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 5,
+    "query": "Please update my DBMS attendance to present on Monday.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 6,
+    "query": "Explain the ordinance regarding late registration.",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 7,
+    "query": "Open settings.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 8,
+    "query": "Reschedule my Math lecture today to 10 AM.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 9,
+    "query": "Write a python script for cats.",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 10,
+    "query": "Tell me a joke about cats.",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 11,
+    "query": "Explain the ordinance regarding medical leaves.",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 12,
+    "query": "Open settings.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 13,
+    "query": "Show me my peer sync.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 14,
+    "query": "Take me to the timetable screen.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 15,
+    "query": "Move my OS class yesterday to Friday evening.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 16,
+    "query": "Write a poem about cats.",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 17,
+    "query": "Reschedule my DBMS lecture on Monday to Friday evening.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 18,
+    "query": "If I miss some classes of DBMS, what will my percentage be?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 19,
+    "query": "Navigate to peer sync.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 20,
+    "query": "Navigate to reports.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 21,
+    "query": "Write a python script for quantum physics.",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 22,
+    "query": "How is 75% attendance handled according to rules?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 23,
+    "query": "Reschedule my Physics lecture on Monday to 10 AM.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 24,
+    "query": "Open peer sync.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 25,
+    "query": "Take me to the profile screen.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 26,
+    "query": "Move my Algorithms class yesterday to 10 AM.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 27,
+    "query": "Take me to the reports screen.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 28,
+    "query": "Simulate missing some days of Math.",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 29,
+    "query": "Can we move Algorithms tomorrow to 2 PM?",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 30,
+    "query": "Explain the ordinance regarding midsem exams.",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 31,
+    "query": "Explain the ordinance regarding midsem exams.",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 32,
+    "query": "What is the college rule for 75% attendance?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 33,
+    "query": "Can we move Physics yesterday to next Monday?",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 34,
+    "query": "Can we move OS tomorrow to 2 PM?",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 35,
+    "query": "Set OS as medical leave yesterday.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 36,
+    "query": "Navigate to reports.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 37,
+    "query": "Shift Math from on Monday to 4 PM tomorrow.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 38,
+    "query": "Navigate to reports.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 39,
+    "query": "Write a poem about space exploration.",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 40,
+    "query": "Write a python script for space exploration.",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 41,
+    "query": "Reschedule my Physics lecture today to 4 PM tomorrow.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 42,
+    "query": "How is hostel curfew handled according to rules?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 43,
+    "query": "Can we move Algorithms this morning to 2 PM?",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 44,
+    "query": "Please update my Computer Networks attendance to on duty tomorrow.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 45,
+    "query": "Take me to the reports screen.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 46,
+    "query": "Write a python script for cooking.",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 47,
+    "query": "Take me to the profile screen.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 48,
+    "query": "What happens if I bunk the next 2 Computer Networks classes?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 49,
+    "query": "Write a python script for space exploration.",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 50,
+    "query": "Move my OS class yesterday to Friday evening.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 51,
+    "query": "Tell me the regulations for failing a course.",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 52,
+    "query": "If I miss some classes of Computer Networks, what will my percentage be?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 53,
+    "query": "What happens if I bunk the next 3 Math classes?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 54,
+    "query": "Simulate missing 2 days of Math.",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 55,
+    "query": "What does the policy say about hostel curfew?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 56,
+    "query": "Open dashboard.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 57,
+    "query": "Change my Physics class tomorrow to Friday evening.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 58,
+    "query": "Write a poem about space exploration.",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 59,
+    "query": "What is the college rule for hostel curfew?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 60,
+    "query": "Open profile.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 61,
+    "query": "Who is Steve Jobs?",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 62,
+    "query": "Navigate to dashboard.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 63,
+    "query": "Move my Algorithms class today to next Monday.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 64,
+    "query": "Who is Elon Musk?",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 65,
+    "query": "Calculate my attendance if I am absent for 3 OS lectures.",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 66,
+    "query": "Navigate to settings.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 67,
+    "query": "Explain the ordinance regarding failing a course.",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 68,
+    "query": "What does the policy say about midsem exams?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 69,
+    "query": "Tell me a joke about cats.",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 70,
+    "query": "Take me to the dashboard screen.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 71,
+    "query": "Navigate to profile.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 72,
+    "query": "Open profile.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 73,
+    "query": "What happens if I bunk the next some Computer Networks classes?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 74,
+    "query": "Change my Math class this morning to 4 PM tomorrow.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 75,
+    "query": "Please update my Computer Networks attendance to present today.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 76,
+    "query": "Take me to the timetable screen.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 77,
+    "query": "Move my Physics class today to 4 PM tomorrow.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 78,
+    "query": "Write a python script for space exploration.",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 79,
+    "query": "Calculate my attendance if I am absent for all Computer Networks lectures.",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 80,
+    "query": "Write a poem about cats.",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 81,
+    "query": "What is the college rule for medical leaves?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 82,
+    "query": "What is the capital of India?",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 83,
+    "query": "How is failing a course handled according to rules?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 84,
+    "query": "Tell me a joke about quantum physics.",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 85,
+    "query": "Can you mark my attendance as on duty for OS today?",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 86,
+    "query": "Reschedule my Physics lecture this morning to Friday evening.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 87,
+    "query": "Can you mark my attendance as present for Math today?",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 88,
+    "query": "Mark me absent for DBMS on Monday.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 89,
+    "query": "Reschedule my OS lecture yesterday to 2 PM.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 90,
+    "query": "How is hostel curfew handled according to rules?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 91,
+    "query": "Show me my profile.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 92,
+    "query": "Set Algorithms as absent today.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 93,
+    "query": "Show me my settings.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 94,
+    "query": "Shift DBMS from tomorrow to Friday evening.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 95,
+    "query": "Tell me the regulations for medical leaves.",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 96,
+    "query": "If I miss all classes of Algorithms, what will my percentage be?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 97,
+    "query": "Can I afford to miss all classes in DBMS?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 98,
+    "query": "Show me my peer sync.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 99,
+    "query": "Take me to the settings screen.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 100,
+    "query": "Set Algorithms as on duty tomorrow.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 101,
+    "query": "I want to see the reports page.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 102,
+    "query": "Tell me a joke about machine learning.",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 103,
+    "query": "Calculate my attendance if I am absent for some Physics lectures.",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 104,
+    "query": "How is late registration handled according to rules?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 105,
+    "query": "Navigate to peer sync.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 106,
+    "query": "Mark me present for Computer Networks this morning.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 107,
+    "query": "What is the capital of Brazil?",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 108,
+    "query": "Move my DBMS class today to 4 PM tomorrow.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 109,
+    "query": "What does the policy say about medical leaves?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 110,
+    "query": "I want to see the profile page.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 111,
+    "query": "Write a python script for quantum physics.",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 112,
+    "query": "Shift Math from this morning to 2 PM.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 113,
+    "query": "Who is Albert Einstein?",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 114,
+    "query": "If I miss all classes of DBMS, what will my percentage be?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 115,
+    "query": "Shift Computer Networks from yesterday to 2 PM.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 116,
+    "query": "What happens if I bunk the next some Algorithms classes?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 117,
+    "query": "Can we move DBMS this morning to Friday evening?",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 118,
+    "query": "Can we move Math this morning to next Monday?",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 119,
+    "query": "Write a poem about cats.",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 120,
+    "query": "Shift DBMS from on Monday to next Monday.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 121,
+    "query": "Change my OS class yesterday to 4 PM tomorrow.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 122,
+    "query": "If I miss some classes of Computer Networks, what will my percentage be?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 123,
+    "query": "Write a python script for machine learning.",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 124,
+    "query": "Shift Math from on Monday to 2 PM.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 125,
+    "query": "Explain the ordinance regarding hostel curfew.",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 126,
+    "query": "Who is Steve Jobs?",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 127,
+    "query": "Mark me medical leave for OS yesterday.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 128,
+    "query": "Move my Physics class on Monday to 10 AM.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 129,
+    "query": "Can we move Computer Networks on Monday to 10 AM?",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 130,
+    "query": "Shift Physics from this morning to 4 PM tomorrow.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 131,
+    "query": "What happens if I bunk the next all Math classes?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 132,
+    "query": "Reschedule my Computer Networks lecture on Monday to next Monday.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 133,
+    "query": "Navigate to dashboard.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 134,
+    "query": "Show me my dashboard.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 135,
+    "query": "Change my DBMS class tomorrow to 2 PM.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 136,
+    "query": "Navigate to profile.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 137,
+    "query": "Calculate my attendance if I am absent for all OS lectures.",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 138,
+    "query": "Tell me the regulations for failing a course.",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 139,
+    "query": "Change my Math class on Monday to Friday evening.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 140,
+    "query": "Tell me the regulations for midsem exams.",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 141,
+    "query": "Who is Albert Einstein?",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 142,
+    "query": "Simulate missing 2 days of Physics.",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 143,
+    "query": "Open timetable.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 144,
+    "query": "Mark me medical leave for Algorithms yesterday.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 145,
+    "query": "Shift OS from today to Friday evening.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 146,
+    "query": "Move my Math class this morning to Friday evening.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 147,
+    "query": "Set Physics as medical leave today.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 148,
+    "query": "Shift Math from on Monday to Friday evening.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 149,
+    "query": "How is midsem exams handled according to rules?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 150,
+    "query": "Explain the ordinance regarding failing a course.",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 151,
+    "query": "What happens if I bunk the next 2 Computer Networks classes?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 152,
+    "query": "Mark me medical leave for Math on Monday.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 153,
+    "query": "Change my DBMS class today to 2 PM.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 154,
+    "query": "Tell me a joke about machine learning.",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 155,
+    "query": "Who is Elon Musk?",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 156,
+    "query": "I want to see the peer sync page.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 157,
+    "query": "Move my OS class this morning to next Monday.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 158,
+    "query": "I was on duty in OS this morning.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 159,
+    "query": "What is the capital of Japan?",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 160,
+    "query": "Navigate to profile.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 161,
+    "query": "How is late registration handled according to rules?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 162,
+    "query": "Take me to the peer sync screen.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 163,
+    "query": "I was absent in Computer Networks yesterday.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 164,
+    "query": "Simulate missing 3 days of Computer Networks.",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 165,
+    "query": "Who is Albert Einstein?",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 166,
+    "query": "Write a poem about cooking.",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 167,
+    "query": "Open profile.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 168,
+    "query": "Simulate missing all days of Algorithms.",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 169,
+    "query": "How is midsem exams handled according to rules?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 170,
+    "query": "Tell me a joke about space exploration.",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 171,
+    "query": "Write a python script for cooking.",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 172,
+    "query": "Calculate my attendance if I am absent for some OS lectures.",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 173,
+    "query": "Can I afford to miss 2 classes in Math?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 174,
+    "query": "If I miss some classes of Computer Networks, what will my percentage be?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 175,
+    "query": "What is the college rule for failing a course?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 176,
+    "query": "What happens if I bunk the next some DBMS classes?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 177,
+    "query": "Move my Math class this morning to 4 PM tomorrow.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 178,
+    "query": "Reschedule my OS lecture this morning to 2 PM.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 179,
+    "query": "Tell me the regulations for hostel curfew.",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 180,
+    "query": "Change my Computer Networks class tomorrow to next Monday.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 181,
+    "query": "Set Math as medical leave on Monday.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 182,
+    "query": "What happens if I bunk the next 3 Math classes?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 183,
+    "query": "Explain the ordinance regarding failing a course.",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 184,
+    "query": "Take me to the timetable screen.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 185,
+    "query": "What happens if I bunk the next 5 Physics classes?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 186,
+    "query": "Tell me the regulations for medical leaves.",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 187,
+    "query": "How is 75% attendance handled according to rules?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 188,
+    "query": "Navigate to peer sync.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 189,
+    "query": "Reschedule my DBMS lecture tomorrow to next Monday.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 190,
+    "query": "Please update my OS attendance to present today.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 191,
+    "query": "Set Math as absent yesterday.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 192,
+    "query": "What is the capital of Brazil?",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 193,
+    "query": "Change my Algorithms class on Monday to 2 PM.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 194,
+    "query": "Take me to the settings screen.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 195,
+    "query": "What happens if I bunk the next 3 OS classes?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 196,
+    "query": "Open dashboard.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 197,
+    "query": "Show me my timetable.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 198,
+    "query": "What is the capital of France?",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 199,
+    "query": "Move my DBMS class yesterday to 4 PM tomorrow.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 200,
+    "query": "Navigate to profile.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 201,
+    "query": "What does the policy say about midsem exams?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 202,
+    "query": "Show me my peer sync.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 203,
+    "query": "Calculate my attendance if I am absent for 5 DBMS lectures.",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 204,
+    "query": "Move my Algorithms class on Monday to 10 AM.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 205,
+    "query": "Who is Albert Einstein?",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 206,
+    "query": "Write a python script for cooking.",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 207,
+    "query": "Write a poem about space exploration.",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 208,
+    "query": "Change my Algorithms class on Monday to 10 AM.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 209,
+    "query": "Change my Math class tomorrow to next Monday.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 210,
+    "query": "How is late registration handled according to rules?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 211,
+    "query": "Take me to the dashboard screen.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 212,
+    "query": "Tell me a joke about machine learning.",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 213,
+    "query": "Who is Steve Jobs?",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 214,
+    "query": "Write a python script for cooking.",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 215,
+    "query": "Open dashboard.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 216,
+    "query": "What is the college rule for 75% attendance?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 217,
+    "query": "What is the capital of France?",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 218,
+    "query": "How is late registration handled according to rules?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 219,
+    "query": "I was present in DBMS this morning.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 220,
+    "query": "What is the capital of India?",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 221,
+    "query": "Simulate missing all days of Physics.",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 222,
+    "query": "If I miss some classes of Computer Networks, what will my percentage be?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 223,
+    "query": "What is the college rule for 75% attendance?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 224,
+    "query": "If I miss 3 classes of Algorithms, what will my percentage be?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 225,
+    "query": "Tell me the regulations for 75% attendance.",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 226,
+    "query": "What is the college rule for medical leaves?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 227,
+    "query": "Open peer sync.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 228,
+    "query": "Mark me medical leave for Algorithms on Monday.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 229,
+    "query": "Tell me a joke about cats.",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 230,
+    "query": "Reschedule my Computer Networks lecture this morning to next Monday.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 231,
+    "query": "Write a poem about quantum physics.",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 232,
+    "query": "What happens if I bunk the next 5 Math classes?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 233,
+    "query": "I want to see the peer sync page.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 234,
+    "query": "Simulate missing all days of Physics.",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 235,
+    "query": "If I miss 5 classes of Math, what will my percentage be?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 236,
+    "query": "Navigate to profile.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 237,
+    "query": "I was absent in Algorithms on Monday.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 238,
+    "query": "Show me my reports.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 239,
+    "query": "Can I afford to miss all classes in Math?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 240,
+    "query": "Who is Albert Einstein?",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 241,
+    "query": "Tell me the regulations for midsem exams.",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 242,
+    "query": "If I miss some classes of Computer Networks, what will my percentage be?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 243,
+    "query": "Shift OS from this morning to Friday evening.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 244,
+    "query": "What is the college rule for failing a course?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 245,
+    "query": "Change my Physics class yesterday to next Monday.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 246,
+    "query": "Tell me the regulations for medical leaves.",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 247,
+    "query": "Mark me medical leave for OS today.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 248,
+    "query": "Calculate my attendance if I am absent for 5 Computer Networks lectures.",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 249,
+    "query": "What happens if I bunk the next some OS classes?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 250,
+    "query": "Show me my timetable.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 251,
+    "query": "Show me my settings.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 252,
+    "query": "If I miss 5 classes of Algorithms, what will my percentage be?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 253,
+    "query": "If I miss 5 classes of DBMS, what will my percentage be?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 254,
+    "query": "Open settings.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 255,
+    "query": "What does the policy say about midsem exams?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 256,
+    "query": "Please update my Algorithms attendance to absent this morning.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 257,
+    "query": "What does the policy say about midsem exams?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 258,
+    "query": "What happens if I bunk the next some Algorithms classes?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 259,
+    "query": "I was on duty in Physics tomorrow.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 260,
+    "query": "Simulate missing 3 days of Math.",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 261,
+    "query": "Can you mark my attendance as on duty for Algorithms this morning?",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 262,
+    "query": "Show me my profile.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 263,
+    "query": "Open reports.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 264,
+    "query": "Move my Physics class this morning to 4 PM tomorrow.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 265,
+    "query": "Can I afford to miss some classes in OS?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 266,
+    "query": "Simulate missing all days of DBMS.",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 267,
+    "query": "How is late registration handled according to rules?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 268,
+    "query": "I was medical leave in DBMS on Monday.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 269,
+    "query": "Simulate missing 2 days of Physics.",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 270,
+    "query": "Calculate my attendance if I am absent for 5 Physics lectures.",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 271,
+    "query": "Mark me medical leave for OS tomorrow.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 272,
+    "query": "I was on duty in Physics yesterday.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 273,
+    "query": "If I miss 5 classes of Math, what will my percentage be?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 274,
+    "query": "How is 75% attendance handled according to rules?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 275,
+    "query": "Reschedule my DBMS lecture yesterday to 2 PM.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 276,
+    "query": "What is the college rule for late registration?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 277,
+    "query": "Tell me a joke about space exploration.",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 278,
+    "query": "I was present in Computer Networks yesterday.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 279,
+    "query": "I was medical leave in Algorithms yesterday.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 280,
+    "query": "Who is Elon Musk?",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 281,
+    "query": "Reschedule my DBMS lecture on Monday to Friday evening.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 282,
+    "query": "Simulate missing 2 days of Algorithms.",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 283,
+    "query": "Open peer sync.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 284,
+    "query": "What does the policy say about 75% attendance?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 285,
+    "query": "Who is Mahatma Gandhi?",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 286,
+    "query": "Open settings.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 287,
+    "query": "What happens if I bunk the next 2 Computer Networks classes?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 288,
+    "query": "Show me my profile.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 289,
+    "query": "What does the policy say about failing a course?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 290,
+    "query": "Take me to the profile screen.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 291,
+    "query": "I want to see the timetable page.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 292,
+    "query": "How is failing a course handled according to rules?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 293,
+    "query": "Move my Math class today to 4 PM tomorrow.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 294,
+    "query": "Can we move Algorithms yesterday to 10 AM?",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 295,
+    "query": "Explain the ordinance regarding midsem exams.",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 296,
+    "query": "If I miss 5 classes of Physics, what will my percentage be?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 297,
+    "query": "I was present in Math on Monday.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 298,
+    "query": "What does the policy say about medical leaves?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 299,
+    "query": "Move my OS class today to next Monday.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 300,
+    "query": "I was on duty in DBMS on Monday.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 301,
+    "query": "Set Physics as on duty this morning.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 302,
+    "query": "Reschedule my Computer Networks lecture on Monday to 2 PM.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 303,
+    "query": "Open profile.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 304,
+    "query": "Mark me present for Algorithms yesterday.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 305,
+    "query": "Move my DBMS class yesterday to 10 AM.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 306,
+    "query": "What is the college rule for 75% attendance?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 307,
+    "query": "Please update my OS attendance to on duty yesterday.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 308,
+    "query": "Can we move Algorithms on Monday to Friday evening?",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 309,
+    "query": "Write a poem about machine learning.",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 310,
+    "query": "Tell me a joke about machine learning.",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 311,
+    "query": "Can we move Physics tomorrow to 2 PM?",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 312,
+    "query": "Shift OS from today to 4 PM tomorrow.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 313,
+    "query": "What does the policy say about failing a course?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 314,
+    "query": "Please update my Math attendance to absent this morning.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 315,
+    "query": "Tell me a joke about quantum physics.",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 316,
+    "query": "What happens if I bunk the next 5 Computer Networks classes?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 317,
+    "query": "Set Physics as absent yesterday.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 318,
+    "query": "Explain the ordinance regarding midsem exams.",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 319,
+    "query": "Explain the ordinance regarding medical leaves.",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 320,
+    "query": "Simulate missing 2 days of Computer Networks.",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 321,
+    "query": "How is 75% attendance handled according to rules?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 322,
+    "query": "How is medical leaves handled according to rules?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 323,
+    "query": "Write a python script for quantum physics.",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 324,
+    "query": "Can you mark my attendance as medical leave for OS today?",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 325,
+    "query": "Simulate missing 2 days of Math.",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 326,
+    "query": "Tell me the regulations for midsem exams.",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 327,
+    "query": "Can I afford to miss 5 classes in Computer Networks?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 328,
+    "query": "Simulate missing 3 days of OS.",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 329,
+    "query": "Write a python script for machine learning.",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 330,
+    "query": "Navigate to peer sync.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 331,
+    "query": "Change my Math class tomorrow to 2 PM.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 332,
+    "query": "I want to see the profile page.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 333,
+    "query": "Who is Steve Jobs?",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 334,
+    "query": "Can I afford to miss all classes in Algorithms?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 335,
+    "query": "Set Math as medical leave on Monday.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 336,
+    "query": "What is the college rule for medical leaves?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 337,
+    "query": "Reschedule my OS lecture on Monday to 10 AM.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 338,
+    "query": "Can I afford to miss 2 classes in Algorithms?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 339,
+    "query": "Move my Algorithms class tomorrow to 2 PM.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 340,
+    "query": "I was absent in Computer Networks on Monday.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 341,
+    "query": "Open settings.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 342,
+    "query": "What happens if I bunk the next 2 Algorithms classes?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 343,
+    "query": "Tell me the regulations for late registration.",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 344,
+    "query": "What does the policy say about midsem exams?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 345,
+    "query": "Open settings.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 346,
+    "query": "Shift Physics from today to Friday evening.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 347,
+    "query": "I was medical leave in Computer Networks this morning.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 348,
+    "query": "What is the college rule for hostel curfew?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 349,
+    "query": "What does the policy say about 75% attendance?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 350,
+    "query": "Mark me medical leave for OS today.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 351,
+    "query": "What happens if I bunk the next some Physics classes?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 352,
+    "query": "Can we move Computer Networks on Monday to 4 PM tomorrow?",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 353,
+    "query": "Mark me on duty for Math tomorrow.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 354,
+    "query": "Reschedule my Physics lecture today to Friday evening.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 355,
+    "query": "What happens if I bunk the next 3 Physics classes?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 356,
+    "query": "Tell me a joke about space exploration.",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 357,
+    "query": "Who is Elon Musk?",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 358,
+    "query": "Show me my peer sync.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 359,
+    "query": "What is the college rule for hostel curfew?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 360,
+    "query": "Show me my timetable.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 361,
+    "query": "Navigate to profile.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 362,
+    "query": "Set Algorithms as medical leave on Monday.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 363,
+    "query": "Please update my Algorithms attendance to on duty on Monday.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 364,
+    "query": "I was on duty in Computer Networks tomorrow.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 365,
+    "query": "I was on duty in Algorithms yesterday.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 366,
+    "query": "Move my Physics class this morning to next Monday.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 367,
+    "query": "Please update my DBMS attendance to present this morning.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 368,
+    "query": "Write a python script for cats.",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 369,
+    "query": "I was medical leave in Physics yesterday.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 370,
+    "query": "Who is Mahatma Gandhi?",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 371,
+    "query": "Calculate my attendance if I am absent for all Physics lectures.",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 372,
+    "query": "Change my Math class today to 2 PM.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 373,
+    "query": "Calculate my attendance if I am absent for 2 OS lectures.",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 374,
+    "query": "Navigate to peer sync.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 375,
+    "query": "What does the policy say about late registration?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 376,
+    "query": "Show me my reports.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 377,
+    "query": "Show me my settings.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 378,
+    "query": "Navigate to peer sync.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 379,
+    "query": "What is the college rule for 75% attendance?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 380,
+    "query": "Mark me absent for Math on Monday.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 381,
+    "query": "Please update my OS attendance to medical leave on Monday.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 382,
+    "query": "Can we move DBMS on Monday to 10 AM?",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 383,
+    "query": "What does the policy say about failing a course?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 384,
+    "query": "What happens if I bunk the next some OS classes?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 385,
+    "query": "What happens if I bunk the next 3 DBMS classes?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 386,
+    "query": "Who is Mahatma Gandhi?",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 387,
+    "query": "How is failing a course handled according to rules?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 388,
+    "query": "Tell me the regulations for failing a course.",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 389,
+    "query": "What is the college rule for failing a course?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 390,
+    "query": "Set Algorithms as on duty yesterday.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 391,
+    "query": "Tell me the regulations for late registration.",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 392,
+    "query": "What happens if I bunk the next 3 Computer Networks classes?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 393,
+    "query": "Simulate missing 3 days of Computer Networks.",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 394,
+    "query": "Write a poem about quantum physics.",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 395,
+    "query": "Open dashboard.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 396,
+    "query": "I was medical leave in Physics today.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 397,
+    "query": "Write a python script for machine learning.",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 398,
+    "query": "Mark me present for Physics tomorrow.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 399,
+    "query": "What happens if I bunk the next 5 OS classes?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 400,
+    "query": "Explain the ordinance regarding 75% attendance.",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 401,
+    "query": "Shift Computer Networks from on Monday to Friday evening.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 402,
+    "query": "Can I afford to miss 3 classes in Computer Networks?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 403,
+    "query": "Calculate my attendance if I am absent for all OS lectures.",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 404,
+    "query": "Can we move Math yesterday to 4 PM tomorrow?",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 405,
+    "query": "Navigate to reports.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 406,
+    "query": "Write a poem about quantum physics.",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 407,
+    "query": "Shift Algorithms from today to 2 PM.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 408,
+    "query": "Can we move Computer Networks on Monday to 10 AM?",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 409,
+    "query": "Please update my Computer Networks attendance to absent this morning.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 410,
+    "query": "I was on duty in Algorithms yesterday.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 411,
+    "query": "What is the college rule for medical leaves?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 412,
+    "query": "Move my Computer Networks class today to Friday evening.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 413,
+    "query": "Simulate missing 3 days of OS.",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 414,
+    "query": "Tell me a joke about space exploration.",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 415,
+    "query": "Move my Physics class today to 10 AM.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 416,
+    "query": "Write a python script for space exploration.",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 417,
+    "query": "What does the policy say about failing a course?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 418,
+    "query": "Who is Albert Einstein?",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 419,
+    "query": "Tell me the regulations for medical leaves.",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 420,
+    "query": "If I miss all classes of Physics, what will my percentage be?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 421,
+    "query": "Explain the ordinance regarding 75% attendance.",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 422,
+    "query": "What does the policy say about hostel curfew?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 423,
+    "query": "What does the policy say about failing a course?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 424,
+    "query": "Reschedule my DBMS lecture this morning to next Monday.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 425,
+    "query": "What does the policy say about 75% attendance?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 426,
+    "query": "What is the college rule for medical leaves?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 427,
+    "query": "Simulate missing 5 days of Physics.",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 428,
+    "query": "Navigate to peer sync.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 429,
+    "query": "Explain the ordinance regarding failing a course.",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 430,
+    "query": "Open settings.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 431,
+    "query": "What is the capital of Brazil?",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 432,
+    "query": "Navigate to timetable.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 433,
+    "query": "Can I afford to miss 3 classes in Computer Networks?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 434,
+    "query": "Tell me the regulations for hostel curfew.",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 435,
+    "query": "Move my Math class tomorrow to 4 PM tomorrow.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 436,
+    "query": "Calculate my attendance if I am absent for 2 DBMS lectures.",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 437,
+    "query": "Can I afford to miss 3 classes in DBMS?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 438,
+    "query": "What happens if I bunk the next all Physics classes?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 439,
+    "query": "Set Computer Networks as present today.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 440,
+    "query": "Calculate my attendance if I am absent for some Math lectures.",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 441,
+    "query": "If I miss 3 classes of Math, what will my percentage be?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 442,
+    "query": "Please update my OS attendance to on duty tomorrow.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 443,
+    "query": "Can you mark my attendance as present for OS yesterday?",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 444,
+    "query": "Navigate to reports.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 445,
+    "query": "Write a python script for space exploration.",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 446,
+    "query": "Explain the ordinance regarding midsem exams.",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 447,
+    "query": "What is the capital of Japan?",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 448,
+    "query": "Tell me a joke about cooking.",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 449,
+    "query": "Show me my timetable.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 450,
+    "query": "Write a poem about quantum physics.",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 451,
+    "query": "Can I afford to miss 3 classes in Physics?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 452,
+    "query": "Can you mark my attendance as on duty for Computer Networks on Monday?",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 453,
+    "query": "Calculate my attendance if I am absent for 5 Computer Networks lectures.",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 454,
+    "query": "What happens if I bunk the next 2 Algorithms classes?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 455,
+    "query": "Please update my Physics attendance to medical leave this morning.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 456,
+    "query": "Explain the ordinance regarding hostel curfew.",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 457,
+    "query": "Set Algorithms as absent this morning.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 458,
+    "query": "Open peer sync.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 459,
+    "query": "Mark me absent for Math on Monday.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 460,
+    "query": "Who is Mahatma Gandhi?",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 461,
+    "query": "I want to see the settings page.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 462,
+    "query": "Shift Computer Networks from this morning to Friday evening.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 463,
+    "query": "Write a poem about cooking.",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 464,
+    "query": "Tell me a joke about cooking.",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 465,
+    "query": "Calculate my attendance if I am absent for 5 Algorithms lectures.",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 466,
+    "query": "Can you mark my attendance as medical leave for Algorithms yesterday?",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 467,
+    "query": "Take me to the reports screen.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 468,
+    "query": "Can I afford to miss 3 classes in OS?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 469,
+    "query": "I was on duty in Algorithms today.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 470,
+    "query": "Shift Computer Networks from tomorrow to next Monday.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 471,
+    "query": "Tell me the regulations for hostel curfew.",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 472,
+    "query": "Navigate to settings.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 473,
+    "query": "If I miss all classes of OS, what will my percentage be?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 474,
+    "query": "Tell me a joke about cooking.",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 475,
+    "query": "Who is Elon Musk?",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 476,
+    "query": "Move my DBMS class yesterday to 2 PM.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 477,
+    "query": "Change my OS class tomorrow to 10 AM.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 478,
+    "query": "Can we move Algorithms on Monday to 4 PM tomorrow?",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 479,
+    "query": "Explain the ordinance regarding failing a course.",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 480,
+    "query": "Simulate missing 5 days of Algorithms.",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 481,
+    "query": "Tell me the regulations for medical leaves.",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 482,
+    "query": "How is failing a course handled according to rules?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 483,
+    "query": "How is late registration handled according to rules?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 484,
+    "query": "Tell me a joke about space exploration.",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 485,
+    "query": "What happens if I bunk the next all Math classes?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 486,
+    "query": "I want to see the profile page.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 487,
+    "query": "How is midsem exams handled according to rules?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 488,
+    "query": "Mark me present for DBMS on Monday.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 489,
+    "query": "Reschedule my Computer Networks lecture today to next Monday.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 490,
+    "query": "Reschedule my Math lecture yesterday to 10 AM.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 491,
+    "query": "What is the capital of Brazil?",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 492,
+    "query": "Open timetable.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 493,
+    "query": "How is failing a course handled according to rules?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 494,
+    "query": "Please update my DBMS attendance to present on Monday.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 495,
+    "query": "I want to see the timetable page.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 496,
+    "query": "Can I afford to miss 5 classes in OS?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 497,
+    "query": "Simulate missing 2 days of Computer Networks.",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 498,
+    "query": "Tell me the regulations for 75% attendance.",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 499,
+    "query": "Reschedule my Computer Networks lecture today to 2 PM.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 500,
+    "query": "Move my DBMS class tomorrow to 4 PM tomorrow.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 501,
+    "query": "Can we move Algorithms today to 4 PM tomorrow?",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 502,
+    "query": "Reschedule my Physics lecture today to Friday evening.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 503,
+    "query": "Take me to the settings screen.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 504,
+    "query": "Set Physics as on duty today.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 505,
+    "query": "Navigate to settings.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 506,
+    "query": "What does the policy say about medical leaves?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 507,
+    "query": "Please update my Math attendance to on duty on Monday.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 508,
+    "query": "Mark me on duty for OS tomorrow.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 509,
+    "query": "If I miss 3 classes of Computer Networks, what will my percentage be?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 510,
+    "query": "Take me to the dashboard screen.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 511,
+    "query": "What is the capital of Brazil?",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 512,
+    "query": "Can I afford to miss 3 classes in OS?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 513,
+    "query": "If I miss 5 classes of Physics, what will my percentage be?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 514,
+    "query": "Tell me the regulations for midsem exams.",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 515,
+    "query": "Write a poem about quantum physics.",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 516,
+    "query": "Calculate my attendance if I am absent for all OS lectures.",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 517,
+    "query": "I was medical leave in Computer Networks yesterday.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 518,
+    "query": "Navigate to reports.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 519,
+    "query": "Navigate to profile.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 520,
+    "query": "How is medical leaves handled according to rules?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 521,
+    "query": "Take me to the profile screen.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 522,
+    "query": "Simulate missing all days of Computer Networks.",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 523,
+    "query": "Write a poem about machine learning.",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 524,
+    "query": "What is the college rule for late registration?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 525,
+    "query": "Can we move OS on Monday to Friday evening?",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 526,
+    "query": "Tell me the regulations for medical leaves.",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 527,
+    "query": "Tell me a joke about space exploration.",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 528,
+    "query": "Calculate my attendance if I am absent for 3 Math lectures.",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 529,
+    "query": "Calculate my attendance if I am absent for 3 OS lectures.",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 530,
+    "query": "Write a python script for cats.",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 531,
+    "query": "What is the capital of Brazil?",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 532,
+    "query": "How is failing a course handled according to rules?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 533,
+    "query": "What does the policy say about 75% attendance?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 534,
+    "query": "What is the capital of France?",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 535,
+    "query": "Take me to the reports screen.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 536,
+    "query": "If I miss all classes of Algorithms, what will my percentage be?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 537,
+    "query": "Navigate to peer sync.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 538,
+    "query": "What does the policy say about late registration?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 539,
+    "query": "Navigate to peer sync.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 540,
+    "query": "Simulate missing 5 days of Algorithms.",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 541,
+    "query": "Explain the ordinance regarding hostel curfew.",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 542,
+    "query": "Simulate missing 2 days of Algorithms.",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 543,
+    "query": "Can you mark my attendance as on duty for Math tomorrow?",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 544,
+    "query": "Change my DBMS class today to 10 AM.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 545,
+    "query": "What happens if I bunk the next some Algorithms classes?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 546,
+    "query": "Show me my reports.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 547,
+    "query": "Reschedule my DBMS lecture yesterday to 2 PM.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 548,
+    "query": "Explain the ordinance regarding hostel curfew.",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 549,
+    "query": "Can you mark my attendance as medical leave for Algorithms yesterday?",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 550,
+    "query": "Calculate my attendance if I am absent for some Computer Networks lectures.",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 551,
+    "query": "What is the college rule for failing a course?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 552,
+    "query": "I was present in Algorithms tomorrow.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 553,
+    "query": "Explain the ordinance regarding failing a course.",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 554,
+    "query": "Reschedule my DBMS lecture on Monday to Friday evening.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 555,
+    "query": "Navigate to peer sync.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 556,
+    "query": "I want to see the settings page.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 557,
+    "query": "Show me my peer sync.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 558,
+    "query": "Explain the ordinance regarding failing a course.",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 559,
+    "query": "Explain the ordinance regarding medical leaves.",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 560,
+    "query": "Take me to the timetable screen.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 561,
+    "query": "Write a python script for quantum physics.",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 562,
+    "query": "Can you mark my attendance as on duty for Physics this morning?",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 563,
+    "query": "What is the capital of Germany?",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 564,
+    "query": "If I miss all classes of Computer Networks, what will my percentage be?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 565,
+    "query": "Can you mark my attendance as present for Algorithms today?",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 566,
+    "query": "I want to see the timetable page.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 567,
+    "query": "Navigate to reports.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 568,
+    "query": "Can you mark my attendance as present for Physics on Monday?",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 569,
+    "query": "Write a poem about machine learning.",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 570,
+    "query": "Reschedule my DBMS lecture on Monday to 2 PM.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 571,
+    "query": "Calculate my attendance if I am absent for 2 OS lectures.",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 572,
+    "query": "What does the policy say about late registration?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 573,
+    "query": "What does the policy say about late registration?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 574,
+    "query": "How is failing a course handled according to rules?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 575,
+    "query": "What is the college rule for failing a course?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 576,
+    "query": "Set DBMS as present yesterday.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 577,
+    "query": "What happens if I bunk the next some OS classes?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 578,
+    "query": "What is the college rule for 75% attendance?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 579,
+    "query": "Can we move Physics tomorrow to 4 PM tomorrow?",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 580,
+    "query": "What is the college rule for late registration?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 581,
+    "query": "How is hostel curfew handled according to rules?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 582,
+    "query": "Please update my Algorithms attendance to on duty on Monday.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 583,
+    "query": "Change my DBMS class today to 10 AM.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 584,
+    "query": "Move my Math class today to 2 PM.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 585,
+    "query": "Reschedule my DBMS lecture tomorrow to Friday evening.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 586,
+    "query": "Move my Computer Networks class on Monday to 2 PM.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 587,
+    "query": "How is hostel curfew handled according to rules?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 588,
+    "query": "Simulate missing 2 days of Math.",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 589,
+    "query": "Reschedule my Physics lecture tomorrow to next Monday.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 590,
+    "query": "Write a python script for space exploration.",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 591,
+    "query": "Explain the ordinance regarding 75% attendance.",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 592,
+    "query": "Show me my peer sync.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 593,
+    "query": "What is the capital of Germany?",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 594,
+    "query": "Write a poem about cooking.",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 595,
+    "query": "Mark me absent for Math yesterday.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 596,
+    "query": "I was present in Algorithms tomorrow.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 597,
+    "query": "Who is Steve Jobs?",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 598,
+    "query": "Can we move DBMS this morning to 2 PM?",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 599,
+    "query": "Mark me on duty for DBMS this morning.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 600,
+    "query": "Reschedule my OS lecture tomorrow to Friday evening.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 601,
+    "query": "Write a python script for cats.",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 602,
+    "query": "I was present in Math today.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 603,
+    "query": "Navigate to profile.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 604,
+    "query": "Can we move DBMS tomorrow to 10 AM?",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 605,
+    "query": "Reschedule my OS lecture today to 4 PM tomorrow.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 606,
+    "query": "If I miss some classes of Math, what will my percentage be?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 607,
+    "query": "Can we move OS tomorrow to 4 PM tomorrow?",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 608,
+    "query": "Show me my dashboard.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 609,
+    "query": "Simulate missing 5 days of Physics.",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 610,
+    "query": "Shift Computer Networks from this morning to 4 PM tomorrow.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 611,
+    "query": "Set Computer Networks as medical leave tomorrow.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 612,
+    "query": "Write a python script for space exploration.",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 613,
+    "query": "Explain the ordinance regarding failing a course.",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 614,
+    "query": "Change my Algorithms class tomorrow to 2 PM.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 615,
+    "query": "Calculate my attendance if I am absent for some Algorithms lectures.",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 616,
+    "query": "How is midsem exams handled according to rules?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 617,
+    "query": "Explain the ordinance regarding hostel curfew.",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 618,
+    "query": "Tell me a joke about quantum physics.",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 619,
+    "query": "How is midsem exams handled according to rules?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 620,
+    "query": "Open settings.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 621,
+    "query": "Can you mark my attendance as medical leave for OS on Monday?",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 622,
+    "query": "Navigate to reports.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 623,
+    "query": "What happens if I bunk the next some Math classes?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 624,
+    "query": "Explain the ordinance regarding hostel curfew.",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 625,
+    "query": "Write a python script for machine learning.",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 626,
+    "query": "What happens if I bunk the next some OS classes?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 627,
+    "query": "Move my Computer Networks class today to next Monday.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 628,
+    "query": "What is the college rule for 75% attendance?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 629,
+    "query": "Write a python script for space exploration.",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 630,
+    "query": "Change my Algorithms class yesterday to 4 PM tomorrow.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 631,
+    "query": "Set Math as medical leave tomorrow.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 632,
+    "query": "Simulate missing 2 days of Algorithms.",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 633,
+    "query": "Please update my Algorithms attendance to absent this morning.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 634,
+    "query": "Can we move OS yesterday to Friday evening?",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 635,
+    "query": "What is the college rule for hostel curfew?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 636,
+    "query": "Write a python script for machine learning.",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 637,
+    "query": "Write a poem about machine learning.",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 638,
+    "query": "Can you mark my attendance as present for Physics on Monday?",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 639,
+    "query": "Who is Steve Jobs?",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 640,
+    "query": "Shift Algorithms from on Monday to 10 AM.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 641,
+    "query": "I was absent in Algorithms tomorrow.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 642,
+    "query": "What does the policy say about late registration?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 643,
+    "query": "I was on duty in Algorithms tomorrow.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 644,
+    "query": "Can I afford to miss 5 classes in Computer Networks?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 645,
+    "query": "Reschedule my Algorithms lecture today to 4 PM tomorrow.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 646,
+    "query": "Change my OS class today to Friday evening.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 647,
+    "query": "What is the capital of India?",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 648,
+    "query": "What is the capital of Japan?",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 649,
+    "query": "Reschedule my Algorithms lecture tomorrow to 10 AM.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 650,
+    "query": "Write a poem about cooking.",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 651,
+    "query": "If I miss 5 classes of Algorithms, what will my percentage be?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 652,
+    "query": "Calculate my attendance if I am absent for all DBMS lectures.",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 653,
+    "query": "I want to see the profile page.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 654,
+    "query": "Can we move Computer Networks on Monday to Friday evening?",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 655,
+    "query": "Set DBMS as absent yesterday.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 656,
+    "query": "Explain the ordinance regarding 75% attendance.",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 657,
+    "query": "Mark me medical leave for Math this morning.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 658,
+    "query": "Move my Math class on Monday to 2 PM.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 659,
+    "query": "Set Computer Networks as absent tomorrow.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 660,
+    "query": "Take me to the reports screen.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 661,
+    "query": "Please update my Computer Networks attendance to present tomorrow.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 662,
+    "query": "Can you mark my attendance as on duty for OS tomorrow?",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 663,
+    "query": "What is the capital of Brazil?",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 664,
+    "query": "If I miss all classes of Algorithms, what will my percentage be?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 665,
+    "query": "Change my OS class yesterday to Friday evening.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 666,
+    "query": "Write a poem about cooking.",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 667,
+    "query": "Take me to the timetable screen.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 668,
+    "query": "How is late registration handled according to rules?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 669,
+    "query": "Can you mark my attendance as absent for Math yesterday?",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 670,
+    "query": "Show me my peer sync.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 671,
+    "query": "Simulate missing 3 days of Algorithms.",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 672,
+    "query": "I was absent in Math this morning.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 673,
+    "query": "Calculate my attendance if I am absent for 2 Math lectures.",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 674,
+    "query": "Can I afford to miss all classes in Physics?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 675,
+    "query": "Shift Math from yesterday to 4 PM tomorrow.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 676,
+    "query": "Can you mark my attendance as present for Physics this morning?",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 677,
+    "query": "Set Math as absent on Monday.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 678,
+    "query": "Write a poem about machine learning.",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 679,
+    "query": "What is the college rule for late registration?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 680,
+    "query": "Explain the ordinance regarding hostel curfew.",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 681,
+    "query": "Write a python script for quantum physics.",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 682,
+    "query": "What is the capital of Brazil?",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 683,
+    "query": "If I miss some classes of Algorithms, what will my percentage be?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 684,
+    "query": "Tell me the regulations for medical leaves.",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 685,
+    "query": "Move my Computer Networks class on Monday to next Monday.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 686,
+    "query": "Open timetable.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 687,
+    "query": "Simulate missing 5 days of OS.",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 688,
+    "query": "Move my OS class on Monday to Friday evening.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 689,
+    "query": "I want to see the dashboard page.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 690,
+    "query": "Show me my timetable.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 691,
+    "query": "Open dashboard.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 692,
+    "query": "How is hostel curfew handled according to rules?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 693,
+    "query": "Explain the ordinance regarding late registration.",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 694,
+    "query": "Explain the ordinance regarding failing a course.",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 695,
+    "query": "What happens if I bunk the next all OS classes?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 696,
+    "query": "Can you mark my attendance as on duty for Physics this morning?",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 697,
+    "query": "What is the college rule for late registration?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 698,
+    "query": "I was on duty in DBMS tomorrow.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 699,
+    "query": "Can we move Math yesterday to 2 PM?",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 700,
+    "query": "Write a python script for quantum physics.",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 701,
+    "query": "Shift Algorithms from on Monday to 4 PM tomorrow.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 702,
+    "query": "I was medical leave in Algorithms yesterday.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 703,
+    "query": "Tell me a joke about cats.",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 704,
+    "query": "Shift Physics from this morning to 4 PM tomorrow.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 705,
+    "query": "Mark me on duty for Math today.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 706,
+    "query": "Explain the ordinance regarding midsem exams.",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 707,
+    "query": "Who is Steve Jobs?",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 708,
+    "query": "How is medical leaves handled according to rules?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 709,
+    "query": "What is the capital of France?",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 710,
+    "query": "What is the capital of Japan?",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 711,
+    "query": "Explain the ordinance regarding failing a course.",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 712,
+    "query": "Write a python script for quantum physics.",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 713,
+    "query": "Write a python script for space exploration.",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 714,
+    "query": "What is the capital of Japan?",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 715,
+    "query": "Please update my Algorithms attendance to medical leave this morning.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 716,
+    "query": "Move my Computer Networks class yesterday to next Monday.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 717,
+    "query": "Calculate my attendance if I am absent for 3 Math lectures.",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 718,
+    "query": "Set Algorithms as present on Monday.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 719,
+    "query": "Set Algorithms as on duty this morning.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 720,
+    "query": "Can you mark my attendance as on duty for Algorithms tomorrow?",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 721,
+    "query": "Set Computer Networks as absent this morning.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 722,
+    "query": "Can you mark my attendance as absent for OS tomorrow?",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 723,
+    "query": "Can we move Physics on Monday to Friday evening?",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 724,
+    "query": "I was present in Algorithms this morning.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 725,
+    "query": "Can we move Math yesterday to Friday evening?",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 726,
+    "query": "Write a python script for space exploration.",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 727,
+    "query": "Open timetable.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 728,
+    "query": "Open profile.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 729,
+    "query": "Mark me medical leave for Math this morning.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 730,
+    "query": "How is medical leaves handled according to rules?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 731,
+    "query": "Move my Computer Networks class yesterday to 2 PM.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 732,
+    "query": "Take me to the peer sync screen.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 733,
+    "query": "Please update my Algorithms attendance to present today.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 734,
+    "query": "Reschedule my DBMS lecture this morning to 10 AM.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 735,
+    "query": "Show me my dashboard.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 736,
+    "query": "Please update my OS attendance to absent on Monday.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 737,
+    "query": "What is the capital of Brazil?",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 738,
+    "query": "Shift OS from today to 2 PM.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 739,
+    "query": "I was present in Computer Networks on Monday.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 740,
+    "query": "What does the policy say about failing a course?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 741,
+    "query": "How is failing a course handled according to rules?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 742,
+    "query": "Move my Computer Networks class on Monday to 4 PM tomorrow.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 743,
+    "query": "Show me my settings.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 744,
+    "query": "What does the policy say about 75% attendance?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 745,
+    "query": "What is the capital of Germany?",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 746,
+    "query": "Open reports.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 747,
+    "query": "Explain the ordinance regarding medical leaves.",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 748,
+    "query": "Who is Mahatma Gandhi?",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 749,
+    "query": "Navigate to profile.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 750,
+    "query": "Mark me absent for Algorithms yesterday.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 751,
+    "query": "What is the capital of France?",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 752,
+    "query": "Can you mark my attendance as on duty for Computer Networks yesterday?",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 753,
+    "query": "What happens if I bunk the next 3 Algorithms classes?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 754,
+    "query": "Navigate to timetable.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 755,
+    "query": "Can we move Algorithms today to 4 PM tomorrow?",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 756,
+    "query": "Shift Algorithms from yesterday to 4 PM tomorrow.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 757,
+    "query": "Who is Elon Musk?",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 758,
+    "query": "Can I afford to miss 5 classes in Physics?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 759,
+    "query": "What is the college rule for midsem exams?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 760,
+    "query": "What happens if I bunk the next 2 Math classes?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 761,
+    "query": "Take me to the timetable screen.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 762,
+    "query": "Open peer sync.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 763,
+    "query": "How is failing a course handled according to rules?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 764,
+    "query": "Change my OS class this morning to 2 PM.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 765,
+    "query": "Simulate missing all days of Computer Networks.",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 766,
+    "query": "Can you mark my attendance as present for Algorithms today?",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 767,
+    "query": "If I miss some classes of Math, what will my percentage be?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 768,
+    "query": "Shift Math from on Monday to 10 AM.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 769,
+    "query": "Open timetable.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 770,
+    "query": "Can we move DBMS tomorrow to next Monday?",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 771,
+    "query": "Can I afford to miss 5 classes in OS?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 772,
+    "query": "Explain the ordinance regarding medical leaves.",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 773,
+    "query": "What does the policy say about hostel curfew?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 774,
+    "query": "Take me to the peer sync screen.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 775,
+    "query": "How is hostel curfew handled according to rules?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 776,
+    "query": "Mark me on duty for Physics this morning.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 777,
+    "query": "Who is Mahatma Gandhi?",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 778,
+    "query": "Open timetable.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 779,
+    "query": "Can you mark my attendance as present for Computer Networks on Monday?",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 780,
+    "query": "Calculate my attendance if I am absent for some Physics lectures.",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 781,
+    "query": "Write a python script for cooking.",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 782,
+    "query": "What does the policy say about 75% attendance?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 783,
+    "query": "If I miss 2 classes of OS, what will my percentage be?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 784,
+    "query": "Tell me a joke about machine learning.",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 785,
+    "query": "Can you mark my attendance as absent for Math on Monday?",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 786,
+    "query": "Can you mark my attendance as absent for Algorithms on Monday?",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 787,
+    "query": "What happens if I bunk the next some Physics classes?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 788,
+    "query": "Simulate missing 5 days of DBMS.",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 789,
+    "query": "Show me my timetable.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 790,
+    "query": "Explain the ordinance regarding medical leaves.",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 791,
+    "query": "Mark me present for OS tomorrow.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 792,
+    "query": "How is medical leaves handled according to rules?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 793,
+    "query": "Show me my peer sync.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 794,
+    "query": "What does the policy say about late registration?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 795,
+    "query": "Can you mark my attendance as medical leave for Computer Networks today?",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 796,
+    "query": "Can I afford to miss 2 classes in DBMS?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 797,
+    "query": "Navigate to profile.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 798,
+    "query": "What is the college rule for hostel curfew?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 799,
+    "query": "Change my Algorithms class today to Friday evening.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 800,
+    "query": "Move my Computer Networks class on Monday to 2 PM.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 801,
+    "query": "Tell me the regulations for hostel curfew.",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 802,
+    "query": "Write a poem about quantum physics.",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 803,
+    "query": "I want to see the reports page.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 804,
+    "query": "Navigate to profile.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 805,
+    "query": "Take me to the peer sync screen.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 806,
+    "query": "Can you mark my attendance as absent for DBMS on Monday?",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 807,
+    "query": "I want to see the settings page.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 808,
+    "query": "What does the policy say about midsem exams?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 809,
+    "query": "Can I afford to miss some classes in Math?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 810,
+    "query": "Who is Albert Einstein?",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 811,
+    "query": "If I miss all classes of Algorithms, what will my percentage be?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 812,
+    "query": "Open settings.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 813,
+    "query": "Write a python script for machine learning.",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 814,
+    "query": "I was absent in Math yesterday.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 815,
+    "query": "Calculate my attendance if I am absent for 5 Physics lectures.",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 816,
+    "query": "Set Math as on duty yesterday.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 817,
+    "query": "Who is Mahatma Gandhi?",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 818,
+    "query": "Can I afford to miss some classes in Computer Networks?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 819,
+    "query": "Change my Algorithms class today to 10 AM.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 820,
+    "query": "Write a python script for cats.",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 821,
+    "query": "Open settings.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 822,
+    "query": "Can I afford to miss some classes in Algorithms?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 823,
+    "query": "Can you mark my attendance as absent for OS this morning?",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 824,
+    "query": "I want to see the settings page.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 825,
+    "query": "Explain the ordinance regarding midsem exams.",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 826,
+    "query": "If I miss 5 classes of Physics, what will my percentage be?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 827,
+    "query": "What is the college rule for 75% attendance?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 828,
+    "query": "Change my Computer Networks class today to 4 PM tomorrow.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 829,
+    "query": "I want to see the profile page.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 830,
+    "query": "What is the capital of Japan?",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 831,
+    "query": "Navigate to reports.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 832,
+    "query": "Reschedule my Math lecture today to 2 PM.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 833,
+    "query": "I was medical leave in DBMS on Monday.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 834,
+    "query": "Tell me a joke about space exploration.",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 835,
+    "query": "Write a python script for cooking.",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 836,
+    "query": "Navigate to peer sync.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 837,
+    "query": "Can you mark my attendance as medical leave for Physics this morning?",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 838,
+    "query": "Mark me present for Physics tomorrow.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 839,
+    "query": "If I miss all classes of Math, what will my percentage be?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 840,
+    "query": "Explain the ordinance regarding late registration.",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 841,
+    "query": "Reschedule my Physics lecture yesterday to Friday evening.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 842,
+    "query": "How is midsem exams handled according to rules?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 843,
+    "query": "Shift Math from today to 2 PM.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 844,
+    "query": "Who is Steve Jobs?",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 845,
+    "query": "I want to see the dashboard page.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 846,
+    "query": "Move my DBMS class today to 4 PM tomorrow.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 847,
+    "query": "Can you mark my attendance as on duty for Physics on Monday?",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 848,
+    "query": "Can you mark my attendance as on duty for Math this morning?",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 849,
+    "query": "Tell me the regulations for hostel curfew.",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 850,
+    "query": "Can we move Algorithms tomorrow to 10 AM?",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 851,
+    "query": "Mark me medical leave for Math tomorrow.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 852,
+    "query": "Write a poem about quantum physics.",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 853,
+    "query": "Please update my DBMS attendance to on duty on Monday.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 854,
+    "query": "I want to see the peer sync page.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 855,
+    "query": "Tell me the regulations for medical leaves.",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 856,
+    "query": "Tell me the regulations for late registration.",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 857,
+    "query": "Shift DBMS from today to Friday evening.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 858,
+    "query": "Can you mark my attendance as absent for Math tomorrow?",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 859,
+    "query": "Write a poem about cooking.",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 860,
+    "query": "How is midsem exams handled according to rules?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 861,
+    "query": "Can I afford to miss some classes in Computer Networks?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 862,
+    "query": "Navigate to reports.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 863,
+    "query": "Tell me the regulations for medical leaves.",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 864,
+    "query": "What is the college rule for 75% attendance?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 865,
+    "query": "Open peer sync.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 866,
+    "query": "Set OS as present today.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 867,
+    "query": "Open timetable.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 868,
+    "query": "Tell me a joke about quantum physics.",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 869,
+    "query": "Tell me the regulations for 75% attendance.",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 870,
+    "query": "Can you mark my attendance as on duty for DBMS on Monday?",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 871,
+    "query": "Take me to the dashboard screen.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 872,
+    "query": "Tell me a joke about space exploration.",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 873,
+    "query": "Simulate missing 2 days of Math.",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 874,
+    "query": "Navigate to peer sync.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 875,
+    "query": "Can we move DBMS on Monday to next Monday?",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 876,
+    "query": "Shift Computer Networks from tomorrow to 2 PM.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 877,
+    "query": "What does the policy say about midsem exams?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 878,
+    "query": "Who is Albert Einstein?",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 879,
+    "query": "What happens if I bunk the next all Computer Networks classes?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 880,
+    "query": "I want to see the timetable page.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 881,
+    "query": "Can you mark my attendance as medical leave for Algorithms on Monday?",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 882,
+    "query": "I want to see the dashboard page.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 883,
+    "query": "Reschedule my OS lecture this morning to Friday evening.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 884,
+    "query": "Reschedule my Math lecture tomorrow to 2 PM.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 885,
+    "query": "Take me to the reports screen.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 886,
+    "query": "What is the capital of India?",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 887,
+    "query": "Simulate missing all days of DBMS.",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 888,
+    "query": "What happens if I bunk the next some Algorithms classes?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 889,
+    "query": "Who is Elon Musk?",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 890,
+    "query": "I want to see the reports page.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 891,
+    "query": "Move my Math class on Monday to Friday evening.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 892,
+    "query": "Set OS as on duty on Monday.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 893,
+    "query": "Can you mark my attendance as medical leave for Physics on Monday?",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 894,
+    "query": "Navigate to timetable.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 895,
+    "query": "I want to see the timetable page.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 896,
+    "query": "Tell me a joke about quantum physics.",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 897,
+    "query": "Please update my OS attendance to absent yesterday.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 898,
+    "query": "Move my DBMS class this morning to next Monday.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 899,
+    "query": "Navigate to settings.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 900,
+    "query": "Shift Physics from today to 4 PM tomorrow.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 901,
+    "query": "Shift Algorithms from today to 10 AM.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 902,
+    "query": "Calculate my attendance if I am absent for 2 OS lectures.",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 903,
+    "query": "What is the capital of France?",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 904,
+    "query": "Calculate my attendance if I am absent for 2 Physics lectures.",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 905,
+    "query": "What is the college rule for late registration?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 906,
+    "query": "Change my OS class yesterday to next Monday.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 907,
+    "query": "Write a poem about space exploration.",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 908,
+    "query": "Who is Albert Einstein?",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 909,
+    "query": "Write a python script for cats.",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 910,
+    "query": "What is the college rule for hostel curfew?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 911,
+    "query": "Can I afford to miss 2 classes in DBMS?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 912,
+    "query": "Write a python script for machine learning.",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 913,
+    "query": "Open peer sync.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 914,
+    "query": "I was on duty in Algorithms tomorrow.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 915,
+    "query": "What is the capital of India?",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 916,
+    "query": "I want to see the timetable page.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 917,
+    "query": "Simulate missing all days of DBMS.",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 918,
+    "query": "Navigate to settings.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 919,
+    "query": "I was present in Math on Monday.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 920,
+    "query": "What does the policy say about midsem exams?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 921,
+    "query": "Show me my timetable.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 922,
+    "query": "Simulate missing 2 days of Computer Networks.",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 923,
+    "query": "Explain the ordinance regarding midsem exams.",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 924,
+    "query": "What happens if I bunk the next 2 Physics classes?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 925,
+    "query": "If I miss 3 classes of DBMS, what will my percentage be?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 926,
+    "query": "Please update my Algorithms attendance to present today.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 927,
+    "query": "Can we move OS yesterday to 4 PM tomorrow?",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 928,
+    "query": "Write a poem about cats.",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 929,
+    "query": "Can I afford to miss 3 classes in Algorithms?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 930,
+    "query": "Explain the ordinance regarding failing a course.",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 931,
+    "query": "If I miss all classes of Math, what will my percentage be?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 932,
+    "query": "Open dashboard.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 933,
+    "query": "Show me my settings.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 934,
+    "query": "Navigate to peer sync.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 935,
+    "query": "Take me to the reports screen.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 936,
+    "query": "What is the capital of India?",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 937,
+    "query": "Explain the ordinance regarding hostel curfew.",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 938,
+    "query": "Set Computer Networks as on duty yesterday.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 939,
+    "query": "Explain the ordinance regarding midsem exams.",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 940,
+    "query": "I want to see the settings page.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 941,
+    "query": "Set Math as medical leave yesterday.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 942,
+    "query": "Can we move OS tomorrow to 4 PM tomorrow?",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 943,
+    "query": "Can you mark my attendance as medical leave for DBMS on Monday?",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 944,
+    "query": "Open reports.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 945,
+    "query": "Navigate to dashboard.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 946,
+    "query": "How is hostel curfew handled according to rules?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 947,
+    "query": "Move my Algorithms class yesterday to 4 PM tomorrow.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 948,
+    "query": "Take me to the peer sync screen.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 949,
+    "query": "I was absent in Math yesterday.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 950,
+    "query": "Explain the ordinance regarding failing a course.",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 951,
+    "query": "Explain the ordinance regarding late registration.",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 952,
+    "query": "If I miss 5 classes of DBMS, what will my percentage be?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 953,
+    "query": "Open settings.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 954,
+    "query": "Please update my Physics attendance to absent yesterday.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 955,
+    "query": "Can we move Math yesterday to 2 PM?",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 956,
+    "query": "Navigate to peer sync.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 957,
+    "query": "Navigate to dashboard.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 958,
+    "query": "Show me my settings.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 959,
+    "query": "Calculate my attendance if I am absent for some Physics lectures.",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 960,
+    "query": "If I miss some classes of Algorithms, what will my percentage be?",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 961,
+    "query": "What does the policy say about failing a course?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 962,
+    "query": "I was on duty in Math tomorrow.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 963,
+    "query": "What does the policy say about hostel curfew?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 964,
+    "query": "Simulate missing 5 days of Physics.",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 965,
+    "query": "Tell me a joke about cooking.",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 966,
+    "query": "Please update my Physics attendance to absent this morning.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 967,
+    "query": "How is medical leaves handled according to rules?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 968,
+    "query": "How is late registration handled according to rules?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 969,
+    "query": "Take me to the dashboard screen.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 970,
+    "query": "What is the college rule for medical leaves?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 971,
+    "query": "Set DBMS as medical leave this morning.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 972,
+    "query": "What is the college rule for medical leaves?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 973,
+    "query": "How is midsem exams handled according to rules?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 974,
+    "query": "What is the capital of France?",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 975,
+    "query": "Simulate missing 2 days of OS.",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 976,
+    "query": "I want to see the settings page.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 977,
+    "query": "Take me to the dashboard screen.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 978,
+    "query": "Navigate to peer sync.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 979,
+    "query": "Change my OS class on Monday to 4 PM tomorrow.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 980,
+    "query": "How is late registration handled according to rules?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 981,
+    "query": "Who is Mahatma Gandhi?",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 982,
+    "query": "Show me my dashboard.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 983,
+    "query": "Navigate to reports.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 984,
+    "query": "I want to see the timetable page.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 985,
+    "query": "What is the capital of Brazil?",
+    "expected_intent": "OUT_OF_SCOPE"
+  },
+  {
+    "id": 986,
+    "query": "Mark me on duty for Physics on Monday.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 987,
+    "query": "Calculate my attendance if I am absent for some Math lectures.",
+    "expected_intent": "SIMULATE_ATTENDANCE"
+  },
+  {
+    "id": 988,
+    "query": "Change my Algorithms class this morning to 10 AM.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 989,
+    "query": "Reschedule my Physics lecture this morning to 4 PM tomorrow.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 990,
+    "query": "How is late registration handled according to rules?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 991,
+    "query": "Navigate to timetable.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 992,
+    "query": "Please update my Physics attendance to absent this morning.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 993,
+    "query": "Mark me medical leave for Algorithms tomorrow.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 994,
+    "query": "I was on duty in Physics tomorrow.",
+    "expected_intent": "MARK_ATTENDANCE"
+  },
+  {
+    "id": 995,
+    "query": "Can we move Computer Networks on Monday to next Monday?",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 996,
+    "query": "What is the college rule for 75% attendance?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 997,
+    "query": "How is hostel curfew handled according to rules?",
+    "expected_intent": "KNOWLEDGE_BASE"
+  },
+  {
+    "id": 998,
+    "query": "Shift Physics from tomorrow to next Monday.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  },
+  {
+    "id": 999,
+    "query": "Show me my dashboard.",
+    "expected_intent": "NAVIGATE_APP"
+  },
+  {
+    "id": 1000,
+    "query": "Shift Computer Networks from yesterday to next Monday.",
+    "expected_intent": "SHIFT_TIMETABLE"
+  }
+]
