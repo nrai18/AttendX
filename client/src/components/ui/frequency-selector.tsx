@@ -157,7 +157,7 @@ export const FrequencySelector: React.FC<FrequencySelectorProps> = ({
                   onClick={handleConfirm}
                   className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-900 text-white dark:bg-white dark:text-slate-900 sm:h-12 sm:w-12 shadow-md hover:opacity-90 transition-opacity"
                 >
-                  <Check size={18} className="text-white dark:text-slate-900 stroke-white dark:stroke-slate-900" strokeWidth={2.5} />
+                  <Check size={18} />
                 </motion.button>
               </div>
 

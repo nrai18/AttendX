@@ -7,8 +7,7 @@ export interface NotificationConfig {
   showLocation: boolean;
   notifyNextClassOnEnd: boolean;
   endOfDaySummary: boolean;
-  summaryTime: string; // legacy fallback
-  summaryTimes?: Record<string, string>; // independent times per frequency
+  summaryTime: string;
 }
 
 interface NotificationState {

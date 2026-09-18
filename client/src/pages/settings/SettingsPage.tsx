@@ -410,16 +410,6 @@ const renderDocuments = (type: string) => {
             onClick: async () => {
               try {
                 await api.post(`/timetable/import/${activeSem.id}`, payload);
-                // Invalidate cache and refresh stores post-import
-                useCacheStore.getState().clearCache();
-                useCacheStore.getState().setCache("timetable", null);
-                useCacheStore.getState().setCache("today", null);
-                useCacheStore.getState().setCache("calendar", null);
-                useCacheStore.getState().setCache("subject_logs", null);
-                useCacheStore.getState().setCache("subjects", null);
-                useCacheStore.getState().setCache("subjects_overview", null);
-                await useAttendanceStore.getState().fetchStats();
-                window.dispatchEvent(new CustomEvent("attendance-updated"));
                 toast.success("Backup imported successfully!");
               } catch (err) {
                 console.error(err);
@@ -435,7 +425,6 @@ const renderDocuments = (type: string) => {
       }
     };
     reader.readAsText(file);
-    if (e.target) e.target.value = "";
   };
 
   // Export CSV
@@ -468,52 +457,14 @@ const renderDocuments = (type: string) => {
     const file = e.target.files?.[0];
     if (!file || !user) return;
 
-    const toastId = toast.loading("Importing backup ZIP...");
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const toastId = toast.loading("Uploading ZIP to ML Server...");
     setIsImportingCSV(true);
 
     try {
-      const base64Zip = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.readAsDataURL(file);
-        reader.onload = () => {
-          const resultStr = reader.result as string;
-          resolve(resultStr.includes(',') ? resultStr.split(',')[1] : resultStr);
-        };
-        reader.onerror = error => reject(error);
-      });
-
-      // First attempt native Express /data/import endpoint (exact timing, transactional rollback, status preservation)
-      let nativeSucceeded = false;
-      try {
-        await api.post("/data/import", { base64Zip });
-        nativeSucceeded = true;
-      } catch (backendErr: any) {
-        console.warn("Express /data/import failed, checking fallback:", backendErr);
-        if (backendErr?.response?.data?.error && !backendErr.response.data.error.includes("Invalid ZIP")) {
-          throw new Error(backendErr.response.data.error);
-        }
-      }
-
-      if (nativeSucceeded) {
-        useCacheStore.getState().clearCache();
-        useCacheStore.getState().setCache("timetable", null);
-        useCacheStore.getState().setCache("today", null);
-        useCacheStore.getState().setCache("calendar", null);
-        useCacheStore.getState().setCache("subject_logs", null);
-        useCacheStore.getState().setCache("subjects", null);
-        useCacheStore.getState().setCache("subjects_overview", null);
-        await useAttendanceStore.getState().fetchStats();
-        window.dispatchEvent(new CustomEvent("attendance-updated"));
-        toast.success("Data imported successfully! Redirecting...", { id: toastId });
-        setTimeout(() => (window.location.href = "/timetable"), 1500);
-        return;
-      }
-
-      // Fallback to ML Server if configured
       const mlApiUrl = import.meta.env.VITE_ML_API_URL || "http://localhost:8000";
-
-      const formData = new FormData();
-      formData.append("file", file);
 
       const res = await fetch(`${mlApiUrl}/upload/zip?user_id=${user.id}`, {
         method: "POST",
@@ -540,15 +491,6 @@ const renderDocuments = (type: string) => {
         if (msg.progress === 100 || msg.status.includes("Error")) {
           ws.close();
           if (msg.progress === 100) {
-            useCacheStore.getState().clearCache();
-            useCacheStore.getState().setCache("timetable", null);
-            useCacheStore.getState().setCache("today", null);
-            useCacheStore.getState().setCache("calendar", null);
-            useCacheStore.getState().setCache("subject_logs", null);
-            useCacheStore.getState().setCache("subjects", null);
-            useCacheStore.getState().setCache("subjects_overview", null);
-            useAttendanceStore.getState().fetchStats();
-            window.dispatchEvent(new CustomEvent("attendance-updated"));
             toast.success("Data imported successfully! Redirecting...", {
               id: toastId,
             });
@@ -676,14 +618,14 @@ const renderDocuments = (type: string) => {
       <div className="w-full pb-36 md:pb-8 space-y-6 animate-in fade-in duration-200">
         <input
           type="file"
-          accept=".json,application/json,text/json"
+          accept=".json"
           ref={jsonInputRef}
           onChange={handleImportBackup}
           className="hidden"
         />
         <input
           type="file"
-          accept=".zip,application/zip,application/x-zip-compressed,multipart/x-zip,application/octet-stream,text/csv,.csv"
+          accept=".zip,application/zip,application/x-zip-compressed,multipart/x-zip"
           ref={csvInputRef}
           onChange={handleImportCSV}
           className="hidden"
@@ -980,7 +922,7 @@ const renderDocuments = (type: string) => {
       <div className="p-4 md:p-8 max-w-3xl mx-auto w-full pb-36 md:pb-8 space-y-8 animate-in fade-in duration-200">
       <input
         type="file"
-        accept=".zip,application/zip,application/x-zip-compressed,multipart/x-zip,application/octet-stream,text/csv,.csv"
+        accept=".zip"
         ref={csvInputRef}
         onChange={handleImportCSV}
         className="hidden"
@@ -1159,7 +1101,7 @@ const renderDocuments = (type: string) => {
               onChange={setReminderFrequency}
             />
           </div>
-          {['Daily', 'Weekly', 'Monthly', 'Yearly'].includes(reminderFrequency.type) && (
+          {['Weekly', 'Monthly', 'Yearly'].includes(reminderFrequency.type) && (
             <div className="w-full flex items-center justify-between p-4 mt-2 bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-black/5 dark:border-white/5">
               <div className="flex flex-col gap-0.5">
                 <span className="text-sm font-bold text-slate-900 dark:text-white">Summary Time</span>
@@ -1167,12 +1109,8 @@ const renderDocuments = (type: string) => {
               </div>
               <input
                 type="time"
-                value={notifConfig.summaryTimes?.[reminderFrequency.type] || notifConfig.summaryTime || "18:00"}
-                onChange={(e) => {
-                  const newTimes = { ...(notifConfig.summaryTimes || {}) };
-                  newTimes[reminderFrequency.type] = e.target.value;
-                  updateConfig({ summaryTime: e.target.value, summaryTimes: newTimes });
-                }}
+                value={notifConfig.summaryTime || "18:00"}
+                onChange={(e) => updateConfig({ summaryTime: e.target.value })}
                 className="bg-white dark:bg-black text-slate-900 dark:text-white text-sm font-semibold rounded-lg px-3 py-1.5 border border-black/10 dark:border-white/10 outline-none focus:ring-2 focus:ring-slate-900 dark:focus:ring-white"
               />
             </div>
@@ -1180,6 +1118,7 @@ const renderDocuments = (type: string) => {
         </div>
       </div>
 
+      {reminderFrequency.type === 'Daily' && (
       <div className="space-y-3">
         <h2 className="text-xs font-bold text-slate-500 uppercase tracking-wider px-1">
           Timetable Alerts
@@ -1213,11 +1152,7 @@ const renderDocuments = (type: string) => {
                 <span className="text-xs text-slate-500 dark:text-slate-400">Include room in notifications</span>
               </div>
               <button
-                onClick={() => {
-                  const nextVal = !notifConfig.showLocation;
-                  updateConfig({ showLocation: nextVal });
-                  NotificationService.autoScheduleFromTimetable();
-                }}
+                onClick={() => updateConfig({ showLocation: !notifConfig.showLocation })}
                 className={`w-11 h-6 rounded-full transition-colors relative ${notifConfig.showLocation ? 'bg-primary' : 'bg-muted'}`}
               >
                 <div className={`w-5 h-5 bg-white rounded-full absolute top-0.5 transition-transform ${notifConfig.showLocation ? 'left-[22px]' : 'left-0.5'}`} />
@@ -1230,11 +1165,7 @@ const renderDocuments = (type: string) => {
                 <span className="text-xs text-muted-foreground">Notify when current class ends</span>
               </div>
               <button
-                onClick={() => {
-                  const nextVal = !notifConfig.notifyNextClassOnEnd;
-                  updateConfig({ notifyNextClassOnEnd: nextVal });
-                  NotificationService.autoScheduleFromTimetable();
-                }}
+                onClick={() => updateConfig({ notifyNextClassOnEnd: !notifConfig.notifyNextClassOnEnd })}
                 className={`w-11 h-6 rounded-full transition-colors relative ${notifConfig.notifyNextClassOnEnd ? 'bg-primary' : 'bg-muted'}`}
               >
                 <div className={`w-5 h-5 bg-white rounded-full absolute top-0.5 transition-transform ${notifConfig.notifyNextClassOnEnd ? 'left-[22px]' : 'left-0.5'}`} />
@@ -1247,11 +1178,7 @@ const renderDocuments = (type: string) => {
                 <span className="text-xs text-muted-foreground">Get a 'Done for the day' alert</span>
               </div>
               <button
-                onClick={() => {
-                  const nextVal = !notifConfig.endOfDaySummary;
-                  updateConfig({ endOfDaySummary: nextVal });
-                  NotificationService.autoScheduleFromTimetable();
-                }}
+                onClick={() => updateConfig({ endOfDaySummary: !notifConfig.endOfDaySummary })}
                 className={`w-11 h-6 rounded-full transition-colors relative ${notifConfig.endOfDaySummary ? 'bg-primary' : 'bg-muted'}`}
               >
                 <div className={`w-5 h-5 bg-white rounded-full absolute top-0.5 transition-transform ${notifConfig.endOfDaySummary ? 'left-[22px]' : 'left-0.5'}`} />
@@ -1260,6 +1187,7 @@ const renderDocuments = (type: string) => {
           </div>
         </div>
       </div>
+      )}
 
 
       {/* CATEGORY 3: Data Management */}
@@ -1501,7 +1429,7 @@ const renderDocuments = (type: string) => {
                   App info
                 </h3>
                 <p className="text-xs text-muted-foreground">
-                  Version v{localStorage.getItem("app_version") || "3.7"} & Developer details
+                  Version v{import.meta.env.VITE_APP_VERSION || "3.8"} & Developer details
                 </p>
               </div>
             </div>
