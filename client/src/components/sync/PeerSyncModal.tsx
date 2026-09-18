@@ -4,7 +4,6 @@ import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 import { useSyncStore } from "../../stores/syncStore";
 import { useAttendanceStore } from "../../stores/attendanceStore";
-import { useCacheStore } from "../../stores/cacheStore";
 import { startOfWeek, endOfWeek, subDays, startOfMonth, endOfMonth, format } from "date-fns";
 import { ScheduleDate } from "../ui/schedule-date";
 import { FeedbackAction } from "../ui/feedback-action";
@@ -138,17 +137,7 @@ export const PeerSyncModal = () => {
     setLoading(true);
     try {
       await api.post(`/timetable/import/${activeSemesterId}`, reviewData.payload);
-      
-      // Invalidate cached timetable, today, calendar queries upon import
-      useCacheStore.getState().setCache("timetable", null);
-      useCacheStore.getState().setCache("today", null);
-      useCacheStore.getState().setCache("calendar", null);
-      useCacheStore.getState().setCache("subject_logs", null);
-      useCacheStore.getState().setCache("subjects", null);
-      useCacheStore.getState().setCache("subjects_overview", null);
-
       await useAttendanceStore.getState().fetchStats();
-      window.dispatchEvent(new Event("attendance-updated"));
       
       toast.success("Schedule mirrored successfully!");
       setInputCode("");
