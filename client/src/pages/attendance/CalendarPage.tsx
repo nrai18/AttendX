@@ -10,7 +10,6 @@ import { SyncEventsModal } from "../../components/calendar/SyncEventsModal";
 import { InlineAction } from "../../components/ui/inline-action";
 import { toast } from "sonner";
 import { useCacheStore } from "../../stores/cacheStore";
-import { useOfflineStore } from "../../stores/offlineStore";
 import { useAttendanceStore } from "../../stores/attendanceStore";
 
 interface DayDetail {
@@ -62,37 +61,29 @@ export const CalendarPage = () => {
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
   const [selectedMobileDate, setSelectedMobileDate] = useState<string | null>(null);
-  
-  // Swipe Handlers
-  const [touchStart, setTouchStart] = useState<{ x: number, y: number } | null>(null);
-  const [touchEnd, setTouchEnd] = useState<{ x: number, y: number } | null>(null);
-  const minSwipeDistance = 50;
-
-  const onTouchStart = (e: React.TouchEvent) => {
-    setTouchEnd(null);
-    setTouchStart({ x: e.targetTouches[0].clientX, y: e.targetTouches[0].clientY });
-  };
-
-  const onTouchMove = (e: React.TouchEvent) => {
-    setTouchEnd({ x: e.targetTouches[0].clientX, y: e.targetTouches[0].clientY });
-  };
-
-  const onTouchEnd = () => {
-    if (!touchStart || !touchEnd) return;
-    const distanceX = touchStart.x - touchEnd.x;
-    const distanceY = touchStart.y - touchEnd.y;
-    
-    // Ensure it's mostly a horizontal swipe, not vertical scrolling
-    if (Math.abs(distanceX) > Math.abs(distanceY) && Math.abs(distanceX) > minSwipeDistance) {
-      if (distanceX > 0) {
-        setCurrentDate(prev => addMonths(prev, 1));
-      } else {
-        setCurrentDate(prev => subMonths(prev, 1));
-      }
-    }
-  };
-
+  const [touchStartX, setTouchStartX] = useState<number | null>(null);
+  const [touchEndX, setTouchEndX] = useState<number | null>(null);
   const navigate = useNavigate();
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    setTouchStartX(e.targetTouches[0].clientX);
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    setTouchEndX(e.targetTouches[0].clientX);
+  };
+
+  const handleTouchEnd = () => {
+    if (!touchStartX || !touchEndX) return;
+    const distance = touchStartX - touchEndX;
+    if (distance > 50) {
+      setCurrentDate(prev => addMonths(prev, 1));
+    } else if (distance < -50) {
+      setCurrentDate(prev => subMonths(prev, 1));
+    }
+    setTouchStartX(null);
+    setTouchEndX(null);
+  };
 
   const fetchCalendar = async (force: boolean = false) => {
     const monthStr = format(currentDate, "yyyy-MM");
@@ -106,29 +97,54 @@ export const CalendarPage = () => {
       const res = await api.get(`/attendance/calendar?month=${monthStr}${force ? '&force=true' : ''}`);
       let d = typeof res.data === 'string' ? { days: [], insights: [], events: [], isComplete: false, completionPercentage: 0, requiredClassesToTarget: 0, canBunk: false } : res.data;
       
-      // FLAKY CONNECTION FIX: 
-      const queue = useOfflineStore.getState().queue;
-      const pendingMarks = queue.filter(q => 
-        q.url.includes("/attendance/mark") &&
-        (q.data?.date ? q.data.date.startsWith(monthStr) : true) &&
-        (q.retryCount || 0) < 3
-      );
-      if (pendingMarks.length > 0) {
-        const calCache = cachedData?.[monthStr];
-        if (calCache) {
-          if (calCache.details) {
-            // Keep the optimistic day details!
-            d = { ...d, details: { ...(d.details || {}), ...calCache.details } };
-          }
-          if (calCache.days) {
-            // Keep the optimistic day badge cells!
-            if (Array.isArray(d.days) && Array.isArray(calCache.days)) {
-              d = { ...d, days: [...d.days, ...calCache.days] };
+      // MERGE OFFLINE/OPTIMISTIC LOGS OVER THE API RESPONSE
+      // This ensures that if the backend cache is stale (offline queue hasn't flushed to invalidate it),
+      // the frontend still reflects the user's latest offline marks.
+      const logs = useAttendanceStore.getState().historyLogs || [];
+      const filteredLogs = logs.filter((log: any) => log.date?.startsWith(monthStr));
+      
+      if (filteredLogs.length > 0) {
+        if (!d.days) d.days = {};
+        if (!d.details) d.details = {};
+        
+        // Group logs by date
+        const logsByDate: Record<string, any[]> = {};
+        filteredLogs.forEach((log: any) => {
+          if (!logsByDate[log.date]) logsByDate[log.date] = [];
+          logsByDate[log.date].push(log);
+        });
+        
+        Object.entries(logsByDate).forEach(([dateStr, dayLogs]) => {
+          let dayDetails = [...(d.details[dateStr] || [])];
+          
+          dayLogs.forEach((l: any) => {
+            if (!dayDetails.some((detail: any) => detail.subjectName === l.subject)) {
+              dayDetails.push({
+                id: Math.random().toString(),
+                subjectName: l.subject,
+                status: l.status.toLowerCase(),
+                remarks: null,
+              });
+            }
+          });
+          
+          if (dayDetails.length > 0) {
+            d.details[dateStr] = dayDetails;
+            
+            const hasAttended = dayDetails.some((l: any) => ['present', 'attended'].includes(l.status.toLowerCase()));
+            const hasMissed = dayDetails.some((l: any) => ['absent', 'missed'].includes(l.status.toLowerCase()));
+            
+            if (hasAttended && hasMissed) {
+              d.days[dateStr] = "mixed";
+            } else if (hasAttended) {
+              d.days[dateStr] = "attended";
+            } else if (hasMissed) {
+              d.days[dateStr] = "missed";
             } else {
-              d = { ...d, days: { ...(d.days || {}), ...calCache.days } };
+              d.days[dateStr] = "off";
             }
           }
-        }
+        });
       }
 
       setData(d);
@@ -151,48 +167,13 @@ export const CalendarPage = () => {
 
         const days: Record<string, string> = {};
         const details: Record<string, any[]> = {};
-        let events: Record<string, CalendarEvent[]> = cachedData?.[monthStr]?.events || {};
-
-        // If no events are cached for this specific month, reconstruct them from the global semester cache
-        if (Object.keys(events).length === 0) {
-          events = {}; // Create a fresh object to avoid mutating state
-          const semesterEvents = useCacheStore.getState().semester?.events || [];
-          
-          semesterEvents.forEach((e: any) => {
-            const evStart = new Date(e.date);
-            evStart.setHours(0, 0, 0, 0);
-            const evEnd = e.endDate ? new Date(e.endDate) : new Date(e.date);
-            evEnd.setHours(23, 59, 59, 999);
-            
-            // If the event overlaps with this month, attach it to the correct dates
-            const startOfM = startOfMonth(new Date(`${monthStr}-01T00:00:00`));
-            const endOfM = endOfMonth(startOfM);
-            
-            for (let d = new Date(startOfM); d <= endOfM; d.setDate(d.getDate() + 1)) {
-              if (d >= evStart && d <= evEnd) {
-                const dateKey = format(d, "yyyy-MM-dd");
-                if (!events[dateKey]) events[dateKey] = [];
-                events[dateKey].push({
-                   id: e.id,
-                   title: e.title,
-                   eventType: e.eventType,
-                   isHolidayList: e.isHolidayList
-                });
-              }
-            }
-          });
-        }
+        const events = cachedData?.[monthStr]?.events || {};
 
         let attended = 0;
         let missed = 0;
         let mixed = 0;
         let off = 0;
         let not_marked = 0;
-        
-        let l_off = 0;
-        let l_missed = 0;
-        let l_attended = 0;
-        let l_total = 0;
 
         const startDate = startOfMonth(new Date(`${monthStr}-01T00:00:00`));
         const endDate = endOfMonth(startDate);
@@ -203,47 +184,23 @@ export const CalendarPage = () => {
           const dayOfWeek = d.getDay();
           const dbDay = dayOfWeek === 0 ? 6 : dayOfWeek - 1; // 0=Mon, 6=Sun
           
+          const dayLogs = filteredLogs.filter((l: any) => l.date === dateStr);
+          
           if (dateStr > today) {
             days[dateStr] = "future";
             continue;
           }
 
-          // Prioritize optimistically updated cache, but MERGE with historyLogs to avoid wiping out existing offline logs
-          let dayDetails = [...(cachedData?.[monthStr]?.details?.[dateStr] || [])];
-          
-          const dayLogs = filteredLogs.filter((l: any) => l.date === dateStr);
           if (dayLogs.length > 0) {
-            dayLogs.forEach((l: any) => {
-              // If the subject isn't already in dayDetails (from optimistic cache), add it
-              if (!dayDetails.some((d: any) => d.subjectName === l.subject)) {
-                dayDetails.push({
-                  id: Math.random().toString(),
-                  subjectName: l.subject,
-                  status: l.status.toLowerCase(),
-                  remarks: null,
-                });
-              }
-            });
-          }
+            details[dateStr] = dayLogs.map((l: any) => ({
+              id: Math.random().toString(),
+              subjectName: l.subject,
+              status: l.status.toLowerCase(),
+              remarks: null,
+            }));
 
-          if (dayDetails.length > 0) {
-            details[dateStr] = dayDetails;
-            
-            dayDetails.forEach((l: any) => {
-              const s = l.status.toLowerCase();
-              if (['present', 'medical', 'od', 'attended'].includes(s)) {
-                 l_attended++;
-                 l_total++;
-              } else if (['absent', 'missed'].includes(s)) {
-                 l_missed++;
-                 l_total++;
-              } else if (s === 'off' || s === 'cancelled') {
-                 l_off++;
-              }
-            });
-
-            const hasAttended = dayDetails.some((l: any) => ['present', 'attended'].includes(l.status.toLowerCase()));
-            const hasMissed = dayDetails.some((l: any) => ['absent', 'missed'].includes(l.status.toLowerCase()));
+            const hasAttended = dayLogs.some((l: any) => ['present', 'attended'].includes(l.status.toLowerCase()));
+            const hasMissed = dayLogs.some((l: any) => ['absent', 'missed'].includes(l.status.toLowerCase()));
             
             if (hasAttended && hasMissed) {
               days[dateStr] = "mixed";
@@ -281,13 +238,7 @@ export const CalendarPage = () => {
           events,
           stats: {
             days: { not_marked, off, missed, attended, mixed },
-            lectures: { 
-               off: l_off, 
-               missed: l_missed, 
-               attended: l_attended, 
-               total: l_total, 
-               percentage: l_total > 0 ? (l_attended / l_total) * 100 : 0 
-            }
+            lectures: { off: 0, missed: 0, attended: 0, total: 0, percentage: 0 }
           }
         };
 
@@ -399,13 +350,13 @@ export const CalendarPage = () => {
       </div>
 
       <div 
-        className="grid grid-cols-7 gap-y-4 gap-x-1 sm:gap-x-2 text-center mb-6"
-        onTouchStart={onTouchStart}
-        onTouchMove={onTouchMove}
-        onTouchEnd={onTouchEnd}
+        className="grid grid-cols-7 gap-y-4 text-center mb-6"
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
       >
         {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map(d => (
-          <div key={d} className="text-[10px] sm:text-xs font-semibold text-muted-foreground uppercase tracking-wider">{d}</div>
+          <div key={d} className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{d}</div>
         ))}
 
         {calendarDays.map((d, i) => {
@@ -465,17 +416,17 @@ export const CalendarPage = () => {
                       navigate(`/today?date=${dateKey}`);
                     }
                   }}
-                  className={`flex flex-col items-center justify-center relative w-full max-w-[3rem] aspect-[4/5] sm:w-12 sm:h-14 hover:bg-muted/60 rounded-xl sm:rounded-2xl transition-all cursor-pointer group ${animBorder}`}
+                  className={`flex flex-col items-center justify-center relative w-12 h-14 hover:bg-muted/60 rounded-2xl transition-all cursor-pointer group ${animBorder}`}
                 >
-                  <div className={`w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center rounded-full text-xs sm:text-sm font-medium transition-transform group-hover:scale-110 ${
+                  <div className={`w-8 h-8 flex items-center justify-center rounded-full text-sm font-medium transition-transform group-hover:scale-110 ${
                     isToday ? "bg-primary text-primary-foreground font-bold shadow-md shadow-primary/20" : "text-foreground"
                   }`}>
                     {format(d, "d")}
                   </div>
-                  <div className="flex items-center gap-0.5 sm:gap-1 mt-0.5 sm:mt-1">
+                  <div className="flex items-center gap-1 mt-1">
                     <div className={`w-1.5 h-1.5 rounded-full ${getDotColor(status)}`} />
                     {hasRemarks && (
-                      <MessageSquare className="w-2 h-2 sm:w-2.5 sm:h-2.5 text-primary" />
+                      <MessageSquare className="w-2.5 h-2.5 text-primary" />
                     )}
                     {hasEvent && (
                       <span className="w-1.5 h-1.5 rounded-full bg-primary animate-ping" />
@@ -540,7 +491,7 @@ export const CalendarPage = () => {
                   </div>
                 </button>
               ) : (
-                <div className="w-full max-w-[3rem] aspect-[4/5] sm:w-12 sm:h-14" />
+                <div className="w-12 h-14" />
               )}
             </div>
           );

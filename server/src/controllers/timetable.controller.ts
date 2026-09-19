@@ -95,18 +95,7 @@ export class TimetableController {
   }
 
   static async ocrImport(req: Request | any, res: Response) {
-    let file = req.file || (req.files && req.files[0]);
-    
-    // Support base64 image for Capacitor WebView FormData bug bypass
-    if (!file && req.body.base64Image) {
-      const buffer = Buffer.from(req.body.base64Image, "base64");
-      file = {
-        buffer,
-        mimetype: req.body.mimeType || "image/jpeg",
-        originalname: req.body.fileName || "upload.jpg"
-      };
-    }
-
+    const file = req.file || (req.files && req.files[0]);
     if (!file) {
       return res.status(400).json({ error: "No timetable PDF or image file provided" });
     }
