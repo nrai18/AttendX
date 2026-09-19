@@ -106,18 +106,18 @@ const SubjectCard: React.FC<{
           <div className="flex items-center gap-3 text-xs text-muted-foreground">
             <span className="flex items-center gap-1">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
-              Att: <span className="text-foreground font-semibold">{stat.attended || 0}</span>
+              Att: <span className="text-foreground font-semibold">{stat.attended}</span>
             </span>
             <span className="flex items-center gap-1">
               <span className="w-1.5 h-1.5 rounded-full bg-rose-500 inline-block" />
-              Miss: <span className="text-foreground font-semibold">{stat.missed || 0}</span>
+              Miss: <span className="text-foreground font-semibold">{stat.missed}</span>
             </span>
             <span className="flex items-center gap-1">
               <span className="w-1.5 h-1.5 rounded-full bg-amber-500 inline-block" />
-              Off: <span className="text-foreground font-semibold">{stat.off || 0}</span>
+              Off: <span className="text-foreground font-semibold">{stat.off}</span>
             </span>
             <span className="text-foreground dark:text-white/70">
-              Tot: <span className="text-foreground font-semibold">{stat.total || 0}</span>
+              Tot: <span className="text-foreground font-semibold">{stat.total}</span>
             </span>
           </div>
           {/* Edit/Delete */}
@@ -234,10 +234,10 @@ export const SubjectsPage = () => {
   // Compute overall stats across all subjects
   const safeStats = Array.isArray(subjectStats) ? subjectStats : [];
   const safeSubjects = Array.isArray(subjects) ? subjects : [];
-  const overallAttended = safeStats.reduce((sum, s) => sum + (s.attended || 0), 0);
-  const overallMissed = safeStats.reduce((sum, s) => sum + (s.missed || 0), 0);
-  const overallOff = safeStats.reduce((sum, s) => sum + (s.off || 0), 0);
-  const overallTotal = safeStats.reduce((sum, s) => sum + (s.total || 0), 0);
+  const overallAttended = safeStats.reduce((sum, s) => sum + s.attended, 0);
+  const overallMissed = safeStats.reduce((sum, s) => sum + s.missed, 0);
+  const overallOff = safeStats.reduce((sum, s) => sum + s.off, 0);
+  const overallTotal = safeStats.reduce((sum, s) => sum + s.total, 0);
   const overallPct = overallTotal > 0 ? (overallAttended / overallTotal) * 100 : 0;
   // Always use user.targetAttendance as the single source of truth — never average subject targets
   const overallTarget = user?.targetAttendance ?? 75;

@@ -7,7 +7,6 @@ import { api } from "../../lib/api";
 import { toast } from "sonner";
 import { useAuthStore } from "../../stores/authStore";
 import { useCacheStore } from "../../stores/cacheStore";
-import { useOfflineStore } from "../../stores/offlineStore";
 import { CreateSemesterModal } from "../../components/semester/CreateSemesterModal";
 import { OnboardingChecklist } from "../../components/ui/onboarding-checklist";
 
@@ -102,13 +101,7 @@ export const TodayPage = () => {
 
     if (activeEvent?.title) {
       const title = activeEvent.title.toLowerCase();
-      if (title.includes("online exam") || title.includes("wfh exam")) {
-        animType = "online_exam"; animMsg = "Good luck with your online exam! 💻📝";
-      } else if (title.includes("lab exam") || title.includes("practical exam")) {
-        animType = "lab_exam"; animMsg = "Best of luck for your lab exam! 🔬🧪";
-      } else if (title.includes("exam") || title.includes("mid term") || title.includes("end term") || title.includes("mid semester") || title.includes("end semester") || title.includes("test")) {
-        animType = "exam"; animMsg = "All the best for your exam! 📝✨";
-      } else if (title.includes("diwali") || title.includes("deepavali")) {
+      if (title.includes("diwali") || title.includes("deepavali")) {
         animType = "diwali"; animMsg = "Lighting candles & firecrackers for Diwali! 🪔✨";
       } else if (title.includes("republic")) {
         animType = "republic_day"; animMsg = "Happy Republic Day! 🇮🇳";
@@ -158,7 +151,21 @@ export const TodayPage = () => {
         animType = "janmashtami"; animMsg = "Happy Krishna Janmashtami! 🦚";
       } else if (title.includes("muharram")) {
         animType = "muharram"; animMsg = "Muharram special 🕌";
+      } else if (title.includes("makar") || title.includes("sankranti") || title.includes("pongal") || title.includes("lohari") || title.includes("lohri")) {
+        animType = "makar_sankranti"; animMsg = "Happy Makar Sankranti/Pongal! 🌾✨";
+      } else if (title.includes("shivaratri") || title.includes("shivratri")) {
+        animType = "maha_shivaratri"; animMsg = "Happy Maha Shivaratri! 🕉️✨";
+      } else if (title.includes("raksha") || title.includes("rakhi")) {
+        animType = "rakshabandhan"; animMsg = "Happy Rakshabandhan! ✨";
+      } else if (title.includes("midsem") || title.includes("endsem") || title.includes("exam")) {
+        animType = "exam"; animMsg = "Focus mode activated. Best of luck on your exams! 📝✨";
       }
+    } else if (activeEvent?.eventType === "midsem" || activeEvent?.eventType === "endsem" || activeEvent?.eventType === "exam") {
+      animType = "exam"; animMsg = "Focus mode activated. Best of luck on your exams! 📚💪";
+    } else if (activeEvent?.eventType === "lab_exam") {
+      animType = "practical"; animMsg = "Practical / Lab Exams today. Best of luck! 🔬💻";
+    } else if (activeEvent?.eventType === "ct") {
+      animType = "exam"; animMsg = "Cycle Test today. Stay focused! 📝";
     }
     return { animType, animMsg };
   };
@@ -325,19 +332,6 @@ export const TodayPage = () => {
       
       if (res.status === 'fulfilled') {
         nextAgenda = Array.isArray(res.value.data) ? res.value.data : [];
-        
-        // FLAKY CONNECTION FIX: If we have pending offline mutations for today, 
-        // the server's GET response is STALE. We must prioritize our optimistic cache!
-        const queue = useOfflineStore.getState().queue;
-        const pendingMarks = queue.filter(q => q.url.includes("/attendance/mark") && q.data?.date === targetDateStr);
-        if (pendingMarks.length > 0) {
-           const todayCache = useCacheStore.getState().today?.[targetDateStr];
-           if (todayCache && todayCache.agenda) {
-              // Replay the exact optimistic state so it doesn't revert to the server's old state
-              nextAgenda = todayCache.agenda;
-           }
-        }
-        
         setAgenda(nextAgenda);
       } else {
         setAgenda([]);
@@ -375,10 +369,7 @@ export const TodayPage = () => {
         // Construct agenda by merging timetable slots with attendance logs for the day
         const subjectsCache = useCacheStore.getState().subject_logs || {};
         const allLogs = subjectsCache["all"]?.logs || [];
-        const globalHistoryLogs = useAttendanceStore.getState().historyLogs || [];
-        
         const logsForDay = allLogs.filter((l: any) => l.date && l.date.startsWith(targetDateStr));
-        const historyLogsForDay = globalHistoryLogs.filter((l: any) => l.date === targetDateStr || l.dateFormatted === targetDateStr);
 
         const timetableCache = useCacheStore.getState().timetable;
         const dateObj = new Date(targetDateStr);
@@ -387,16 +378,11 @@ export const TodayPage = () => {
 
         let pseudoAgenda: AgendaItem[] = [];
 
-        // Handle both legacy Array cache and new Object cache
-        const isLegacyArray = Array.isArray(timetableCache);
-        const hasSlots = timetableCache && (isLegacyArray ? timetableCache.length > 0 : timetableCache.slots);
-
-        if (hasSlots) {
+        if (timetableCache && timetableCache.slots) {
           // Merge active and archived slots
-          const activeSlots = isLegacyArray ? timetableCache : (timetableCache.slots || []);
-          const archivedVersions = !isLegacyArray ? (timetableCache.archivedSlots || []) : [];
+          const archivedVersions = timetableCache.archivedSlots || [];
           const archivedSlotsArray = archivedVersions.flatMap((v: any) => v.slots || []);
-          const allSlots = [...activeSlots, ...archivedSlotsArray];
+          const allSlots = [...timetableCache.slots, ...archivedSlotsArray];
 
           // Filter slots active on this historical date
           const slotsForDay = allSlots.filter((s: any) => {
@@ -420,28 +406,11 @@ export const TodayPage = () => {
           const deduplicatedSlotsForDay = Array.from(uniqueSlotsMap.values());
 
           pseudoAgenda = deduplicatedSlotsForDay.map((slot: any) => {
-            const cacheState = useCacheStore.getState();
-            const subjectsOverview = Array.isArray(cacheState.subjects_overview) ? cacheState.subjects_overview : (cacheState.subjects_overview?.subjects || []);
-            const timetableSubjects = Array.isArray(cacheState.timetable?.subjects) ? cacheState.timetable.subjects : [];
-            const globalSubjects = Array.isArray(cacheState.subjects) ? cacheState.subjects : (cacheState.subjects?.subjects || []);
-            const allCachedSubjects = [...subjectsOverview, ...timetableSubjects, ...globalSubjects];
-            
-            const subject = slot.subject || allCachedSubjects.find((sub: any) => sub.id === slot.subjectId) || { id: slot.subjectId, name: "Unknown" };
+            const subjectsOverview = useCacheStore.getState().subjects_overview || [];
+            const subject = subjectsOverview.find((sub: any) => sub.id === slot.subjectId) || { id: slot.subjectId, name: "Unknown" };
             
             // Find if there is a log for this specific timetable slot
-            let logMatch = logsForDay.find((l: any) => l.timetableSlotId === slot.id || (l.subjectId === slot.subjectId && l.startTime === slot.startTime));
-            
-            // Fallback to historyLogs which only matches by subject name (since it lacks slot IDs)
-            if (!logMatch) {
-                const hMatch = historyLogsForDay.find((l: any) => l.subject === subject.name);
-                if (hMatch) {
-                    logMatch = {
-                        status: hMatch.status,
-                        remarks: undefined, // historyLogs lacks remarks
-                        id: null
-                    };
-                }
-            }
+            const logMatch = logsForDay.find((l: any) => l.timetableSlotId === slot.id || (l.subjectId === slot.subjectId && l.startTime === slot.startTime));
             
             return {
               id: slot.id,
@@ -462,22 +431,15 @@ export const TodayPage = () => {
         logsForDay.forEach((l: any) => {
           const exists = pseudoAgenda.some(item => item.id === l.timetableSlotId || (item.subject.id === l.subjectId && item.startTime === l.startTime));
           if (!exists) {
-            const cacheState = useCacheStore.getState();
-            const subjectsOverview = Array.isArray(cacheState.subjects_overview) ? cacheState.subjects_overview : (cacheState.subjects_overview?.subjects || []);
-            const timetableSubjects = Array.isArray(cacheState.timetable?.subjects) ? cacheState.timetable.subjects : [];
-            const globalSubjects = Array.isArray(cacheState.subjects) ? cacheState.subjects : (cacheState.subjects?.subjects || []);
-            const allCachedSubjects = [...subjectsOverview, ...timetableSubjects, ...globalSubjects];
-            const foundSubject = allCachedSubjects.find((sub: any) => sub.id === l.subjectId);
-            
             pseudoAgenda.push({
                id: l.overrideId || l.id,
                type: l.isExtra ? "override" : "slot",
                isExtra: l.isExtra,
                subject: {
                   id: l.subjectId,
-                  name: l.subjectName || foundSubject?.name || "Unknown",
-                  code: l.subjectCode || foundSubject?.code,
-                  colorHex: l.subjectColor || foundSubject?.colorHex || foundSubject?.color
+                  name: l.subjectName || "Unknown",
+                  code: l.subjectCode,
+                  colorHex: l.subjectColor
                },
                startTime: l.startTime,
                endTime: l.endTime,
@@ -490,52 +452,8 @@ export const TodayPage = () => {
           }
         });
 
-        // Add any historyLogs that didn't match (for extra classes when subject_logs is empty)
-        historyLogsForDay.forEach((h: any) => {
-          const exists = pseudoAgenda.some(item => item.subject.name === h.subject);
-          if (!exists) {
-            const cacheState = useCacheStore.getState();
-            const subjectsOverview = Array.isArray(cacheState.subjects_overview) ? cacheState.subjects_overview : (cacheState.subjects_overview?.subjects || []);
-            const timetableSubjects = Array.isArray(cacheState.timetable?.subjects) ? cacheState.timetable.subjects : [];
-            const globalSubjects = Array.isArray(cacheState.subjects) ? cacheState.subjects : (cacheState.subjects?.subjects || []);
-            const allCachedSubjects = [...subjectsOverview, ...timetableSubjects, ...globalSubjects];
-            const foundSubject = allCachedSubjects.find((sub: any) => sub.name === h.subject);
-            
-            const [startRaw = "", endRaw = ""] = (h.time || "").split("-").map((t: string) => t.trim());
-            const start = startRaw || "00:00";
-            const end = endRaw || start;
-            pseudoAgenda.push({
-               id: h.id || Math.random().toString(),
-               type: "manual",
-               isExtra: true,
-               subject: foundSubject || { id: "unknown", name: h.subject },
-               startTime: start,
-               endTime: end || start,
-               room: undefined,
-               slotType: h.type || "Extra",
-               status: h.status === "not_marked" ? null : h.status,
-               remarks: undefined,
-               attendanceId: h.status !== "not_marked" ? h.id : null,
-            });
-          }
-        });
-
         if (pseudoAgenda.length > 0) {
           pseudoAgenda.sort((a,b) => a.startTime.localeCompare(b.startTime));
-          
-          // RETAIN OPTIMISTIC MARKS: If the user marked a class offline, it is in dayCache.agenda
-          // but NOT in historyLogs. We must preserve their local optimistic status!
-          const existingCache = useCacheStore.getState().today?.[targetDateStr];
-          if (existingCache && existingCache.agenda) {
-            pseudoAgenda = pseudoAgenda.map(item => {
-              const cachedItem = existingCache.agenda.find((c: AgendaItem) => c.id === item.id);
-              if (cachedItem && cachedItem.status) {
-                return { ...item, status: cachedItem.status, remarks: cachedItem.remarks };
-              }
-              return item;
-            });
-          }
-
           setAgenda(pseudoAgenda);
           setTodayStatus(null);
         } else {
@@ -578,13 +496,8 @@ export const TodayPage = () => {
   // Greeting overlay effect
   useEffect(() => {
     if (!isLoading) {
-      const titleStr = (activeEvent?.title || "").toLowerCase();
-      const eventTypeStr = (activeEvent?.eventType || "").toLowerCase();
-      const isHolidayEvent = activeEvent && (
-        ["holiday", "restricted_holiday", "exam", "midsem", "endsem", "practical", "lab exam"].includes(eventTypeStr) ||
-        titleStr.includes("exam") || titleStr.includes("mid term") || titleStr.includes("end term") || titleStr.includes("practical") || titleStr.includes("lab") || titleStr.includes("diwali") || titleStr.includes("republic") || titleStr.includes("independence") || titleStr.includes("gandhi") || titleStr.includes("chaturthi") || titleStr.includes("christmas")
-      );
-      if (isBirthday || isHolidayEvent) {
+      const shouldShowOverlay = activeEvent && ["holiday", "restricted_holiday", "vacation", "fest", "institute", "lab_exam", "midsem", "endsem", "ct", "exam"].includes(activeEvent.eventType || "");
+      if (isBirthday || shouldShowOverlay) {
         if (lastGreetedDate !== targetDateStr) {
           setShowGreetingOverlay(true);
           setLastGreetedDate(targetDateStr);
@@ -610,26 +523,18 @@ export const TodayPage = () => {
     const subjectIndex = subjects.findIndex(s => s.subjectId === item.subject?.id || s.id === item.subject?.id);
     if (subjectIndex !== -1) {
       const s = { ...subjects[subjectIndex] };
-      // Revert previous status
       if (item.status === "present" || item.status === "medical" || item.status === "od") {
-        s.attended = Math.max(0, (s.attended || 0) - 1);
-        s.total = Math.max(0, (s.total || 0) - 1);
+        s.attended -= 1;
+        s.total -= 1;
       } else if (item.status === "absent") {
-        s.missed = Math.max(0, (s.missed || 0) - 1);
-        s.total = Math.max(0, (s.total || 0) - 1);
-      } else if (item.status === "off" || item.status === "cancelled") {
-        s.off = Math.max(0, (s.off || 0) - 1);
+        s.total -= 1;
       }
       
-      // Apply new status
       if (status === "present" || status === "medical" || status === "od") {
-        s.attended = (s.attended || 0) + 1;
-        s.total = (s.total || 0) + 1;
+        s.attended += 1;
+        s.total += 1;
       } else if (status === "absent") {
-        s.missed = (s.missed || 0) + 1;
-        s.total = (s.total || 0) + 1;
-      } else if (status === "off" || status === "cancelled") {
-        s.off = (s.off || 0) + 1;
+        s.total += 1;
       }
       
       s.percentage = s.total > 0 ? Number(((s.attended / s.total) * 100).toFixed(1)) : 0;
@@ -640,15 +545,6 @@ export const TodayPage = () => {
       const overallPercentage = totalClasses > 0 ? (totalAttended / totalClasses) * 100 : 0;
       
       useAttendanceStore.setState({ subjects, totalAttended, totalClasses, overallPercentage });
-      
-      const cacheState = useCacheStore.getState();
-      if (cacheState.subjects) {
-          const isLegacyArray = Array.isArray(cacheState.subjects);
-          cacheState.setCache('subjects', {
-              ...(isLegacyArray ? { subjects: cacheState.subjects } : cacheState.subjects),
-              stats: subjects
-          });
-      }
     }
     // ---------------------------------
 
@@ -675,7 +571,16 @@ export const TodayPage = () => {
       if (overallPercentage < targetPct && newPercentage >= targetPct) {
         triggerAttendancePopup("target_hit", `Target ${targetPct}% Touched! 🎯`);
       } else {
-        triggerAttendancePopup("thumbs_up", "Awesome! Marked Present 👍");
+        const slotTypeLower = (item.slotType || "").toLowerCase();
+        const isExamDay = activeEvent && ["exam", "midsem", "endsem"].includes((activeEvent.eventType || "").toLowerCase());
+        
+        if (isExamDay || slotTypeLower.includes('exam') || slotTypeLower.includes('mid') || slotTypeLower.includes('end')) {
+          triggerAttendancePopup("exam", "Good luck on your exam! 📝");
+        } else if (slotTypeLower.includes('practical') || slotTypeLower.includes('lab')) {
+          triggerAttendancePopup("practical", "Awesome! Practical marked! 🔬");
+        } else {
+          triggerAttendancePopup("thumbs_up", "Awesome! Marked Present 👍");
+        }
       }
     } else if (status === "off" || status === "cancelled") {
       const allOthersOff = updatedAgenda.every(a => a.status === "off" || a.status === "cancelled");
@@ -686,6 +591,26 @@ export const TodayPage = () => {
         triggerAttendancePopup("off_class", "Yay! Off class today! 🎈🛌");
       }
     }
+
+    try {
+      if (!item.subject?.id) {
+        throw new Error("Subject is missing for this agenda item");
+      }
+      const res = await api.post("/attendance/mark", {
+        subjectId: item.subject.id,
+        date: targetDateStr,
+        status,
+        remarks,
+        timetableSlotId: item.type === "slot" ? item.id : undefined,
+        overrideId: item.type === "override" ? item.id : undefined,
+        attendanceId: item.attendanceId,
+      });
+
+      setAgenda(prev => prev.map(a => 
+        a.id === item.id 
+          ? { ...a, attendanceId: status === "clear" ? null : res.data.id } 
+          : a
+      ));
 
       // Update global offline caches optimistically
       const state = useCacheStore.getState();
@@ -704,7 +629,7 @@ export const TodayPage = () => {
       const monthStr = targetDateStr.substring(0, 7);
       const calCache = state.calendar?.[monthStr] || { details: {}, days: [], events: [], insights: [], isComplete: false };
       
-      const details = [...(calCache.details[targetDateStr] || [])];
+      const details = calCache.details[targetDateStr] || [];
       const existingIdx = details.findIndex((d: any) => d.subjectName === item.subject?.name);
       
       if (status === "clear") {
@@ -736,8 +661,7 @@ export const TodayPage = () => {
       
       // 3. Update Subject Logs Cache
       const updateSubjectLog = (cacheKey: string) => {
-         // Deep clone to ensure React re-renders correctly
-         const subjCache = state.subject_logs?.[cacheKey] ? JSON.parse(JSON.stringify(state.subject_logs[cacheKey])) : null;
+         const subjCache = state.subject_logs?.[cacheKey];
          if (subjCache && subjCache.logs) {
            const logIdx = subjCache.logs.findIndex((l: any) => l.date === targetDateStr && l.subjectId === item.subject?.id);
            if (status === "clear") {
@@ -756,9 +680,7 @@ export const TodayPage = () => {
                  dateFormatted: new Date(targetDateStr).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
                  status,
                  remarks,
-                 time: item.startTime,
-                 slotType: item.slotType,
-                 isExtra: item.isExtra || false
+                 time: item.startTime
                });
              }
            }
@@ -768,28 +690,6 @@ export const TodayPage = () => {
       
       updateSubjectLog('all');
       if (item.subject?.id) updateSubjectLog(item.subject.id);
-
-    try {
-      if (!item.subject?.id) {
-        throw new Error("Subject is missing for this agenda item");
-      }
-      const res = await api.post("/attendance/mark", {
-        subjectId: item.subject.id,
-        date: targetDateStr,
-        status,
-        remarks,
-        timetableSlotId: item.type === "slot" ? item.id : undefined,
-        overrideId: item.type === "override" ? item.id : undefined,
-        attendanceId: item.attendanceId,
-      });
-
-      setAgenda(prev => prev.map(a => 
-        a.id === item.id 
-          ? { ...a, attendanceId: status === "clear" ? null : res.data.id } 
-          : a
-      ));
-
-
 
       fetchStats();
       window.dispatchEvent(new Event("attendance-updated"));
@@ -827,38 +727,20 @@ export const TodayPage = () => {
 
 
   // Determine if we should show the holiday/exam state instead of classes
-  const eventTitleForCheck = (activeEvent?.title || "").toLowerCase();
-  const eventTypeForCheck = (activeEvent?.eventType || "").toLowerCase();
-  const isGlobalEventActive = activeEvent && (
-    ["holiday", "restricted_holiday", "vacation", "fest", "midsem", "endsem", "institute", "exam", "practical", "lab exam"].includes(eventTypeForCheck) ||
-    eventTitleForCheck.includes("exam") || eventTitleForCheck.includes("mid term") || eventTitleForCheck.includes("end term") || eventTitleForCheck.includes("practical") || eventTitleForCheck.includes("lab") || eventTitleForCheck.includes("holiday") || eventTitleForCheck.includes("fest") || eventTitleForCheck.includes("vacation")
-  );
+  const isGlobalEventActive = activeEvent && ["holiday", "restricted_holiday", "vacation", "fest", "midsem", "endsem", "institute"].includes(activeEvent.eventType);
 
-  const getEventStateConfig = (type: string, activeEvent: any) => {
-    const title = (activeEvent?.title || "").toLowerCase();
-    
-    if (["midsem", "endsem", "exam", "practical", "lab exam"].includes(type) || title.includes("exam") || title.includes("mid term") || title.includes("end term") || title.includes("practical") || title.includes("lab")) {
-      const { animType, animMsg } = getHolidayAnimation(activeEvent);
-      if (HOLIDAY_ASSETS[animType as AnimationType]) {
-        return {
-          icon: <HolidayIconRenderer src={HOLIDAY_ASSETS[animType as AnimationType] as string} alt="Exam Icon" className="w-16 h-16 drop-shadow-md mb-4 mx-auto" />,
-          color: "border-rose-500/20 bg-rose-500/5",
-          title: "Exam Mode",
-          msg: animMsg || "Focus on your exams. No regular classes today."
-        };
-      }
-      return { icon: <BookOpen className="w-16 h-16 text-rose-500 mb-4 mx-auto" />, color: "border-rose-500/20 bg-rose-500/5", title: "Exam Mode", msg: "Focus on your exams. No regular classes today." };
-    }
-    
-    if (["fest", "institute"].includes(type) || title.includes("fest") || title.includes("institute") || title.includes("yalgaar")) {
-      return { icon: <PartyPopper className="w-16 h-16 text-purple-500 mb-4 mx-auto" />, color: "border-purple-500/20 bg-purple-500/5", title: "Festivities", msg: "Enjoy the celebrations! Classes are suspended." };
-    }
-    
-    if (type === "vacation" || title.includes("vacation")) {
-      return { icon: <Palmtree className="w-16 h-16 text-emerald-500 mb-4 mx-auto" />, color: "border-emerald-500/20 bg-emerald-500/5", title: "Vacation", msg: "You're officially on vacation. Recharge and relax!" };
-    }
-    
-    // Default holiday
+  const getEventStateConfig = (type: string) => {
+    switch(type) {
+      case "midsem":
+      case "endsem":
+        return { icon: <BookOpen className="w-16 h-16 text-rose-500 mb-4 mx-auto" />, color: "border-rose-500/20 bg-rose-500/5", title: "Exam Mode", msg: "Focus on your exams. No regular classes today." };
+      case "fest":
+      case "institute":
+        return { icon: <PartyPopper className="w-16 h-16 text-purple-500 mb-4 mx-auto" />, color: "border-purple-500/20 bg-purple-500/5", title: "Festivities", msg: "Enjoy the celebrations! Classes are suspended." };
+      case "vacation":
+        return { icon: <Palmtree className="w-16 h-16 text-emerald-500 mb-4 mx-auto" />, color: "border-emerald-500/20 bg-emerald-500/5", title: "Vacation", msg: "You're officially on vacation. Recharge and relax!" };
+      case "holiday":
+      case "restricted_holiday": {
         const { animType } = getHolidayAnimation(activeEvent);
         if (HOLIDAY_ASSETS[animType as AnimationType]) {
           return {
@@ -874,6 +756,10 @@ export const TodayPage = () => {
           title: type === "holiday" ? "Holiday" : "Restricted Holiday", 
           msg: "Enjoy your day off!" 
         };
+      }
+      default:
+        return { icon: <Palmtree className="w-16 h-16 text-emerald-500 mb-4 mx-auto" />, color: "border-emerald-500/20 bg-emerald-500/5", title: "Holiday", msg: "Enjoy your day off!" };
+    }
   };
 
   const displayDate = new Date(targetDateStr);
@@ -912,7 +798,7 @@ export const TodayPage = () => {
             <span className="text-sm font-medium text-sky-800 dark:text-sky-200">Upcoming: <span className="font-bold text-sky-900 dark:text-sky-100">{todayStatus.nextEvent.title}</span></span>
           </div>
           <span className="text-xs font-bold bg-sky-100/80 dark:bg-sky-800/40 text-sky-800 dark:text-sky-300 px-3 py-1 rounded-full uppercase tracking-wider">
-            {new Date(todayStatus.nextEvent.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+            {new Date(todayStatus.nextEvent.date.split('T')[0] + "T00:00:00").toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
           </span>
         </div>
       )}
@@ -1138,28 +1024,11 @@ export const TodayPage = () => {
         </div>
       ) : agenda.length === 0 ? (
         <div className="text-center py-12 bg-card/60 border border-border/50 backdrop-blur-md rounded-2xl shadow-sm">
-          {isGlobalEventActive && activeEvent ? (
-            (() => {
-              const config = getEventStateConfig(activeEvent.eventType?.toLowerCase() || "", activeEvent);
-              return (
-                <>
-                  {config.icon}
-                  <h3 className="text-lg font-medium text-foreground mb-2">{config.title}</h3>
-                  <p className="text-muted-foreground max-w-sm mx-auto text-sm">
-                    {config.msg}
-                  </p>
-                </>
-              );
-            })()
-          ) : (
-            <>
-              <CheckCircle2 className="w-12 h-12 text-emerald-500 mx-auto mb-4 opacity-80" />
-              <h3 className="text-lg font-medium text-foreground mb-2">No classes scheduled today!</h3>
-              <p className="text-muted-foreground max-w-sm mx-auto text-sm">
-                Enjoy your day off or catch up on reading and self-study.
-              </p>
-            </>
-          )}
+          <CheckCircle2 className="w-12 h-12 text-emerald-500 mx-auto mb-4 opacity-80" />
+          <h3 className="text-lg font-medium text-foreground mb-2">No classes scheduled today!</h3>
+          <p className="text-muted-foreground max-w-sm mx-auto text-sm">
+            Enjoy your day off or catch up on reading and self-study.
+          </p>
         </div>
       ) : (
         <div className="space-y-4">
@@ -1269,13 +1138,19 @@ export const TodayPage = () => {
                 className="w-full px-3 py-2 bg-foreground/5 border border-foreground/10 rounded-xl text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary"
                 autoFocus
               />
-              <div className="flex flex-wrap gap-1.5 mt-2">
-                {["Medical", "Event", "Fever", "College OD", "Personal"].map((tag) => (
+              <div className="flex flex-wrap gap-1.5 mt-2 max-h-32 overflow-y-auto pr-1">
+                {[
+                  "Medical", "Fever", "College OD", "Personal", "Event",
+                  "Sports", "Placement", "Hackathon", "Transport Issue",
+                  "Family Emergency", "Sick Leave", "Club Activity",
+                  "Overslept", "Exam Prep", "Project Work", "Meeting",
+                  "Out of Station", "Doctor Appt.", "Techfest", "Rain/Weather"
+                ].map((tag) => (
                   <button
                     key={tag}
                     type="button"
                     onClick={() => setRemarkInput(tag)}
-                    className="px-2.5 py-1 rounded-lg text-xs bg-primary/10 border border-primary/20 hover:bg-primary/20 text-primary transition-colors font-semibold cursor-pointer"
+                    className="px-2.5 py-1 rounded-lg text-xs bg-primary/10 border border-primary/20 hover:bg-primary/20 text-primary transition-colors font-semibold cursor-pointer whitespace-nowrap"
                   >
                     + {tag}
                   </button>
