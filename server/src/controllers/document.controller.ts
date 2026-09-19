@@ -25,22 +25,13 @@ export class DocumentController {
     }
   }
 
-  static async downloadDocument(req: AuthenticatedRequest, res: Response) {
+  static async downloadDocument(req: Request, res: Response) {
     try {
-      const authUserId = req.user?.userId || (req.user as any)?.id;
-      if (!authUserId) {
-        return res.status(401).json({ message: 'Unauthorized' });
-      }
-
       const id = (req.params.id as string) as string;
       const doc = await prisma.storedDocument.findUnique({ where: { id } });
       
       if (!doc) {
         return res.status(404).json({ message: 'Document not found' });
-      }
-
-      if (doc.userId !== authUserId) {
-        return res.status(403).json({ message: 'Forbidden: You do not own this document' });
       }
 
       // We stored the URL as /uploads/filename

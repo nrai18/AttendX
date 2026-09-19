@@ -16,19 +16,14 @@ export class DataService {
       where: { semesterId: activeSem.id },
       include: { attendance: true },
     });
-    const subMap = new Map<string, string>(subjects.map((s: any) => [s.id, s.name]));
 
     // Generate subject_stats.csv
-    const subjectStatsRows = await Promise.all(subjects.map(async (sub: any, idx: number) => {
-      let logs = sub.attendance;
-      if (!Array.isArray(logs)) {
-        logs = await prisma.attendance.findMany({ where: { subjectId: sub.id } });
-      }
+    const subjectStatsRows = subjects.map((sub: any, idx: number) => {
       let attended = 0, missed = 0, off = 0;
-      (logs || []).forEach((log: any) => {
-        if (log.status === "present" || log.status === "od") attended++;
-        else if (log.status === "absent") missed++;
-        else if (log.status === "off" || log.status === "cancelled" || log.status === "medical") off++;
+      sub.attendance.forEach((log: any) => {
+        if (log.status === "present") attended++;
+        if (log.status === "absent") missed++;
+        if (log.status === "off") off++;
       });
       const total = attended + missed; // Off classes don't count towards total
       const pct = total > 0 ? ((attended / total) * 100).toFixed(2) + "%" : "0.00%";
@@ -42,7 +37,7 @@ export class DataService {
         "Percentage": pct,
         "Criteria": (sub.targetAttendance || 75) + "%"
       };
-    }));
+    });
 
     // Fetch Timetable (all slots including archived)
     const slots = await prisma.timetableSlot.findMany({
@@ -61,17 +56,16 @@ export class DataService {
       } else {
         lectureNo++;
       }
-      const subName = slot.subject?.name || subMap.get(slot.subjectId) || "Subject";
       return {
         "Sr. No.": idx + 1,
         "Day of Week": daysMap[slot.dayOfWeek],
         "Lecture No.": lectureNo,
-        "Subject": subName,
+        "Subject": slot.subject.name,
         "Timing": `${slot.startTime} - ${slot.endTime}`,
         "Room": slot.room || "",
         "Type": slot.slotType === "practical" ? "Practical" : "Lecture",
-        "Valid From": slot.validFrom ? new Date(slot.validFrom).toISOString().split('T')[0] : "",
-        "Valid Until": slot.validUntil ? new Date(slot.validUntil).toISOString().split('T')[0] : ""
+        "Valid From": slot.validFrom ? slot.validFrom.toISOString().split('T')[0] : "",
+        "Valid Until": slot.validUntil ? slot.validUntil.toISOString().split('T')[0] : ""
       };
     });
 
@@ -85,7 +79,7 @@ export class DataService {
     let currentDate = "";
     let logLectureNo = 1;
     const logRows = logs.map((log: any, idx: number) => {
-      const rawDate = new Date(log.date).toISOString().split("T")[0];
+      const rawDate = log.date.toISOString().split("T")[0];
       if (rawDate !== currentDate) {
         currentDate = rawDate;
         logLectureNo = 1;
@@ -94,15 +88,17 @@ export class DataService {
       }
       
       const dateStr = rawDate; // ISO format: YYYY-MM-DD
-      const attStatus = log.status || "present";
-      const subName = log.subject?.name || subMap.get(log.subjectId) || "Subject";
+      
+      let attStatus = "Attended";
+      if (log.status === "absent") attStatus = "Missed";
+      if (log.status === "off") attStatus = "Off";
 
       return {
         "Sr. No.": idx + 1,
         "Date": dateStr,
         "Type": log.overrideId ? "Extra" : "Slot",
         "Lecture No.": logLectureNo,
-        "Subject": subName,
+        "Subject": log.subject.name,
         "Attendance": attStatus,
         "Att Modified": "",
         "Miss Modified": "",
@@ -111,10 +107,30 @@ export class DataService {
       };
     });
 
+    // Fetch Events (Academic Calendar)
+    const events = await prisma.event.findMany({
+      where: { semesterId: activeSem.id },
+      orderBy: { date: 'asc' },
+    });
+
+    const eventRows = events.map((event: any, idx: number) => {
+      return {
+        "Sr. No.": idx + 1,
+        "Title": event.title,
+        "Description": event.description || "",
+        "Date": event.date.toISOString().split("T")[0],
+        "End Date": event.endDate ? event.endDate.toISOString().split("T")[0] : "",
+        "Type": event.eventType,
+        "All Day": event.allDay ? "Yes" : "No",
+        "Is Holiday": event.isHoliday ? "Yes" : "No"
+      };
+    });
+
     const zip = new AdmZip();
     zip.addFile("subject_stats.csv", Buffer.from(stringify(subjectStatsRows, { header: true })));
     zip.addFile("timetable.csv", Buffer.from(stringify(timetableRows, { header: true })));
     zip.addFile("attendance_logs.csv", Buffer.from(stringify(logRows, { header: true })));
+    zip.addFile("events.csv", Buffer.from(stringify(eventRows, { header: true })));
 
     return zip.toBuffer();
   }
@@ -129,6 +145,7 @@ export class DataService {
     const subjectEntry = zip.getEntry("subject_stats.csv");
     const timetableEntry = zip.getEntry("timetable.csv");
     const logsEntry = zip.getEntry("attendance_logs.csv");
+    const eventsEntry = zip.getEntry("events.csv");
 
     if (!subjectEntry || !timetableEntry || !logsEntry) {
       throw new Error("Invalid ZIP format. Must contain subject_stats.csv, timetable.csv, and attendance_logs.csv");
@@ -138,13 +155,13 @@ export class DataService {
     const subjectData = parse(subjectEntry.getData().toString('utf8'), parseOptions) as any as Record<string, string>[];
     const timetableData = parse(timetableEntry.getData().toString('utf8'), parseOptions) as any as Record<string, string>[];
     const logsData = parse(logsEntry.getData().toString('utf8'), parseOptions) as any as Record<string, string>[];
+    const eventsData = eventsEntry ? parse(eventsEntry.getData().toString('utf8'), parseOptions) as any as Record<string, string>[] : [];
 
     await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-      // 1. Wipe current semester data cleanly in dependency order to prevent FK violations
-      await tx.attendance.deleteMany({ where: { subject: { semesterId: activeSem.id } } });
-      await tx.timetableOverride.deleteMany({ where: { semesterId: activeSem.id } });
-      await tx.timetableSlot.deleteMany({ where: { semesterId: activeSem.id } });
+      // 1. Wipe current semester data
       await tx.subject.deleteMany({ where: { semesterId: activeSem.id } });
+      await tx.event.deleteMany({ where: { semesterId: activeSem.id } });
+      // The deletion cascades to TimetableSlot and Attendance logs automatically
 
       // 2. Import Subjects
       const subjectMap = new Map<string, string>(); // Name -> ID
@@ -218,17 +235,10 @@ export class DataService {
         const dateStr = row["Date"]; // e.g. "17 Sep 2026" or "YYYY-MM-DD"
         const dateObj = new Date(dateStr);
         
-        const rawAttStr = (row["Attendance"] || "").trim().toLowerCase();
+        const attStr = row["Attendance"];
         let status: any = "present";
-        if (["present", "absent", "off", "cancelled", "medical", "od"].includes(rawAttStr)) {
-          status = rawAttStr;
-        } else if (rawAttStr === "attended") {
-          status = "present";
-        } else if (rawAttStr === "missed") {
-          status = "absent";
-        } else if (rawAttStr === "off") {
-          status = "off";
-        }
+        if (attStr === "Missed") status = "absent";
+        if (attStr === "Off") status = "off";
 
         const typeStr = row["Type"];
         let isOverride = typeStr === "Extra" || typeStr === "override";
@@ -254,6 +264,29 @@ export class DataService {
             status,
             overrideId: overrideId,
             remarks: row["Remarks"] || null
+          }
+        });
+      }
+
+      // 5. Import Events (Academic Calendar)
+      for (const row of eventsData) {
+        const dateStr = row["Date"];
+        if (!dateStr) continue;
+
+        const endDateStr = row["End Date"];
+        const eventType = (row["Type"] || "other").toLowerCase();
+
+        await tx.event.create({
+          data: {
+            title: row["Title"] || "Imported Event",
+            description: row["Description"] || null,
+            date: new Date(dateStr),
+            endDate: endDateStr ? new Date(endDateStr) : null,
+            eventType: ["exam", "holiday", "event", "other"].includes(eventType) ? eventType as any : "other",
+            allDay: row["All Day"] === "Yes",
+            isHoliday: row["Is Holiday"] === "Yes",
+            userId,
+            semesterId: activeSem.id
           }
         });
       }
