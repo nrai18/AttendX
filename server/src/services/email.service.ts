@@ -4,9 +4,9 @@ import jwt from 'jsonwebtoken';
 const resend = new Resend(process.env.RESEND_API_KEY || 're_123456789');
 
 const APP_URL = process.env.FRONTEND_URL || "https://attendx.app";
-const LOGO_URL = process.env.LOGO_URL || "https://drive.google.com/uc?export=view&id=1TzH4-HmFy5r11SC1H3Ryoa5zBhWF0FnT";
-const PADLOCK_URL = process.env.PADLOCK_URL || "https://drive.google.com/uc?export=view&id=1gzfUdkZdazWSs-mE0LAkIYjXQ0y_LjL4";
-const DEV_PHOTO_URL = process.env.DEV_PHOTO_URL || "https://github.com/nrai18.png";
+const LOGO_URL = process.env.LOGO_URL || `${APP_URL}/attendx_logo.png`;
+const PADLOCK_URL = process.env.PADLOCK_URL || `${APP_URL}/img/emails/padlock.png`;
+const DEV_PHOTO_URL = process.env.DEV_PHOTO_URL || `${APP_URL}/developer-photo.jpg`;
  // Replace with AttendX logo if available
 
 export class EmailService {
@@ -63,19 +63,21 @@ export class EmailService {
                       </tr>
                       <tr>
                         <td style="padding-right: 8px; color: #6366f1;"><strong>P:</strong></td>
-                        <td><a href="tel:+918076408958" style="color: #4b5563; text-decoration: none;">+91 80764 08958</a></td>
+                        <td><span style="color: #4b5563; text-decoration: none;">+91 80764 08958</span></td>
+                      </tr>
+                      <tr>
+                        <td style="color: #6b7280; font-size: 13px;">Email:</td>
+                        <td><a href="mailto:support@attendx.tech" style="color: #6366f1; text-decoration: none; font-weight: 500;">support@attendx.tech</a></td>
                       </tr>
                     </table>
 
-                    <div style="margin-top: 16px;">
-                      <a href="https://www.linkedin.com/in/naman-rai-7b139b324/" style="text-decoration: none; margin-right: 12px; display: inline-block;">
-                        <img src="https://cdn-icons-png.flaticon.com/512/174/174857.png" alt="LinkedIn" style="width: 22px; height: 22px; vertical-align: middle;" />
+                    <div style="margin-top: 20px;">
+                      <a href="https://linkedin.com/in/nrai18" style="text-decoration: none; margin-right: 12px; display: inline-block;">
+                        <img src="${APP_URL}/img/emails/linkedin.png" alt="LinkedIn" style="width: 22px; height: 22px; vertical-align: middle;" />
                       </a>
                       <a href="https://github.com/nrai18" style="text-decoration: none; margin-right: 12px; display: inline-block;">
-                        <img src="https://cdn-icons-png.flaticon.com/512/25/25231.png" alt="GitHub" style="width: 22px; height: 22px; vertical-align: middle;" />
+                        <img src="${APP_URL}/img/emails/github.png" alt="GitHub" style="width: 22px; height: 22px; vertical-align: middle;" />
                       </a>
-                      <span style="display: inline-block; border-left: 1px solid #d1d5db; height: 20px; vertical-align: middle; margin-right: 12px;"></span>
-                      <img src="${LOGO_URL}" alt="AttendX" style="height: 22px; vertical-align: middle; object-fit: contain;" />
                     </div>
                   </td>
                 </tr>
@@ -83,11 +85,12 @@ export class EmailService {
             </div>
           </div>
           <div class="footer">
+            <p>&copy; ${new Date().getFullYear()} AttendX. All rights reserved.</p>
             <div class="links">
-              <a href="${APP_URL}">Website</a>
+              <a href="${APP_URL}/privacy">Privacy Policy</a>
+              <a href="${APP_URL}/terms">Terms of Service</a>
               <a href="${APP_URL}/download">Download App</a>
             </div>
-            <p style="margin-top: 20px;">&copy; ${new Date().getFullYear()} AttendX. All rights reserved.</p>
           </div>
         </div>
       </body>
@@ -98,8 +101,9 @@ export class EmailService {
       await resend.emails.send({
         from: process.env.RESEND_FROM_EMAIL || 'AttendX <welcome@mail.attendx.tech>',
         to: email,
-        subject: 'Welcome to AttendX! 🎉',
+        subject: 'Welcome to AttendX! 👋',
         html,
+        text: `Welcome to AttendX, ${name}!\n\nWe're thrilled to have you join us. AttendX is designed to make your academic life easier and more organized.\n\nReady to get started? Log in to your dashboard: ${APP_URL}\n\nNeed help? Check out our guides or reply to this email.\n\nBest,\nNaman Rai & The AttendX Team`
       });
     } catch (error) {
       console.error("Failed to send welcome email:", error);
@@ -159,16 +163,16 @@ export class EmailService {
                       </tr>
                       <tr>
                         <td style="padding-right: 8px; color: #6366f1;"><strong>P:</strong></td>
-                        <td><a href="tel:+918076408958" style="color: #4b5563; text-decoration: none;">+91 80764 08958</a></td>
+                        <td><span style="color: #4b5563; text-decoration: none;">+91 80764 08958</span></td>
                       </tr>
                     </table>
 
                     <div style="margin-top: 16px;">
                       <a href="https://www.linkedin.com/in/naman-rai-7b139b324/" style="text-decoration: none; margin-right: 12px; display: inline-block;">
-                        <img src="https://cdn-icons-png.flaticon.com/512/174/174857.png" alt="LinkedIn" style="width: 22px; height: 22px; vertical-align: middle;" />
+                        <img src="$APP_URL/img/emails/linkedin.png" alt="LinkedIn" style="width: 22px; height: 22px; vertical-align: middle;" />
                       </a>
                       <a href="https://github.com/nrai18" style="text-decoration: none; margin-right: 12px; display: inline-block;">
-                        <img src="https://cdn-icons-png.flaticon.com/512/25/25231.png" alt="GitHub" style="width: 22px; height: 22px; vertical-align: middle;" />
+                        <img src="$APP_URL/img/emails/github.png" alt="GitHub" style="width: 22px; height: 22px; vertical-align: middle;" />
                       </a>
                       <span style="display: inline-block; border-left: 1px solid #d1d5db; height: 20px; vertical-align: middle; margin-right: 12px;"></span>
                       <img src="${LOGO_URL}" alt="AttendX" style="height: 22px; vertical-align: middle; object-fit: contain;" />
@@ -196,6 +200,7 @@ export class EmailService {
         to: email,
         subject: 'Reset your AttendX password',
         html,
+        text: `Reset your AttendX password\n\nHi ${name},\n\nWe received a request to reset your password. Click the link below to set a new password:\n\n${resetLink}\n\nIf you didn't request this, you can safely ignore this email.\n\nThis link will expire in 15 minutes.`
       });
     } catch (error) {
       console.error("Failed to send password reset email:", error);
@@ -243,6 +248,7 @@ export class EmailService {
         to: email,
         subject: 'Your password was successfully updated',
         html,
+        text: `Password updated\n\nHi ${name},\n\nYour AttendX password was successfully updated. If you did not make this change, please contact us immediately.`
       });
     } catch (error) {
       console.error("Failed to send password reset success email:", error);
@@ -295,6 +301,7 @@ export class EmailService {
         to: email,
         subject: 'Security Alert: New login to your AttendX account',
         html,
+        text: `Security Alert: New login to your AttendX account\n\nHi ${name},\n\nWe detected a new login to your AttendX account from the following device:\n\nOS: ${deviceInfo.os}\nBrowser: ${deviceInfo.browser}\nIP Address: ${deviceInfo.ip}\nLocation: ${deviceInfo.location || 'Unknown'}\n\nIf this was you, you can ignore this email. If you don't recognize this activity, please reset your password immediately.`
       });
     } catch (error) {
       console.error("Failed to send new device login email:", error);
