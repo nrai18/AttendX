@@ -65,11 +65,6 @@ function createInMemoryModelHandler(modelName: string) {
         if ("in" in filterValue && Array.isArray(filterValue.in) && !filterValue.in.includes(itemValue)) return false;
         continue;
       }
-      if (value === null) {
-        const itemVal = (item as any)[key];
-        if (itemVal !== null && itemVal !== undefined) return false;
-        continue;
-      }
       if ((item as any)[key] !== value) return false;
     }
     return true;
@@ -135,34 +130,6 @@ function createInMemoryModelHandler(modelName: string) {
       memoryStore[storeKey] = list.filter((item) => !matchesWhere(item, args?.where));
       return { count: initialCount - memoryStore[storeKey].length };
     },
-    async updateMany(args: any) {
-      const list = memoryStore[storeKey];
-      let count = 0;
-      for (let i = 0; i < list.length; i++) {
-        if (matchesWhere(list[i], args?.where)) {
-          list[i] = {
-            ...list[i],
-            ...(args?.data || {}),
-            updatedAt: new Date(),
-          };
-          count++;
-        }
-      }
-      return { count };
-    },
-    async createMany(args: any) {
-      const list = memoryStore[storeKey];
-      const items = Array.isArray(args?.data) ? args.data : [args?.data].filter(Boolean);
-      for (const data of items) {
-        list.push({
-          id: data.id || `mem_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-          ...data,
-        });
-      }
-      return { count: items.length };
-    },
     async count(args: any) {
       const list = memoryStore[storeKey];
       return list.filter((item) => matchesWhere(item, args?.where)).length;
@@ -190,20 +157,6 @@ export const prisma = new Proxy(
     get(_, prop: string) {
       if (prop === "$connect" || prop === "$disconnect") {
         return async () => {};
-      }
-      if (prop === "$transaction") {
-        if (realPrisma && typeof realPrisma.$transaction === "function") {
-          return realPrisma.$transaction.bind(realPrisma);
-        }
-        return async (arg: any) => {
-          if (typeof arg === "function") {
-            return await arg(prisma);
-          }
-          if (Array.isArray(arg)) {
-            return await Promise.all(arg);
-          }
-          return arg;
-        };
       }
       if (realPrisma && typeof realPrisma[prop] === "function") {
         return realPrisma[prop].bind(realPrisma);
@@ -241,5 +194,3 @@ export const prisma = new Proxy(
     },
   }
 ) as unknown as PrismaClient;
-
-export default prisma;

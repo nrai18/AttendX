@@ -44,16 +44,16 @@ export class UserController {
       let hasAttendance = false;
 
       if (hasSemester) {
-        const subCount = await prisma.subject.count({ where: { semesterId: activeSemester.id } });
+        const [subCount, ttCount, evCount, attCount] = await Promise.all([
+          prisma.subject.count({ where: { semesterId: activeSemester.id } }),
+          prisma.timetableSlot.count({ where: { semesterId: activeSemester.id } }),
+          prisma.event.count({ where: { semesterId: activeSemester.id } }),
+          prisma.attendance.count({ where: { userId, subject: { semesterId: activeSemester.id } } })
+        ]);
+        
         hasSubjects = subCount > 0;
-
-        const ttCount = await prisma.timetableSlot.count({ where: { semesterId: activeSemester.id } });
         hasTimetable = ttCount > 0;
-
-        const evCount = await prisma.event.count({ where: { semesterId: activeSemester.id } });
         hasCalendar = evCount > 0;
-
-        const attCount = await prisma.attendance.count({ where: { userId, subject: { semesterId: activeSemester.id } } });
         hasAttendance = attCount > 0;
       }
 

@@ -9,6 +9,8 @@ export type AuthenticatedRequest = Request & {
   };
 };
 
+const sessionPromises = new Map<string, Promise<boolean>>();
+
 export const authenticate: RequestHandler = async (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
@@ -20,15 +22,32 @@ export const authenticate: RequestHandler = async (req, res, next) => {
     const payload = verifyAccessToken(token);
 
     if (payload.sessionId) {
-      const { prisma } = require("../lib/prisma");
-      const sessionExists = await prisma.refreshToken.findUnique({
-        where: { id: payload.sessionId }
-      });
-      if (!sessionExists) {
+      let isValidPromise = sessionPromises.get(payload.sessionId);
+      
+      if (!isValidPromise) {
+        const { prisma } = require("../lib/prisma");
+        isValidPromise = prisma.refreshToken.findUnique({
+          where: { id: payload.sessionId }
+        }).then((session: any) => {
+          // Keep it cached for 60 seconds
+          setTimeout(() => sessionPromises.delete(payload.sessionId), 60000);
+          return !!session;
+        }).catch(() => {
+          sessionPromises.delete(payload.sessionId);
+          return false;
+        });
+        sessionPromises.set(payload.sessionId, isValidPromise);
+      }
+      
+      const isValid = await isValidPromise;
+      if (!isValid) {
         return res.status(401).json({ message: "Session has been revoked" });
       }
     }
 
+    if ((payload as any).id && !payload.userId) {
+      payload.userId = (payload as any).id;
+    }
     req.user = payload;
     next();
   } catch (error) {
