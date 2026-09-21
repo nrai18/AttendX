@@ -5,9 +5,67 @@ import fs from "fs";
 export class SystemController {
   static async getUpdateManifest(req: Request, res: Response) {
     const manifest = {
-      latestVersion: process.env.LATEST_APP_VERSION || "3.7",
-      title: "The UI Polish & Theming Update",
+      latestVersion: process.env.LATEST_APP_VERSION || "4.0",
+      title: "UI Polish & Bug Fixes",
       changelog: [
+        {
+          version: "4.0",
+          date: "2026-09-21",
+          sizeMb: 31.9,
+          sections: [
+            {
+              title: "What's New",
+              items: [
+                "Polished OTA Update screen UI for seamless Light Mode support."
+              ]
+            }
+          ]
+        },
+        {
+          version: "3.9",
+          date: "2026-09-21",
+          sizeMb: 31.8,
+          sections: [
+            {
+              title: "Major Features & Polish",
+              items: [
+                "Added immersive full-screen Lottie animations for academic events and achievements.",
+                "Introduced robust Backup & Restore via .zip export for full local data portability."
+              ]
+            },
+            {
+              title: "Offline & Sync Improvements",
+              items: [
+                "Fixed race conditions in optimistic offline sync to prevent stale data overwrites.",
+                "Optimized timetable caching engine for instant loading across sessions.",
+                "Overhauled Capacitor local notification scheduling to prevent silent failures on mobile."
+              ]
+            },
+            {
+              title: "Bug Fixes",
+              items: [
+                "Resolved a global timezone offset bug that was shifting scheduled classes by hours.",
+                "Fixed a calendar synchronization bug causing unmarked classes to be hidden from the agenda popover.",
+                "Implemented aggressive duplicate sweeping to fix classes occasionally 'snapping back' when unmarked.",
+                "Fixed UUID parsing logic preventing attendance records from being properly updated on Postgres."
+              ]
+            }
+          ]
+        },
+        {
+          version: "3.8",
+          date: "2026-09-20",
+          sizeMb: 31.0,
+          sections: [
+            {
+              title: "What's New",
+              items: [
+                { icon: "📅", text: "Fixed overlapping extra classes ('00:00') when migrating to a new timetable." },
+                { icon: "✨", text: "Added festive animations for Exams and Practical Labs in the daily agenda." }
+              ]
+            }
+          ]
+        },
         {
           version: "3.7",
           date: "2026-09-13",
