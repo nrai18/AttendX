@@ -2,8 +2,8 @@ import { Response } from "express";
 import { AttendanceService } from "../services/attendance.service";
 import { AuthenticatedRequest } from "../middleware/authenticate";
 import { CacheService } from "../services/cache.service";
-
 import { PredictiveRagService } from "../services/predictive_rag.service";
+import { redisClient } from "../lib/redis";
 
 export class AttendanceController {
   static async getTodayAgenda(req: AuthenticatedRequest, res: Response) {
@@ -117,15 +117,35 @@ export class AttendanceController {
         await CacheService.invalidateUser(req.user!.userId);
       }
       
-      const insights = await CacheService.getOrSet(
-        req.user!.userId,
-        `predictive_insights`,
-        () => PredictiveRagService.generateInsights(req.user!.userId)
-      );
+      let insights;
+      try {
+        insights = await CacheService.getOrSet(
+          req.user!.userId,
+          `predictive_insights`,
+          async () => {
+            const data = await PredictiveRagService.generateInsights(req.user!.userId);
+            // PredictiveRagService swallows errors and returns a fake object, so detect it!
+            if (data.keyReasons?.[0] === "Could not connect to Gemini API") {
+              throw new Error("Gemini AI API Unavailable");
+            }
+            // Save a long-lived backup that survives cache invalidations
+            await redisClient.set(`backup:predictive_insights:${req.user!.userId}`, JSON.stringify(data));
+            return data;
+          }
+        );
+      } catch (error: any) {
+        console.error("Primary predictive insights fetch failed, attempting fallback:", error.message);
+        const backupData = await redisClient.get(`backup:predictive_insights:${req.user!.userId}`);
+        if (backupData) {
+          insights = JSON.parse(backupData);
+        } else {
+          throw error;
+        }
+      }
       res.json(insights);
     } catch (error: any) {
       console.error("Predictive insights error:", error);
-      res.status(500).json({ message: "Internal server error" });
+      res.status(503).json({ message: "Cloud AI Insights are currently unavailable due to high demand. Please try again later." });
     }
   }
   static async updateBoundaries(req: AuthenticatedRequest, res: Response) {

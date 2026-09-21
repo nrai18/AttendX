@@ -8,6 +8,7 @@ router.use(authenticate);
 
 router.get("/today", AttendanceController.getTodayAgenda);
 router.post("/mark", AttendanceController.markAttendance);
+router.delete("/mark", AttendanceController.markAttendance); // Catch-all if frontend switched to DELETE
 router.get("/stats", AttendanceController.getSubjectStats);
 router.get("/stats/:subjectId", AttendanceController.getSingleSubjectStats);
 router.post("/boundaries", AttendanceController.updateBoundaries);

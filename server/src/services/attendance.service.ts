@@ -25,30 +25,42 @@ export class AttendanceService {
       return [];
     }
 
-    // 1. Fetch regular slots
-    const targetDateStart = new Date(targetDate);
+      // 1. Fetch regular slots
+      const targetDateStart = new Date(targetDate);
       targetDateStart.setHours(0, 0, 0, 0);
       const targetDateEnd = new Date(targetDate);
       targetDateEnd.setHours(23, 59, 59, 999);
 
       // 1. Fetch regular slots that were active on THIS SPECIFIC targetDate (Time-Travel)
-      const regularSlots = await prisma.timetableSlot.findMany({
-        where: {
-          semesterId: activeSemester.id,
-          dayOfWeek,
-          validFrom: { lte: targetDateEnd },
-          OR: [
-            { validUntil: null },
-            { validUntil: { gte: targetDateStart } }
-          ]
-        },
+    const rawRegularSlots = await prisma.timetableSlot.findMany({
+      where: {
+        semesterId: activeSemester.id,
+        dayOfWeek,
+        validFrom: { lte: targetDateEnd },
+        OR: [
+          { validUntil: null },
+          { validUntil: { gte: targetDateEnd } }
+        ]
+      },
       include: {
         subject: true,
       },
     });
 
+    // Deduplicate regular slots by subjectId to prevent showing duplicates on the transition day
+    const regularSlots = [];
+    const seenSubjects = new Set<string>();
+    // Sort descending by validFrom so the newer slot is kept if they overlap
+    const sortedRaw = [...rawRegularSlots].sort((a, b) => new Date(b.validFrom).getTime() - new Date(a.validFrom).getTime());
+    for (const s of sortedRaw) {
+      if (!seenSubjects.has(s.subjectId)) {
+        seenSubjects.add(s.subjectId);
+        regularSlots.push(s);
+      }
+    }
+
     // 2. Fetch overrides (extra classes, holidays)
-    const overrides = await prisma.timetableOverride.findMany({
+    const overridesPromise = prisma.timetableOverride.findMany({
       where: {
         semesterId: activeSemester.id,
         date: targetDate,
@@ -59,12 +71,17 @@ export class AttendanceService {
     });
 
     // 3. Fetch existing attendance records for the date
-    const attendanceRecords = await prisma.attendance.findMany({
+    const attendanceRecordsPromise = prisma.attendance.findMany({
       where: {
         userId,
         date: targetDate,
       },
     });
+
+    const [overrides, attendanceRecords] = await Promise.all([
+      overridesPromise,
+      attendanceRecordsPromise
+    ]);
 
     // Map them together
     const agenda: any[] = [];
@@ -188,7 +205,7 @@ export class AttendanceService {
     
     // Check if record exists
     let existing = null;
-    if (data.attendanceId) {
+    if (data.attendanceId && !data.attendanceId.startsWith("extra-")) {
       existing = await prisma.attendance.findUnique({ where: { id: data.attendanceId } });
     }
     if (!existing) {
@@ -208,30 +225,35 @@ export class AttendanceService {
     }
 
     if (data.status === "not_marked" || data.status === "clear") {
-      const isTempId = typeof data.attendanceId === 'string' && (
-        data.attendanceId.startsWith("temp-") || 
-        data.attendanceId.startsWith("optimistic-")
-      );
-
-      if (data.attendanceId && !isTempId) {
-        const deleteResult = await prisma.attendance.deleteMany({
-          where: { id: data.attendanceId, userId }
+      let deleteCount = 0;
+      
+      // 1. Delete by exact ID if provided
+      if (data.attendanceId && !data.attendanceId.startsWith("extra-")) {
+        const exactDelete = await prisma.attendance.deleteMany({
+          where: { id: data.attendanceId }
         });
-        if (deleteResult.count > 0) {
-          return { message: "Attendance cleared", count: deleteResult.count, status: "not_marked" };
-        }
+        deleteCount += exactDelete.count;
       }
 
-      const deleteResult = await prisma.attendance.deleteMany({
+      // 2. Also aggressively sweep by slot matching to wipe out any timezone duplicates
+      const sweepDelete = await prisma.attendance.deleteMany({
         where: {
           userId,
           subjectId: data.subjectId,
-          date: targetDate,
           ...(data.timetableSlotId ? { timetableSlotId: data.timetableSlotId } : {}),
           ...(data.overrideId ? { overrideId: data.overrideId } : {}),
+          // We don't filter by exact date strictly because timezone offsets might have shifted duplicates
+          // Just deleting by slot for that subject is usually safe enough if they are clearing it for today.
+          // Wait, if we don't filter by date, we delete ALL history for this slot! We MUST filter by date roughly.
+          date: {
+            gte: new Date(targetDate.getTime() - 24 * 60 * 60 * 1000), // Previous day
+            lte: new Date(targetDate.getTime() + 24 * 60 * 60 * 1000)  // Next day
+          }
         }
       });
-      return { message: "Attendance cleared", count: deleteResult.count, status: "not_marked" };
+      deleteCount += sweepDelete.count;
+      
+      return { message: "Attendance cleared", count: deleteCount, status: "not_marked" };
     }
 
     if (existing) {
@@ -344,6 +366,13 @@ export class AttendanceService {
       },
       include: { subject: true },
     });
+
+    console.log(`getAttendanceLogs options.subjectId=${options.subjectId}`);
+    console.log(`Found ${attendanceRecords.length} attendanceRecords`);
+    const dec1Records = attendanceRecords.filter(a => new Date(a.date).toISOString().includes("2026-11-30") || new Date(a.date).toISOString().includes("2026-12-01"));
+    if (dec1Records.length > 0) {
+      console.log(`Dec 1 records:`, dec1Records.map(a => ({ id: a.id, subjectId: a.subjectId, status: a.status })));
+    }
 
     const today = new Date();
     today.setHours(23, 59, 59, 999);
@@ -617,49 +646,38 @@ export class AttendanceService {
   }
 
   static async getSubjectStats(userId: string, semesterId?: string) {
-    const user = await prisma.user.findUnique({ where: { id: userId } });
+    const [user, activeSemester] = await Promise.all([
+      prisma.user.findUnique({ where: { id: userId } }),
+      semesterId 
+        ? prisma.semester.findUnique({ where: { id: semesterId } }) 
+        : prisma.semester.findFirst({ where: { userId, isActive: true } })
+    ]);
+    
     const globalTarget = user?.targetAttendance || 75;
+    const targetSemesterId = activeSemester?.id || semesterId;
 
-    let targetSemesterId = semesterId;
-    let activeSemester = null;
-
-    if (targetSemesterId) {
-      activeSemester = await prisma.semester.findUnique({ where: { id: targetSemesterId } });
-    } else {
-      activeSemester = await prisma.semester.findFirst({ where: { userId, isActive: true } });
-      if (activeSemester) targetSemesterId = activeSemester.id;
-    }
-
-    const subjects = await prisma.subject.findMany({
-      where: {
-        userId,
-        ...(targetSemesterId ? { semesterId: targetSemesterId } : {}),
-      },
-      include: {
-        attendance: true,
-        semester: true,
-        timetableSlots: true,
-      },
-    });
+    const [subjects, allEvents, allOverrides] = await Promise.all([
+      prisma.subject.findMany({
+        where: {
+          userId,
+          ...(targetSemesterId ? { semesterId: targetSemesterId } : {}),
+        },
+        include: {
+          attendance: true,
+          semester: true,
+          timetableSlots: true,
+        },
+      }),
+      activeSemester 
+        ? prisma.event.findMany({ where: { OR: [{ semesterId: activeSemester.id }, { semesterId: null }] } }) 
+        : Promise.resolve([]),
+      activeSemester 
+        ? prisma.timetableOverride.findMany({ where: { semesterId: activeSemester.id } }) 
+        : Promise.resolve([])
+    ]);
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    
-    let allEvents: any[] = [];
-    let allOverrides: any[] = [];
-    if (activeSemester) {
-       allEvents = await prisma.event.findMany({
-         where: { 
-           OR: [
-             { semesterId: activeSemester.id },
-             { semesterId: null }
-           ]
-         }
-       });
-       allOverrides = await prisma.timetableOverride.findMany({
-         where: { semesterId: activeSemester.id }
-       });
-    }
 
     const promises = subjects.map(async sub => {
       const allRecords = sub.attendance;
@@ -809,6 +827,7 @@ export class AttendanceService {
 
     const regularSlots = await prisma.timetableSlot.findMany({
       where: { semesterId: activeSemester.id },
+      include: { subject: true },
     });
 
     const overrides = await prisma.timetableOverride.findMany({
@@ -816,6 +835,7 @@ export class AttendanceService {
         semesterId: activeSemester.id,
         date: { gte: startDate, lte: endDate },
       },
+      include: { subject: true },
     });
 
     const attendances = await prisma.attendance.findMany({
@@ -885,16 +905,28 @@ export class AttendanceService {
       const dEnd = new Date(d);
       dEnd.setHours(23, 59, 59, 999);
 
-      const daySlots = regularSlots.filter(s => {
+      const rawDaySlots = regularSlots.filter(s => {
         if (s.dayOfWeek !== dbDayOfWeek) return false;
         const validFromDate = new Date(s.validFrom);
         if (validFromDate > dEnd) return false; // Not active yet
         if (s.validUntil) {
           const validUntilDate = new Date(s.validUntil);
-          if (validUntilDate < dStart) return false; // Already archived
+          if (validUntilDate < dEnd) return false; // Already archived before end of day
         }
         return true;
       });
+
+      // Deduplicate overlapping daySlots (old vs new timetable on transition day) by subjectId
+      const daySlots = [];
+      const seenDaySubjects = new Set<string>();
+      const sortedRawDaySlots = [...rawDaySlots].sort((a, b) => new Date(b.validFrom).getTime() - new Date(a.validFrom).getTime());
+      for (const s of sortedRawDaySlots) {
+        if (!seenDaySubjects.has(s.subjectId)) {
+          seenDaySubjects.add(s.subjectId);
+          daySlots.push(s);
+        }
+      }
+
       const dayOverrides = overrides.filter(o => AttendanceService.toLocalIso(o.date) === dateKey);
       
       let expectedClasses = 0;
@@ -926,6 +958,12 @@ export class AttendanceService {
       // Filter attendance records for this day
       const dayAtts = attendances.filter(a => AttendanceService.toLocalIso(a.date) === dateKey);
 
+      if (dateKey === '2026-09-07') {
+        console.log('Sept 7 daySlots:', daySlots.length);
+        console.log('Sept 7 dayAtts:', dayAtts.length);
+        console.log('Sept 7 expectedClasses:', expectedClasses);
+      }
+
       // Add manual attendances (that don't match any expected slot/override) to expectedClasses
       for (const a of dayAtts) {
         if (!expectedSubjectIds.has(a.subjectId)) {
@@ -933,11 +971,17 @@ export class AttendanceService {
         }
       }
 
+      if (dateKey === "2026-08-18") {
+        console.log("DEBUG 2026-08-18:");
+        console.log("expectedClasses:", expectedClasses);
+        console.log("dayAtts:", dayAtts.map(a => a.date));
+      }
+
       let status = "off";
 
       if (expectedClasses === 0) {
         status = "off";
-        // Note: we still check unmapped attendances if someone manually marks an off day
+        // Note: we still check unmapped attendances if someone manually marks an off day 
         const allDayAtts = attendances.filter(a => AttendanceService.toLocalIso(a.date) === dateKey);
         if (allDayAtts.length > 0) {
           let presentCount = 0;
@@ -969,25 +1013,62 @@ export class AttendanceService {
         else status = "off";
       }
 
-      // Get today's date string in the server's local timezone (or matching the client's)
-      // A safe way is to compare dateKey with today's date formatted as YYYY-MM-DD
+      // Get today's date string in IST (+5:30)
       const now = new Date();
-      // Use IST offset (+5:30) or local offset
-      const tzOffset = now.getTimezoneOffset() * 60000; 
-      const localTodayStr = new Date(now.getTime() - tzOffset).toISOString().split("T")[0];
+      // IST is UTC+5:30. We add 5.5 hours to the UTC timestamp.
+      const istTime = new Date(now.getTime() + (5.5 * 60 * 60 * 1000));
+      const localTodayStr = istTime.toISOString().split("T")[0];
       
       if (dateKey > localTodayStr) {
         if (status === "not_marked") status = "future";
       }
 
       daysObj[dateKey] = status;
-      if (dayAtts.length > 0) {
-        detailsObj[dateKey] = dayAtts.map(a => ({
-          id: a.id,
-          subjectName: a.subject?.name || "Subject",
-          status: a.status,
-          remarks: a.remarks || null,
-        }));
+      
+      const dayAgenda: any[] = [];
+      const handledAttendanceIds = new Set<string>();
+
+      for (const slot of daySlots) {
+        const over = dayOverrides.find(o => o.originalSlotId === slot.id);
+        if (over && (over.overrideType === "holiday" || over.overrideType === "cancelled")) continue;
+        if (!isGlobalOff) {
+          const att = dayAtts.find(a => a.timetableSlotId === slot.id);
+          if (att) handledAttendanceIds.add(att.id);
+          dayAgenda.push({
+            id: att ? att.id : `unmarked-${slot.id}-${dateKey}`,
+            subjectName: slot.subject?.name || "Subject",
+            status: att ? att.status : (dateKey > localTodayStr ? "future" : "not_marked"),
+            remarks: att ? att.remarks : null,
+          });
+        }
+      }
+
+      for (const o of extras) {
+        if (o.subjectId) {
+          const att = dayAtts.find(a => a.overrideId === o.id);
+          if (att) handledAttendanceIds.add(att.id);
+          dayAgenda.push({
+            id: att ? att.id : `unmarked-${o.id}-${dateKey}`,
+            subjectName: o.subject?.name || "Subject",
+            status: att ? att.status : (dateKey > localTodayStr ? "future" : "not_marked"),
+            remarks: att ? att.remarks : null,
+          });
+        }
+      }
+
+      for (const a of dayAtts) {
+        if (!handledAttendanceIds.has(a.id)) {
+          dayAgenda.push({
+            id: a.id,
+            subjectName: a.subject?.name || "Subject",
+            status: a.status,
+            remarks: a.remarks || null,
+          });
+        }
+      }
+
+      if (dayAgenda.length > 0) {
+        detailsObj[dateKey] = dayAgenda;
       }
 
       if (status === "not_marked" || status === "future") dayStats.not_marked++;
