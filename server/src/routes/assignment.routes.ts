@@ -42,6 +42,26 @@ router.post("/", authenticate, async (req, res) => {
   }
 });
 
+router.put("/:id", authenticate, async (req, res) => {
+  try {
+    const { title, description, deadline, priority, subjectId } = req.body;
+    const assignment = await prisma.assignment.update({
+      where: { id: (req.params.id as string), userId: (req as any).user.userId },
+      data: {
+        ...(title !== undefined && { title }),
+        ...(description !== undefined && { description }),
+        ...(deadline !== undefined && { deadline: new Date(deadline) }),
+        ...(priority !== undefined && { priority }),
+        ...(subjectId !== undefined && { subjectId }),
+      },
+    });
+    res.json(assignment);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Failed to update assignment" });
+  }
+});
+
 router.delete("/:id", authenticate, async (req, res) => {
   try {
     await prisma.assignment.delete({

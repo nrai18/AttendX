@@ -260,14 +260,49 @@ export const AttendanceAnimationPopup: React.FC = () => {
                     transition={{ duration: 1.2, repeat: Infinity, delay: i * 0.1 }}
                     className="absolute text-xl pointer-events-none"
                   >
-                    {["🎉", "✨", "🎈", "🍾", "🥂", "🎊", "🌟", "💫"][i]}
+                    {["🎊", "✨", "🎈", "🌟", "💫", "🔥", "🚀", "🕺"][i]}
                   </motion.div>
                 ))}
               </div>
             )}
 
-            {/* 6. GENERIC HOLIDAY SVG ANIMATION */}
-            {HOLIDAY_ASSETS[type as AnimationType] && (
+            {/* 6. EXAM & PRACTICAL NATIVE ANIMATIONS */}
+            {(type === "exam" || type === "practical") && (
+              <div className="relative flex flex-col items-center justify-center">
+                <motion.div
+                  initial={{ scale: 0, y: 20 }}
+                  animate={{ scale: [0.8, 1.1, 1], y: 0 }}
+                  transition={{ duration: 0.5, type: "spring" }}
+                  className={`w-28 h-28 rounded-full flex items-center justify-center shadow-xl relative overflow-hidden ${
+                    type === "exam" ? "bg-rose-500/10 border-2 border-rose-500/20 shadow-rose-500/10" : "bg-purple-500/10 border-2 border-purple-500/20 shadow-purple-500/10"
+                  }`}
+                >
+                  <motion.div
+                    animate={{ rotate: [-5, 5, -5] }}
+                    transition={{ duration: 2, repeat: Infinity }}
+                    className="text-6xl"
+                  >
+                    {type === "exam" ? "📝" : "🔬"}
+                  </motion.div>
+                </motion.div>
+                
+                {/* Floating sparkles for exams */}
+                {[...Array(3)].map((_, i) => (
+                  <motion.div
+                    key={i}
+                    initial={{ opacity: 1, scale: 0, y: 0 }}
+                    animate={{ opacity: [0, 1, 0], scale: [0.5, 1.2, 0], y: -30 - (i * 10), x: (i % 2 === 0 ? 1 : -1) * 30 }}
+                    transition={{ duration: 1.5, repeat: Infinity, delay: i * 0.2 }}
+                    className={`absolute text-xl ${type === "exam" ? "text-rose-400" : "text-purple-400"}`}
+                  >
+                    ✨
+                  </motion.div>
+                ))}
+              </div>
+            )}
+
+            {/* 7. GENERIC HOLIDAY SVG ANIMATION */}
+            {HOLIDAY_ASSETS[type as AnimationType] && type !== "exam" && type !== "practical" && (
               <div className="relative flex flex-col items-center justify-center">
                 <motion.div
                   initial={{ scale: 0.2, rotate: -10 }}
@@ -313,11 +348,12 @@ export const AttendanceAnimationPopup: React.FC = () => {
                 {type === "thumbs_up" && "Awesome Job!"}
                 {type === "crying" && "Attendance Dropped!"}
                 {type === "target_hit" && "Target Touched!"}
-                {type === "off_class" && "Yay! Off Class! 💃🕺"}
-                {type === "full_day_off" && "Full Day Off! 🥳"}
-                {HOLIDAY_ASSETS[type as AnimationType] && message}
+                {type === "off_class" && "Yay! Off Class! 🕺💃"}
+                {type === "full_day_off" && "Full Day Off! 🎉"}
+                {(type === "exam" || type === "practical") && "Best of Luck!"}
+                {HOLIDAY_ASSETS[type as AnimationType] && type !== "exam" && type !== "practical" && message}
               </h3>
-              {!HOLIDAY_ASSETS[type as AnimationType] && (
+              {!(HOLIDAY_ASSETS[type as AnimationType] && type !== "exam" && type !== "practical") && (
                 <p className="text-xs font-bold text-muted-foreground">{message}</p>
               )}
             </div>

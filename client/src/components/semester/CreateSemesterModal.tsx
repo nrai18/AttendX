@@ -131,26 +131,24 @@ export const CreateSemesterModal: React.FC<CreateSemesterModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-white/40 dark:bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-card border border-border rounded-2xl p-6 max-w-lg w-full shadow-2xl space-y-6 relative overflow-hidden">
-        {/* Glow accent */}
-        <div className="absolute -top-24 -right-24 w-48 h-48 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
-
-        <div className="flex items-center justify-between border-b border-border pb-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200 font-sans">
+      <div className="bg-[#18181B] border border-[#27272A] rounded-[8px] p-6 max-w-lg w-full shadow-2xl space-y-6 relative overflow-hidden">
+        
+        <div className="flex items-center justify-between border-b border-[#27272A] pb-4">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-500 dark:text-indigo-400">
+            <div className="w-10 h-10 rounded-[8px] bg-[#48CAE4]/10 border border-[#48CAE4]/20 flex items-center justify-center text-[#48CAE4]">
               <Calendar className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-xl font-bold text-foreground">Create Active Semester</h2>
-              <p className="text-xs text-muted-foreground mt-0.5">
+              <h2 className="text-xl font-medium text-white tracking-tight">Create Active Semester</h2>
+              <p className="text-sm text-[#A1A1AA] mt-1">
                 Define start and end dates to enable timetable & attendance tracking
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="text-muted-foreground hover:text-foreground p-1 rounded-lg hover:bg-muted transition-colors"
+            className="text-[#A1A1AA] hover:text-white p-1 rounded-[8px] hover:bg-[#27272A] transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
@@ -158,8 +156,8 @@ export const CreateSemesterModal: React.FC<CreateSemesterModalProps> = ({
 
         {/* Existing inactive semesters list (if any) */}
         {semesters.filter((s) => !s.isActive).length > 0 && (
-          <div className="space-y-2 bg-muted/50 p-3.5 rounded-xl border border-border">
-            <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+          <div className="space-y-2 bg-black/50 p-4 rounded-[8px] border border-[#27272A]">
+            <h3 className="text-xs font-medium text-[#A1A1AA] uppercase tracking-widest font-mono">
               Or Activate Existing Semester
             </h3>
             <div className="space-y-1.5 max-h-32 overflow-y-auto pr-1">
@@ -168,11 +166,11 @@ export const CreateSemesterModal: React.FC<CreateSemesterModalProps> = ({
                 .map((s) => (
                   <div
                     key={s.id}
-                    className="flex items-center justify-between p-2 rounded-lg bg-card border border-border text-xs text-foreground"
+                    className="flex items-center justify-between p-3 rounded-[8px] bg-[#18181B] border border-[#27272A] text-sm text-white"
                   >
                     <div>
-                      <span className="font-semibold">{s.name}</span>
-                      <span className="text-muted-foreground ml-2 text-[10px]">
+                      <span className="font-medium">{s.name}</span>
+                      <span className="text-[#A1A1AA] ml-2 text-xs font-mono">
                         ({new Date(s.startDate).toLocaleDateString()} -{" "}
                         {new Date(s.endDate).toLocaleDateString()})
                       </span>
@@ -180,9 +178,9 @@ export const CreateSemesterModal: React.FC<CreateSemesterModalProps> = ({
                     <button
                       type="button"
                       onClick={() => handleActivate(s.id)}
-                      className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-indigo-600 hover:bg-indigo-500 text-white font-medium transition-all"
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-[8px] bg-[#18181B] hover:bg-[#27272A] border border-[#27272A] text-white font-medium transition-colors"
                     >
-                      <Check className="w-3 h-3" />
+                      <Check className="w-3 h-3 text-[#48CAE4]" />
                       Activate
                     </button>
                   </div>
@@ -194,13 +192,13 @@ export const CreateSemesterModal: React.FC<CreateSemesterModalProps> = ({
         <form onSubmit={handleCreate} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">
+              <label className="block text-xs font-medium text-[#A1A1AA] uppercase tracking-widest font-mono mb-2">
                 Year
               </label>
               <select
                 value={year}
                 onChange={(e) => setYear(e.target.value)}
-                className="w-full px-4 py-2.5 rounded-xl bg-background border border-border text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 font-medium appearance-none"
+                className="w-full px-4 py-2.5 rounded-[8px] bg-black border border-[#27272A] text-white text-sm focus:outline-none focus:border-[#48CAE4] focus:ring-1 focus:ring-[#48CAE4] font-medium appearance-none transition-colors"
               >
                 <option value="1">1st Year</option>
                 <option value="2">2nd Year</option>
@@ -209,13 +207,13 @@ export const CreateSemesterModal: React.FC<CreateSemesterModalProps> = ({
               </select>
             </div>
             <div>
-              <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">
+              <label className="block text-xs font-medium text-[#A1A1AA] uppercase tracking-widest font-mono mb-2">
                 Semester
               </label>
               <select
                 value={semesterOption}
                 onChange={(e) => setSemesterOption(e.target.value)}
-                className="w-full px-4 py-2.5 rounded-xl bg-background border border-border text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 font-medium appearance-none"
+                className="w-full px-4 py-2.5 rounded-[8px] bg-black border border-[#27272A] text-white text-sm focus:outline-none focus:border-[#48CAE4] focus:ring-1 focus:ring-[#48CAE4] font-medium appearance-none transition-colors"
               >
                 <option value={String(parseInt(year) * 2 - 1)}>Semester {parseInt(year) * 2 - 1}</option>
                 <option value={String(parseInt(year) * 2)}>Semester {parseInt(year) * 2}</option>
@@ -225,33 +223,33 @@ export const CreateSemesterModal: React.FC<CreateSemesterModalProps> = ({
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">
+              <label className="block text-xs font-medium text-[#A1A1AA] uppercase tracking-widest font-mono mb-2">
                 Start Month
               </label>
               <input
                 type="month"
                 value={startMonth}
                 onChange={(e) => setStartMonth(e.target.value)}
-                className="w-full px-3 py-2.5 rounded-xl bg-background border border-border text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 font-medium"
+                className="w-full px-3 py-2.5 rounded-[8px] bg-black border border-[#27272A] text-white text-sm focus:outline-none focus:border-[#48CAE4] focus:ring-1 focus:ring-[#48CAE4] font-medium transition-colors"
                 required
               />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">
+              <label className="block text-xs font-medium text-[#A1A1AA] uppercase tracking-widest font-mono mb-2">
                 End Month
               </label>
               <input
                 type="month"
                 value={endMonth}
                 onChange={(e) => setEndMonth(e.target.value)}
-                className="w-full px-3 py-2.5 rounded-xl bg-background border border-border text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 font-medium"
+                className="w-full px-3 py-2.5 rounded-[8px] bg-black border border-[#27272A] text-white text-sm focus:outline-none focus:border-[#48CAE4] focus:ring-1 focus:ring-[#48CAE4] font-medium transition-colors"
                 required
               />
             </div>
           </div>
 
           {error && (
-            <p className="text-xs text-rose-600 dark:text-rose-400 bg-rose-500/10 p-2.5 rounded-xl border border-rose-500/20">
+            <p className="text-xs text-[#E63946] bg-[#E63946]/10 p-2.5 rounded-[8px] border border-[#E63946]/20 font-medium">
               {error}
             </p>
           )}
@@ -260,14 +258,14 @@ export const CreateSemesterModal: React.FC<CreateSemesterModalProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2.5 rounded-xl text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+              className="px-4 py-2.5 rounded-[8px] text-sm font-medium text-[#A1A1AA] hover:text-white hover:bg-[#27272A] transition-colors"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={isCreating}
-              className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-500 text-white transition-all shadow-lg shadow-indigo-600/30 disabled:opacity-50"
+              className="flex items-center gap-2 px-6 py-2.5 rounded-[8px] text-sm font-semibold bg-[#48CAE4] hover:bg-[#48CAE4]/90 text-black transition-all disabled:opacity-50 shadow-none"
             >
               {isCreating ? (
                 <Loader2 className="w-4 h-4 animate-spin" />

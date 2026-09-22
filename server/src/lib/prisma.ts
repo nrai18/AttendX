@@ -194,3 +194,5 @@ export const prisma = new Proxy(
     },
   }
 ) as unknown as PrismaClient;
+
+export default prisma;

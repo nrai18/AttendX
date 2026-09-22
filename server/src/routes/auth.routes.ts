@@ -44,7 +44,7 @@ router.get("/google", (req, res, next) => {
 
 router.get(
   "/google/callback",
-  passport.authenticate("google", { session: false, failureRedirect: "/login?error=domain" }),
+  passport.authenticate("google", { session: false, failureRedirect: `${process.env.FRONTEND_URL || "https://attendx.app"}/login?error=domain` }),
   async (req, res) => {
     try {
       if (!req.user) return res.redirect(process.env.FRONTEND_URL + "/login?error=oauth");

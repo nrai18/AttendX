@@ -1,4 +1,4 @@
-﻿import passport from "passport";
+import passport from "passport";
 import { Strategy as GoogleStrategy } from "passport-google-oauth20";
 import dotenv from "dotenv";
 import { EmailService } from "../services/email.service";
@@ -13,6 +13,7 @@ passport.use(
       callbackURL: process.env.NODE_ENV === "production" 
         ? "/api/auth/google/callback" 
         : "http://localhost:3000/api/auth/google/callback",
+      proxy: true
     },
     async (accessToken, refreshToken, profile, done) => {
       try {
