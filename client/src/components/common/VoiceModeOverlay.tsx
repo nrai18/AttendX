@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Mic, MicOff, Volume2, VolumeX, X, Menu, Settings2 } from "lucide-react";
+import { Mic, MicOff, Volume2, VolumeX, X, Menu } from "lucide-react";
+import { NativeVoiceService } from "../../services/NativeVoiceService";
 
 interface VoiceModeOverlayProps {
   isOpen: boolean;
   onClose: () => void;
-  onSendMessage: (query: string) => Promise<string | undefined>;
+  onSendMessage: (query: string, inputMethod?: 'text' | 'voice') => Promise<string | undefined>;
 }
 
 const FILLER_PHRASES = [
@@ -28,150 +29,123 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
   const [transcript, setTranscript] = useState("");
   const [lastResponse, setLastResponse] = useState("");
   const [voiceEnabled, setVoiceEnabled] = useState(true);
-
-  const recognitionRef = useRef<any>(null);
-  const synthRef = useRef<SpeechSynthesis | null>(null);
+  const isOpenRef = useRef(isOpen);
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      const SpeechRecognition =
-        (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    isOpenRef.current = isOpen;
+  }, [isOpen]);
 
-      if (SpeechRecognition) {
-        const recognition = new SpeechRecognition();
-        recognition.continuous = false;
-        recognition.interimResults = true;
-        recognition.lang = "en-IN";
-
-        recognition.onstart = () => {
-          setIsListening(true);
-        };
-
-        recognition.onresult = (event: any) => {
-          let currentTranscript = "";
-          for (let i = event.resultIndex; i < event.results.length; i++) {
-            currentTranscript += event.results[i][0].transcript;
-          }
-          setTranscript(currentTranscript);
-        };
-
-        recognition.onend = () => {
-          setIsListening(false);
-        };
-
-        recognition.onerror = (event: any) => {
-          console.warn("Speech recognition error:", event.error);
-          setIsListening(false);
-        };
-
-        recognitionRef.current = recognition;
-      }
-
-      synthRef.current = window.speechSynthesis;
-    }
-
+  // Stop all active voice operations on unmount
+  useEffect(() => {
     return () => {
-      if (recognitionRef.current) {
-        recognitionRef.current.abort();
-      }
-      if (synthRef.current) {
-        synthRef.current.cancel();
-      }
+      NativeVoiceService.stopSpeaking();
+      NativeVoiceService.stopListening();
     };
   }, []);
 
+  const handleClose = async () => {
+    await NativeVoiceService.stopSpeaking();
+    await NativeVoiceService.stopListening();
+    setIsSpeaking(false);
+    setIsListening(false);
+    setIsProcessing(false);
+    onClose();
+  };
 
+  const startListening = async () => {
+    await NativeVoiceService.stopSpeaking();
+    setIsSpeaking(false);
+    setTranscript("");
+    setIsProcessing(false);
+    setIsListening(true);
 
-  const startListening = () => {
-    if (synthRef.current) {
-      synthRef.current.cancel();
-      setIsSpeaking(false);
-    }
-    if (recognitionRef.current) {
-      try {
-        setTranscript("");
-        setIsProcessing(false);
-        recognitionRef.current.start();
-      } catch (err) {
-        console.warn("Recognition already started or error:", err);
-      }
+    const started = await NativeVoiceService.startListening({
+      lang: "en-IN",
+      onPartialResult: (text) => {
+        setTranscript(text);
+      },
+      onFinalResult: (text) => {
+        setTranscript(text);
+      },
+      onError: (err) => {
+        console.warn("Voice overlay recognition error:", err);
+        setIsListening(false);
+      },
+      onEnd: () => {
+        setIsListening(false);
+      },
+    });
+
+    if (!started) {
+      setIsListening(false);
     }
   };
 
-  const stopListening = () => {
-    if (recognitionRef.current) {
-      try {
-        recognitionRef.current.stop();
-      } catch (err) {
-        console.warn("Recognition stop error:", err);
-      }
-    }
+  const stopListening = async () => {
+    setIsListening(false);
+    await NativeVoiceService.stopListening();
   };
 
-  const handleSpeakText = (text: string) => {
-    if (!voiceEnabled || !synthRef.current) return;
+  const handleSpeakText = async (text: string) => {
+    if (!voiceEnabled) return;
 
-    synthRef.current.cancel();
-    
-    const cleanText = text
-      .replace(/[#*_`]/g, "")
-      .replace(/\[.*?\]/g, "")
-      .replace(/Section/gi, "Section")
-      .trim();
-
+    await NativeVoiceService.stopSpeaking();
+    const cleanText = NativeVoiceService.cleanTextForSpeech(text);
     if (!cleanText) return;
 
-    const utterance = new SpeechSynthesisUtterance(cleanText);
-    utterance.lang = "en-IN";
-    utterance.rate = 1.05;
-    utterance.pitch = 1.0;
-
-    const voices = synthRef.current.getVoices();
-    const femaleIndianVoice = voices.find(v => v.lang.includes("en-IN") && v.name.includes("Female"));
-    if (femaleIndianVoice) {
-      utterance.voice = femaleIndianVoice;
-    }
-
-    utterance.onstart = () => setIsSpeaking(true);
-    utterance.onend = () => {
-      setIsSpeaking(false);
-      // BUGFIX: Only restart listening if we aren't currently waiting for a network response
-      setTimeout(() => {
-        setIsProcessing(prevIsProcessing => {
-          if (!prevIsProcessing && isOpen) {
-            startListening();
-          }
-          return prevIsProcessing;
-        });
-      }, 500);
-    };
-    utterance.onerror = () => setIsSpeaking(false);
-
-    synthRef.current.speak(utterance);
+    setIsSpeaking(true);
+    await NativeVoiceService.speak(cleanText, {
+      lang: "en-IN",
+      rate: 1.05,
+      pitch: 1.0,
+      onStart: () => {
+        setIsSpeaking(true);
+      },
+      onEnd: () => {
+        setIsSpeaking(false);
+        // Only restart listening if we aren't currently waiting for a network response and overlay is still open
+        setTimeout(() => {
+          setIsProcessing(prevIsProcessing => {
+            if (!prevIsProcessing && isOpenRef.current) {
+              startListening();
+            }
+            return prevIsProcessing;
+          });
+        }, 500);
+      },
+      onError: () => {
+        setIsSpeaking(false);
+      },
+    });
   };
 
   const handleProcessVoiceInput = async () => {
     if (!transcript.trim() || isProcessing) return;
 
     const query = transcript.trim();
-    stopListening();
+    await stopListening();
     setIsProcessing(true);
 
     const randomFiller = FILLER_PHRASES[Math.floor(Math.random() * FILLER_PHRASES.length)];
     setLastResponse(randomFiller);
-    handleSpeakText(randomFiller);
+    await handleSpeakText(randomFiller);
 
     try {
-      const response = await onSendMessage(query);
-      if (response) {
-        setIsProcessing(false); // Stop processing state so onend can trigger listening
+      const response = await onSendMessage(query, 'voice');
+      // When the actual response is ready, stop any ongoing filler speech first
+      await NativeVoiceService.stopSpeaking();
+      if (response && isOpen) {
+        setIsProcessing(false); // Stop processing state so onEnd can trigger listening
         setLastResponse(response);
-        handleSpeakText(response);
+        await handleSpeakText(response);
+      } else {
+        setIsProcessing(false);
       }
     } catch (err) {
+      await NativeVoiceService.stopSpeaking();
       setIsProcessing(false);
       setLastResponse("I encountered an error connecting to the policy advisor. Please try again.");
-      handleSpeakText("I encountered an error. Please try again.");
+      await handleSpeakText("I encountered an error. Please try again.");
     }
   };
 
@@ -182,9 +156,9 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
       }, 700);
       return () => clearTimeout(timer);
     }
-  }, [isListening, transcript]);
+  }, [isListening, transcript, isProcessing, isSpeaking]);
 
-  // When Voice Mode opens, we immediately start listening!
+  // When Voice Mode opens, we immediately greet and start listening loop
   useEffect(() => {
     if (isOpen) {
       setTranscript("");
@@ -194,12 +168,9 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
       const greeting = "Hey there, how can I help you today?";
       setLastResponse(greeting);
       handleSpeakText(greeting);
-      // Listening will start automatically after the greeting finishes via utterance.onend
     } else {
       stopListening();
-      if (synthRef.current) {
-        synthRef.current.cancel();
-      }
+      NativeVoiceService.stopSpeaking();
     }
   }, [isOpen]);
 
@@ -226,23 +197,19 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
         >
           {/* Top Bar - Mimicking ChatGPT layout */}
           <header className="flex items-center justify-between p-6 pt-safe-8">
-            <button 
-              onClick={onClose}
-              className="p-3 bg-white/10 hover:bg-white/20 rounded-full transition-colors cursor-pointer"
-            >
-              <Menu className="w-5 h-5 text-white/80" />
-            </button>
+            <div className="w-10 h-10" /> {/* Spacer to balance flex-between */}
             <button
-              onClick={() => {
-                setVoiceEnabled(!voiceEnabled);
-                if (voiceEnabled && synthRef.current) {
-                  synthRef.current.cancel();
+              onClick={async () => {
+                const nextVal = !voiceEnabled;
+                setVoiceEnabled(nextVal);
+                if (!nextVal) {
+                  await NativeVoiceService.stopSpeaking();
                   setIsSpeaking(false);
                 }
               }}
               className="p-3 bg-white/10 hover:bg-white/20 rounded-full transition-colors cursor-pointer"
             >
-              {voiceEnabled ? <Settings2 className="w-5 h-5 text-white/80" /> : <VolumeX className="w-5 h-5 text-rose-400" />}
+              {voiceEnabled ? <Volume2 className="w-5 h-5 text-white/80" /> : <VolumeX className="w-5 h-5 text-rose-400" />}
             </button>
           </header>
 
@@ -312,7 +279,7 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
               
               {/* Fake Text Input -> Returns to Text Chat */}
               <button
-                onClick={onClose}
+                onClick={handleClose}
                 className="flex-1 flex items-center px-4 h-14 rounded-full hover:bg-white/5 transition-colors text-white/50 text-sm sm:text-base cursor-pointer"
               >
                 <span className="text-xl mr-3 font-light">+</span> Ask AttendX...
@@ -330,7 +297,7 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
 
               {/* Explicit Exit/Close Button */}
               <button
-                onClick={onClose}
+                onClick={handleClose}
                 className="flex items-center justify-center w-14 h-14 shrink-0 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors mr-1 cursor-pointer"
               >
                 <X className="w-6 h-6" />

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { api } from "../../lib/api";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
@@ -40,10 +40,28 @@ import { NotificationService } from "../../services/NotificationService";
 import { App } from "@capacitor/app";
 
 interface ActionPayload {
+  id?: string;
   type: string;
-  payload: any;
+  category?: "SAFE" | "DESTRUCTIVE";
+  isDestructive?: boolean;
   requiresConfirmation?: boolean;
+  target?: string;
+  description?: string;
+  impact?: string;
+  payload: any;
 }
+
+const DESTRUCTIVE_ACTIONS = new Set<string>([
+  "REMOVE_SUBJECT",
+  "DROP_SUBJECT_FROM_TIMETABLE",
+  "REMOVE_ATTENDANCE",
+  "MARK_FULL_DAY_OFF",
+  "SHIFT_TIMETABLE_SLOT",
+  "ADD_SUBJECT",
+  "CHANGE_TARGET",
+  "CHANGE_GLOBAL_TARGET",
+  "RESET_SEMESTER_DATA"
+]);
 
 interface SimulationPayload {
   subjectId: string;
@@ -91,6 +109,7 @@ const SEARCH_STAGES = [
 
 export const FloatingChatbot: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [isOpen, setIsOpen] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [isVoiceOpen, setIsVoiceOpen] = useState(false);
@@ -116,6 +135,11 @@ export const FloatingChatbot: React.FC = () => {
     }
   });
 
+  const messagesRef = useRef<Message[]>(messages);
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+
   useEffect(() => {
     localStorage.setItem('attendx_chat_history', JSON.stringify(messages));
   }, [messages]);
@@ -123,7 +147,7 @@ export const FloatingChatbot: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const recognitionRef = useRef<any>(null);
+  const lastInputMethodRef = useRef<'text' | 'voice'>('text');
 
   // Cycling search status animations
   useEffect(() => {
@@ -163,6 +187,8 @@ export const FloatingChatbot: React.FC = () => {
         e.preventDefault();
         setIsOpen((prev) => !prev);
       } else if (e.key === "Escape" && isOpen) {
+        NativeVoiceService.stopSpeaking();
+        NativeVoiceService.stopListening();
         setIsOpen(false);
       }
     };
@@ -170,56 +196,47 @@ export const FloatingChatbot: React.FC = () => {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isOpen]);
 
-  // Setup inline microphone speech recognition
+  // Lifecycle cleanup: ensure speech & listening terminate when component unmounts
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-      if (SpeechRecognition) {
-        const rec = new SpeechRecognition();
-        rec.continuous = false;
-        rec.interimResults = true;
-        rec.lang = "en-IN";
-
-        rec.onstart = () => setIsListeningMic(true);
-        rec.onresult = (e: any) => {
-          let text = "";
-          for (let i = e.resultIndex; i < e.results.length; i++) {
-            text += e.results[i][0].transcript;
-          }
-          setInput(text);
-        };
-        rec.onend = () => setIsListeningMic(false);
-        rec.onerror = () => setIsListeningMic(false);
-        recognitionRef.current = rec;
-      }
-    }
+    return () => {
+      NativeVoiceService.stopSpeaking();
+      NativeVoiceService.stopListening();
+    };
   }, []);
 
-  const toggleMic = () => {
-    
-    if (Capacitor.isNativePlatform()) {
-      if (isListeningMic) {
-        NativeVoiceService.stopListening();
-        setIsListeningMic(false);
-      } else {
-        setInput("");
-        setIsListeningMic(true);
-        NativeVoiceService.startListening((text) => setInput(text), () => setIsListeningMic(false));
-      }
+  const toggleMic = async () => {
+    if (isListeningMic) {
+      await NativeVoiceService.stopListening();
+      setIsListeningMic(false);
       return;
     }
 
-    if (!("webkitSpeechRecognition" in window || "SpeechRecognition" in window)) {
-      toast.error("Speech recognition is not supported in this browser. Please use Chrome or Edge.");
-      return;
+    setInput("");
+    setIsListeningMic(true);
+    lastInputMethodRef.current = "voice";
+
+    const started = await NativeVoiceService.startListening({
+      lang: "en-IN",
+      onPartialResult: (text) => {
+        setInput(text);
+        lastInputMethodRef.current = "voice";
+      },
+      onFinalResult: (text) => {
+        setInput(text);
+        lastInputMethodRef.current = "voice";
+      },
+      onError: (err) => {
+        console.warn("Inline mic error:", err);
+        setIsListeningMic(false);
+      },
+      onEnd: () => {
+        setIsListeningMic(false);
+      },
+    });
+
+    if (!started) {
+      setIsListeningMic(false);
     }
-    if (isListeningMic) {
-      if (recognitionRef.current) recognitionRef.current.stop();
-    } else {
-      setInput("");
-      if (recognitionRef.current) recognitionRef.current.start();
-    }
-    
   };
 
   const handleCopy = (id: string, text: string) => {
@@ -228,43 +245,41 @@ export const FloatingChatbot: React.FC = () => {
     setTimeout(() => setCopiedId(null), 2000);
   };
 
-  const handleSpeakMessage = (id: string, text: string) => {
-    
+  const handleSpeakMessage = async (id: string, text: string) => {
     if (speakingId === id) {
-      if (Capacitor.isNativePlatform()) NativeVoiceService.stopSpeaking();
-      else if (window.speechSynthesis) window.speechSynthesis.cancel();
+      await NativeVoiceService.stopSpeaking();
       setSpeakingId(null);
       return;
     }
-    
+
     setSpeakingId(id);
-    
-    if (Capacitor.isNativePlatform()) {
-      NativeVoiceService.speak(text).then(() => setSpeakingId(null));
-    } else if (window.speechSynthesis) {
-      window.speechSynthesis.cancel();
-      const cleanText = text.replace(/[#*_`]/g, "").replace(/\[.*?\]/g, "").trim();
-      const utterance = new SpeechSynthesisUtterance(cleanText);
-      utterance.lang = "en-IN";
-      utterance.onend = () => setSpeakingId(null);
-      utterance.onerror = () => setSpeakingId(null);
-      window.speechSynthesis.speak(utterance);
+    await NativeVoiceService.stopSpeaking();
+    const spoken = await NativeVoiceService.speak(text, {
+      onEnd: () => setSpeakingId(null),
+      onError: () => setSpeakingId(null),
+    });
+    if (!spoken) {
+      setSpeakingId(null);
     }
-    
   };
 
   const handleResetChat = () => {
-    
-    if (Capacitor.isNativePlatform()) NativeVoiceService.stopSpeaking();
-    else if (typeof window !== "undefined" && window.speechSynthesis) window.speechSynthesis.cancel();
-    
+    NativeVoiceService.stopSpeaking(); // fire and forget
     setSpeakingId(null);
     setMessages([]);
   };
 
-  const handleSendMessage = async (textToSend?: string) => {
+  const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'voice'): Promise<string | undefined> => {
+    const effectiveInputMethod = inputMethod || lastInputMethodRef.current;
+    // Reset tracker back to default 'text' for subsequent interactions
+    lastInputMethodRef.current = 'text';
+
     const query = textToSend || input.trim();
     if (!query || isLoading) return;
+
+    // Immediately stop any currently playing speech to prevent audio clash
+    await NativeVoiceService.stopSpeaking();
+    setSpeakingId(null);
 
     const userMessage: Message = {
       id: String(Date.now()),
@@ -316,26 +331,38 @@ export const FloatingChatbot: React.FC = () => {
         calendar_events: currentEvents.slice(0, 50)
       };
 
+      const selectedItems: any[] = [];
+      const searchParams = new URLSearchParams(location.search);
+      const queryDate = searchParams.get("date");
+      const querySubjectId = searchParams.get("subjectId");
+      if (queryDate) selectedItems.push({ type: "date", value: queryDate });
+      if (querySubjectId) selectedItems.push({ type: "subjectId", value: querySubjectId });
+      if (location.pathname.startsWith("/subjects/")) {
+        const subIdFromPath = location.pathname.split("/")[2];
+        if (subIdFromPath) selectedItems.push({ type: "subjectId", value: subIdFromPath });
+      }
+
       const res = await api.post(`/ai/chat`, {
+        text: query,
         message: query,
-        history: history,
+        currentRoute: location.pathname,
+        selectedItems,
+        localTime: new Date().toISOString(),
+        history,
         student_context: studentContext
       });
 
       const data = res.data;
 
-      // Speak the response aloud natively (Offline TTS)
-      
-      if (data.reply) {
-        if (Capacitor.isNativePlatform()) {
-          NativeVoiceService.stopSpeaking().then(() => NativeVoiceService.speak(data.reply));
-        } else if ("speechSynthesis" in window) {
-          window.speechSynthesis.cancel();
-          const utterance = new SpeechSynthesisUtterance(data.reply);
-          utterance.rate = 1.05;
-          utterance.pitch = 1.0;
-          window.speechSynthesis.speak(utterance);
-        }
+      // Requirement R2: TTS must ONLY trigger automatically if the user's prompt came from voice
+      // and VoiceModeOverlay is not open (overlay handles its own speech)
+      const textToSpeak = data.response || data.reply;
+      if (effectiveInputMethod === 'voice' && !isVoiceOpen && textToSpeak) {
+        await NativeVoiceService.stopSpeaking();
+        await NativeVoiceService.speak(textToSpeak);
+      } else {
+        // When inputMethod === 'text', mute automatic TTS and explicitly ensure any audio is stopped
+        await NativeVoiceService.stopSpeaking();
       }
     
       
@@ -477,10 +504,30 @@ export const FloatingChatbot: React.FC = () => {
       const botResponseId = String(Date.now() + 1);
       
       if (data.actions && Array.isArray(data.actions)) {
-        for (const action of data.actions) {
+        for (const rawAction of data.actions) {
+          // Enforce code-level security: check DESTRUCTIVE_ACTIONS set
+          const isDestructive =
+            DESTRUCTIVE_ACTIONS.has(rawAction.type) ||
+            Boolean(rawAction.isDestructive) ||
+            Boolean(rawAction.requiresConfirmation);
+
+          const action: ActionPayload = {
+            id: rawAction.id || `act_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+            type: rawAction.type,
+            category: isDestructive ? "DESTRUCTIVE" : "SAFE",
+            isDestructive,
+            requiresConfirmation: isDestructive,
+            target: rawAction.target || rawAction.payload?.subjectName || rawAction.payload?.subjectId || rawAction.payload?.date || "Academic Data",
+            description: rawAction.description || `Execute ${rawAction.type}`,
+            impact: rawAction.impact || (isDestructive ? "Destructive change to attendance or timetable data." : "Safe non-destructive action."),
+            payload: rawAction.payload || {}
+          };
+
           if (action.requiresConfirmation) {
+            // HALT automatic execution for destructive actions
             pendingActions.push(action);
           } else {
+            // Safe actions execute immediately
             try {
               const refreshed = await executeAction(action);
               if (refreshed) shouldRefresh = true;
@@ -496,10 +543,14 @@ export const FloatingChatbot: React.FC = () => {
         window.dispatchEvent(new Event("subject-updated"));
       }
 
+      if (data.simulation) {
+        simulation = data.simulation;
+      }
+
       const botResponse: Message = {
         id: botResponseId,
         role: "assistant",
-        content: data.response || "No response received from ordinance model.",
+        content: data.response || data.reply || "No response received from ordinance model.",
         citations: data.citations || [],
         timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
         pendingActions: pendingActions.length > 0 ? pendingActions : undefined,
@@ -514,27 +565,37 @@ export const FloatingChatbot: React.FC = () => {
       (window as any)._executePendingActions = async (msgId: string) => {
         setMessages(prev => prev.map(m => m.id === msgId ? { ...m, isExecutingAction: true } : m));
         let globalRefresh = false;
-        const msg = pendingActions; // closure
-        for(const action of msg) {
+        const targetMsg = messagesRef.current.find(m => m.id === msgId);
+        const actionsToRun = (targetMsg?.pendingActions && targetMsg.pendingActions.length > 0) ? targetMsg.pendingActions : pendingActions;
+
+        for (const action of actionsToRun) {
            try {
              const refreshed = await executeAction(action);
              if (refreshed) globalRefresh = true;
-           } catch(e) { console.error(e); }
+           } catch(e) {
+             console.error("Failed to execute pending action:", e);
+           }
         }
         if (globalRefresh) {
            window.dispatchEvent(new Event("attendance-updated"));
            window.dispatchEvent(new Event("subject-updated"));
         }
         setMessages(prev => prev.map(m => m.id === msgId ? { ...m, isExecutingAction: false, actionsExecuted: true } : m));
+        toast.success("Action confirmed and executed successfully.");
       };
 
-      return data.response;
+      (window as any)._cancelPendingActions = (msgId: string) => {
+        setMessages(prev => prev.map(m => m.id === msgId ? { ...m, pendingActions: undefined, actionsExecuted: false } : m));
+        toast.info("Action cancelled by user.");
+      };
+
+      return data.response || data.reply;
     } catch (err: any) {
       console.error("AI Chat error:", err);
       const errorMessage: Message = {
         id: String(Date.now() + 1),
         role: "assistant",
-        content: "Unable to connect to the AttendX Policy Engine. Please ensure the Python ML server is running.",
+        content: "I am currently offline or unable to reach the AI service. Please check your internet connection.",
         timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
       };
       setMessages(prev => [...prev, errorMessage]);
@@ -572,8 +633,8 @@ export const FloatingChatbot: React.FC = () => {
       <VoiceModeOverlay 
         isOpen={isVoiceOpen}
         onClose={() => setIsVoiceOpen(false)}
-        onSendMessage={async (q) => {
-          return await handleSendMessage(q);
+        onSendMessage={async (q, inputMethod = 'voice') => {
+          return await handleSendMessage(q, inputMethod);
         }}
       />
 
@@ -652,7 +713,11 @@ export const FloatingChatbot: React.FC = () => {
                 </button>
 
                 <button
-                  onClick={() => setIsOpen(false)}
+                  onClick={() => {
+                    NativeVoiceService.stopSpeaking();
+                    NativeVoiceService.stopListening();
+                    setIsOpen(false);
+                  }}
                   className="p-1.5 rounded-none hover:bg-primary/10 hover:text-foreground transition-colors cursor-pointer"
                   title="Close (Esc)"
                 >
@@ -778,14 +843,50 @@ export const FloatingChatbot: React.FC = () => {
                               </div>
                             )}
 
-                            {/* Action Confirmation Card */}
-                            {msg.pendingActions && !msg.actionsExecuted && (
+                            {/* Itemized Action Confirmation Card */}
+                            {msg.pendingActions && msg.pendingActions.length > 0 && !msg.actionsExecuted && (
                               <div className="mt-3.5 pt-3 border-t border-rose-500/30">
-                                <div className="p-3 rounded-none bg-rose-500/10 border border-rose-500/20 text-rose-600 dark:text-rose-400">
-                                  <div className="flex items-center gap-2 mb-2">
-                                    <span className="text-xs font-bold uppercase tracking-wider">Action Required</span>
+                                <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-foreground">
+                                  <div className="flex items-center gap-2 mb-2 text-rose-600 dark:text-rose-400">
+                                    <AlertTriangle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0" />
+                                    <span className="text-xs font-bold uppercase tracking-wider">Action Confirmation Required</span>
                                   </div>
-                                  <p className="text-xs font-medium mb-3">The AI wants to execute a destructive action. Are you sure you want to proceed?</p>
+                                  <p className="text-xs text-muted-foreground mb-3 font-medium">
+                                    The Copilot staged destructive modifications to your academic data. Review the pending actions below:
+                                  </p>
+
+                                  {/* Itemized action list */}
+                                  <div className="space-y-2 mb-3">
+                                    {msg.pendingActions.map((act, actIdx) => (
+                                      <div
+                                        key={act.id || actIdx}
+                                        className="p-2.5 rounded-lg bg-background/80 border border-border/80 text-xs flex flex-col gap-1 shadow-xs"
+                                      >
+                                        <div className="flex items-center justify-between gap-2">
+                                          <span className="font-mono text-[10px] font-bold px-2 py-0.5 rounded bg-rose-500/20 text-rose-600 dark:text-rose-400">
+                                            {act.type}
+                                          </span>
+                                          {act.target && (
+                                            <span className="text-[10px] font-mono text-muted-foreground truncate max-w-[160px]" title={act.target}>
+                                              {act.target}
+                                            </span>
+                                          )}
+                                        </div>
+                                        {act.description && (
+                                          <p className="font-semibold text-foreground text-xs mt-0.5">
+                                            {act.description}
+                                          </p>
+                                        )}
+                                        {act.impact && (
+                                          <div className="flex items-center gap-1.5 text-[11px] text-rose-600 dark:text-rose-400 mt-0.5">
+                                            <AlertTriangle className="w-3 h-3 shrink-0" />
+                                            <span>{typeof act.impact === 'string' ? act.impact : 'Destructive modification to academic records.'}</span>
+                                          </div>
+                                        )}
+                                      </div>
+                                    ))}
+                                  </div>
+
                                   <div className="flex items-center gap-2">
                                     <button
                                       onClick={() => {
@@ -794,13 +895,26 @@ export const FloatingChatbot: React.FC = () => {
                                         }
                                       }}
                                       disabled={msg.isExecutingAction}
-                                      className={`px-3 py-1.5 text-white rounded-none text-xs font-bold shadow-sm transition-colors flex items-center gap-2 ${msg.isExecutingAction ? "bg-rose-500/50 cursor-not-allowed" : "bg-rose-500 hover:bg-rose-600"}`}
+                                      className={`px-3 py-1.5 text-white rounded-lg text-xs font-bold shadow-sm transition-colors flex items-center gap-1.5 cursor-pointer ${
+                                        msg.isExecutingAction ? "bg-rose-500/50 cursor-not-allowed" : "bg-rose-600 hover:bg-rose-700"
+                                      }`}
                                     >
                                       {msg.isExecutingAction ? (
                                         <><Loader2 className="w-3 h-3 animate-spin" /> Executing...</>
                                       ) : (
-                                        "Confirm Action"
+                                        <><Check className="w-3 h-3" /> Confirm Action</>
                                       )}
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        if ((window as any)._cancelPendingActions) {
+                                          (window as any)._cancelPendingActions(msg.id);
+                                        }
+                                      }}
+                                      disabled={msg.isExecutingAction}
+                                      className="px-3 py-1.5 bg-muted hover:bg-muted/80 text-foreground rounded-lg text-xs font-semibold transition-colors cursor-pointer"
+                                    >
+                                      Cancel
                                     </button>
                                   </div>
                                 </div>
@@ -903,7 +1017,15 @@ export const FloatingChatbot: React.FC = () => {
                     ref={inputRef}
                     type="text"
                     value={input}
-                    onChange={(e) => setInput(e.target.value)}
+                    onChange={(e) => {
+                      setInput(e.target.value);
+                      lastInputMethodRef.current = 'text';
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key !== 'Enter') {
+                        lastInputMethodRef.current = 'text';
+                      }
+                    }}
                     
                     className="w-full bg-muted/50 border border-primary/20 focus:border-primary focus:outline-none rounded-none pl-3.5 pr-10 py-2.5 text-xs text-foreground transition-all shadow-inner"
                     disabled={isLoading}
