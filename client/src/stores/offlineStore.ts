@@ -1,4 +1,4 @@
-﻿import { create } from 'zustand';
+import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { Preferences } from '@capacitor/preferences';
 import { Capacitor } from '@capacitor/core';
@@ -65,6 +65,7 @@ export const useOfflineStore = create<OfflineState>()(
 
         set({ isSyncing: true });
         let successCount = 0;
+        let conflictCount = 0;
 
         try {
           // Process in order
@@ -83,6 +84,7 @@ export const useOfflineStore = create<OfflineState>()(
               // If it's a 4xx error (bad request), drop it so it doesn't block the queue
               if (err.response && err.response.status >= 400 && err.response.status < 500 && err.response.status !== 401 && err.response.status !== 429) {
                  dequeue(req.id);
+                 conflictCount++;
               }
               // Otherwise keep it in the queue for next time
               console.error("Offline sync failed for request", req.url, err);
@@ -91,6 +93,14 @@ export const useOfflineStore = create<OfflineState>()(
           
           if (successCount > 0) {
             toast.success(`Successfully synced ${successCount} offline actions!`);
+          }
+          
+          if (conflictCount > 0) {
+            toast.error(`${conflictCount} offline action(s) were rejected by the server and rolled back.`);
+          }
+
+          // If we mutated anything (success or dropped conflict), force UI to refresh
+          if (successCount > 0 || conflictCount > 0) {
             window.dispatchEvent(new Event("attendance-updated"));
           }
         } finally {

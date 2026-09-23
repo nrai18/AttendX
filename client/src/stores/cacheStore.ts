@@ -46,7 +46,20 @@ export const useCacheStore = create<CacheState>()(
       insights: null,
       reminderFrequency: { type: 'Weekly', subValue: 'Mon' },
       setReminderFrequency: (data) => set({ reminderFrequency: data }),
-      setCache: (key, data) => set((state) => ({ ...state, [key]: data })),
+      setCache: (key, data) => set((state) => {
+        let newData = data;
+        if (key === 'today' && data && typeof data === 'object') {
+          const keys = Object.keys(data);
+          if (keys.length > 14) {
+            // Sort chronologically and keep only the 14 most recent days to prevent unbounded DB growth
+            keys.sort();
+            const keysToRemove = keys.slice(0, keys.length - 14);
+            newData = { ...data };
+            keysToRemove.forEach(k => delete newData[k]);
+          }
+        }
+        return { ...state, [key]: newData };
+      }),
       clearCache: () => set({ today: null, timetable: null,
       archived_timetables: null, semester: null, calendar: null, subjects: null, subjects_overview: null, subject_logs: null })
     }),
