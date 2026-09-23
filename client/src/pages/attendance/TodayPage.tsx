@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from "react";
-import { LocalNotifications } from '@capacitor/local-notifications';
 import { Capacitor } from '@capacitor/core';
 import { Loader2, CheckCircle2, XCircle, AlertCircle, PartyPopper, BookOpen, Palmtree, Timer, TrendingUp, TrendingDown, Plus, MessageSquare, Sparkles, ChevronRight, ChevronLeft, X, Trash2 } from "lucide-react";
 import { PageSkeleton } from "../../components/common/PageSkeleton";
@@ -157,12 +156,17 @@ export const TodayPage = () => {
         animType = "maha_shivaratri"; animMsg = "Happy Maha Shivaratri! 🕉️✨";
       } else if (title.includes("raksha") || title.includes("rakhi")) {
         animType = "rakshabandhan"; animMsg = "Happy Rakshabandhan! ✨";
-      } else if (title.includes("midsem") || title.includes("endsem") || title.includes("exam")) {
+      } else if (
+        title.includes("midsem") || title.includes("mid sem") || title.includes("mid-sem") || title.includes("midterm") || title.includes("mid term") ||
+        title.includes("endsem") || title.includes("end sem") || title.includes("end-sem") || title.includes("exam")
+      ) {
         animType = "exam"; animMsg = "Focus mode activated. Best of luck on your exams! 📝✨";
+      } else if (title.includes("lab") || title.includes("practical") || title.includes("demo") || title.includes("viva")) {
+        animType = "practical"; animMsg = "Practical / Lab Exams today. Best of luck! 🔬💻";
       }
     } else if (activeEvent?.eventType === "midsem" || activeEvent?.eventType === "endsem" || activeEvent?.eventType === "exam") {
       animType = "exam"; animMsg = "Focus mode activated. Best of luck on your exams! 📚💪";
-    } else if (activeEvent?.eventType === "lab_exam") {
+    } else if (activeEvent?.eventType === "lab_exam" || activeEvent?.eventType === "practical" || activeEvent?.eventType === "lab") {
       animType = "practical"; animMsg = "Practical / Lab Exams today. Best of luck! 🔬💻";
     } else if (activeEvent?.eventType === "ct") {
       animType = "exam"; animMsg = "Cycle Test today. Stay focused! 📝";
@@ -727,13 +731,18 @@ export const TodayPage = () => {
 
 
   // Determine if we should show the holiday/exam state instead of classes
-  const isGlobalEventActive = activeEvent && ["holiday", "restricted_holiday", "vacation", "fest", "midsem", "endsem", "institute"].includes(activeEvent.eventType);
+  const isGlobalEventActive = activeEvent && ["holiday", "restricted_holiday", "vacation", "fest", "midsem", "endsem", "exam", "lab_exam", "practical", "lab", "institute"].includes(activeEvent.eventType);
 
   const getEventStateConfig = (type: string) => {
     switch(type) {
       case "midsem":
       case "endsem":
+      case "exam":
         return { icon: <BookOpen className="w-16 h-16 text-rose-500 mb-4 mx-auto" />, color: "border-rose-500/20 bg-rose-500/5", title: "Exam Mode", msg: "Focus on your exams. No regular classes today." };
+      case "lab_exam":
+      case "practical":
+      case "lab":
+        return { icon: <BookOpen className="w-16 h-16 text-indigo-500 mb-4 mx-auto" />, color: "border-indigo-500/20 bg-indigo-500/5", title: "Practical Exam", msg: "Practical exams in progress. Best of luck!" };
       case "fest":
       case "institute":
         return { icon: <PartyPopper className="w-16 h-16 text-purple-500 mb-4 mx-auto" />, color: "border-purple-500/20 bg-purple-500/5", title: "Festivities", msg: "Enjoy the celebrations! Classes are suspended." };

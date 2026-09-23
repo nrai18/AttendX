@@ -11,6 +11,7 @@ import { InlineAction } from "../../components/ui/inline-action";
 import { toast } from "sonner";
 import { useCacheStore } from "../../stores/cacheStore";
 import { useAttendanceStore } from "../../stores/attendanceStore";
+import { useSwipeable } from "react-swipeable";
 
 interface DayDetail {
   id: string;
@@ -58,6 +59,23 @@ export const CalendarPage = () => {
   const initialMonthStr = format(new Date(), "yyyy-MM");
   const [data, setData] = useState<CalendarData | null>(cachedData?.[initialMonthStr] || null);
   const [isLoading, setIsLoading] = useState(!cachedData?.[initialMonthStr]);
+
+  const swipeHandlers = useSwipeable({
+    onSwipedLeft: () => {
+      if (selectedMobileDate) {
+        const nextDay = format(addDays(new Date(selectedMobileDate + 'T00:00:00'), 1), 'yyyy-MM-dd');
+        setSelectedMobileDate(nextDay);
+      }
+    },
+    onSwipedRight: () => {
+      if (selectedMobileDate) {
+        const prevDay = format(addDays(new Date(selectedMobileDate + 'T00:00:00'), -1), 'yyyy-MM-dd');
+        setSelectedMobileDate(prevDay);
+      }
+    },
+    trackMouse: false
+  });
+
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
   const [selectedMobileDate, setSelectedMobileDate] = useState<string | null>(null);
@@ -599,6 +617,7 @@ export const CalendarPage = () => {
               className="fixed inset-0 bg-background/80 backdrop-blur-sm z-[100] sm:hidden"
             />
             <motion.div
+              {...swipeHandlers}
               initial={{ opacity: 0, y: 100 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 100 }}
@@ -660,7 +679,7 @@ export const CalendarPage = () => {
                             }`}>
                               {detail.status === "present" ? "Present" :
                                detail.status === "absent" ? "Absent" :
-                               detail.status === "off" ? "Off" : "Other"}
+                               detail.status === "off" ? "Off" : (detail.status === "not_marked" ? "Not Marked" : detail.status.charAt(0).toUpperCase() + detail.status.slice(1))}
                             </span>
                           </div>
                         ))}

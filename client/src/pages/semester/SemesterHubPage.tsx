@@ -42,11 +42,29 @@ export const SemesterHubPage = () => {
   const cachedData = useCacheStore((state) => state.semester);
   const setCache = useCacheStore((state) => state.setCache);
 
-  const [events, setEvents] = useState<AppEvent[]>(cachedData?.events || []);
+  const [events, setEvents] = useState<AppEvent[]>(
+    () => (cachedData?.events?.length ? cachedData.events : ((useAttendanceStore.getState().events as any) || []))
+  );
   const [activeSemester, setActiveSemester] = useState<Semester | null>(cachedData?.activeSemester || null);
   const [calendarData, setCalendarData] = useState<any>(cachedData?.calendarData || null);
-  const [isLoading, setIsLoading] = useState(!cachedData);
+  const [isLoading, setIsLoading] = useState(() => !cachedData && !useAttendanceStore.getState().hasActiveSemester);
   const user = useAuthStore((state) => state.user);
+
+  // Reactive hydration listener when Capacitor Preferences finish hydrating
+  useEffect(() => {
+    if (cachedData) {
+      if (cachedData.events && events.length === 0) {
+        setEvents(cachedData.events);
+      }
+      if (cachedData.activeSemester && !activeSemester) {
+        setActiveSemester(cachedData.activeSemester);
+      }
+      if (cachedData.calendarData && !calendarData) {
+        setCalendarData(cachedData.calendarData);
+      }
+      setIsLoading(false);
+    }
+  }, [cachedData]);
   
   // OCR State
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -74,6 +92,26 @@ export const SemesterHubPage = () => {
   }, [activeTab, events]);
 
   const fetchData = async () => {
+    // If device is offline, resolve cached data immediately and stop loading
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      const cache = useCacheStore.getState().semester;
+      const attendanceState = useAttendanceStore.getState();
+      if (cache?.activeSemester) {
+        setActiveSemester(cache.activeSemester);
+        setEvents(cache.events || (attendanceState.events as any) || []);
+      } else if (attendanceState.hasActiveSemester && attendanceState.activeSemesterId) {
+        const bounds = attendanceState.simulationBounds;
+        const startDate = bounds?.startDate || new Date(new Date().setMonth(new Date().getMonth() - 2)).toISOString();
+        const endDate = bounds?.endDate || new Date(new Date().setMonth(new Date().getMonth() + 4)).toISOString();
+        setActiveSemester({ id: attendanceState.activeSemesterId, name: "Active Semester", startDate, endDate } as any);
+        setEvents((attendanceState.events as any) || []);
+      } else {
+        setEvents((attendanceState.events as any) || []);
+      }
+      setIsLoading(false);
+      return;
+    }
+
     try {
       if (!cachedData) setIsLoading(true);
       const semRes = await api.get("/semesters/active");
@@ -87,27 +125,29 @@ export const SemesterHubPage = () => {
       }
 
       const eventsRes = await api.get(eventsUrl);
-      setEvents(Array.isArray(eventsRes.data) ? eventsRes.data : []);
+      const fetchedEvents = Array.isArray(eventsRes.data) ? eventsRes.data : [];
+      setEvents(fetchedEvents);
       
       setCache('semester', {
         ...useCacheStore.getState().semester,
         activeSemester: nextSemester,
-        events: eventsRes.data
+        events: fetchedEvents
       });
     } catch (error) {
       console.error("Failed to fetch academic data:", error);
       const cache = useCacheStore.getState().semester;
+      const attendanceState = useAttendanceStore.getState();
       if (cache && cache.activeSemester) {
         setActiveSemester(cache.activeSemester);
-        setEvents(cache.events || []);
+        setEvents(cache.events?.length ? cache.events : (attendanceState.events as any) || []);
       } else {
-        const attendanceState = useAttendanceStore.getState();
         if (attendanceState.hasActiveSemester && attendanceState.activeSemesterId) {
           const bounds = attendanceState.simulationBounds;
           const startDate = bounds?.startDate || new Date(new Date().setMonth(new Date().getMonth() - 2)).toISOString();
           const endDate = bounds?.endDate || new Date(new Date().setMonth(new Date().getMonth() + 4)).toISOString();
           setActiveSemester({ id: attendanceState.activeSemesterId, name: "Active Semester", startDate, endDate } as any);
         }
+        setEvents((attendanceState.events as any) || []);
       }
     } finally {
       setIsLoading(false);

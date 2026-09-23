@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 import { ArrowLeft } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
@@ -16,7 +16,7 @@ export function TermsPage() {
         <p className="text-slate-600 dark:text-slate-50/60 text-sm">Last updated: September 03, 2026</p>
         
         <p className="lead text-lg mt-6">
-          Welcome to AttendX! By accessing or using our Website (https://attend-x-eta.vercel.app) and Mobile Application, you agree to be bound by these Terms of Service.
+          Welcome to AttendX! By accessing or using our Website (https://www.attendx.tech) and Mobile Application, you agree to be bound by these Terms of Service.
         </p>
 
         <h2 className="text-2xl font-bold mt-10 mb-4 text-[#E63946]">1. Description of Service</h2>

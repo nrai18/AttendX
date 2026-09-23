@@ -26,27 +26,51 @@ export const ArchiveTimetableModal: React.FC<ArchiveTimetableModalProps> = ({ is
     }
   }, [isOpen, semesterId]);
 
+  const getCachedVersions = () => {
+    const cacheStore = useCacheStore.getState();
+    if (cacheStore.archived_timetables && Array.isArray(cacheStore.archived_timetables) && cacheStore.archived_timetables.length > 0) {
+      return cacheStore.archived_timetables;
+    }
+    if ((cacheStore.timetable as any)?.archivedSlots && Array.isArray((cacheStore.timetable as any).archivedSlots)) {
+      return (cacheStore.timetable as any).archivedSlots;
+    }
+    return [];
+  };
+
   const fetchArchivedVersions = async () => {
-    try {
-      setIsLoading(true);
-      
-      // Load from offline cache first
-      const cacheStore = useCacheStore.getState();
-      if (cacheStore.archived_timetables) {
-        setVersions(cacheStore.archived_timetables);
-        if (cacheStore.archived_timetables.length > 0) {
-          setSelectedVersionId(cacheStore.archived_timetables[0].id);
-        }
+    const effectiveSemesterId = semesterId || (useCacheStore.getState().timetable as any)?.activeSemester?.id;
+
+    // Load from offline cache first (both keys supported)
+    const cached = getCachedVersions();
+    if (cached.length > 0) {
+      setVersions(cached);
+      if (!selectedVersionId) {
+        setSelectedVersionId(cached[0].id);
       }
-      
-      const res = await api.get(`/timetable/semester/${semesterId}/archived`);
+      setIsLoading(false);
+    } else {
+      setIsLoading(true);
+    }
+
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      setIsLoading(false);
+      return;
+    }
+
+    if (!effectiveSemesterId) {
+      setIsLoading(false);
+      return;
+    }
+
+    try {
+      const res = await api.get(`/timetable/semester/${effectiveSemesterId}/archived`);
       const newData = res.data || [];
       
       // Update cache
       useCacheStore.getState().setCache('archived_timetables', newData);
       
       setVersions(newData);
-      if (newData.length > 0 && !cacheStore.archived_timetables) {
+      if (newData.length > 0 && (!selectedVersionId || !cached.length)) {
         setSelectedVersionId(newData[0].id);
       }
     } catch (error) {
@@ -98,7 +122,7 @@ export const ArchiveTimetableModal: React.FC<ArchiveTimetableModalProps> = ({ is
         <div className="flex flex-col md:flex-row flex-1 overflow-hidden">
           {/* Sidebar - Versions */}
           <div className="w-full md:w-64 border-b md:border-b-0 md:border-r border-border bg-muted/10 overflow-y-auto flex-none max-h-[140px] md:max-h-none">
-            {isLoading ? (
+            {isLoading && versions.length === 0 ? (
               <div className="p-8 text-center text-sm text-muted-foreground animate-pulse">Loading archive...</div>
             ) : versions.length === 0 ? (
               <div className="p-8 text-center text-sm text-muted-foreground">No archived timetables found.</div>

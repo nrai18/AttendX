@@ -72,12 +72,39 @@ const COLORS = ['#74313A', '#D35C6D', '#EED3CF', '#7E2430', '#A94A57', '#C48189'
 export const ReportView: React.FC = () => {
   const navigate = useNavigate();
   const { subjects, activeSemesterId, events } = useAttendanceStore();
-  const [logs, setLogs] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [logs, setLogs] = useState<any[]>(() => {
+    return useCacheStore.getState().all_logs || useAttendanceStore.getState().historyLogs || [];
+  });
+  const [loading, setLoading] = useState(() => {
+    const cached = useCacheStore.getState().all_logs || useAttendanceStore.getState().historyLogs;
+    return !cached || cached.length === 0;
+  });
 
   useEffect(() => {
     const fetchLogs = async () => {
-      if (!activeSemesterId) return;
+      const cacheStore = useCacheStore.getState();
+      const attState = useAttendanceStore.getState();
+      const cachedLogs = cacheStore.all_logs || (attState.historyLogs?.length ? attState.historyLogs : null);
+      if (cachedLogs && Array.isArray(cachedLogs) && cachedLogs.length > 0) {
+        setLogs(cachedLogs);
+        setLoading(false);
+      }
+
+      const effectiveSemId = activeSemesterId || attState.activeSemesterId;
+      if (!effectiveSemId) {
+        // Fix fatal early return: always unset loading so spinner does not spin forever
+        setLoading(false);
+        return;
+      }
+
+      if (typeof navigator !== 'undefined' && !navigator.onLine) {
+        if (!cachedLogs && attState.historyLogs?.length) {
+          setLogs(attState.historyLogs);
+        }
+        setLoading(false);
+        return;
+      }
+
       try {
         const res = await api.get('/attendance/logs');
         const data = res.data?.logs || [];
@@ -85,9 +112,9 @@ export const ReportView: React.FC = () => {
         useCacheStore.getState().setCache('all_logs', data);
       } catch (err) {
         console.error(err);
-        const cached = useCacheStore.getState().all_logs;
+        const cached = useCacheStore.getState().all_logs || attState.historyLogs;
         if (cached) {
-           setLogs(cached);
+          setLogs(cached);
         }
       } finally {
         setLoading(false);

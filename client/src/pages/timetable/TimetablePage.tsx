@@ -613,7 +613,7 @@ export const TimetablePage = () => {
                 title="View Archived Timetables"
                 className="flex items-center gap-1.5 bg-secondary/30 hover:bg-secondary/50 text-secondary-foreground border border-border px-3.5 py-2 rounded-xl text-xs font-semibold transition-colors cursor-pointer"
               >
-                <img src="/src/assets/archive.svg" alt="Archive" className="w-3.5 h-3.5 dark:invert opacity-70" />
+                <Archive className="w-3.5 h-3.5 opacity-70" />
                 <span className="hidden sm:inline">Archived</span>
               </button>
 
