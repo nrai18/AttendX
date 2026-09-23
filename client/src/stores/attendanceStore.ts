@@ -81,7 +81,7 @@ export const useAttendanceStore = create<AttendanceState>()(
   events: [],
   hasActiveSemester: false,
   activeSemesterId: null,
-  isLoading: true,
+  isLoading: false,
   simulationBounds: null,
   fetchStats: async (background = false) => {
     // Only show loading if we don't have any cached subjects
@@ -137,8 +137,8 @@ export const useAttendanceStore = create<AttendanceState>()(
       }
 
       // 1. Process Subject Stats
-      let rawSubjects = [];
-      let simulationBounds = null;
+      let rawSubjects = get().subjects || [];
+      let simulationBounds = get().simulationBounds || null;
       if (statsRes.status === 'fulfilled') {
         if (Array.isArray(statsRes.value.data)) {
           rawSubjects = statsRes.value.data;
@@ -177,7 +177,7 @@ export const useAttendanceStore = create<AttendanceState>()(
       const overallPercentage = totalClasses > 0 ? (totalAttended / totalClasses) * 100 : 0;
 
       // 2. Process Detailed Attendance History Logs
-      let historyLogs: AttendanceHistoryEntry[] = [];
+      let historyLogs: AttendanceHistoryEntry[] = get().historyLogs || [];
       if (logsRes.status === 'fulfilled') {
 
         // --- SILENTLY CACHE FOR OFFLINE SUBJECT DETAIL PAGE ---
@@ -210,7 +210,7 @@ export const useAttendanceStore = create<AttendanceState>()(
       }
 
       // 3. Process Calendar Events & Holidays
-      let events: CalendarEventEntry[] = [];
+      let events: CalendarEventEntry[] = get().events || [];
       if (eventsRes.status === 'fulfilled') {
         const rawEvents = Array.isArray(eventsRes.value.data) ? eventsRes.value.data : [];
         events = rawEvents.map((ev: any) => ({
@@ -263,6 +263,11 @@ export const useAttendanceStore = create<AttendanceState>()(
     {
       name: "attendx-attendance-cache",
       storage: createJSONStorage(() => capacitorStorage),
+      onRehydrateStorage: () => (state) => {
+        if (state) {
+          state.isLoading = false;
+        }
+      },
       partialize: (state) => ({
         overallPercentage: state.overallPercentage,
         targetPercentage: state.targetPercentage,

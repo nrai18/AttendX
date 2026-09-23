@@ -7,6 +7,7 @@ export const API_BASE_URL = import.meta.env.VITE_API_URL || "/api";
 export const api = axios.create({
   baseURL: API_BASE_URL,
   withCredentials: true, // Send httpOnly refresh cookies automatically
+  timeout: 6000,
 });
 
 // Helper to check token expiration
@@ -95,6 +96,11 @@ api.interceptors.request.use(
     let token = useAuthStore.getState().accessToken;
 
     if (token && isTokenExpired(token)) {
+      if (typeof navigator !== 'undefined' && !navigator.onLine) {
+        // When offline, DO NOT attempt /auth/refresh (which deadlocks offline requests); bypass refresh and let cached/offline requests proceed
+        config.headers.Authorization = `Bearer ${token}`;
+        return config;
+      }
       if (!isRefreshing) {
         isRefreshing = true;
         try {
@@ -208,7 +214,8 @@ api.interceptors.response.use(
       if (originalRequest && !originalRequest.headers['X-Offline-Retry'] &&
           ['post', 'put', 'delete', 'patch'].includes(originalRequest.method?.toLowerCase()) && 
           !originalRequest.url?.includes('/auth/') &&
-          !originalRequest.url?.includes('/sync/')) {
+          !originalRequest.url?.includes('/sync/') &&
+          !originalRequest.url?.includes('/ai/')) {
           
           let parsedData = undefined;
           try { parsedData = originalRequest.data ? JSON.parse(originalRequest.data) : undefined; } catch(e) {}

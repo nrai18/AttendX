@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { api } from '../lib/api';
 import { useAuthStore } from '../stores/authStore';
 import { useCacheStore } from '../stores/cacheStore';
+import { useOfflineStore } from '../stores/offlineStore';
 
 export const useBackgroundSync = () => {
   const { isAuthenticated } = useAuthStore();
@@ -16,6 +17,13 @@ export const useBackgroundSync = () => {
       const performSync = async () => {
         try {
           console.log("[BackgroundSync] Starting global offline pre-fetch...");
+          
+          // 0. Flush any pending offline mutations first
+          try {
+             await useOfflineStore.getState().flushQueue();
+          } catch(e) {
+             console.error("Failed to flush offline queue", e);
+          }
           
           // 1. Fetch active semester
           const semRes = await api.get("/semesters/active");
