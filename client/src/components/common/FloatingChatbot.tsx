@@ -27,7 +27,9 @@ import {
   Search,
   Compass,
   Activity,
-  AlertTriangle
+  AlertTriangle,
+  Plus,
+  AudioLines
 } from "lucide-react";
 import { FormattedChatMessage } from "./FormattedChatMessage";
 import { VoiceModeOverlay } from "./VoiceModeOverlay";
@@ -684,15 +686,6 @@ export const FloatingChatbot: React.FC = () => {
 
               {/* Action Buttons */}
               <div className="flex items-center gap-1.5 text-muted-foreground">
-                {/* Voice Call Mode Button */}
-                <button
-                  onClick={() => setIsVoiceOpen(true)}
-                  className="flex items-center gap-1 text-[11px] font-bold bg-primary/15 hover:bg-primary/25 text-primary dark:text-primary-foreground border border-primary/30 px-2.5 py-1 rounded-none transition-all cursor-pointer shadow-xs"
-                  title="Talk with AI using voice"
-                >
-                  <Mic className="w-3.5 h-3.5 text-fuchsia-500 animate-pulse" />
-                  <span className="hidden sm:inline">Voice Mode</span>
-                </button>
 
                 {messages.length > 0 && (
                   <button
@@ -989,34 +982,26 @@ export const FloatingChatbot: React.FC = () => {
               )}
             </div>
 
-            {/* Bottom Composer Bar */}
-            <div className="p-3.5 border-t border-primary/10 dark:border-black dark:border-white bg-white/80 dark:bg-[#11172a]/80 backdrop-blur-md">
+            {/* Gemini-style Bottom Composer Pill */}
+            <div className="p-3 bg-gradient-to-t from-background/90 to-transparent pb-4">
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
                   handleSendMessage();
                 }}
-                className="relative flex items-center gap-2"
+                className="relative flex items-center gap-2 bg-[#1b1b1b] dark:bg-[#1a1a24] rounded-[24px] px-2 py-1.5 shadow-[0_0_15px_rgba(0,0,0,0.1)] dark:shadow-[0_0_15px_rgba(0,0,0,0.5)] mx-1 border border-white/10"
               >
-                {/* Voice Dictation Mic Button */}
-                <button
-                  type="button"
-                  onClick={toggleMic}
-                  className={`w-9 h-9 rounded-none flex items-center justify-center transition-all cursor-pointer shrink-0 shadow-xs ${
-                    isListeningMic
-                      ? "bg-rose-500 text-white animate-pulse shadow-rose-500/30"
-                      : "bg-primary/10 hover:bg-primary/20 text-primary dark:text-primary-foreground border border-primary/20"
-                  }`}
-                  title={isListeningMic ? "Listening... click to stop" : "Speak to AI (Microphone)"}
-                >
-                  <Mic className="w-4 h-4" />
-                </button>
+                {/* Plus icon on the left */}
+                <div className="pl-3 pr-1 text-muted-foreground/70">
+                  <Plus className="w-5 h-5 text-gray-400" />
+                </div>
 
-                <div className="relative flex-1">
+                <div className="flex-1">
                   <input
                     ref={inputRef}
                     type="text"
                     value={input}
+                    placeholder="Ask Gemini"
                     onChange={(e) => {
                       setInput(e.target.value);
                       lastInputMethodRef.current = 'text';
@@ -1026,19 +1011,46 @@ export const FloatingChatbot: React.FC = () => {
                         lastInputMethodRef.current = 'text';
                       }
                     }}
-                    
-                    className="w-full bg-muted/50 border border-primary/20 focus:border-primary focus:outline-none rounded-none pl-3.5 pr-10 py-2.5 text-xs text-foreground transition-all shadow-inner"
+                    className="w-full bg-transparent text-sm text-white focus:outline-none placeholder:text-gray-400 py-2"
                     disabled={isLoading}
                   />
+                </div>
 
-                  <button
-                    type="submit"
-                    disabled={!input.trim() || isLoading}
-                    className="absolute right-1.5 top-1/2 -translate-y-1/2 w-7 h-7 rounded-none bg-primary hover:opacity-90 disabled:opacity-30 text-white flex items-center justify-center transition-all cursor-pointer shadow-xs"
-                    title="Send"
-                  >
-                    <Send className="w-3.5 h-3.5" />
-                  </button>
+                {/* Right Actions */}
+                <div className="flex items-center gap-1 pr-1">
+                  {input.trim() ? (
+                    <button
+                      type="submit"
+                      disabled={isLoading}
+                      className="w-9 h-9 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center hover:bg-blue-500/30 transition-colors cursor-pointer"
+                      title="Send"
+                    >
+                      <Send className="w-4 h-4" />
+                    </button>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        onClick={toggleMic}
+                        className={`w-9 h-9 rounded-full flex items-center justify-center transition-all cursor-pointer ${
+                          isListeningMic
+                            ? "bg-rose-500/20 text-rose-500 animate-pulse"
+                            : "hover:bg-white/10 text-gray-400 hover:text-white"
+                        }`}
+                        title={isListeningMic ? "Listening..." : "Speech to text"}
+                      >
+                        <Mic className="w-4.5 h-4.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setIsVoiceOpen(true)}
+                        className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-white/10 text-blue-400 hover:text-blue-300 transition-colors cursor-pointer"
+                        title="Live Voice Mode"
+                      >
+                        <AudioLines className="w-4.5 h-4.5" />
+                      </button>
+                    </>
+                  )}
                 </div>
               </form>
             </div>
