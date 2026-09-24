@@ -1,9 +1,11 @@
 import React from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { useSilentRefresh } from "./hooks/useSilentRefresh";
+import { useBackgroundSync } from "./hooks/useBackgroundSync";
 import { useTheme } from "./hooks/useTheme";
 import { useAuthStore } from "./stores/authStore";
 import { useThemeStore } from "./stores/themeStore";
+import { useCacheStore } from "./stores/cacheStore";
 import { AppShell } from "./components/layout/AppShell";
 import { LoginPage } from "./pages/auth/LoginPage";
 import { SignupPage } from "./pages/auth/SignupPage";
@@ -39,16 +41,13 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({
   return <>{children}</>;
 };
 
-
-// ... [Keep existing placeholders] ...
-
 import { WebSplashScreen } from "./components/common/WebSplashScreen";
 import { SettingsPage } from "./pages/settings/SettingsPage";
 import { AssignmentsPage } from "./pages/assignments/AssignmentsPage";
 import { ReportView } from "./pages/reports/ReportView";
 import { PredictiveAttendancePage } from "./pages/attendance/PredictiveAttendancePage";
 import { Toaster } from "sonner";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 import { LandingPage } from "./pages/marketing/LandingPage";
 import { PrivacyPage } from "./pages/marketing/PrivacyPage";
@@ -67,29 +66,14 @@ import { NotificationService } from "./services/NotificationService";
 import { OTAUpdateModal } from "./components/common/OTAUpdateModal";
 import { CapacitorUpdater } from "@capgo/capacitor-updater";
 import { Capacitor } from "@capacitor/core";
-import { useEffect } from "react";
 
 import { NotFoundPage } from "./pages/NotFoundPage";
-
 import { HardwareBackButtonHandler } from "./components/common/HardwareBackButtonHandler";
-
 import { api } from "./lib/api";
-
-const useSessionPoller = () => {
-  const { isAuthenticated } = useAuthStore();
-  useEffect(() => {
-    if (!isAuthenticated) return;
-    const interval = setInterval(() => {
-      // Pinging a lightweight route; if 401, axios interceptor auto-logs out
-      api.get("/users/sessions").catch(() => {});
-    }, 10000);
-    return () => clearInterval(interval);
-  }, [isAuthenticated]);
-};
 
 export function App() {
   useSilentRefresh();
-    
+  useBackgroundSync();
   useTheme();
   const theme = useThemeStore((state) => state.theme);
   // We want the Lottie splash screen to play on mobile devices (web and native)
@@ -108,7 +92,6 @@ export function App() {
   useEffect(() => {
     const initServices = async () => {
       try {
-        
         if (Capacitor.isNativePlatform()) {
           await CapacitorUpdater.notifyAppReady();
           try {
@@ -134,8 +117,36 @@ export function App() {
           } catch(e) {}
         }
 
-        await NotificationService.init();
-        await NotificationService.autoScheduleFromTimetable();
+        try {
+          await NotificationService.init();
+        } catch (e) {
+          console.error("Failed to init NotificationService", e);
+        }
+
+        try {
+          await NotificationService.autoScheduleFromTimetable();
+        } catch (e) {
+          console.error("Failed to auto-schedule timetable notifications", e);
+        }
+
+        try {
+          await NotificationService.scheduleAssignmentReminders();
+        } catch (e) {
+          console.error("Failed to schedule assignment reminders", e);
+        }
+
+        try {
+          const reminderFreq = useCacheStore.getState().reminderFrequency || { type: 'Daily' };
+          NotificationService.scheduleAcademicUpdates(reminderFreq).catch(console.error);
+        } catch (e) {
+          console.error("Failed to schedule academic updates", e);
+        }
+
+        // Instant Copilot Warmup ping to ensure 0-latency chat on start
+        api.post("/ai/chat", { text: "ping", warmup: true }).catch(() => {
+          // Silent catch if offline or server waking up
+        });
+
         // Silent ping to ML server to wake it up on boot (Render Free Tier)
         const mlUrl = import.meta.env.VITE_ML_API_URL;
         if (mlUrl) {
@@ -147,7 +158,7 @@ export function App() {
           fetch(`${mlUrl}/`).catch(() => {});
         }
       } catch (e) {
-        console.error("Failed to init NotificationService", e);
+        console.error("Unexpected error in initServices", e);
       }
     };
     initServices();
@@ -169,7 +180,7 @@ export function App() {
       />
       {Capacitor.isNativePlatform() && (
         <OTAUpdateModal
-          localVersion={localStorage.getItem("app_version") || import.meta.env.VITE_APP_VERSION || "4.0"}
+          localVersion={localStorage.getItem("app_version") || import.meta.env.VITE_APP_VERSION || "4.1.0"}
         />
       )}
       {splashFinished && (
@@ -207,7 +218,7 @@ export function App() {
               <Route path="/classrooms" element={<ClassroomsPage />} />
               <Route path="/classrooms/:id" element={<ClassroomFeedPage />} />
               <Route path="/settings" element={<SettingsPage />} />
-            <Route path="/assignments" element={<AssignmentsPage />} />
+              <Route path="/assignments" element={<AssignmentsPage />} />
               <Route path="/report" element={<ReportView />} />
               <Route path="*" element={<NotFoundPage />} />
             </Route>
@@ -222,6 +233,3 @@ export function App() {
 }
 
 export default App;
-
-
-

@@ -15,6 +15,7 @@ export interface ChangelogSection {
 
 export interface Release {
   version: string;
+  date?: string;
   sizeMb?: number;
   sections: ChangelogSection[];
 }
@@ -76,11 +77,16 @@ export const ChangelogModal = ({
                 <div key={release.version} className="relative pl-6 border-l-2 border-border/50">
                   <div className={`absolute -left-[9px] top-1 w-4 h-4 rounded-full border-4 border-card ${i === 0 ? "bg-primary" : "bg-muted-foreground/30"}`} />
                   
-                  <div className="mb-4">
+                  <div className="mb-4 flex items-center justify-between">
                     <h3 className="text-xl font-bold flex items-center gap-2 text-foreground">
                       Version {release.version}
                       {i === 0 && <span className="text-[10px] uppercase tracking-wider font-bold bg-primary/10 text-primary px-2 py-0.5 rounded-full">Latest</span>}
                     </h3>
+                    {release.date && (
+                      <span className="text-xs font-medium text-muted-foreground bg-muted/30 px-2 py-1 rounded-md border border-border/40">
+                        {release.date}
+                      </span>
+                    )}
                   </div>
 
                   <div className="space-y-4">

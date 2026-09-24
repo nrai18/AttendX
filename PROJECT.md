@@ -1,92 +1,107 @@
-# Project: AttendX Code Review, Offline-Sync, Notifications & Backup Audit
+# Project: AttendX Custom ML Copilot, Forecast Engine, Security Tiering & Offline Fixes
 
 ## Architecture
-- **Client**: React 18, TypeScript, TailwindCSS, Zustand stores, Capacitor 6 (Android native runtime), Axios HTTP client.
-- **Server**: Node.js, Express, TypeScript, Prisma ORM 7.9, PostgreSQL.
-- **Data Flow**:
-  - Offline mutations are intercepted in `client/src/lib/api.ts` and queued in `offlineStore.ts` via Capacitor Preferences.
-  - When online, `offlineStore.ts` flushes requests to Express backend and updates Zustand caches.
-  - Notifications are scheduled via `@capacitor/local-notifications` in `NotificationService.ts`.
-  - Backups and data exports are handled via `client/src/lib/download.ts`, `data.service.ts`, and `timetable.service.ts`.
+- **Client**: React 19, TypeScript, TailwindCSS 4, Zustand 5 stores, Capacitor 6 (Android native runtime), Axios HTTP client.
+- **Server**: Node.js v24, Express, TypeScript, Prisma ORM 7.9, PostgreSQL.
+- **Custom ML Architecture (Zero External Token Usage)**:
+  - Embedded local ML classifier and rule/slot extraction engine in `server/src/services/custom_ml_copilot.service.ts` and `predictive_rag.service.ts`.
+  - Zero external API tokens for Copilot chat and Forecast calculations.
+  - Instant warm-up on server boot and client boot.
+  - Strictly preserves external Gemini API (`@google/genai` with `gemini-3.8-flash`) for:
+    1. Academic Calendar document parsing (`server/src/services/calendar_rag.service.ts`)
+    2. Timetable OCR parsing (`server/src/services/timetable.service.ts`)
+- **Context Injection Pipeline**:
+  - React frontend captures `{ text, currentRoute, selectedItems, localTime }` alongside user context.
+  - Backend rigidly constructs the bracketed prompt:
+    `[SYSTEM_IDENTITY]`, `[GLOBAL_APP_STATE]`, `[USER_PROFILE]`, `[CLIENT_SESSION_STATE]`, `[USER_COMMAND]`, `[EXECUTION_RULES]`.
+- **Security Tiering & Execution**:
+  - ML Copilot NEVER writes directly to PostgreSQL database.
+  - Strict JSON mutation array outputs: `actions: [{ id, type, isDestructive, requiresConfirmation, target, description, payload }]`.
+  - Tier 1 (Safe): Immediate execution.
+  - Tier 2 (Destructive): Returns `CONFIRMATION_REQUIRED: true` flag. React UI renders Confirmation Card; action only executes on explicit user tap.
+- **Offline Data Resilience**:
+  - Axios client timeout prevents silent deadlocks on mobile WebViews.
+  - Cached state hydration from Capacitor Preferences and Zustand stores guarantees graceful offline loading for Semester Overview, Forecast Page, Reports Page, and Archived Timetable.
 
 ## Feature Inventory
-| # | Feature / Defect | Description | Milestone | Source |
+| # | Feature / Deliverable | Description | Milestone | Source |
 |---|---|---|---|---|
-| 1 | Axios Interceptor Payload Loss | `JSON.parse` crashes on objects in `api.ts`, enqueueing `undefined` data | M1 | Survey Explorer 1 |
-| 2 | Out-of-Order Queue & 500 Lock | Network retry loop doesn't break; 500 errors never dequeue | M1 | Survey Explorer 1 |
-| 3 | Attendance Stats Permanent Freeze | `isDirty` flag permanently locks stats updates if queue is stuck | M1 | Survey Explorer 1 |
-| 4 | Cross-User Queue Leak on Logout | `logout()` does not clear offline queue, leaking mutations to next user | M1 | Survey Explorer 1 |
-| 5 | SubjectDetailPage Optimistic Clobber | `handleMarkAttendance` doesn't update cache, causing instant revert | M1 | Survey Explorer 1 |
-| 6 | CalendarPage Day Cells Overwrite | Offline guard preserves details but lets stale GET overwrite days | M1 | Survey Explorer 1 |
-| 7 | Backend Temp ID Deletion Failure | `deleteMany` with `temp-...` ID fails to delete record | M1 | Survey Explorer 1 |
-| 8 | Assignment Store Offline Corruption | Bare temporary items stripped of title/due date; toggle fails | M1 | Survey Explorer 1 |
-| 9 | Timetable Peer Sync Cache Invalidation | Peer sync does not invalidate cache or fire update events | M1 | Survey Explorer 1 |
-| 10 | Cold Start Notification Hydration Race | App startup runs before async storage hydration, skipping timetable alerts | M2 | Survey Explorer 2 |
-| 11 | Timetable Edit/Import Race Condition | Event dispatched before `fetchData` completes, scheduling stale slots | M2 | Survey Explorer 2 |
-| 12 | Background Auto-Unmute Timer Failure | `setTimeout` dies when WebView is backgrounded, leaving phone muted | M2 | Survey Explorer 2 |
-| 13 | Notification ID Collisions & Leakage | Random IDs collide with static IDs; reschedule leaks holiday/birthday alarms | M2 | Survey Explorer 2 |
-| 14 | Missing Notification Cancel on Logout | User alarms remain active on device after account logout | M2 | Survey Explorer 2 |
-| 15 | Android 13+ & Exact Alarm Handling | Missing permissions check and exact alarm settings handling | M2 | Survey Explorer 2 |
-| 16 | Weekly/Monthly Summary Boundary Bugs | Week 0 offset skips 28 days; 31st overflow corrupts monthly calendar | M2 | Survey Explorer 2 |
-| 17 | Settings Notification Toggles & Visibility | Hiding timetable alerts and toggles failing to trigger reschedule | M2 | Survey Explorer 2 |
-| 18 | Document Download BOLA / IDOR | `downloadDocument` lacks user ownership check | M3 | Survey Explorer 3 |
-| 19 | Timetable Import Missing Transaction | Deactivation without transaction causes permanent corruption on error | M3 | Survey Explorer 3 |
-| 20 | Timetable Deduplication Data Loss | Deduplication key drops valid multi-slot classes on same day | M3 | Survey Explorer 3 |
-| 21 | Multi-Store Desync Post-Import | `SettingsPage` doesn't invalidate API caches, causing stale views | M3 | Survey Explorer 3 |
-| 22 | Foreign Key Violation on Semester Wipe | `Subject` deletion fails on `TimetableOverride.subjectId` FK constraint | M3 | Survey Explorer 3 |
-| 23 | Status Type Loss in CSV Export/Import | `medical`, `od`, `cancelled` collapsed to "present" | M3 | Survey Explorer 3 |
-| 24 | Download Helper Unawaited Promise & Leak | `FileReader` promise not awaited; `URL.createObjectURL` leaked | M3 | Survey Explorer 3 |
-| 25 | File Input Reset & Android SAF MIME Filter | Inability to re-select same file and `.json` filter grayed out on Android | M3 | Survey Explorer 3 |
-| 26 | Master Audit Report Compilation | Comprehensive Markdown report `audit_report.md` documenting all bugs & fixes | M4 | Master Request R3 |
-| 27 | Build & Capacitor Verification | Verify `client` and `server` compile cleanly with no regressions | M4 | Master Request R3 |
+| 1 | Custom Copilot ML Intent Classifier | Zero-token local ML classifier handling 6 core intents (`MARK_ATTENDANCE`, `SIMULATE_ATTENDANCE`, `NAVIGATE_APP`, `SHIFT_TIMETABLE`, `KNOWLEDGE_BASE`, `OUT_OF_SCOPE`) | M1 | ORIGINAL_REQUEST R1 |
+| 2 | Custom Zero-Token Forecast Engine | Statistical predictive attendance model replacing Gemini in `predictive_rag.service.ts` | M1 | ORIGINAL_REQUEST R1 |
+| 3 | Instant Copilot Warmup on Boot | Server pre-caches vocabulary and client pre-warms Copilot on startup in `App.tsx` | M1 | ORIGINAL_REQUEST R1 |
+| 4 | Gemini Preservation Verification | Ensure `calendar_rag.service.ts` and `timetable.service.ts` remain untouched with `gemini-3.8-flash` | M1 | ORIGINAL_REQUEST R1 |
+| 5 | Rich Client Context Extraction | Capture `{ text, currentRoute, selectedItems, localTime }` in `FloatingChatbot.tsx` | M2 | ORIGINAL_REQUEST R2 |
+| 6 | Rigid Bracketed Master Prompt Assembly | Backend formats exact prompt structure: `[SYSTEM_IDENTITY]`, `[GLOBAL_APP_STATE]`, `[USER_PROFILE]`, `[CLIENT_SESSION_STATE]`, `[USER_COMMAND]`, `[EXECUTION_RULES]` | M2 | ORIGINAL_REQUEST R2 |
+| 7 | Zero-Direct-DB-Write Enforcement | Sandboxed ML model emitting strictly JSON mutation arrays | M3 | ORIGINAL_REQUEST R3 |
+| 8 | Tiered Action Classification & UI Confirmation | Safe vs Destructive ActionPolicyMatrix; `CONFIRMATION_REQUIRED` flag triggers interactive UI cards | M3 | ORIGINAL_REQUEST R3 |
+| 9 | Axios Client Offline Timeout | Add 5000ms timeout to `api.ts` to prevent infinite hanging requests on disconnected WebViews | M4 | ORIGINAL_REQUEST R4 |
+| 10 | Semester Overview Offline Loading Fix | Resolve hydration race & offline fallback in `SemesterHubPage.tsx` | M4 | ORIGINAL_REQUEST R4 |
+| 11 | Forecast Page Offline Loading Fix | Fix `isLoading` initial lock and offline fallback in `PredictiveAttendanceView.tsx` | M4 | ORIGINAL_REQUEST R4 |
+| 12 | Reports Page Offline Loading Fix | Fix early return bug without `setLoading(false)` in `ReportView.tsx` | M4 | ORIGINAL_REQUEST R4 |
+| 13 | Archived Timetable Offline Loading Fix | Fix cache key mismatch and initial spinner in `ArchiveTimetableModal.tsx` | M4 | ORIGINAL_REQUEST R4 |
+| 14 | Server Test Runner Default Export Patch | Add `export default prisma;` to `server/src/lib/prisma.ts` | M5 | ORIGINAL_REQUEST R5 |
+| 15 | Chaos Test Suite Implementation | Implement comprehensive test suite covering voice commands, boundary cases, JSON adherence, latency, context retention | M5 | ORIGINAL_REQUEST R5 |
+| 16 | Evaluation Benchmark & Report | Run 1,000-query benchmark & chaos tests; generate `llm_eval_report.md` | M5 | ORIGINAL_REQUEST R5 |
 
 ## Milestones
 | # | Name | Scope | Dependencies | Status |
 |---|---|---|---|---|
-| M1 | Offline-Sync & Store Race Conditions | Fixes for items 1–9 (api.ts, offlineStore.ts, attendanceStore.ts, authStore.ts, SubjectDetailPage.tsx, CalendarPage.tsx, attendance.service.ts, assignmentStore.ts, PeerSyncModal.tsx) | none | DONE |
-| M2 | Notifications & Local Scheduling Audit | Fixes for items 10–17 (NotificationService.ts, App.tsx, TimetablePage.tsx, ringer.ts, authStore.ts, SettingsPage.tsx) | M1 | DONE |
-| M3 | Backup Import/Export & Data Integrity | Fixes for items 18–25 (document.controller.ts, timetable.service.ts, data.service.ts, SettingsPage.tsx, download.ts) | M1, M2 | DONE |
-| M4 | Master Audit Report & Build Verification | Generate `audit_report.md` with root cause analyses, code snippets, checklist of modified files; compile & test verification | M1, M2, M3 | DONE |
+| M1 | Custom Zero-Token ML Copilot & Forecast Engine | Implement local ML Copilot engine, statistical forecast engine, app boot warmup, preserve Gemini in calendar/timetable | none | DONE |
+| M2 | Context Injection Pipeline | Client `{ text, currentRoute, selectedItems, localTime }` payload and backend 6-bracket prompt assembly | M1 | DONE |
+| M3 | Security Tiering & Execution | JSON mutation arrays schema, ActionPolicyMatrix, `CONFIRMATION_REQUIRED` flag, and React UI confirmation cards | M1, M2 | DONE |
+| M4 | Fix Offline Infinite Loading Bugs | Axios timeout, Semester Overview, Forecast Page, Reports Page, and Archived Timetable offline persistence | none | DONE |
+| M5 | Chaos Testing, Evaluation & llm_eval_report.md | Server test fix, chaos test suite, benchmark_1000 execution, and `llm_eval_report.md` | M1, M2, M3, M4 | DONE |
 
 ## Interface Contracts
-### Offline Queue ↔ API Client
-- `enqueue({ method, url, data, headers })`: `data` MUST preserve actual payload object or string (never `undefined`).
-- `flushQueue()`: Must break on transient network errors, discard or limit retries on 500 errors, and keep FIFO order.
-- `attendanceStore.fetchStats()`: `isDirty` must only block stats if active pending marks for the active semester exist and queue has not permanently failed.
-- `authStore.logout()`: MUST purge `attendx-offline-queue` from Capacitor Preferences and localStorage.
+### Copilot Client ↔ Backend Pipeline
+- **Request Payload**:
+  ```typescript
+  {
+    message: string;
+    history?: Array<{ role: 'user' | 'assistant'; content: string }>;
+    currentRoute: string;
+    selectedItems?: any[];
+    localTime: string;
+    student_context?: Record<string, any>;
+  }
+  ```
+- **Backend Master Prompt Blueprint**:
+  - `[SYSTEM_IDENTITY]`: Role definition, assistant personality, AttendX capabilities.
+  - `[GLOBAL_APP_STATE]`: Timetable slots, enrolled subjects, attendance percentages, academic calendar events.
+  - `[USER_PROFILE]`: Student name, email, target percentage, semester info.
+  - `[CLIENT_SESSION_STATE]`: `currentRoute`, `selectedItems`, `localTime`, device connection status.
+  - `[USER_COMMAND]`: Exact raw user text or transcribed speech command.
+  - `[EXECUTION_RULES]`: Output schema constraints (strictly JSON mutation arrays), safety restrictions, zero hallucinated IDs.
+- **Response Format**:
+  ```typescript
+  {
+    reply: string;
+    actions: Array<{
+      id: string;
+      type: string;
+      category: 'READ' | 'WRITE' | 'CONFIG' | 'NAVIGATION';
+      isDestructive: boolean;
+      requiresConfirmation: boolean;
+      target: string;
+      description: string;
+      impact?: string;
+      payload: Record<string, any>;
+    }>;
+    requiresConfirmation?: boolean;
+  }
+  ```
 
-### Timetable / App ↔ NotificationService
-- `NotificationService.autoScheduleFromTimetable()`: MUST wait for store hydration or accept explicit activeSemesterId and slots.
-- `NotificationService.cancelAll()`: MUST be called on `authStore.logout()`.
-- Notification ID ranges:
-  - Timetable class reminders: `100000 + hash(slotId)`
-  - Morning class summary: `8800`
-  - Attendance low threshold: `8900`
-  - Periodic summary (Daily/Weekly/Monthly): `9000..9099`
-  - Auto-mute DND pinned notice: `8888`
-  - Holidays: `70000..70999`
-  - Birthdays: `71000..71999`
-
-### Document & Data Service ↔ Backup / Export
-- `downloadDocument`: MUST verify `doc.userId === req.user.userId`.
-- `importTimetable`: MUST execute inside `prisma.$transaction`.
-- Deduplication key: `${dateStr}_${subjectId}_${slotId || 'extra'}_${startTime || ''}`.
-
-## Code Layout
-- `client/src/lib/api.ts` — Axios instance, request/response interceptors, offline interceptor
-- `client/src/lib/download.ts` — Capacitor filesystem / browser download helper
-- `client/src/stores/offlineStore.ts` — Offline mutation queue and background sync
-- `client/src/stores/attendanceStore.ts` — Attendance tracking and statistics state
-- `client/src/stores/authStore.ts` — Authentication state, tokens, logout logic
-- `client/src/stores/assignmentStore.ts` — Assignments state and optimistic updates
-- `client/src/services/NotificationService.ts` — Local notifications scheduling and lifecycle
-- `client/src/services/ringer.ts` — DND auto-mute / unmute helper
-- `client/src/pages/attendance/CalendarPage.tsx` — Monthly attendance calendar
-- `client/src/pages/subjects/SubjectDetailPage.tsx` — Subject attendance logs
-- `client/src/pages/timetable/TimetablePage.tsx` — Timetable management
-- `client/src/pages/settings/SettingsPage.tsx` — Settings, notifications toggles, backup import/export
-- `client/src/components/sync/PeerSyncModal.tsx` — P2P timetable sync
-- `server/src/controllers/document.controller.ts` — Document download / access control
-- `server/src/services/attendance.service.ts` — Attendance marks and deletions
-- `server/src/services/timetable.service.ts` — Timetable import/export and transactions
-- `server/src/services/data.service.ts` — Full data backup and restore
+### Code Layout
+- `server/src/services/custom_ml_copilot.service.ts` — Embedded local ML classifier, slot extraction, intent resolution
+- `server/src/services/ai_chat.service.ts` — Copilot orchestration, rigid prompt assembly, delegation to custom ML
+- `server/src/services/predictive_rag.service.ts` — Zero-token statistical attendance forecast engine
+- `server/src/services/calendar_rag.service.ts` — Academic calendar multimodal document parsing (GEMINI PRESERVED)
+- `server/src/services/timetable.service.ts` — Timetable OCR extraction (GEMINI PRESERVED)
+- `client/src/components/common/FloatingChatbot.tsx` — Context capture, interactive confirmation cards, execution
+- `client/src/lib/api.ts` — Axios instance with timeout and offline error handling
+- `client/src/pages/semester/SemesterHubPage.tsx` — Semester overview offline loading
+- `client/src/components/attendance/PredictiveAttendanceView.tsx` — Forecast page offline loading
+- `client/src/pages/reports/ReportView.tsx` — Reports page offline loading
+- `client/src/pages/timetable/ArchiveTimetableModal.tsx` — Archived timetable offline loading
+- `server/src/tests/chaos_eval.test.ts` — Chaos testing and evaluation test suite
+- `llm_eval_report.md` — Comprehensive evaluation report
