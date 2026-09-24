@@ -23,6 +23,7 @@ interface AssignmentState {
   loading: boolean;
   fetchAssignments: () => Promise<void>;
   addAssignment: (data: Partial<Assignment>) => Promise<void>;
+  updateAssignment: (id: string, data: Partial<Assignment>) => Promise<void>;
   deleteAssignment: (id: string) => Promise<void>;
   toggleCompletion: (id: string) => Promise<void>;
 }
@@ -50,6 +51,9 @@ export const useAssignmentStore = create<AssignmentState>()(
         try {
           const res = await api.get("/assignments");
           set({ assignments: res.data });
+          import("../services/NotificationService")
+            .then(m => m.NotificationService.scheduleAssignmentReminders())
+            .catch(console.error);
         } catch (err) {
           console.error("Failed to fetch assignments", err);
         } finally {
@@ -60,22 +64,64 @@ export const useAssignmentStore = create<AssignmentState>()(
         try {
           const res = await api.post("/assignments", data);
           set({ assignments: [...get().assignments, res.data] });
+          import("../services/NotificationService")
+            .then(m => m.NotificationService.scheduleAssignmentReminders())
+            .catch(console.error);
         } catch (err) {
           console.error("Failed to add assignment", err);
+        }
+      },
+      updateAssignment: async (id, data) => {
+        try {
+          const res = await api.put(`/assignments/${id}`, data);
+          set({
+            assignments: get().assignments.map(a => a.id === id ? { ...a, ...res.data } : a)
+          });
+          import("../services/NotificationService")
+            .then(m => {
+              m.NotificationService.cancelAssignmentReminders(id);
+              return m.NotificationService.scheduleAssignmentReminders();
+            })
+            .catch(console.error);
+        } catch (err) {
+          console.error("Failed to update assignment", err);
         }
       },
       deleteAssignment: async (id) => {
         try {
           await api.delete(`/assignments/${id}`);
           set({ assignments: get().assignments.filter(a => a.id !== id) });
+          import("../services/NotificationService")
+            .then(m => {
+              m.NotificationService.cancelAssignmentReminders(id);
+              return m.NotificationService.scheduleAssignmentReminders();
+            })
+            .catch(console.error);
         } catch (err) {
           console.error("Failed to delete assignment", err);
         }
       },
       toggleCompletion: async (id) => {
         try {
-          await api.post(`/assignments/${id}/toggle`);
-          await get().fetchAssignments();
+          const res = await api.post(`/assignments/${id}/toggle`);
+          const completed = res.data?.completed;
+          set({
+            assignments: get().assignments.map(a => {
+              if (a.id !== id) return a;
+              return {
+                ...a,
+                completions: completed ? [{ id: 'local', assignmentId: id }] : []
+              };
+            })
+          });
+          import("../services/NotificationService")
+            .then(m => {
+              if (completed) {
+                m.NotificationService.cancelAssignmentReminders(id);
+              }
+              return m.NotificationService.scheduleAssignmentReminders();
+            })
+            .catch(console.error);
         } catch (err) {
           console.error("Failed to toggle completion", err);
         }

@@ -80,6 +80,9 @@ export const useAuthStore = create<AuthState>()(
           Preferences.remove({ key: k }).catch(() => {});
           localStorage.removeItem(k);
         });
+        import('../services/NotificationService')
+          .then(m => m.NotificationService.cancelAll())
+          .catch((err) => console.error('Failed to cancel notifications on logout:', err));
         set({
           user: null,
           accessToken: null,

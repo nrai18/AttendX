@@ -1,12 +1,12 @@
-﻿import React, { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { format, isPast, isToday } from "date-fns";
 import { useAssignmentStore } from "../../stores/assignmentStore";
-import { Plus, Check, Clock, AlertCircle } from "lucide-react";
+import { Plus, Check, Clock, AlertCircle, Trash2 } from "lucide-react";
 import { BottomNav } from "../../components/layout/BottomNav";
 import { AddAssignmentModal } from "./AddAssignmentModal";
 
 export function AssignmentsPage() {
-  const { assignments, fetchAssignments, toggleCompletion } = useAssignmentStore();
+  const { assignments, fetchAssignments, toggleCompletion, deleteAssignment } = useAssignmentStore();
   const [isAddOpen, setIsAddOpen] = useState(false);
 
   useEffect(() => {
@@ -66,6 +66,17 @@ export function AssignmentsPage() {
                   )}
                 </div>
               </div>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  deleteAssignment(assignment.id);
+                }}
+                className="text-muted-foreground hover:text-[#E63946] p-1.5 transition-colors self-center"
+                title="Delete assignment"
+                aria-label="Delete assignment"
+              >
+                <Trash2 size={16} />
+              </button>
             </div>
           ))
         )}
