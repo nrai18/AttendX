@@ -30,6 +30,164 @@ def get_message_content(m: Any) -> str:
         return str(m.get("content", ""))
     return ""
 
+# --- CHIT-CHAT & GREETING INTENT PATTERNS ---
+ACADEMIC_OR_ACTION_PATTERN = re.compile(
+    r"\b("
+    r"mark|attendance|present|absent|medical|leave|leaves|bunk|bunks|skip|skips|"
+    r"simulate|simulation|forecast|predict|predictive|"
+    r"ordinance|ordinances|policy|policies|regulation|regulations|rule|rules|"
+    r"75%|75\s*percent|70%|70\s*percent|55%|55\s*percent|30%|30\s*percent|"
+    r"l\s*grade|r\s*grade|i\s*grade|m\s*grade|abs\s*grade|"
+    r"timetable|schedule|reschedule|shift|slot|classes|class|lecture|lectures|"
+    r"subject|subjects|course|courses|credit|credits|cgpa|sgpa|gpa|"
+    r"holiday|holidays|calendar|exam|exams|midsem|endsem|assessment|"
+    r"mess|hostel|ragging|roll\s*call|curfew|on-duty|on\s*duty|od|"
+    r"condonation|relaxation|shortage|section\s*\d+|section\s*o"
+    r")\b",
+    re.IGNORECASE
+)
+
+GREETING_PATTERN = re.compile(
+    r"^\s*("
+    r"hi+|he+y+|hello+|heya|howdy|sup|yo|namaste|greetings|"
+    r"good\s+(morning|afternoon|evening|day|night)|"
+    r"how\s+(are|r)\s+(you|u|ya)|how\s+do\s+you\s+do|how('s|\s+is)\s+it\s+going|how\s+are\s+you\s+doing|what('s|\s+is)\s+up|whats\s+up|"
+    r"who\s+(are|r)\s+(you|u)|what\s+is\s+your\s+name|what('s|\s+is)\s+your\s+name|who\s+(made|created|built|developed)\s+(you|u)|"
+    r"what\s+can\s+you\s+do|tell\s+me\s+about\s+yourself|what\s+are\s+you|"
+    r"thank(s|\s+you|\s+u|\s+you\s+so\s+much)?|thx|appreciate\s+it|"
+    r"bye(\s+bye)?|goodbye|see\s+(you|ya)|cya|take\s+care|"
+    r"ok(ay)?|cool|nice|awesome|great"
+    r")[\s\.\?!]*$",
+    re.IGNORECASE
+)
+
+def is_chitchat_intent(query: str) -> bool:
+    """
+    Returns True if query is a pure greeting, well-being inquiry, identity question,
+    gratitude, or farewell, and does NOT contain academic policy or action keywords.
+    """
+    if not query or not query.strip():
+        return False
+    q = query.strip()
+
+    # Negative lookahead priority check:
+    # If query contains any action or academic policy keywords, return False immediately
+    if ACADEMIC_OR_ACTION_PATTERN.search(q):
+        return False
+
+    if GREETING_PATTERN.match(q):
+        return True
+
+    # Check query stripped of bot address tokens (e.g. "hey attendx", "hello copilot")
+    cleaned = re.sub(r"\b(attendx|copilot|ai|bot|assistant|there|friend|buddy|bro)\b", "", q, flags=re.IGNORECASE).strip()
+    cleaned = re.sub(r"[^\w\s]", "", cleaned).strip()
+    if GREETING_PATTERN.match(cleaned):
+        return True
+
+    return False
+
+def route_query_intent(state: ChatState) -> str:
+    """
+    Conditional routing edge for LangGraph StateGraph:
+    Checks if query is a chitchat / greeting intent.
+    If True -> returns 'chitchat' (bypassing vector retrieval).
+    Else -> returns 'retrieve' (proceeding with ordinance search).
+    """
+    messages = state.get("messages", [])
+    latest_msg = get_message_content(messages[-1]) if messages else ""
+    query = state.get("standalone_query") or latest_msg
+
+    if is_chitchat_intent(query) or is_chitchat_intent(latest_msg):
+        return "chitchat"
+    return "retrieve"
+
+def generate_chitchat_response(state: ChatState):
+    """
+    Dedicated Chit-Chat & Greeting Generation Node:
+    Extracts student telemetry and returns a warm, conversational response
+    adhering to [SYSTEM_IDENTITY] (AttendX AI, created by Naman Rai).
+    Strictly bypasses vector_store.search, returning citations: [] and context: ''.
+    """
+    student_context = state.get("student_context") or {}
+    user_name = student_context.get("user_name", "Student")
+    target_pct = student_context.get("target_percentage", 75)
+    overall_pct = student_context.get("overall_percentage")
+
+    messages = state.get("messages", [])
+    user_message = get_message_content(messages[-1]) if messages else ""
+    lower = user_message.lower().strip()
+
+    reply = None
+
+    # 1. Fast deterministic responses for standard greetings and identity inquiries
+    if re.search(r"\b(who (made|created|built|developed) you)\b", lower):
+        reply = "I am AttendX AI, created and developed by Naman Rai as your intelligent in-app academic companion and policy advisor for IIIT Una."
+    elif re.search(r"\b(who (are|r) you|what is your name|what('s| is) your name)\b", lower):
+        reply = (
+            f"Hello {user_name}! I am AttendX AI, your intelligent academic companion and policy advisor for IIIT Una, "
+            f"created by Naman Rai. I help you track attendance, calculate safe bunks, manage your schedule, and navigate institute rules."
+        )
+    elif re.search(r"\b(what can you do|how can you help|tell me about yourself)\b", lower):
+        reply = (
+            f"As your AttendX AI companion, I can help you monitor your attendance percentages, "
+            f"simulate the impact of missed or attended classes, mark daily attendance, adjust your timetable, "
+            f"and answer questions about official IIIT Una academic ordinances."
+        )
+    elif re.search(r"\b(how (are|r) (you|u|ya)|how do you do|what('s|s) up|how('s| is) it going|how are you doing)\b", lower):
+        reply = f"I'm doing great, {user_name}! Ready to help you stay ahead of your attendance goals. How are you doing today?"
+    elif re.search(r"\b(thank|thanks|thx|appreciate)\b", lower):
+        reply = f"You're very welcome, {user_name}! Feel free to ask whenever you need help with your attendance or classes."
+    elif re.search(r"\b(bye|goodbye|see (you|ya)|cya|take care)\b", lower):
+        reply = f"Goodbye, {user_name}! Have a wonderful day and stay on top of your attendance goals!"
+    elif re.search(r"\b(good morning)\b", lower):
+        if overall_pct is not None:
+            reply = f"Good morning, {user_name}! Your overall attendance stands at {overall_pct}% (target: {target_pct}%). How can I assist you with your day?"
+        else:
+            reply = f"Good morning, {user_name}! I'm AttendX AI. How can I assist you with your classes or schedule today?"
+    elif re.search(r"\b(good afternoon|good evening|good day)\b", lower):
+        reply = f"Good day, {user_name}! How can I help you with your attendance or timetable today?"
+    elif re.search(r"^(hi+|he+y+|hello+|heya|howdy|sup|yo|namaste)", lower):
+        if overall_pct is not None:
+            reply = f"Hello {user_name}! I'm AttendX AI. Your current overall attendance is {overall_pct}% against your {target_pct}% target. What can I do for you today?"
+        else:
+            reply = f"Hello {user_name}! I'm AttendX AI, your personal academic companion created by Naman Rai. How can I help you today?"
+
+    # 2. Generative fallback using Gemini (zero ordinances, pure conversational persona)
+    if not reply:
+        api_key = os.environ.get("GEMINI_API_KEY", "")
+        if api_key:
+            client = genai.Client(api_key=api_key)
+            chitchat_prompt = (
+                "You are AttendX AI, a warm and polite academic companion created by Naman Rai for IIIT Una students.\n"
+                f"Student Name: {user_name}\n"
+                "Instructions: Respond conversationally and warmly in under 50 words. "
+                "Do NOT quote any regulations, ordinances, or legal sections. Strictly keep it conversational and friendly.\n\n"
+                f"Student: {user_message}\n"
+                "AttendX AI:"
+            )
+            for model_name in ['gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.1-pro-preview', 'gemini-3.6-flash']:
+                try:
+                    response = client.models.generate_content(
+                        model=model_name,
+                        contents=chitchat_prompt,
+                    )
+                    if response and response.text:
+                        reply = response.text.strip()
+                        break
+                except Exception:
+                    continue
+
+    # 3. Clean conversational fallback if API is unreachable
+    if not reply:
+        reply = f"Hello {user_name}! I'm AttendX AI, your personal academic companion created by Naman Rai. How can I help you today with your attendance or timetable?"
+
+    return {
+        "messages": [{"role": "assistant", "content": reply}],
+        "citations": [],
+        "actions": [],
+        "context": "",
+    }
+
 def reformulate_query(state: ChatState):
     """
     Step 1 (History-Aware Question Reformulation):
@@ -44,6 +202,10 @@ def reformulate_query(state: ChatState):
     
     # If there is no prior chat history, no reformulation needed
     if len(messages) <= 1:
+        return {"standalone_query": latest_user_message}
+    
+    # If the user query is already a greeting/chit-chat intent, bypass LLM reformulation
+    if is_chitchat_intent(latest_user_message):
         return {"standalone_query": latest_user_message}
     
     api_key = os.environ.get("GEMINI_API_KEY", "")
@@ -283,16 +445,28 @@ def generate_policy_response(state: ChatState):
             
     return {"messages": [{"role": "assistant", "content": answer_text}], "citations": final_citations, "actions": parsed_actions}
 
-# Construct the Multi-Node LangGraph RAG Workflow
+# Construct the Multi-Node LangGraph Workflow
 graph_builder = StateGraph(ChatState)
 graph_builder.add_node("reformulate", reformulate_query)
+graph_builder.add_node("chitchat", generate_chitchat_response)
 graph_builder.add_node("retrieve", retrieve_ordinance_context)
 graph_builder.add_node("generate", generate_policy_response)
 
-# Workflow edges: START -> reformulate -> retrieve -> generate -> END
+# Workflow edges:
+# START -> reformulate -[route_query_intent]-> chitchat -> END
+#                                            -> retrieve -> generate -> END
 graph_builder.add_edge(START, "reformulate")
-graph_builder.add_edge("reformulate", "retrieve")
+graph_builder.add_conditional_edges(
+    "reformulate",
+    route_query_intent,
+    {
+        "chitchat": "chitchat",
+        "retrieve": "retrieve",
+    },
+)
+graph_builder.add_edge("chitchat", END)
 graph_builder.add_edge("retrieve", "generate")
 graph_builder.add_edge("generate", END)
 
 chatbot = graph_builder.compile()
+

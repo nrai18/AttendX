@@ -1,10 +1,12 @@
 import { prisma } from "../lib/prisma";
 import { TimetableService } from "./timetable.service";
 import bcrypt from "bcryptjs";
+import { EmailService } from "./email.service";
 
 export class UserService { 
 
   static async deleteAccount(userId: string) {
+    const user = await prisma.user.findUnique({ where: { id: userId } });
     const fsPromises = require('fs/promises');
     const path = require('path');
 
@@ -28,6 +30,10 @@ export class UserService {
 
     // 4. Delete the user (this cascades to mostly everything else like attendance, subjects, etc.)
     await prisma.user.delete({ where: { id: userId } });
+
+    if (user && user.email) {
+      EmailService.sendAccountDeletionEmail(user.email, user.name || "User").catch(console.error);
+    }
   }
 
   static async getProfile(userId: string) {

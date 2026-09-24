@@ -88,13 +88,12 @@ export async function getDeviceDetails(req: any) {
      // Instead of generic 'AttendX App', use the actual physical phone model (e.g. Galaxy S23) if available
      const versionStr = appVersion ? ` ${appVersion}` : '';
      
-     let finalDeviceString = hardwareModel;
+     let finalDeviceString = (hardwareModel && hardwareModel !== 'Native Device') ? hardwareModel : null;
      if (hardwareModel && hardwareModel.includes('::')) {
        try {
          const [manufacturer, rawModel] = hardwareModel.split('::');
          const marketName = getModelName(rawModel);
          
-         // The library returns the raw string itself if it's not found in the dictionary
          if (marketName && marketName !== rawModel) {
            finalDeviceString = marketName;
          } else {
@@ -104,6 +103,15 @@ export async function getDeviceDetails(req: any) {
        } catch (error) {
          console.error('Device parsing failed:', error);
        }
+     }
+     
+     // Fallback to UA string parser if Capacitor plugin failed (e.g. OTA update without native plugin)
+     if (!finalDeviceString || finalDeviceString === 'Native Device') {
+        if (result.device.vendor && result.device.model) {
+            finalDeviceString = `${result.device.vendor} ${result.device.model}`;
+        } else if (result.device.model) {
+            finalDeviceString = result.device.model;
+        }
      }
      
      browser = finalDeviceString ? `AttendX${versionStr} (${finalDeviceString})` : `AttendX Native App${versionStr}`;

@@ -1,139 +1,200 @@
-import { GoogleGenAI, Type, Schema, FunctionDeclaration } from "@google/genai";
+import { CustomMlCopilotService, CopilotContext, CopilotResponse } from "./custom_ml_copilot.service";
 
-const navigateTool: FunctionDeclaration = {
-  name: "navigate_app",
-  description: "Navigate the user to a different page in the AttendX app (e.g., /calendar, /settings, /subjects, /assignments, /timetable, /today).",
-  parameters: {
-    type: Type.OBJECT,
-    properties: {
-      route: { type: Type.STRING, description: "The route to navigate to" }
-    },
-    required: ["route"]
-  }
-};
-
-const switchThemeTool: FunctionDeclaration = {
-  name: "switch_theme",
-  description: "Switch the app's visual theme.",
-  parameters: {
-    type: Type.OBJECT,
-    properties: {
-      theme: { type: Type.STRING, description: "light, dark, or system" }
-    },
-    required: ["theme"]
-  }
-};
-
-const markAttendanceTool: FunctionDeclaration = {
-  name: "mark_attendance",
-  description: "Mark attendance (present, absent, off) for a specific subject on a specific date.",
-  parameters: {
-    type: Type.OBJECT,
-    properties: {
-      subjectId: { type: Type.STRING, description: "The exact ID of the subject from the user's context" },
-      date: { type: Type.STRING, description: "Date in YYYY-MM-DD format" },
-      status: { type: Type.STRING, description: "present, absent, or off" }
-    },
-    required: ["subjectId", "date", "status"]
-  }
-};
-
-const addExtraClassTool: FunctionDeclaration = {
-  name: "add_extra_class",
-  description: "Add an extra class or lecture for a subject.",
-  parameters: {
-    type: Type.OBJECT,
-    properties: {
-      subjectId: { type: Type.STRING, description: "The exact subject ID" },
-      date: { type: Type.STRING, description: "Date in YYYY-MM-DD format" },
-      startTime: { type: Type.STRING, description: "Time in HH:MM format (24-hour)" },
-      endTime: { type: Type.STRING, description: "Time in HH:MM format (24-hour)" },
-      type: { type: Type.STRING, description: "e.g. Lecture, Lab, Tutorial" }
-    },
-    required: ["subjectId", "date", "startTime", "endTime"]
-  }
-};
-
-const markFullDayOffTool: FunctionDeclaration = {
-  name: "mark_full_day_off",
-  description: "Mark the entire day as OFF (no classes).",
-  parameters: {
-    type: Type.OBJECT,
-    properties: {
-      date: { type: Type.STRING, description: "Date in YYYY-MM-DD format" }
-    },
-    required: ["date"]
-  }
-};
+export interface MasterPromptPayload {
+  text: string;
+  currentRoute?: string;
+  selectedItems?: any[];
+  localTime?: string;
+  history?: any[];
+  student_context?: any;
+}
 
 export class AiChatService {
-  static async handleChat(message: string, history: any[], studentContext: any) {
-    try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-      
-      const subjectsText = (studentContext?.subjects || []).map((s: any) => `- ${s.name || s.subjectName} (ID: ${s.id || s.subjectId})`).join('\n');
+  /**
+   * Assembles the rigid 6-bracket master prompt string per Requirement R2:
+   * [SYSTEM_IDENTITY]
+   * [GLOBAL_APP_STATE]
+   * [USER_PROFILE]
+   * [CLIENT_SESSION_STATE]
+   * [USER_COMMAND]
+   * [EXECUTION_RULES]
+   */
+  public static assembleMasterPrompt(
+    text: string,
+    context: CopilotContext,
+    history: any[] = []
+  ): string {
+    const activeSemesterId = context.activeSemesterId || "None";
+    const semesterName = context.semesterName || "Current Semester";
+    const startDate = context.startDate || "Not specified";
+    const endDate = context.endDate || "Not specified";
+    const commencementDate = context.commencementDate || startDate;
+    const lastWorkingDay = context.lastWorkingDay || endDate;
+    const eventsSummary =
+      context.calendarEvents && context.calendarEvents.length > 0
+        ? context.calendarEvents.map((e: any) => `${e.title || e.name} (${e.date || e.startDate})`).join(", ")
+        : "No upcoming holiday events recorded";
+    const appVersion = context.appVersion || "4.0.0";
 
-      const systemInstruction = `You are AttendX AI, a helpful assistant for a student attendance app.
-You have the following student context:
-Total Classes: ${studentContext?.totalClasses || 0}
-Total Attended: ${studentContext?.totalAttended || 0}
-Overall Percentage: ${studentContext?.overallPercentage || 0}%
-Target Percentage: ${studentContext?.targetPercentage || 75}%
+    const userId = context.userId || "anonymous";
+    const userName = context.userName || "Student";
+    const role = "student";
+    const department = "Computer Science & Engineering";
+    const batch = "2023-2027";
+    const targetAttendance = context.targetPercentage ?? 75;
 
-Subjects:
-${subjectsText}
+    const localTime = context.localTime || new Date().toISOString();
+    const currentRoute = context.currentRoute || "/today";
+    const selectedItemsJson = JSON.stringify(context.selectedItems || []);
+    const overallPercentage = context.overallPercentage ?? 100;
+    const totalAttended = context.totalAttended ?? 0;
+    const totalClasses = context.totalClasses ?? 0;
 
-IMPORTANT INSTRUCTION: Always use the exact subject name (e.g., "Digital Communication") in your text responses, NEVER the raw ID. Only use the ID for the tool arguments.
+    const formattedSubjectsList =
+      context.subjects && context.subjects.length > 0
+        ? context.subjects
+            .map(
+              (s: any) =>
+                `- ${s.name} (ID: ${s.id}${s.code ? `, Code: ${s.code}` : ""}): ${s.attended || 0}/${s.total || 0} classes (${(s.percentage || 0).toFixed(1)}%, Target: ${s.target || targetAttendance}%)`
+            )
+            .join("\n")
+        : "None enrolled";
 
-You can perform actions like marking attendance, adding extra classes, marking a full day off, or navigating the app.
-When a user asks you to perform an action, call the appropriate tool.
-Keep your responses short, conversational, and direct, as they will be spoken via Text-to-Speech.`;
+    const formattedHistory =
+      history && history.length > 0
+        ? history
+            .map((m: any) => `${m.role === "user" ? "Student" : "Copilot"}: ${m.content || m.text || ""}`)
+            .join("\n")
+        : "None";
 
-      const formattedHistory = history.map((msg: any) => ({
-        role: msg.role === 'user' ? 'user' : 'model',
-        parts: [{ text: msg.content || msg.text || '' }]
-      }));
-      
-      const chat = ai.chats.create({
-        model: "gemini-3.8-flash",
-        config: {
-          systemInstruction,
-          temperature: 0.7,
-          tools: [{
-            functionDeclarations: [
-              navigateTool, switchThemeTool, markAttendanceTool, addExtraClassTool, markFullDayOffTool
-            ]
-          }]
-        },
-        history: formattedHistory
-      });
+    return `[SYSTEM_IDENTITY]
+Role: AttendX AI Copilot & Offline Academic Advisor
+Engine: Zero-Token Local Machine Learning Intent Classifier & Predictive Engine
+Execution Policy: Strictly output structured JSON action mutations. Direct database writes are forbidden.
 
-      const response = await chat.sendMessage({ message });
-      
-      let responseText = response.text || "";
-      let actionToTake = null;
+[GLOBAL_APP_STATE]
+Active Semester ID: ${activeSemesterId}
+Semester Name: ${semesterName}
+Dates: ${startDate} to ${endDate}
+Commencement Date: ${commencementDate}
+Last Working Day: ${lastWorkingDay}
+Upcoming Events: ${eventsSummary}
+App Version: ${appVersion}
 
-      if (response.functionCalls && response.functionCalls.length > 0) {
-         const call = response.functionCalls[0];
-         let type = call.name?.toUpperCase() || "";
-         actionToTake = { type, payload: call.args };
-         
-         // Let's generate a quick friendly acknowledgment text since the function call itself doesn't produce text in this basic setup
-         if (!responseText) {
-            responseText = `I'll take care of that for you right now.`;
-         }
-      }
+[USER_PROFILE]
+User ID: ${userId}
+Name: ${userName}
+Role: ${role}
+Department: ${department}
+Batch: ${batch}
+Target Attendance: ${targetAttendance}%
 
-      return {
-        reply: responseText,
-        action: actionToTake
-      };
-    } catch (error) {
-      console.error("Gemini AI Chat agent error:", error);
-      return {
-        reply: "I am having trouble connecting to the cloud AI server right now.",
-        action: null
-      };
+[CLIENT_SESSION_STATE]
+Local Timestamp: ${localTime}
+Current Screen/Route: ${currentRoute}
+Selected Item Context: ${selectedItemsJson}
+Overall Attendance: ${overallPercentage}% (${totalAttended}/${totalClasses} classes)
+Subjects Enrolled:
+${formattedSubjectsList}
+
+[USER_COMMAND]
+Input: "${text}"
+Prior Dialog History:
+${formattedHistory}
+
+[EXECUTION_RULES]
+1. Zero Database Writes: Do not write to DB. Return mutations in "actions" array.
+2. Confirmation Requirements: Destructive: REMOVE_SUBJECT, DROP_SUBJECT_FROM_TIMETABLE, REMOVE_ATTENDANCE, MARK_FULL_DAY_OFF, SHIFT_TIMETABLE_SLOT, ADD_SUBJECT, CHANGE_TARGET, CHANGE_GLOBAL_TARGET (requiresConfirmation=true). Safe: NAVIGATE, READ_STATS, FILTER_VIEW, SET_SIMULATION_PREVIEW, SWITCH_THEME, SHARE_APP, CHANGE_REMINDER_FREQUENCY, MARK_ATTENDANCE (requiresConfirmation=false).
+3. Entity Resolution: Match subjects by name against [CLIENT_SESSION_STATE].subjects to get exact IDs. Resolve dates relative to [CLIENT_SESSION_STATE].localTime.
+4. Output Schema:
+{
+  "intent": "CHIT_CHAT | APP_FAQ | POLICY_RAG | SUBMIT_FEEDBACK | NAVIGATE_APP | UPDATE_SETTINGS | TIMETABLE_QUERY | FORECAST_SIMULATION | TRIGGER_REPORT | MARK_ATTENDANCE | SHIFT_TIMETABLE | MODIFY_SUBJECTS | MODIFY_TARGET",
+  "reply": "string",
+  "response": "string",
+  "citations": ["string"],
+  "actions": [
+    {
+      "type": "string",
+      "payload": { ... },
+      "requiresConfirmation": boolean
     }
+  ]
+}
+5. Guardrails: For OUT_OF_SCOPE queries, return a polite refusal explaining AttendX Copilot only assists with attendance, timetable, and college ordinances.`;
+  }
+
+  /**
+   * Handle incoming chat requests locally via CustomMlCopilotService
+   */
+  public static async handleChat(
+    messageOrPayload: string | MasterPromptPayload,
+    history: any[] = [],
+    studentContext: any = {}
+  ): Promise<any> {
+    let text = "";
+    let currentRoute = "/today";
+    let selectedItems: any[] = [];
+    let localTime = new Date().toISOString();
+    let effectiveHistory = history;
+    let effectiveContext = studentContext;
+
+    if (typeof messageOrPayload === "object" && messageOrPayload !== null) {
+      text = messageOrPayload.text || (messageOrPayload as any).message || "";
+      currentRoute = messageOrPayload.currentRoute || "/today";
+      selectedItems = messageOrPayload.selectedItems || [];
+      localTime = messageOrPayload.localTime || new Date().toISOString();
+      if (messageOrPayload.history) effectiveHistory = messageOrPayload.history;
+      if (messageOrPayload.student_context) effectiveContext = messageOrPayload.student_context;
+    } else {
+      text = String(messageOrPayload || "");
+    }
+
+    // Prepare normalized context
+    const copilotContext: CopilotContext = {
+      userId: effectiveContext.user_id || effectiveContext.userId,
+      userName: effectiveContext.user_name || effectiveContext.userName || "Student",
+      appVersion: effectiveContext.app_version || effectiveContext.appVersion || "4.0.0",
+      activeSemesterId: effectiveContext.active_semester_id || effectiveContext.activeSemesterId,
+      semesterName: effectiveContext.semester_name || effectiveContext.semesterName,
+      startDate: effectiveContext.active_semester_start_date || effectiveContext.startDate,
+      endDate: effectiveContext.active_semester_end_date || effectiveContext.endDate,
+      commencementDate: effectiveContext.commencementDate,
+      lastWorkingDay: effectiveContext.lastWorkingDay,
+      overallPercentage: effectiveContext.overall_percentage ?? effectiveContext.overallPercentage,
+      targetPercentage: effectiveContext.target_percentage ?? effectiveContext.targetPercentage,
+      totalAttended: effectiveContext.total_attended ?? effectiveContext.totalAttended,
+      totalClasses: effectiveContext.total_classes ?? effectiveContext.totalClasses,
+      currentRoute,
+      selectedItems,
+      localTime,
+      subjects: effectiveContext.subjects || [],
+      historyLogs: effectiveContext.history_logs || effectiveContext.historyLogs || [],
+      calendarEvents: effectiveContext.calendar_events || effectiveContext.calendarEvents || [],
+      history: effectiveHistory,
+    };
+
+    // 1. Construct the rigid 6-bracket master prompt
+    const masterPrompt = this.assembleMasterPrompt(text, copilotContext, effectiveHistory);
+
+    // 2. Delegate inference to CustomMlCopilotService (Gemini 3.8-Flash Intent Router)
+    const result: CopilotResponse = await CustomMlCopilotService.process(text, copilotContext, masterPrompt);
+
+    return {
+      intent: result.intent,
+      reply: result.reply,
+      response: result.response,
+      citations: result.citations,
+      actions: result.actions,
+      simulation: result.simulation,
+      action: result.actions && result.actions.length > 0 ? result.actions[0] : null,
+      masterPromptSummary: {
+        systemIdentity: "Loaded",
+        globalAppState: copilotContext.activeSemesterId || "Default",
+        userProfile: copilotContext.userName,
+        clientSessionState: copilotContext.currentRoute,
+        userCommand: text,
+        executionRules: "Security Tiered"
+      }
+    };
   }
 }
