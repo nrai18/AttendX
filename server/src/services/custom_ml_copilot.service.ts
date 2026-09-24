@@ -466,7 +466,7 @@ ${ordContext}
 ${masterPrompt ? `Master Context:\n${masterPrompt}` : ""}`;
 
         const response = await ai.models.generateContent({
-          model: "gemini-3.8-flash",
+          model: "gemini-3.5-flash-lite",
           contents: userPrompt,
           config: {
             systemInstruction: systemPrompt,
@@ -478,8 +478,20 @@ ${masterPrompt ? `Master Context:\n${masterPrompt}` : ""}`;
         const responseText = response.text || "{}";
         const cleaned = responseText.replace(/^```json\s*/i, "").replace(/```\s*$/i, "").trim();
         parsed = JSON.parse(cleaned);
-      } catch (err) {
-        console.warn("[CustomMlCopilotService] Gemini router failed or threw error, using fallback router:", err);
+      } catch (err: any) {
+        console.warn("[CustomMlCopilotService] Gemini router failed or threw error:", err?.message || err);
+        
+        // Explicitly handle Rate Limit / Quota Exceeded (429) errors so users know what happened
+        if (err?.message?.includes("429") || err?.status === 429 || err?.message?.includes("quota") || err?.message?.includes("exhausted")) {
+          return {
+            intent: "APP_FAQ",
+            reply: "I am receiving too many requests right now and hit my API limit. Please wait a few seconds and try asking again.",
+            response: "I am receiving too many requests right now and hit my API limit. Please wait a few seconds and try asking again.",
+            citations: [],
+            actions: [],
+            requiresConfirmation: false,
+          };
+        }
       }
     } else {
       console.warn("[CustomMlCopilotService] GEMINI_API_KEY is not configured, using fallback intent router.");
@@ -829,7 +841,7 @@ ${masterPrompt ? `Master Context:\n${masterPrompt}` : ""}`;
     }
 
     // 6. TIMETABLE_QUERY
-    if (/(what class(es)?|what lecture(s)?|schedule (today|tomorrow|on)|my classes today)/i.test(lower)) {
+    if (/(what|how many)\s+(class|classes|lecture|lectures)/i.test(lower) || /(schedule|timetable)( today| tomorrow| on)?/i.test(lower) || /(my classes today|my classes tomorrow)/i.test(lower)) {
       const dayMatch = this.extractDayOfWeek(lower, localDate);
       const reply = `Here is your schedule for ${dayMatch.dayName}. Check your timetable view for room allocations.`;
       const action = this.createAction("READ_STATS", { day: dayMatch.dayName }, `timetable:${dayMatch.dayName}`, `Read schedule for ${dayMatch.dayName}`, "Safe action: Queries timetable.");
