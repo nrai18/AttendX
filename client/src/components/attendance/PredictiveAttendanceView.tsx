@@ -92,6 +92,21 @@ export const PredictiveAttendanceView: React.FC<PredictiveAttendanceViewProps> =
       if (!force && cacheState.insights) {
          setAiInsights(cacheState.insights);
       }
+      
+      const isOffline = typeof navigator !== 'undefined' && !navigator.onLine;
+      if (isOffline) {
+        if (!cacheState.insights) {
+          setAiInsights({
+            summary: "Offline mode: Attendance predictions and safe bunk allowances calculated from local telemetry.",
+            keyReasons: ["Offline local predictions active", "Based on current timetable and cached attendance stats"],
+            vulnerableTimings: "Local calculation active",
+            recommendation: "Maintain your attendance at or above the target to stay safe."
+          });
+        }
+        setIsAiLoading(false);
+        return;
+      }
+
       const res = await api.get(`/attendance/insights${force ? '?force=true' : ''}`);
       setAiInsights(res.data);
       useCacheStore.getState().setCache('insights', res.data);
@@ -100,6 +115,12 @@ export const PredictiveAttendanceView: React.FC<PredictiveAttendanceViewProps> =
       const cacheState = useCacheStore.getState();
       if (cacheState.insights) {
          setAiInsights(cacheState.insights);
+      } else {
+        setAiInsights({
+          summary: "Local telemetry mode: Attendance insights calculated from cached attendance history.",
+          keyReasons: ["Offline fallback mode enabled"],
+          recommendation: "Keep your attendance above 75% according to ordinance guidelines."
+        });
       }
     } finally {
       setIsAiLoading(false);
@@ -207,7 +228,7 @@ export const PredictiveAttendanceView: React.FC<PredictiveAttendanceViewProps> =
     }));
   };
 
-  if (isLoading) {
+  if (isLoading && subjects.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-20 animate-in fade-in zoom-in duration-500">
         <div className="w-16 h-16 rounded-[16px] bg-amber-500/10 border-2 border-amber-500/20 shadow-sm flex items-center justify-center text-amber-500 mb-2">
@@ -218,7 +239,7 @@ export const PredictiveAttendanceView: React.FC<PredictiveAttendanceViewProps> =
     );
   }
 
-  if (!hasActiveSemester) {
+  if (!hasActiveSemester && subjects.length === 0) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center p-8 text-center space-y-4 my-12">
         <div className="w-16 h-16 rounded-[16px] bg-slate-900/10 dark:bg-slate-800/40 border-2 border-slate-200 dark:border-slate-700 shadow-sm flex items-center justify-center text-slate-500 mb-2">
