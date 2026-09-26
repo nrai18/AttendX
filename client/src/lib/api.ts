@@ -7,7 +7,7 @@ export const API_BASE_URL = import.meta.env.VITE_API_URL || "/api";
 export const api = axios.create({
   baseURL: API_BASE_URL,
   withCredentials: true, // Send httpOnly refresh cookies automatically
-  timeout: 30000,
+  timeout: 120000,
 });
 
 // Helper to check token expiration
@@ -160,6 +160,9 @@ api.interceptors.response.use(
     return response;
   },
   async (error) => {
+    if (axios.isCancel(error) || error.name === 'CanceledError' || error.code === 'ERR_CANCELED' || error.message === 'canceled') {
+      return Promise.reject(error);
+    }
     const originalRequest = error.config;
 
     // Avoid infinite loop on auth endpoints

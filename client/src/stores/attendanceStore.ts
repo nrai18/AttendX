@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { capacitorStorage } from "./capacitorStorage";
 import { persist, createJSONStorage } from "zustand/middleware";
 import { Preferences } from "@capacitor/preferences";
 import { api } from "../lib/api";
@@ -55,19 +56,7 @@ interface AttendanceState {
   updateSimulationBoundaries: (startDate: string, endDate: string) => Promise<void>;
 }
 
-// Custom storage wrapper for Capacitor Preferences
-const capacitorStorage = {
-  getItem: async (name: string): Promise<string | null> => {
-    const { value } = await Preferences.get({ key: name });
-    return value;
-  },
-  setItem: async (name: string, value: string): Promise<void> => {
-    await Preferences.set({ key: name, value });
-  },
-  removeItem: async (name: string): Promise<void> => {
-    await Preferences.remove({ key: name });
-  },
-};
+
 
 export const useAttendanceStore = create<AttendanceState>()(
   persist(
@@ -242,7 +231,7 @@ export const useAttendanceStore = create<AttendanceState>()(
     }
   },
   updateSimulationBoundaries: async (startDate: string, endDate: string) => {
-    const { activeSemesterId, fetchStats } = useAttendanceStore.getState();
+    const { activeSemesterId, fetchStats } = get();
     if (!activeSemesterId) return;
     
     set({ isLoading: true });

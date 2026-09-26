@@ -1,5 +1,7 @@
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
+import { capacitorStorage } from "./capacitorStorage";
+import { persist, createJSONStorage } from "zustand/middleware";
+import { Preferences } from "@capacitor/preferences"; // FE-H06 FIX: Import Capacitor Preferences
 
 interface SyncState {
   activeCode: string;
@@ -7,6 +9,8 @@ interface SyncState {
   setActiveCode: (code: string, expiresInSeconds: number) => void;
   clearActiveCode: () => void;
 }
+
+
 
 export const useSyncStore = create<SyncState>()(
   persist(
@@ -22,6 +26,7 @@ export const useSyncStore = create<SyncState>()(
     }),
     {
       name: "attendx-sync-storage",
+      storage: createJSONStorage(() => capacitorStorage), // FE-H06 FIX: Apply storage wrapper
     }
   )
 );

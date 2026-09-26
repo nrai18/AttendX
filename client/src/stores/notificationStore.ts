@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { capacitorStorage } from './capacitorStorage';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { Preferences } from '@capacitor/preferences';
 
@@ -7,7 +8,10 @@ export interface NotificationConfig {
   showLocation: boolean;
   notifyNextClassOnEnd: boolean;
   endOfDaySummary: boolean;
-  summaryTime: string;
+  summaryTime: string; // Legacy fallback
+  weeklySummaryTime?: string;
+  monthlySummaryTime?: string;
+  yearlySummaryTime?: string;
 }
 
 interface NotificationState {
@@ -15,18 +19,7 @@ interface NotificationState {
   updateConfig: (config: Partial<NotificationConfig>) => void;
 }
 
-const capacitorStorage = {
-  getItem: async (name: string): Promise<string | null> => {
-    const { value } = await Preferences.get({ key: name });
-    return value;
-  },
-  setItem: async (name: string, value: string): Promise<void> => {
-    await Preferences.set({ key: name, value });
-  },
-  removeItem: async (name: string): Promise<void> => {
-    await Preferences.remove({ key: name });
-  },
-};
+
 
 export const useNotificationStore = create<NotificationState>()(
   persist(
@@ -37,6 +30,9 @@ export const useNotificationStore = create<NotificationState>()(
         notifyNextClassOnEnd: true,
         endOfDaySummary: true,
         summaryTime: "18:00",
+        weeklySummaryTime: "09:00",
+        monthlySummaryTime: "10:00",
+        yearlySummaryTime: "11:00",
       },
       updateConfig: (newConfig) =>
         set((state) => ({ config: { ...state.config, ...newConfig } })),
