@@ -31,8 +31,8 @@ export class AiChatService {
     const commencementDate = context.commencementDate || startDate;
     const lastWorkingDay = context.lastWorkingDay || endDate;
     const eventsSummary =
-      context.calendarEvents && context.calendarEvents.length > 0
-        ? context.calendarEvents.map((e: any) => `${e.title || e.name} (${e.date || e.startDate})`).join(", ")
+      context.calendarEvents && Array.isArray(context.calendarEvents) && context.calendarEvents.length > 0
+        ? context.calendarEvents.map((e: any) => `${e.title || e.name || e.eventName || 'Unnamed Event'} (${e.date || e.startDate || 'Unknown Date'})`).join(", ")
         : "No upcoming holiday events recorded";
     const appVersion = context.appVersion || "4.0.0";
 
@@ -51,11 +51,12 @@ export class AiChatService {
     const totalClasses = context.totalClasses ?? 0;
 
     const formattedSubjectsList =
-      context.subjects && context.subjects.length > 0
+      context.subjects && Array.isArray(context.subjects) && context.subjects.length > 0
         ? context.subjects
             .map(
               (s: any) =>
-                `- ${s.name} (ID: ${s.id}${s.code ? `, Code: ${s.code}` : ""}): ${s.attended || 0}/${s.total || 0} classes (${(s.percentage || 0).toFixed(1)}%, Target: ${s.target || targetAttendance}%)`
+                // AI-M01 FIX: Safely parse percentage to Number before calling .toFixed()
+                `- ${s.name} (ID: ${s.id}${s.code ? `, Code: ${s.code}` : ""}): ${s.attended || 0}/${s.total || 0} classes (${Number(s.percentage || 0).toFixed(1)}%, Target: ${s.target || targetAttendance}%)`
             )
             .join("\n")
         : "None enrolled";
@@ -66,6 +67,19 @@ export class AiChatService {
             .map((m: any) => `${m.role === "user" ? "Student" : "Copilot"}: ${m.content || m.text || ""}`)
             .join("\n")
         : "None";
+
+    const historyLogsSummary =
+      context.historyLogs && context.historyLogs.length > 0
+        ? context.historyLogs
+            .slice(-30) // last 30 logs
+            .map((l: any) => {
+               // AI-H02 FIX: Prevent RangeError crash from new Date("").toISOString()
+               const d = new Date(l.date);
+               if (isNaN(d.getTime())) return `Invalid Date: ${l.subject?.name || l.subjectName || "Subject"} - ${l.status}`;
+               return `${d.toISOString().split('T')[0]}: ${l.subject?.name || l.subjectName || "Subject"} - ${l.status}`;
+            })
+            .join("\n")
+        : "No recent attendance logs.";
 
     return `[SYSTEM_IDENTITY]
 Role: AttendX AI Copilot & Offline Academic Advisor
@@ -84,6 +98,7 @@ App Version: ${appVersion}
 [USER_PROFILE]
 User ID: ${userId}
 Name: ${userName}
+Birthday: ${context.userBirthday || "Not provided"}
 Role: ${role}
 Department: ${department}
 Batch: ${batch}
@@ -96,6 +111,9 @@ Selected Item Context: ${selectedItemsJson}
 Overall Attendance: ${overallPercentage}% (${totalAttended}/${totalClasses} classes)
 Subjects Enrolled:
 ${formattedSubjectsList}
+Recent Attendance Logs (Last 30):
+${historyLogsSummary}
+
 
 [USER_COMMAND]
 Input: "${text}"
@@ -106,7 +124,8 @@ ${formattedHistory}
 1. Zero Database Writes: Do not write to DB. Return mutations in "actions" array.
 2. Confirmation Requirements: Destructive: REMOVE_SUBJECT, DROP_SUBJECT_FROM_TIMETABLE, REMOVE_ATTENDANCE, MARK_FULL_DAY_OFF, SHIFT_TIMETABLE_SLOT, ADD_SUBJECT, CHANGE_TARGET, CHANGE_GLOBAL_TARGET (requiresConfirmation=true). Safe: NAVIGATE, READ_STATS, FILTER_VIEW, SET_SIMULATION_PREVIEW, SWITCH_THEME, SHARE_APP, CHANGE_REMINDER_FREQUENCY, MARK_ATTENDANCE (requiresConfirmation=false).
 3. Entity Resolution: Match subjects by name against [CLIENT_SESSION_STATE].subjects to get exact IDs. Resolve dates relative to [CLIENT_SESSION_STATE].localTime.
-4. Output Schema:
+4. Auto-Remarks: If generating a MARK_ATTENDANCE or MARK_FULL_DAY_OFF action, ALWAYS include 'remarks': 'Marked by AttendX Copilot' inside the action payload.
+5. Output Schema:
 {
   "intent": "CHIT_CHAT | APP_FAQ | POLICY_RAG | SUBMIT_FEEDBACK | NAVIGATE_APP | UPDATE_SETTINGS | TIMETABLE_QUERY | FORECAST_SIMULATION | TRIGGER_REPORT | MARK_ATTENDANCE | SHIFT_TIMETABLE | MODIFY_SUBJECTS | MODIFY_TARGET",
   "reply": "string",
@@ -120,7 +139,7 @@ ${formattedHistory}
     }
   ]
 }
-5. Guardrails: For OUT_OF_SCOPE queries, return a polite refusal explaining AttendX Copilot only assists with attendance, timetable, and college ordinances.`;
+6. Guardrails: For OUT_OF_SCOPE queries, return a polite refusal explaining AttendX Copilot only assists with attendance, timetable, and college ordinances.`;
   }
 
   /**
@@ -153,8 +172,9 @@ ${formattedHistory}
     const copilotContext: CopilotContext = {
       userId: effectiveContext.user_id || effectiveContext.userId,
       userName: effectiveContext.user_name || effectiveContext.userName || "Student",
+      userBirthday: effectiveContext.user_birthday || effectiveContext.userBirthday,
       appVersion: effectiveContext.app_version || effectiveContext.appVersion || "4.0.0",
-      activeSemesterId: effectiveContext.active_semester_id || effectiveContext.activeSemesterId,
+      activeSemesterId: effectiveContext.active_semester_id || effectiveContext.activeSemesterId || null,
       semesterName: effectiveContext.semester_name || effectiveContext.semesterName,
       startDate: effectiveContext.active_semester_start_date || effectiveContext.startDate,
       endDate: effectiveContext.active_semester_end_date || effectiveContext.endDate,
@@ -168,6 +188,7 @@ ${formattedHistory}
       selectedItems,
       localTime,
       subjects: effectiveContext.subjects || [],
+      timetable_slots: effectiveContext.timetable_slots || effectiveContext.timetableSlots || [],
       historyLogs: effectiveContext.history_logs || effectiveContext.historyLogs || [],
       calendarEvents: effectiveContext.calendar_events || effectiveContext.calendarEvents || [],
       history: effectiveHistory,
@@ -177,16 +198,29 @@ ${formattedHistory}
     const masterPrompt = this.assembleMasterPrompt(text, copilotContext, effectiveHistory);
 
     // 2. Delegate inference to CustomMlCopilotService (Gemini 3.8-Flash Intent Router)
-    const result: CopilotResponse = await CustomMlCopilotService.process(text, copilotContext, masterPrompt);
+    let result: CopilotResponse;
+    try {
+      result = await CustomMlCopilotService.process(text, copilotContext, masterPrompt);
+    } catch (e) {
+      console.error("[AiChatService] Error calling CustomMlCopilotService:", e);
+      result = {
+         intent: "APP_FAQ",
+         reply: "I am currently offline or experiencing network issues. Please try again in a moment.",
+         response: "I am currently offline or experiencing network issues. Please try again in a moment.",
+         citations: [],
+         actions: [],
+         requiresConfirmation: false
+      };
+    }
 
     return {
-      intent: result.intent,
-      reply: result.reply,
-      response: result.response,
-      citations: result.citations,
-      actions: result.actions,
+      intent: result.intent || 'CHIT_CHAT',
+      reply: result.reply || 'I am having trouble processing that right now.',
+      response: result.response || result.reply || '',
+      citations: result.citations || [],
+      actions: result.actions || [],
       simulation: result.simulation,
-      action: result.actions && result.actions.length > 0 ? result.actions[0] : null,
+      action: (result.actions && result.actions.length > 0) ? result.actions[0] : null,
       masterPromptSummary: {
         systemIdentity: "Loaded",
         globalAppState: copilotContext.activeSemesterId || "Default",

@@ -1,10 +1,9 @@
 import path from "path";
 import fs from "fs";
-import { GoogleGenAI } from "@google/genai";
+import { AIManager } from "../utils/ai_manager";
 import { EmailService } from "./email.service";
+import { AttendanceService } from "./attendance.service";
 import { prisma } from "../lib/prisma";
-
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 export type IntentType =
   | "CHIT_CHAT"
@@ -21,6 +20,11 @@ export type IntentType =
   | "MODIFY_SUBJECTS"
   | "MODIFY_TARGET"
   | "SIMULATE_ATTENDANCE"
+  | "ADD_EXTRA_CLASS"
+  | "ADD_TIMETABLE_SLOT"
+  | "REMOVE_TIMETABLE_SLOT"
+  | "SWAP_TIMETABLE_DAYS"
+  | "SHIFT_TIMETABLE_DAY"
   | "KNOWLEDGE_BASE"
   | "OUT_OF_SCOPE";
 
@@ -45,19 +49,30 @@ export const ActionPolicyMatrix = {
   SWITCH_THEME: { category: "SAFE" as const, isDestructive: false, requiresConfirmation: false },
   SHARE_APP: { category: "SAFE" as const, isDestructive: false, requiresConfirmation: false },
   CHANGE_REMINDER_FREQUENCY: { category: "SAFE" as const, isDestructive: false, requiresConfirmation: false },
+  CHANGE_SUMMARY_TIME: { category: "SAFE" as const, isDestructive: false, requiresConfirmation: false },
+  CHANGE_CLASS_REMINDER_OFFSET: { category: "SAFE" as const, isDestructive: false, requiresConfirmation: false },
   MARK_ATTENDANCE: { category: "SAFE" as const, isDestructive: false, requiresConfirmation: false },
   TRIGGER_REPORT: { category: "SAFE" as const, isDestructive: false, requiresConfirmation: false },
   SUBMIT_FEEDBACK: { category: "SAFE" as const, isDestructive: false, requiresConfirmation: false },
 
   // Destructive Actions (Tier 2)
   REMOVE_SUBJECT: { category: "DESTRUCTIVE" as const, isDestructive: true, requiresConfirmation: true },
+  UPDATE_SUBJECT: { category: "DESTRUCTIVE" as const, isDestructive: true, requiresConfirmation: true },
   DROP_SUBJECT_FROM_TIMETABLE: { category: "DESTRUCTIVE" as const, isDestructive: true, requiresConfirmation: true },
   REMOVE_ATTENDANCE: { category: "DESTRUCTIVE" as const, isDestructive: true, requiresConfirmation: true },
   MARK_FULL_DAY_OFF: { category: "DESTRUCTIVE" as const, isDestructive: true, requiresConfirmation: true },
+  ADD_EXTRA_CLASS: { category: "DESTRUCTIVE" as const, isDestructive: true, requiresConfirmation: true },
+  ADD_TIMETABLE_SLOT: { category: "DESTRUCTIVE" as const, isDestructive: true, requiresConfirmation: true },
+  REMOVE_TIMETABLE_SLOT: { category: "DESTRUCTIVE" as const, isDestructive: true, requiresConfirmation: true },
+  SWAP_TIMETABLE_DAYS: { category: "DESTRUCTIVE" as const, isDestructive: true, requiresConfirmation: true },
+  SHIFT_TIMETABLE_DAY: { category: "DESTRUCTIVE" as const, isDestructive: true, requiresConfirmation: true },
   SHIFT_TIMETABLE_SLOT: { category: "DESTRUCTIVE" as const, isDestructive: true, requiresConfirmation: true },
   ADD_SUBJECT: { category: "DESTRUCTIVE" as const, isDestructive: true, requiresConfirmation: true },
   CHANGE_TARGET: { category: "DESTRUCTIVE" as const, isDestructive: true, requiresConfirmation: true },
   CHANGE_GLOBAL_TARGET: { category: "DESTRUCTIVE" as const, isDestructive: true, requiresConfirmation: true },
+  ADD_ASSIGNMENT: { category: "DESTRUCTIVE" as const, isDestructive: true, requiresConfirmation: true },
+  MARK_ASSIGNMENT_COMPLETED: { category: "DESTRUCTIVE" as const, isDestructive: true, requiresConfirmation: true },
+  DELETE_ASSIGNMENT: { category: "DESTRUCTIVE" as const, isDestructive: true, requiresConfirmation: true },
 };
 
 export interface CopilotResponse {
@@ -76,6 +91,17 @@ export interface CopilotResponse {
     projectedPercentage: number;
     targetPercentage: number;
   };
+  semesterProjection?: {
+    skipCountPerSubject: number;
+    endDate: string;
+    subjects: {
+      subjectId: string;
+      subjectName: string;
+      remainingClasses: number;
+      projectedPercentage: number;
+      targetPercentage: number;
+    }[];
+  };
 }
 
 export interface SubjectContext {
@@ -86,11 +112,13 @@ export interface SubjectContext {
   attended?: number;
   total?: number;
   percentage?: number;
+  remainingClasses?: number;
 }
 
 export interface CopilotContext {
   userId?: string;
   userName?: string;
+  userBirthday?: string;
   appVersion?: string;
   activeSemesterId?: string;
   semesterName?: string;
@@ -106,6 +134,7 @@ export interface CopilotContext {
   selectedItems?: any[];
   localTime?: string;
   subjects?: SubjectContext[];
+  timetable_slots?: any[];
   historyLogs?: any[];
   calendarEvents?: any[];
   history?: Array<{ role: string; content?: string; text?: string }>;
@@ -381,46 +410,72 @@ Analyze the student's query and app context, classify their intent into exactly 
 
 CRITICAL: Return ONLY a valid JSON object matching the schema below. No markdown wrapping or backticks.
 
+App UI Structure Rules:
+- Subjects are managed at \`/subjects\`. Use this screen to view overall semester attendance, check all attendance logs, history, and subject-specific details.
+- Timetable slots are managed at \`/timetable\`.
+- Semesters are managed at \`/semester\`. Use this screen to view the academic calendar timeline, upcoming events, countdowns, and holidays (both fixed and restricted).
+- Calendar Color Codes: Dots indicate attendance status (Green dot = Attended/Present, Red dot = Missed/Absent, Purple dot = Mixed, Yellow dot = Off/Cancelled, Gray dot = Not marked/future). Colored rings/borders around a date indicate academic events (e.g., Red/Orange for exams, Teal/Cyan for holidays, Fuchsia for fests).
+
 Supported Intents:
-1. CHIT_CHAT: Greetings, conversational pleasantries, small talk, questions about creator (Naman Rai), or assistant identity.
+1. CHIT_CHAT: Greetings, conversational pleasantries, small talk, questions about creator (Naman Rai), assistant identity, or the user's personal profile (like their name or birthday provided in the context).
 2. APP_FAQ: Questions about AttendX features (peer sync, backups, import/export, notifications, offline mode, settings).
-3. POLICY_RAG: Questions regarding college academic regulations, IIIT Una ordinances, 75% attendance rule, shortage grades (L grade: 55-75%, R grade: <55%), leave rules (9-day medical leave), 5% relaxation, on-duty (OD) rules, hostel in-timing (10:00 PM), mess rebate (N-2 days), anti-ragging, exams, or grading.
+3. POLICY_RAG: Questions regarding college academic regulations, IIIT Una ordinances, 75% attendance rule, shortage grades (L grade: 55-75%, R grade: <55%), leave rules (9-day medical leave), 5% relaxation, on-duty (OD) rules, hostel in-timing (10:00 PM), mess rebate (N-2 days), anti-ragging, exams (rules), or grading (rules). DO NOT use this for asking WHEN an exam is; use TIMETABLE_QUERY for dates.
 4. SUBMIT_FEEDBACK: Bug reports, user feedback, complaints, or feature requests.
-5. NAVIGATE_APP: Requests to navigate to specific app screens (timetable, settings, reports, calendar, forecast/predictive, today/agenda, assignments, peer-sync, semester).
+5. NAVIGATE_APP: Requests to navigate to specific app screens (timetable, settings, reports, calendar, forecast/predictive, today/agenda, assignments, peer-sync, semester, subjects).
 6. UPDATE_SETTINGS: Requests to change app settings (switch theme to dark/light, change reminder frequency).
-7. TIMETABLE_QUERY: Queries about scheduled lectures, classes today/tomorrow, or timetable lookup.
-8. FORECAST_SIMULATION: Questions asking "what if I miss/attend X classes", "can I bunk", or simulating attendance percentages.
-9. TRIGGER_REPORT: Requests to email or send attendance report, summary, or analytics to the student.
-10. MARK_ATTENDANCE: Marking attendance for a subject (present, absent, medical, on duty) or marking a full day off.
-11. SHIFT_TIMETABLE: Rescheduling, postponing, or shifting a timetable slot to another time or day.
-12. MODIFY_SUBJECTS: Adding a new subject or removing/dropping a subject from the timetable/enrollment.
+7. TIMETABLE_QUERY: Queries about scheduled lectures, classes today/tomorrow, timetable lookup, holidays, exam dates, or important academic dates (ALWAYS read from "Upcoming Events" in the Master Context).
+8. FORECAST_SIMULATION: Explicit hypothetical questions (e.g., "what if I miss", "can I bunk", "how many classes do I need"). DO NOT use for definitive statements like "I am not going". (For multi-day vacations, your text reply MUST breakdown exactly how many classes of each specific subject will be missed, and warn if any individual subject drops below its target!)
+9. TRIGGER_REPORT: Requests to email or send attendance report, summary, or analytics to the student. (IMPORTANT: You MUST state in your reply that you are generating and emailing the report to them).
+10. MARK_ATTENDANCE: Explicitly recording attendance. If the user says "I am not going" or "I am bunking today", stage a MARK_ATTENDANCE action with status="absent" (omit subjectId to mark all classes). Use MARK_FULL_DAY_OFF ONLY when classes are officially cancelled/holiday, not when skipping.
+11. SHIFT_TIMETABLE: Rescheduling, postponing, or shifting a SINGLE timetable slot to another time or day.
+17. SWAP_TIMETABLE_DAYS: Swapping the entire timetable of one day with another (e.g. swap Monday and Friday).
+18. SHIFT_TIMETABLE_DAY: Moving an entire day's timetable to another day (e.g. move tomorrow's timetable to Friday).
+15. ADD_TIMETABLE_SLOT: Adding a new recurring weekly slot to the timetable.
+16. REMOVE_TIMETABLE_SLOT: Removing a specific recurring weekly slot from the timetable.
+14. ADD_EXTRA_CLASS: Scheduling a makeup class, extra lecture, or additional lab session on a specific date and time.
+12. MODIFY_SUBJECTS: Adding a new subject, updating its name/color, or removing/dropping a subject from the timetable/enrollment.
 13. MODIFY_TARGET: Changing individual subject target or global attendance target percentage.
+19. MANAGE_ASSIGNMENTS: Adding, marking completed, updating, or deleting academic assignments and deadlines.
 
 Action Types & Payloads:
 - Safe Actions (executed immediately):
-  * NAVIGATE: { "path": string } (e.g. "/timetable", "/settings", "/report", "/calendar", "/predictive", "/today", "/peer-sync", "/semester")
+  * NAVIGATE: { "path": string } (e.g. "/timetable", "/settings", "/report", "/calendar", "/predictive", "/today", "/semester")
   * READ_STATS: {}
   * FILTER_VIEW: { "filter": string }
   * SET_SIMULATION_PREVIEW: { "subjectId": string, "skipCount": number }
   * SWITCH_THEME: { "theme": "dark" | "light" | "system" }
   * SHARE_APP: {}
-  * CHANGE_REMINDER_FREQUENCY: { "frequency": string }
-  * MARK_ATTENDANCE: { "subjectId": string, "date": string, "status": "present" | "absent" | "medical" | "od" | "off" }
-  * TRIGGER_REPORT: { "stats": object }
+  * CHANGE_REMINDER_FREQUENCY: { "frequency": "Never"|"Daily"|"Weekly"|"Monthly"|"Yearly", "subValue"?: string }
+      - For Weekly: subValue = day abbreviation e.g. "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"
+      - For Monthly: subValue = day-of-month as string e.g. "1", "15", "28"
+      - For Yearly: subValue = month abbreviation e.g. "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
+  * CHANGE_SUMMARY_TIME: { "time": "HH:MM", "bracket"?: "Daily"|"Weekly"|"Monthly"|"Yearly" } (e.g. "20:00" for 8 PM; bracket = which frequency tier this time applies to; if not specified, defaults to current active frequency)
+  * CHANGE_CLASS_REMINDER_OFFSET: { "offsetMinutes": number } (5, 10, or 15)
+  * MARK_ATTENDANCE: { "subjectId": string, "date": "YYYY-MM-DD", "status": "present" | "absent" | "medical" | "od" | "off" } (For relative days like 'Wednesday', default to the most recent past occurrence unless future is specified).
+  * TRIGGER_REPORT: { "type": "weekly" | "monthly" | "semester" | "custom", "title"?: "string", "startDate"?: "YYYY-MM-DD", "endDate"?: "YYYY-MM-DD" }
   * SUBMIT_FEEDBACK: { "type": string, "description": string, "issue": string }
 - Destructive Actions (flagged as requiresConfirmation=true):
   * REMOVE_SUBJECT: { "subjectId": string }
   * DROP_SUBJECT_FROM_TIMETABLE: { "slotId": string, "subjectId": string }
-  * REMOVE_ATTENDANCE: { "subjectId": string, "date": string }
-  * MARK_FULL_DAY_OFF: { "date": string }
-  * SHIFT_TIMETABLE_SLOT: { "subjectId": string, "dayOfWeek": number, "newStartTime": string, "newEndTime": string }
+  * REMOVE_ATTENDANCE: { "subjectId": string, "date": "YYYY-MM-DD" } (Default to most recent past occurrence if relative day is used).
+  * MARK_FULL_DAY_OFF: { "date": "YYYY-MM-DD" }
+  * ADD_EXTRA_CLASS: { "subjectId": string, "date": "YYYY-MM-DD", "startTime": "HH:MM", "endTime": "HH:MM", "reason": "string" } (If only a start time is provided, assume duration is 50 mins for lectures or 100 mins for labs. Use 24-hour format).
+  * SHIFT_TIMETABLE_SLOT: { "subjectId": string, "dayOfWeek": number (0=Monday, ..., 6=Sunday), "newDayOfWeek"?: number (0=Monday, ..., 6=Sunday), "newStartTime": string, "newEndTime": string }
+  * ADD_TIMETABLE_SLOT: { "subjectId": string, "dayOfWeek": number (0=Monday, ..., 6=Sunday), "startTime": "HH:MM", "endTime": "HH:MM", "room"?: "string", "slotType"?: "lecture"|"practical" }
+  * REMOVE_TIMETABLE_SLOT: { "subjectId": string, "dayOfWeek": number (0=Monday, ..., 6=Sunday), "startTime": "HH:MM" }
+  * SWAP_TIMETABLE_DAYS: { "dayA": number (0=Mon), "dayB": number (0=Mon) }
+  * SHIFT_TIMETABLE_DAY: { "sourceDay": number (0=Mon), "targetDay": number (0=Mon) }
   * ADD_SUBJECT: { "name": string, "code": string, "target": number }
+  * UPDATE_SUBJECT: { "subjectId": string, "updates": { "name"?: string, "colorHex"?: string, "code"?: string, "faculty"?: string, "credits"?: number } }
   * CHANGE_TARGET: { "subjectId": string, "target": number }
   * CHANGE_GLOBAL_TARGET: { "target": number }
+  * ADD_ASSIGNMENT: { "title": string, "deadline": "YYYY-MM-DDTHH:MM:SSZ", "subjectId"?: string, "description"?: string, "priority"?: "low"|"medium"|"high" }
+  * MARK_ASSIGNMENT_COMPLETED: { "assignmentId"?: string, "title"?: string }
+  * DELETE_ASSIGNMENT: { "assignmentId"?: string, "title"?: string }
 
 Response JSON Schema:
 {
-  "intent": "CHIT_CHAT" | "APP_FAQ" | "POLICY_RAG" | "SUBMIT_FEEDBACK" | "NAVIGATE_APP" | "UPDATE_SETTINGS" | "TIMETABLE_QUERY" | "FORECAST_SIMULATION" | "TRIGGER_REPORT" | "MARK_ATTENDANCE" | "SHIFT_TIMETABLE" | "MODIFY_SUBJECTS" | "MODIFY_TARGET",
+  "intent": "CHIT_CHAT" | "APP_FAQ" | "POLICY_RAG" | "SUBMIT_FEEDBACK" | "NAVIGATE_APP" | "UPDATE_SETTINGS" | "TIMETABLE_QUERY" | "FORECAST_SIMULATION" | "TRIGGER_REPORT" | "MARK_ATTENDANCE" | "SHIFT_TIMETABLE" | "MODIFY_SUBJECTS" | "MODIFY_TARGET" | "ADD_EXTRA_CLASS" | "ADD_TIMETABLE_SLOT" | "REMOVE_TIMETABLE_SLOT" | "SWAP_TIMETABLE_DAYS" | "SHIFT_TIMETABLE_DAY",
   "reply": "string (clear, conversational response to the student)",
   "citations": ["string (e.g. section references if policy question)"],
   "simulation": {
@@ -451,22 +506,43 @@ Response JSON Schema:
           .map((s) => `  * ${s.name} (ID: ${s.id}${s.code ? `, Code: ${s.code}` : ""}): ${s.attended || 0}/${s.total || 0} (${(s.percentage || 0).toFixed(1)}%, Target: ${s.target || 75}%)`)
           .join("\n") || "  None enrolled";
 
+        const subMap = (context.subjects || []).reduce((acc: any, s: any) => {
+          acc[s.id] = s.name;
+          return acc;
+        }, {});
+        
+        const timetableSummary = (context.timetable_slots || [])
+          .map((slot) => {
+             const dayName = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"][parseInt(slot.dayOfWeek) || 0] || slot.dayOfWeek;
+             return `  * ${dayName} ${slot.startTime}-${slot.endTime}: ${subMap[slot.subjectId] || slot.subjectId} (${slot.type || 'Class'})`;
+          })
+          .join("\n") || "  No timetable slots found";
+
+        const extraClassesSummary = (context.historyLogs || [])
+          .filter((log: any) => log.isExtra && log.status === "not_marked")
+          .map((log: any) => `  * ${log.date} ${log.startTime || ''}: ${subMap[log.subjectId] || log.subjectName || log.subjectId} (Extra Class)`)
+          .join("\n");
+
         const userPrompt = `User Query: "${query}"
 Context:
 - User Name: ${context.userName || "Student"}
+- Birthday: ${context.userBirthday || "Not provided"}
 - Current Route: ${context.currentRoute || "/today"}
 - Local Time: ${context.localTime || new Date().toISOString()}
 - Overall Attendance: ${context.overallPercentage ?? 100}% (${context.totalAttended ?? 0}/${context.totalClasses ?? 0} classes)
 - Target Attendance: ${context.targetPercentage ?? 75}%
 - Enrolled Subjects:
 ${subjectsSummary}
+- Weekly Timetable:
+${timetableSummary}
+${extraClassesSummary ? `- Upcoming Extra Classes:\n${extraClassesSummary}` : ""}
 
 ${ordContext}
 
 ${masterPrompt ? `Master Context:\n${masterPrompt}` : ""}`;
 
-        const response = await ai.models.generateContent({
-          model: "gemini-3.5-flash-lite",
+        const response = await AIManager.generateContent({
+          model: "gemini-3.8-flash",
           contents: userPrompt,
           config: {
             systemInstruction: systemPrompt,
@@ -476,10 +552,23 @@ ${masterPrompt ? `Master Context:\n${masterPrompt}` : ""}`;
         });
 
         const responseText = response.text || "{}";
-        const cleaned = responseText.replace(/^```json\s*/i, "").replace(/```\s*$/i, "").trim();
+        const match = responseText.match(/\{[\s\S]*\}/);
+        const cleaned = match ? match[0] : "{}";
         parsed = JSON.parse(cleaned);
       } catch (err: any) {
         console.warn("[CustomMlCopilotService] Gemini router failed or threw error:", err?.message || err);
+        
+        // If it's a JSON parse error, try to fallback gracefully to APP_FAQ rather than completely failing
+        if (err instanceof SyntaxError) {
+           return {
+             intent: "APP_FAQ",
+             reply: "I understood your question, but I had trouble formatting my response. Could you rephrase it?",
+             response: "JSON parsing error on Gemini response",
+             citations: [],
+             actions: [],
+             requiresConfirmation: false
+           };
+        }
         
         // Explicitly handle Rate Limit / Quota Exceeded (429) errors so users know what happened
         if (err?.message?.includes("429") || err?.status === 429 || err?.message?.includes("quota") || err?.message?.includes("exhausted")) {
@@ -492,6 +581,17 @@ ${masterPrompt ? `Master Context:\n${masterPrompt}` : ""}`;
             requiresConfirmation: false,
           };
         }
+
+        // CATCH-ALL FOR ANY OTHER ERROR (Network, 500, 503, Blocked by safety)
+        console.warn("[CustomMlCopilotService] Returning generic AI connection error to user.");
+        return {
+           intent: "APP_FAQ",
+           reply: "I'm having trouble connecting to my AI brain right now. Please check your internet or try again in a moment.",
+           response: "Offline engine error.",
+           citations: [],
+           actions: [],
+           requiresConfirmation: false
+        };
       }
     } else {
       console.warn("[CustomMlCopilotService] GEMINI_API_KEY is not configured, using fallback intent router.");
@@ -501,8 +601,8 @@ ${masterPrompt ? `Master Context:\n${masterPrompt}` : ""}`;
       return await this.fallbackProcess(query, context);
     }
 
-    const intent: IntentType = parsed.intent || "CHIT_CHAT";
-    const reply: string = parsed.reply || "I have processed your request.";
+    let intent: IntentType = parsed.intent || "CHIT_CHAT";
+    let reply: string = parsed.reply || "I have processed your request.";
     const citations: string[] = Array.isArray(parsed.citations) ? parsed.citations : [];
     const simulation = parsed.simulation;
 
@@ -513,6 +613,16 @@ ${masterPrompt ? `Master Context:\n${masterPrompt}` : ""}`;
 
     for (const raw of rawActions) {
       if (!raw || !raw.type) continue;
+      
+      // Strict Path Validation for NAVIGATE actions to prevent external redirects / XSS
+      if (raw.type === "NAVIGATE" && raw.payload?.path) {
+        const allowedPaths = ["/today", "/calendar", "/timetable", "/subjects", "/semester", "/predictive", "/report", "/settings", "/assignments", "/peer-sync"];
+        if (!allowedPaths.includes(raw.payload.path)) {
+           console.warn(`[CustomMlCopilotService] Blocked unauthorized NAVIGATE path: ${raw.payload.path}`);
+           continue; // Drop the action
+        }
+      }
+
       const action = this.createAction(
         raw.type,
         raw.payload || {},
@@ -528,9 +638,30 @@ ${masterPrompt ? `Master Context:\n${masterPrompt}` : ""}`;
 
     // Connect Email Hooks (Requirement R4)
     // 1. TRIGGER_REPORT
-    if (intent === "TRIGGER_REPORT" || validatedActions.some((a) => a.type === "TRIGGER_REPORT")) {
+    const reportAction = validatedActions.find((a) => a.type === "TRIGGER_REPORT");
+    if (intent === "TRIGGER_REPORT" || reportAction) {
+      const reportType = reportAction?.payload?.type || "weekly";
+      const reportTitle = reportAction?.payload?.title || (reportType.charAt(0).toUpperCase() + reportType.slice(1) + " Attendance Report");
       let userEmail = "";
       let userName = context.userName || "Student";
+      let classesAttended = 0;
+      let classesMissed = 0;
+      let classesOff = 0;
+      let totalClasses = 0;
+      let dailySummaries: { date: string, summary: string, remarks?: string[], events?: string[], eventObjects?: any[] }[] = [];
+      
+      const endDate = reportAction?.payload?.endDate ? new Date(reportAction.payload.endDate) : new Date();
+      const startDate = reportAction?.payload?.startDate ? new Date(reportAction.payload.startDate) : new Date();
+      if (!reportAction?.payload?.startDate) {
+        if (reportType === "monthly") startDate.setDate(startDate.getDate() - 30);
+        else if (reportType === "semester" && context.startDate) startDate.setTime(new Date(context.startDate).getTime());
+        else if (reportType === "custom") startDate.setDate(startDate.getDate() - 30);
+        else startDate.setDate(startDate.getDate() - 7);
+      }
+
+      const formattedStartDate = startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      const formattedEndDate = endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+
       if (context.userId) {
         try {
           const user = await prisma.user.findUnique({
@@ -541,34 +672,134 @@ ${masterPrompt ? `Master Context:\n${masterPrompt}` : ""}`;
             userEmail = user.email;
             userName = user.name || userName;
           }
+
+          const recentLogs = await prisma.attendance.findMany({
+            where: { 
+              userId: context.userId, 
+              date: { gte: startDate },
+              subject: {
+                semesterId: context.activeSemesterId
+              }
+            }
+          });
+          
+          classesAttended = recentLogs.filter(l => l.status === 'present' || l.status === 'medical' || l.status === 'od').length;
+          classesMissed = recentLogs.filter(l => l.status === 'absent').length;
+          classesOff = recentLogs.filter(l => l.status === 'off' || l.status === 'cancelled').length;
+          totalClasses = classesAttended + classesMissed;
+
+          // Compute daily summaries including "not_marked" and calendar events
+          const currDate = new Date(startDate);
+          currDate.setHours(0, 0, 0, 0);
+          const endObj = new Date(endDate);
+          endObj.setHours(23, 59, 59, 999);
+          
+          while (currDate <= endObj) {
+            const pad = (n: number) => String(n).padStart(2, '0');
+            const dateIso = `${currDate.getFullYear()}-${pad(currDate.getMonth() + 1)}-${pad(currDate.getDate())}`;
+            
+            let agenda = [];
+            if (context.userId) {
+              agenda = await AttendanceService.getTodayAgenda(context.userId, dateIso);
+            }
+            
+            const activeEvents = context.calendarEvents?.filter(e => {
+              const rawStart = e.startDate || e.date;
+              if (!rawStart) return false;
+              const eStart = new Date(rawStart);
+              if (isNaN(eStart.getTime())) return false;
+              eStart.setHours(0, 0, 0, 0);
+              const eEnd = e.endDate ? new Date(e.endDate) : new Date(eStart);
+              eEnd.setHours(23, 59, 59, 999);
+              return currDate >= eStart && currDate <= eEnd;
+            });
+            
+            if (agenda.length > 0 || (activeEvents && activeEvents.length > 0)) {
+              let present = 0, absent = 0, off = 0, notMarked = 0;
+              const remarksSet = new Set<string>();
+              const eventsSet = new Set<string>();
+              // Store full event objects (with type) not just names
+              const eventObjects: { title: string; eventType: string }[] = [];
+
+              for (const item of agenda) {
+                const s = item.status;
+                if (['present', 'medical', 'od'].includes(s)) present++;
+                else if (s === 'absent') absent++;
+                else if (['off', 'cancelled'].includes(s)) off++;
+                else if (s === 'not_marked' || s === null) notMarked++;
+                
+                if (item.remarks && item.remarks.trim() && item.remarks !== "Previous Timetable / Extra Class") {
+                  remarksSet.add(item.remarks.trim());
+                }
+              }
+
+              if (activeEvents && activeEvents.length > 0) {
+                activeEvents.forEach((e: any) => {
+                  const title = e.title || e.name || "Event";
+                  eventsSet.add(title);
+                  eventObjects.push({ title, eventType: e.eventType || e.event_type || 'other' });
+                });
+              }
+
+              const parts = [];
+              const absentSubjects = agenda.filter(i => i.status === 'absent' && i.subject?.name).map(i => i.subject.name);
+              if (present > 0) parts.push(`${present} present`);
+              if (absent > 0) parts.push(`${absent} absent${absentSubjects.length > 0 ? ` (${absentSubjects.join(', ')})` : ''}`);
+              if (off > 0) parts.push(`${off} off`);
+              if (notMarked > 0) parts.push(`${notMarked} not marked`);
+              
+              let summary = parts.length > 0 ? parts.join(', ') : (eventObjects.length > 0 ? "No classes" : "No activity");
+
+              const dateStr = currDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+              dailySummaries.push({ 
+                date: dateStr, 
+                summary, 
+                remarks: Array.from(remarksSet),
+                events: Array.from(eventsSet),
+                eventObjects,
+              });
+            }
+            currDate.setDate(currDate.getDate() + 1);
+          }
+
         } catch (dbErr) {
-          console.error("[CustomMlCopilotService] Failed to query user for report email:", dbErr);
+          console.error("[CustomMlCopilotService] Failed to query user/logs for report:", dbErr);
         }
       }
 
       const stats = {
         overallPercentage: context.overallPercentage ?? 100,
-        weeklyAttended: context.totalAttended ?? 0,
-        weeklyTotal: context.totalClasses ?? 0,
+        attended: classesAttended,
+        missed: classesMissed,
+        off: classesOff,
+        total: totalClasses,
+        dailySummaries,
+        dateRange: `${formattedStartDate} - ${formattedEndDate}`,
         subjects: context.subjects || [],
       };
 
       if (userEmail) {
         try {
-          await EmailService.sendWeeklyReport(userEmail, userName, stats);
+          if (reportType === "monthly" && !reportAction?.payload?.title) {
+            EmailService.sendMonthlyReport(userEmail, userName, stats).catch(console.error);
+          } else if (reportType === "weekly" && !reportAction?.payload?.title) {
+            EmailService.sendWeeklyReport(userEmail, userName, stats).catch(console.error);
+          } else {
+            EmailService.sendCustomReport(userEmail, userName, stats, reportTitle).catch(console.error);
+          }
         } catch (mailErr) {
-          console.error("[CustomMlCopilotService] Failed to send weekly report email:", mailErr);
+          console.error("[CustomMlCopilotService] Failed to send report email:", mailErr);
         }
       }
 
-      if (!validatedActions.some((a) => a.type === "TRIGGER_REPORT")) {
+      if (!reportAction) {
         validatedActions.push(
           this.createAction(
             "TRIGGER_REPORT",
-            { email: userEmail, stats },
+            { email: userEmail, stats, type: reportType },
             userEmail ? `email:${userEmail}` : "user:report",
-            `Send weekly attendance report to ${userEmail || "registered email"}`,
-            "Safe action: Dispatches weekly attendance report email."
+            `Send ${reportType} attendance report to ${userEmail || "registered email"}`,
+            `Safe action: Dispatches ${reportType} attendance report email.`
           )
         );
       }
@@ -618,7 +849,7 @@ ${masterPrompt ? `Master Context:\n${masterPrompt}` : ""}`;
 
       if (userEmail) {
         try {
-          await EmailService.sendFeedbackReceipt(userEmail, userName, feedbackData);
+          EmailService.sendFeedbackReceipt(userEmail, userName, feedbackData).catch(console.error);
         } catch (mailErr) {
           console.error("[CustomMlCopilotService] Failed to send feedback receipt email:", mailErr);
         }
@@ -637,6 +868,275 @@ ${masterPrompt ? `Master Context:\n${masterPrompt}` : ""}`;
       }
     }
 
+    // 3. MARK_ATTENDANCE Validation (Check if class exists on timetable)
+    const attendanceActions = validatedActions.filter(a => a.type === "MARK_ATTENDANCE");
+    const missingSubjects: string[] = [];
+    let targetDateForPrompt = "";
+
+    for (let i = attendanceActions.length - 1; i >= 0; i--) {
+      const action = attendanceActions[i];
+      if (!action.payload?.subjectId && action.payload?.date && context.userId) {
+        // Bulk mark request for the entire day
+        const targetDateStr = action.payload.date;
+        targetDateForPrompt = targetDateStr;
+        const agenda = await AttendanceService.getTodayAgenda(context.userId, targetDateStr);
+        
+        const origIndex = validatedActions.indexOf(action);
+        if (origIndex > -1) {
+          validatedActions.splice(origIndex, 1);
+        }
+
+        if (agenda.length === 0) {
+           const friendlyDate = new Date(targetDateStr).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+           reply = `You don't have any classes scheduled on ${friendlyDate}!`;
+           intent = "TIMETABLE_QUERY" as IntentType;
+        } else {
+           agenda.forEach(item => {
+              if (item.type !== 'manual') {
+                 validatedActions.push({
+                   id: `act-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                   type: "MARK_ATTENDANCE",
+                   category: "SAFE",
+                   isDestructive: false,
+                   requiresConfirmation: false,
+                   target: `date:${targetDateStr}`,
+                   description: `Mark ${item.subject.name} as ${action.payload.status}`,
+                   impact: "Safe update",
+                   payload: {
+                      subjectId: item.subject.id,
+                      date: targetDateStr,
+                      status: action.payload.status,
+                      timetableSlotId: item.id,
+                      remarks: "Marked by AttendX Copilot"
+                   }
+                 });
+              }
+           });
+        }
+      } else if (action.payload?.subjectId && action.payload?.date && context.userId) {
+        const targetDateStr = action.payload.date;
+        targetDateForPrompt = targetDateStr;
+        const agenda = await AttendanceService.getTodayAgenda(context.userId, targetDateStr);
+        
+        const existsOnAgenda = agenda.some(item => 
+          item.subject.id === action.payload.subjectId && 
+          item.type !== "manual"
+        );
+
+        if (!existsOnAgenda) {
+          const subject = context.subjects?.find(s => s.id === action.payload.subjectId);
+          const subjectName = subject?.name || "the class";
+          missingSubjects.push(subjectName);
+          
+          action.type = "ADD_EXTRA_CLASS";
+          action.requiresConfirmation = true;
+          action.isDestructive = true;
+          
+          action.payload = {
+             subjectId: action.payload.subjectId,
+             date: targetDateStr,
+             startTime: "00:00",
+             endTime: "00:00",
+             reason: "AI auto-generated Extra Class",
+             markStatus: action.payload.status,
+             remarks: "Marked by AttendX Copilot"
+          };
+        }
+      }
+    }
+
+    if (missingSubjects.length > 0) {
+      const friendlyDate = new Date(targetDateForPrompt).toLocaleDateString('en-US', { weekday: 'long' });
+      reply = `There are no classes scheduled for ${missingSubjects.join(", ")} on ${friendlyDate}. Would you like me to add them as Extra Classes and mark them?`;
+    }
+
+    // 4. MARK_FULL_DAY_OFF Validation (Check if any classes exist on that day)
+    const fullDayOffActions = validatedActions.filter(a => a.type === "MARK_FULL_DAY_OFF");
+    let noClassesDayStr = "";
+    
+    for (let i = fullDayOffActions.length - 1; i >= 0; i--) {
+      const action = fullDayOffActions[i];
+      if (action.payload?.date && context.userId) {
+        const targetDateStr = action.payload.date;
+        const agenda = await AttendanceService.getTodayAgenda(context.userId, targetDateStr);
+        
+        if (agenda.length === 0) {
+          noClassesDayStr = targetDateStr;
+          const index = validatedActions.indexOf(action);
+          if (index > -1) {
+            validatedActions.splice(index, 1);
+          }
+        }
+      }
+    }
+
+    if (noClassesDayStr) {
+      const friendlyDate = new Date(noClassesDayStr).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+      reply = `You don't have any classes scheduled on ${friendlyDate}, so there is no need to mark a full day off!`;
+      intent = "TIMETABLE_QUERY" as IntentType;
+    }
+
+    // 5. REMOVE_ATTENDANCE Validation (Check if the attendance log actually exists)
+    const removeActions = validatedActions.filter(a => a.type === "REMOVE_ATTENDANCE");
+    let missingLogSubject = "";
+    let missingLogDate = "";
+
+    for (let i = removeActions.length - 1; i >= 0; i--) {
+      const action = removeActions[i];
+      if (action.payload?.subjectId && action.payload?.date && context.userId) {
+        const targetDateStr = action.payload.date;
+        const subjectId = action.payload.subjectId;
+        const agenda = await AttendanceService.getTodayAgenda(context.userId, targetDateStr);
+        
+        const hasLog = agenda.some(item => 
+           item.subject.id === subjectId && 
+           item.status !== "not_marked" && 
+           item.status !== null
+        );
+
+        if (!hasLog) {
+          missingLogDate = targetDateStr;
+          const subject = context.subjects?.find(s => s.id === subjectId);
+          missingLogSubject = subject?.name || "that class";
+          
+          const index = validatedActions.indexOf(action);
+          if (index > -1) {
+            validatedActions.splice(index, 1);
+          }
+        }
+      }
+    }
+
+    if (missingLogSubject && missingLogDate) {
+      const friendlyDate = new Date(missingLogDate).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+      reply = `You don't have any attendance marked for ${missingLogSubject} on ${friendlyDate}!`;
+      intent = "TIMETABLE_QUERY" as IntentType;
+    }
+
+    let semesterProjection = undefined;
+    if (intent === "FORECAST_SIMULATION" && /(rest of semester|last working day|till the end|remaining classes|all remaining)/i.test(query)) {
+      const isAttend = /(attend|attending|go to)/i.test(query);
+      const subjectsWithRemaining = (context.subjects || []).filter((s: any) => s.remainingClasses && s.remainingClasses > 0);
+      
+      if (subjectsWithRemaining.length > 0) {
+        semesterProjection = {
+          skipCountPerSubject: isAttend ? 0 : -1, // We map this in UI. 0 means attend all remaining, -1 means miss all remaining.
+          endDate: context.endDate || new Date().toISOString().split('T')[0],
+          subjects: subjectsWithRemaining.map((s: any) => {
+            const currentAtt = s.attended || 0;
+            const currentTot = s.total || 0;
+            const projectedTotal = currentTot + s.remainingClasses!;
+            const projectedAttended = isAttend ? currentAtt + s.remainingClasses! : currentAtt;
+            const projectedPercentage = projectedTotal > 0 ? (projectedAttended / projectedTotal) * 100 : 100;
+            return {
+              subjectId: s.id,
+              subjectName: s.name,
+              remainingClasses: s.remainingClasses!,
+              projectedPercentage,
+              targetPercentage: s.target || context.targetPercentage || 75
+            };
+          })
+        };
+        
+        reply = `I have projected your attendance until the end of the semester. Assuming you ${isAttend ? "attend" : "miss"} all remaining classes, here is your forecast.`;
+      }
+    }
+
+    if (intent === "FORECAST_SIMULATION" && simulation && /(every week|per week|a week|from now on|till the end|rest of semester)/i.test(query)) {
+      if (!context.endDate) {
+        reply = "I don't have your semester's end date configured. Please tell me your last working day so I can calculate this correctly.";
+        // Clear simulation so it doesn't render incorrectly
+        for (const key in simulation) delete simulation[key];
+      } else {
+        const start = new Date(context.localTime || new Date());
+        const end = new Date(context.endDate);
+        const diffTime = Math.max(0, end.getTime() - start.getTime());
+        const diffWeeks = Math.max(1, Math.ceil(diffTime / (1000 * 60 * 60 * 24 * 7)));
+        
+        let perWeek = simulation.skipCount || 1; 
+        const isAttend = /(attend|attending|go to)/i.test(query) && !/(miss|skip|bunk)/i.test(query);
+        if (isAttend && perWeek > 0) perWeek = -perWeek;
+        
+        simulation.skipCount = perWeek * diffWeeks;
+        
+        const currentTot = simulation.currentTotal || 0;
+        const currentAtt = simulation.currentAttended || 0;
+        
+        const projectedTotal = currentTot + Math.abs(simulation.skipCount);
+        const projectedAttended = simulation.skipCount < 0 
+          ? currentAtt + Math.abs(simulation.skipCount) 
+          : currentAtt;
+          
+        simulation.projectedPercentage = projectedTotal > 0 ? (projectedAttended / projectedTotal) * 100 : 100;
+        
+        reply = `Assuming there are about ${diffWeeks} weeks left until ${end.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}, ${isAttend ? 'attending' : 'missing'} ${Math.abs(perWeek)} class(es) per week means you will ${isAttend ? 'attend' : 'miss'} a total of ${Math.abs(simulation.skipCount)} classes. Here is your preview!`;
+      }
+    }
+
+    if (intent === "FORECAST_SIMULATION" && simulation && /(how many|how much).*?(need|require|reach|get to|can i miss|can i skip|afford to miss)/i.test(query)) {
+      const match = query.match(/(\d+)\s*%/);
+      const targetPct = match ? parseInt(match[1]) : (simulation.targetPercentage || 75);
+      
+      const subject = (context.subjects || []).find((s: any) => 
+        s.id === simulation.subjectId || 
+        (simulation.subjectName && s.name.toLowerCase() === simulation.subjectName.toLowerCase())
+      ) || { remainingClasses: 0 };
+      
+      const currentAtt = simulation.currentAttended || 0;
+      const currentTot = simulation.currentTotal || 0;
+      const remaining = subject.remainingClasses || 0;
+      const currentPct = currentTot > 0 ? (currentAtt / currentTot) * 100 : 100;
+      
+      // Helper to append date warning
+      const appendDateWarning = (msg: string) => {
+        if (!context.endDate || remaining === 0) {
+          return msg + ` (Note: I couldn't verify your remaining classes. Please ensure your 'Last Teaching Day' is set in the Forecast tab!)`;
+        }
+        return msg;
+      };
+
+      if (targetPct >= 100 && currentAtt < currentTot) {
+        reply = `It's mathematically impossible to reach exactly 100% since you have already missed classes.`;
+        for (const key in simulation) delete simulation[key];
+      } else {
+        const requiredClasses = Math.ceil(((targetPct / 100) * currentTot - currentAtt) / (1 - (targetPct / 100)));
+        
+        if (requiredClasses <= 0) {
+          // User is above target, so calculate how many they can miss
+          const safeToMiss = Math.floor((currentAtt - (targetPct / 100) * currentTot) / (targetPct / 100));
+          
+          if (safeToMiss > 0) {
+            reply = appendDateWarning(`In ${simulation.subjectName}, you currently have ${currentAtt} attended out of ${currentTot} classes (${currentPct.toFixed(2)}%). You can safely miss ${safeToMiss} consecutive class(es) and still stay at or above ${targetPct}%.`);
+            simulation.skipCount = safeToMiss; // positive means miss
+            const finalTot = currentTot + safeToMiss;
+            simulation.projectedPercentage = finalTot > 0 ? (currentAtt / finalTot) * 100 : 100;
+          } else {
+            reply = appendDateWarning(`You are exactly at ${targetPct}% in ${simulation.subjectName || 'this subject'}. If you miss any more classes, you will drop below your target.`);
+            simulation.skipCount = 1;
+            simulation.projectedPercentage = ((currentAtt) / (currentTot + 1)) * 100;
+          }
+        } else if (remaining > 0 && requiredClasses > remaining) {
+          reply = `In ${simulation.subjectName}, you need ${requiredClasses} consecutive classes to reach ${targetPct}%. However, there are only ${remaining} classes left in the semester, making it mathematically impossible to reach this target.`;
+          simulation.skipCount = -remaining;
+          const finalAtt = currentAtt + remaining;
+          const finalTot = currentTot + remaining;
+          simulation.projectedPercentage = finalTot > 0 ? (finalAtt / finalTot) * 100 : 100;
+        } else {
+          reply = appendDateWarning(`In ${simulation.subjectName}, you currently have ${currentAtt} attended out of ${currentTot} classes (${currentPct.toFixed(2)}%). To reach ${targetPct}% attendance, you need to attend the next ${requiredClasses} consecutive classes.`);
+          simulation.skipCount = -requiredClasses; // negative means attend
+          const finalAtt = currentAtt + requiredClasses;
+          const finalTot = currentTot + requiredClasses;
+          simulation.projectedPercentage = finalTot > 0 ? (finalAtt / finalTot) * 100 : 100;
+        }
+      }
+    }
+
+    // Return the final payload
+    let finalSimulation = undefined;
+    if (!semesterProjection && simulation && Object.keys(simulation).length > 0) {
+      finalSimulation = simulation;
+    }
+
     return {
       intent,
       reply,
@@ -644,7 +1144,8 @@ ${masterPrompt ? `Master Context:\n${masterPrompt}` : ""}`;
       citations,
       actions: validatedActions,
       requiresConfirmation,
-      simulation,
+      simulation: finalSimulation,
+      semesterProjection,
     };
   }
 
@@ -677,6 +1178,10 @@ ${masterPrompt ? `Master Context:\n${masterPrompt}` : ""}`;
 
     // 2. TRIGGER_REPORT
     if (/(send|email|dispatch|mail|generate)\s+.*?(report|summary|attendance report)/i.test(lower) || /(report to my email|email my report)/i.test(lower)) {
+      let reportType = "weekly";
+      if (/\b(semester|term)\b/i.test(lower)) reportType = "semester";
+      else if (/\b(monthly|month)\b/i.test(lower)) reportType = "monthly";
+      let reportTitle = reportType.charAt(0).toUpperCase() + reportType.slice(1) + " Attendance Report";
       let userEmail = "";
       let userName = context.userName || "Student";
       if (context.userId) {
@@ -703,7 +1208,15 @@ ${masterPrompt ? `Master Context:\n${masterPrompt}` : ""}`;
 
       if (userEmail) {
         try {
-          await EmailService.sendWeeklyReport(userEmail, userName, stats);
+          // Wait, the actual email sending happens in the main intercept logic!
+          // But fallbackProcess sends it manually. Let's send the correct one.
+          if (reportType === "monthly") {
+             EmailService.sendMonthlyReport(userEmail, userName, stats).catch(console.error);
+          } else if (reportType === "weekly") {
+             EmailService.sendWeeklyReport(userEmail, userName, stats).catch(console.error);
+          } else {
+             EmailService.sendCustomReport(userEmail, userName, stats, reportTitle).catch(console.error);
+          }
         } catch (mailErr) {
           console.error("[CustomMlCopilotService] Error sending report email in fallback:", mailErr);
         }
@@ -711,14 +1224,14 @@ ${masterPrompt ? `Master Context:\n${masterPrompt}` : ""}`;
 
       const action = this.createAction(
         "TRIGGER_REPORT",
-        { email: userEmail, stats },
+        { email: userEmail, stats, type: reportType },
         userEmail ? `email:${userEmail}` : "user:report",
-        `Send weekly attendance report to ${userEmail || "registered email"}`,
-        "Safe action: Dispatches weekly attendance report email."
+        `Send ${reportType} attendance report to ${userEmail || "registered email"}`,
+        `Safe action: Dispatches ${reportType} attendance report email.`
       );
       const reply = userEmail
-        ? `I have dispatched your detailed attendance report to ${userEmail}.`
-        : "I have prepared your attendance report summary.";
+        ? `I have dispatched your detailed ${reportType} attendance report to ${userEmail}.`
+        : `I have prepared your ${reportType} attendance report summary.`;
 
       return {
         intent: "TRIGGER_REPORT",
@@ -774,7 +1287,7 @@ ${masterPrompt ? `Master Context:\n${masterPrompt}` : ""}`;
 
       if (userEmail) {
         try {
-          await EmailService.sendFeedbackReceipt(userEmail, userName, feedbackData);
+          EmailService.sendFeedbackReceipt(userEmail, userName, feedbackData).catch(console.error);
         } catch (mailErr) {
           console.error("[CustomMlCopilotService] Error sending feedback email in fallback:", mailErr);
         }
@@ -807,8 +1320,8 @@ ${masterPrompt ? `Master Context:\n${masterPrompt}` : ""}`;
       else if (/(setting|settings|preference|profile)/i.test(lower)) { path = "/settings"; title = "Settings"; }
       else if (/(report|reports|analytic|analytics)/i.test(lower)) { path = "/report"; title = "Attendance Reports"; }
       else if (/(calendar|event|events|academic)/i.test(lower)) { path = "/calendar"; title = "Academic Calendar"; }
-      else if (/(forecast|predict|prediction|predictive)/i.test(lower)) { path = "/predictive"; title = "Predictive Forecast"; }
-      else if (/(peer|friends|sync)/i.test(lower)) { path = "/peer-sync"; title = "Peer Sync"; }
+      else if (/(predict|prediction|predictive)/i.test(lower)) { path = "/predictive"; title = "Predictive Forecast"; }
+      else if (/(peer|friends|sync)/i.test(lower)) { path = "/settings"; title = "Peer Sync Settings"; }
       else if (/(assignment|assignments|task|tasks)/i.test(lower)) { path = "/assignments"; title = "Assignments"; }
       else if (/(semester|hub|overview)/i.test(lower)) { path = "/semester"; title = "Semester Overview"; }
 
@@ -905,6 +1418,17 @@ ${masterPrompt ? `Master Context:\n${masterPrompt}` : ""}`;
     }
 
     // 8. SHIFT_TIMETABLE
+    if (/(swap|shift|move)\s+.*?(entire day|monday and|tuesday and|timetable)/i.test(lower) && !query.match(/lecture|class|slot/i)) {
+      return {
+        intent: "SHIFT_TIMETABLE",
+        reply: "I cannot bulk-shift or swap entire days of the timetable at once. Please use the drag-and-drop Timetable UI for bulk changes, or ask me to move a specific subject's slot.",
+        response: "I cannot bulk-shift or swap entire days of the timetable at once. Please use the drag-and-drop Timetable UI for bulk changes, or ask me to move a specific subject's slot.",
+        citations: [],
+        actions: [],
+        requiresConfirmation: false,
+      };
+    }
+
     if (/(reschedule|move|shift|postpone)\s+.*?(lecture|class|slot|session|to\s+\d+|today|tomorrow|monday|tuesday|wednesday|thursday|friday)/i.test(lower)) {
       const resolvedSubject = this.resolveSubject(query, context.subjects || []);
       const activeSemId = context.activeSemesterId || "sem_active";
@@ -935,7 +1459,7 @@ ${masterPrompt ? `Master Context:\n${masterPrompt}` : ""}`;
     }
 
     // 9. MARK_ATTENDANCE
-    if (/(update my|mark( my)?|set( my)?|record( my)?)\s+.*?(attendance|present|absent|medical|on duty|off|leave)/i.test(lower) || /(full day off|day off)/i.test(lower)) {
+    if (/(update my|mark( my)?|set( my)?|record( my)?)\s+.*?(attendance|present|absent|medical|on duty|off|leave)/i.test(lower) || /(full day off|day off|not going|bunking)/i.test(lower)) {
       if (/(full day off|day off|holiday today)/i.test(lower)) {
         const dateStr = this.extractDate(lower, localDate);
         const reply = `I have staged an action to mark the full day off on ${dateStr}. Please confirm to proceed.`;
@@ -955,7 +1479,7 @@ ${masterPrompt ? `Master Context:\n${masterPrompt}` : ""}`;
       let status = "present";
       if (/\b(medical|sick)\b/i.test(lower)) status = "medical";
       else if (/\b(on duty|duty|od)\b/i.test(lower)) status = "od";
-      else if (/\b(absent|missed|miss)\b/i.test(lower)) status = "absent";
+      else if (/\b(absent|missed|miss|not going|bunking)\b/i.test(lower)) status = "absent";
       else if (/\b(off|cancelled|canceled)\b/i.test(lower)) status = "off";
 
       const reply = `Marked attendance for ${resolvedSubject.name} as ${status.toUpperCase()} on ${dateStr}.`;
@@ -976,6 +1500,69 @@ ${masterPrompt ? `Master Context:\n${masterPrompt}` : ""}`;
       };
     }
 
+    // 11. ADD_EXTRA_CLASS
+    if (/(add|schedule|create)\s+.*?(makeup|extra|additional)\s+(class|lecture|lab|practical)/i.test(lower)) {
+      const resolvedSubject = this.resolveSubject(query, context.subjects || []);
+      const dateStr = this.extractDate(lower, localDate);
+      const timeMatch = this.extractTime(lower);
+      
+      let startTime = timeMatch.startTime !== "00:00" ? timeMatch.startTime : "10:00";
+      let endTime = timeMatch.endTime !== "00:00" ? timeMatch.endTime : "10:50"; // Default 50 mins
+      
+      if (/(lab|practical)/i.test(lower) && timeMatch.endTime === "00:00") {
+         // Default 100 mins for lab
+         let [h, m] = startTime.split(':').map(Number);
+         m += 100;
+         h += Math.floor(m / 60);
+         m = m % 60;
+         endTime = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+      }
+
+      const reply = `I've staged the addition of the makeup class for ${resolvedSubject.name} on ${dateStr} at ${startTime}. Please confirm.`;
+      const action = this.createAction(
+        "ADD_EXTRA_CLASS",
+        { subjectId: resolvedSubject.id, date: dateStr, startTime, endTime, reason: "Makeup Class" },
+        `subject:${resolvedSubject.name}`,
+        `Add makeup class for ${resolvedSubject.name} on ${dateStr} from ${startTime} to ${endTime}`,
+        `Destructive action: Adds a new class to your schedule.`
+      );
+      return {
+        intent: "ADD_EXTRA_CLASS",
+        reply,
+        response: reply,
+        citations: [],
+        actions: [action],
+        requiresConfirmation: true,
+      };
+    }
+
+
+    // 15. ADD_TIMETABLE_SLOT
+    if (/(add|schedule|create)\s+.*?(slot|class|lecture)\s+.*?(on monday|on tuesday|on wednesday|on thursday|on friday)/i.test(lower)) {
+      const resolvedSubject = this.resolveSubject(query, context.subjects || []);
+      const dayMatch = this.extractDayOfWeek(lower, localDate);
+      const timeMatch = this.extractTime(lower);
+      
+      let startTime = timeMatch.startTime !== "00:00" ? timeMatch.startTime : "10:00";
+      let endTime = timeMatch.endTime !== "00:00" ? timeMatch.endTime : "10:50"; // Default 50 mins
+      
+      const reply = `I've staged the addition of a new ${resolvedSubject.name} slot on ${dayMatch.dayName} at ${startTime}. Please confirm.`;
+      const action = this.createAction(
+        "ADD_TIMETABLE_SLOT",
+        { subjectId: resolvedSubject.id, dayOfWeek: dayMatch.dayIndex, startTime, endTime, slotType: "lecture" },
+        `subject:${resolvedSubject.name}`,
+        `Add slot for ${resolvedSubject.name} on ${dayMatch.dayName} at ${startTime}`,
+        `Destructive action: Adds a new recurring weekly slot.`
+      );
+      return {
+        intent: "ADD_TIMETABLE_SLOT",
+        reply,
+        response: reply,
+        citations: [],
+        actions: [action],
+        requiresConfirmation: true,
+      };
+    }
     // 10. MODIFY_TARGET
     if (/(target|goal)\s+.*?(to\s+(\d+)%|(\d+)%)/i.test(lower) || /change (my )?target to (\d+)%/i.test(lower)) {
       const match = lower.match(/(\d+)\s*%/);
@@ -1168,7 +1755,7 @@ ${masterPrompt ? `Master Context:\n${masterPrompt}` : ""}`;
     }
 
     // Fallback if subjects list is available
-    if (subjects.length > 0) {
+    if (subjects && subjects.length > 0) {
       const first = subjects[0];
       return {
         id: first.id,
@@ -1180,7 +1767,7 @@ ${masterPrompt ? `Master Context:\n${masterPrompt}` : ""}`;
     }
 
     return {
-      id: "sub_general",
+      id: "unknown_subject", // AI-H03 FIX: Clear string ID instead of null
       name: "Enrolled Course",
       target: 75,
       attended: 20,
