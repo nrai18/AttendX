@@ -67,14 +67,24 @@ export class AuthService {
 
   static async googleNativeLogin(idToken: string, req?: any) {
     const { OAuth2Client } = require("google-auth-library");
-    // Some setups use a separate Android client ID, but verification usually uses the Web Client ID
-    const client = new OAuth2Client(); 
-    
-    // We verify the token signature and get the payload
+    const client = new OAuth2Client();
+
+    // SEC-01 FIX: NEVER read audience from the unverified token itself.
+    // The audience MUST be a hardcoded list of client IDs we own.
+    // Reading it from the token lets an attacker self-declare our client ID
+    // on a token minted for any other app, bypassing verification entirely.
+    const trustedAudiences = [
+      process.env.GOOGLE_CLIENT_ID,          // Web OAuth client ID
+      process.env.GOOGLE_ANDROID_CLIENT_ID,  // Android client ID
+    ].filter(Boolean) as string[];           // Drop undefined if env var not set
+
+    if (trustedAudiences.length === 0) {
+      throw new Error("Server misconfiguration: No Google client IDs configured.");
+    }
+
     const ticket = await client.verifyIdToken({
       idToken,
-      // Get audience from token dynamically to support both Web and Android Client IDs
-      audience: require("jsonwebtoken").decode(idToken)?.aud || process.env.GOOGLE_CLIENT_ID, 
+      audience: trustedAudiences,
     });
     const payload = ticket.getPayload();
     if (!payload) throw new Error("Invalid Google token payload");
@@ -196,9 +206,10 @@ export class AuthService {
     });
 
     if (!tokenRecord) {
-      // Security measure: if token was already used, revoke all tokens for this user
-      // Removed aggressive nuke to prevent cross-device logouts
-      throw new Error("Invalid refresh token. Please login again.");
+      // SEC-H06 FIX: Security measure: if token was already used, revoke all tokens for this user
+      // A legitimate client would have the latest refresh token. If we see an old valid one, it's stolen.
+      await prisma.refreshToken.deleteMany({ where: { userId: payload.userId } });
+      throw new Error("Security alert: Token reuse detected. All sessions revoked. Please login again.");
     }
 
     const sessionId = tokenRecord.id;
@@ -206,8 +217,10 @@ export class AuthService {
     const user = await prisma.user.findUnique({ where: { id: payload.userId } });
     if (!user) throw new Error("User not found");
 
+    // SEC-H06 FIX: Rotate tokens on every refresh!
+    const newRefreshToken = generateRefreshToken(user.id);
+    const hashedNewRefresh = await this.hashToken(newRefreshToken);
     const accessToken = generateAccessToken(user.id, user.role, sessionId);
-    // DO NOT ROTATE tokens!
 
     const { getDeviceDetails } = require("../utils/device");
     const { userAgent, ipAddress, location, os, browser, deviceType } = await getDeviceDetails(req);
@@ -229,9 +242,8 @@ export class AuthService {
     await prisma.refreshToken.update({
       where: { id: sessionId },
       data: {
-        
-        
-        expiresAt: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000), // Extended to 90 days of inactivity!
+        token: hashedNewRefresh, // SEC-H06 FIX: Update the DB with the new token
+        expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // SEC-M09 FIX: Keep consistent 30-day inactivity timeout
         lastActive: new Date(),
         userAgent,
         ipAddress,
@@ -242,7 +254,7 @@ export class AuthService {
       },
     });
 
-    return { accessToken, refreshToken: oldRefreshToken };
+    return { accessToken, refreshToken: newRefreshToken }; // Return the rotated refresh token
   }
 
   static async logout(refreshToken: string) {
@@ -259,14 +271,20 @@ export class AuthService {
     const otp = crypto.randomInt(100000, 999999).toString();
     const otpHash = crypto.createHmac('sha256', process.env.JWT_SECRET as string).update(otp).digest('hex');
 
+    // SEC-H03 FIX: Use a constant-time secret pattern to avoid timing differences.
+    // We sign with the global secret for the reset envelope.
+    const secret = process.env.JWT_SECRET as string;
+    
     if (!user) {
-      // Return a fake token to prevent user enumeration
-      const fakeToken = require('jsonwebtoken').sign({ id: 'fake', otpHash }, (process.env.JWT_SECRET as string) + 'fake', { expiresIn: '15m' });
+      // Simulate email sending time to prevent timing attacks
+      await new Promise(resolve => setTimeout(resolve, 500));
+      // Return a fake token to prevent user enumeration, signed with the real secret
+      const fakeToken = require('jsonwebtoken').sign({ id: 'fake', otpHash }, secret, { expiresIn: '15m' });
       return { token: fakeToken };
     }
 
-    const secret = (process.env.JWT_SECRET as string) + (user.passwordHash as string);
-    const token = require('jsonwebtoken').sign({ id: user.id, otpHash }, secret, { expiresIn: '15m' });
+    // Embed the user's password hash in the payload so we can check if it changed later
+    const token = require('jsonwebtoken').sign({ id: user.id, otpHash, passHash: user.passwordHash?.substring(0, 10) }, secret, { expiresIn: '15m' });
     
     // Send the plain OTP via email!
     await EmailService.sendPasswordResetEmail(user.email, otp);
@@ -278,17 +296,26 @@ export class AuthService {
     if (!otp) throw new Error("OTP is required");
     if (!token) throw new Error("Invalid token");
     
-    const decoded = jwt.decode(token) as { id: string, otpHash: string } | null;
-    if (!decoded || !decoded.id) throw new Error("Invalid or expired reset token");
+    const secret = process.env.JWT_SECRET as string;
+    let decoded;
+    try {
+      // SEC-H01 FIX: Verify the signature BEFORE looking up the user ID
+      decoded = jwt.verify(token, secret) as { id: string, otpHash: string, passHash?: string };
+    } catch (e) {
+      throw new Error("Invalid or expired reset token");
+    }
+    
+    if (!decoded.id || decoded.id === 'fake') {
+      // Fake tokens pass JWT verify, but we reject them here without a DB hit
+      throw new Error("Invalid or expired reset token");
+    }
     
     const user = await prisma.user.findUnique({ where: { id: decoded.id } });
     if (!user) throw new Error("User not found");
     
-    const secret = (process.env.JWT_SECRET as string) + (user.passwordHash as string);
-    try {
-      jwt.verify(token, secret);
-    } catch (e) {
-      throw new Error("Invalid or expired reset token");
+    // Ensure the password hasn't already been reset since this token was issued
+    if (decoded.passHash && user.passwordHash?.substring(0, 10) !== decoded.passHash) {
+       throw new Error("Invalid or expired reset token");
     }
     
     const providedHash = crypto.createHmac('sha256', process.env.JWT_SECRET as string).update(otp).digest('hex');
@@ -302,19 +329,23 @@ export class AuthService {
     if (!token) throw new Error("Invalid token");
     if (!newPassword || newPassword.length < 6) throw new Error("Password must be at least 6 characters");
     
-    // Decode first to get the user ID
-    const decoded = jwt.decode(token) as { id: string, otpHash: string } | null;
-    if (!decoded || !decoded.id) throw new Error("Invalid or expired reset token");
+    const secret = process.env.JWT_SECRET as string;
+    let decoded;
+    try {
+      // SEC-H01 FIX: Verify the signature BEFORE looking up the user ID
+      decoded = jwt.verify(token, secret) as { id: string, otpHash: string, passHash?: string };
+    } catch (e) {
+      throw new Error("Invalid or expired reset token");
+    }
+    
+    if (!decoded.id || decoded.id === 'fake') throw new Error("Invalid or expired reset token");
     
     const user = await prisma.user.findUnique({ where: { id: decoded.id } });
     if (!user) throw new Error("User not found");
     
-    // Verify the signature securely
-    const secret = (process.env.JWT_SECRET as string) + (user.passwordHash as string);
-    try {
-      jwt.verify(token, secret);
-    } catch (e) {
-      throw new Error("Invalid or expired reset token");
+    // Ensure the password hasn't already been reset since this token was issued
+    if (decoded.passHash && user.passwordHash?.substring(0, 10) !== decoded.passHash) {
+       throw new Error("Invalid or expired reset token");
     }
     
     const providedHash = crypto.createHmac('sha256', process.env.JWT_SECRET as string).update(otp).digest('hex');

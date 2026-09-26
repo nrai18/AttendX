@@ -22,25 +22,14 @@ export const authenticate: RequestHandler = async (req, res, next) => {
     const payload = verifyAccessToken(token);
 
     if (payload.sessionId) {
-      let isValidPromise = sessionPromises.get(payload.sessionId);
+      const { prisma } = require("../lib/prisma");
+      // SEC-H05 FIX: Query DB directly for session validity instead of relying on a 60-second stale memory cache
+      // This ensures immediate revocation when a user logs out remotely
+      const session = await prisma.refreshToken.findUnique({
+        where: { id: payload.sessionId }
+      });
       
-      if (!isValidPromise) {
-        const { prisma } = require("../lib/prisma");
-        isValidPromise = prisma.refreshToken.findUnique({
-          where: { id: payload.sessionId }
-        }).then((session: any) => {
-          // Keep it cached for 60 seconds
-          setTimeout(() => sessionPromises.delete(payload.sessionId), 60000);
-          return !!session;
-        }).catch(() => {
-          sessionPromises.delete(payload.sessionId);
-          return false;
-        });
-        sessionPromises.set(payload.sessionId, isValidPromise);
-      }
-      
-      const isValid = await isValidPromise;
-      if (!isValid) {
+      if (!session) {
         return res.status(401).json({ message: "Session has been revoked" });
       }
     }
@@ -53,4 +42,34 @@ export const authenticate: RequestHandler = async (req, res, next) => {
   } catch (error) {
     res.status(401).json({ message: "Invalid or expired access token" });
   }
+};
+
+/**
+ * SEC-03 FIX — cronAuth middleware
+ * Protects internal cron / admin endpoints that are called by server infrastructure,
+ * not by end users. Requires the caller to supply the shared CRON_SECRET via the
+ * `x-cron-secret` request header. A missing or wrong secret returns 403.
+ *
+ * Usage: router.get("/cron/cleanup", cronAuth, SomeController.cleanup);
+ *
+ * Setup:
+ *   1. Add CRON_SECRET=<long-random-string> to your .env
+ *   2. Your cron job (Cloud Scheduler, Render Cron, etc.) must pass:
+ *      -H "x-cron-secret: <same-value>"
+ */
+export const cronAuth: RequestHandler = (req, res, next) => {
+  const secret = process.env.CRON_SECRET;
+
+  if (!secret) {
+    // Misconfigured server — refuse access rather than silently open the gate
+    console.error("[cronAuth] CRON_SECRET env var is not set. Refusing cron request.");
+    return res.status(503).json({ message: "Cron endpoint not configured on this server." });
+  }
+
+  const provided = req.headers["x-cron-secret"];
+  if (!provided || provided !== secret) {
+    return res.status(403).json({ message: "Forbidden" });
+  }
+
+  next();
 };

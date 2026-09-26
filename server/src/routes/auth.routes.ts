@@ -21,8 +21,17 @@ const forgotPasswordLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+// SEC-M08 FIX: Add rate limiting to /refresh to prevent token brute-forcing
+const refreshLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 50, // 50 refreshes per 15 min per IP
+  message: { message: "Too many token refresh attempts, please try again later" },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 router.post("/login", loginLimiter, AuthController.login);
-router.post("/refresh", AuthController.refresh);
+router.post("/refresh", refreshLimiter, AuthController.refresh);
 router.post("/logout", AuthController.logout);
 router.post("/forgot-password", forgotPasswordLimiter, AuthController.forgotPassword);
 router.post("/validate-otp", loginLimiter, AuthController.validateOtp);
@@ -36,9 +45,19 @@ import passport from "../middleware/passport";
 import { AuthService } from "../services/auth.service";
 import { setRefreshCookie } from "../utils/cookie";
 
+import crypto from "crypto";
+
 router.get("/google", (req, res, next) => {
   const { lat, lon } = req.query;
-  const state = (lat && lon) ? Buffer.from(JSON.stringify({ lat, lon })).toString('base64') : undefined;
+  const nonce = crypto.randomBytes(16).toString("hex");
+  // SEC-M06 FIX: Set HTTP-only cookie with nonce to prevent Login CSRF
+  res.cookie("oauth_nonce", nonce, { 
+    httpOnly: true, 
+    secure: process.env.NODE_ENV === "production", 
+    sameSite: "lax", 
+    maxAge: 10 * 60 * 1000 
+  });
+  const state = Buffer.from(JSON.stringify({ lat, lon, nonce })).toString("base64");
   passport.authenticate("google", { scope: ["profile", "email"], state })(req, res, next);
 });
 
@@ -64,7 +83,15 @@ router.get(
       setRefreshCookie(res, refreshToken);
       
       const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
-      res.redirect(`${frontendUrl}/login?token=${accessToken}`);
+      // SEC-H02 FIX: Do not pass access token in URL (leaks to browser history, referer headers).
+      // Pass a very short-lived (5 minute) secure cookie for the frontend to pick up, or redirect to a page that fetches /users/me relying on the refresh token.
+      res.cookie("oauth_success", accessToken, {
+        httpOnly: false, // Must be readable by frontend JS to extract the token and clear it
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        maxAge: 5 * 60 * 1000 // 5 minutes
+      });
+      res.redirect(`${frontendUrl}/login?oauth_success=true`);
     } catch (error) {
       console.error("Google Auth Error:", error);
       res.redirect((process.env.FRONTEND_URL || "http://localhost:5173") + "/login?error=server");

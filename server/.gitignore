@@ -2,3 +2,4 @@ node_modules
 dist
 .env
 *.log
+.rsa_keys.json
