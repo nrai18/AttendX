@@ -27,6 +27,20 @@ export class AttendanceController {
       return res.status(400).json({ message: "subjectId, date, and status are required" });
     }
 
+    // SEC-M02 FIX: Input validation to prevent arbitrary string injection
+    const validStatuses = ["PRESENT", "ABSENT", "CANCELLED", "OFF"];
+    if (!validStatuses.includes(status.toUpperCase())) {
+      return res.status(400).json({ message: "Invalid attendance status" });
+    }
+    
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return res.status(400).json({ message: "Invalid date format. Expected YYYY-MM-DD" });
+    }
+    
+    if (remarks && String(remarks).length > 200) {
+      return res.status(400).json({ message: "Remarks cannot exceed 200 characters" });
+    }
+
     const record = await AttendanceService.markAttendance(req.user!.userId, {
       subjectId,
       date,

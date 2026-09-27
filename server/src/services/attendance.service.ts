@@ -1026,7 +1026,10 @@ export class AttendanceService {
         const over = dayOverrides.find(o => o.originalSlotId === slot.id);
         if (over && (over.overrideType === "holiday" || over.overrideType === "cancelled")) continue;
         if (!isGlobalOff) {
-          const att = dayAtts.find(a => a.timetableSlotId === slot.id);
+          let att = dayAtts.find(a => a.timetableSlotId === slot.id);
+          if (!att) {
+            att = dayAtts.find(a => !handledAttendanceIds.has(a.id) && a.subjectId === slot.subjectId && !a.timetableSlotId);
+          }
           if (att) handledAttendanceIds.add(att.id);
           dayAgenda.push({
             id: att ? att.id : `unmarked-${slot.id}-${dateKey}`,
@@ -1039,7 +1042,10 @@ export class AttendanceService {
 
       for (const o of extras) {
         if (o.subjectId) {
-          const att = dayAtts.find(a => a.overrideId === o.id);
+          let att = dayAtts.find(a => a.overrideId === o.id);
+          if (!att) {
+            att = dayAtts.find(a => !handledAttendanceIds.has(a.id) && a.subjectId === o.subjectId && !a.timetableSlotId && !a.overrideId);
+          }
           if (att) handledAttendanceIds.add(att.id);
           dayAgenda.push({
             id: att ? att.id : `unmarked-${o.id}-${dateKey}`,

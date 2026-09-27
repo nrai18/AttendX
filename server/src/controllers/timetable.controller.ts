@@ -14,14 +14,15 @@ export class TimetableController {
     const slots = await CacheService.getOrSet(
       userId,
       `timetable:${semesterId}:${group || "all"}`,
-      () => TimetableService.getTimetable(semesterId, group)
+      () => TimetableService.getTimetable(userId, semesterId, group)
     );
     res.json(slots);
   }
 
   static async getArchivedTimetables(req: Request | any, res: Response) {
     const semesterId = String(req.params.semesterId);
-    const archivedSlots = await TimetableService.getArchivedTimetables(semesterId);
+    const userId = req.user?.userId || "anonymous";
+    const archivedSlots = await TimetableService.getArchivedTimetables(userId, semesterId);
     res.json(archivedSlots);
   }
 
@@ -33,9 +34,72 @@ export class TimetableController {
 
   static async updateSlot(req: AuthenticatedRequest, res: Response) {
     const slotId = String(req.params.id);
-    const slot = await TimetableService.updateSlot(slotId, req.body);
+    const slot = await TimetableService.updateSlot(req.user!.userId, slotId, req.body);
     await CacheService.invalidateUser(req.user!.userId);
     res.json(slot);
+  }
+
+
+  static async swapDays(req: AuthenticatedRequest, res: Response) {
+    const { semesterId, dayA, dayB } = req.body;
+    if (dayA === undefined || dayB === undefined || !semesterId) {
+      return res.status(400).json({ error: "Missing semesterId, dayA, or dayB" });
+    }
+    
+    const parseDay = (day: any): number => {
+      if (typeof day === 'number' && !isNaN(day)) return day;
+      const d = String(day).toLowerCase();
+      if (d.startsWith('mon')) return 0;
+      if (d.startsWith('tue')) return 1;
+      if (d.startsWith('wed')) return 2;
+      if (d.startsWith('thu')) return 3;
+      if (d.startsWith('fri')) return 4;
+      if (d.startsWith('sat')) return 5;
+      if (d.startsWith('sun')) return 6;
+      return Number(day);
+    };
+
+    const parsedA = parseDay(dayA);
+    const parsedB = parseDay(dayB);
+
+    if (isNaN(parsedA) || isNaN(parsedB)) {
+      return res.status(400).json({ error: "Invalid day values provided." });
+    }
+
+    const result = await TimetableService.swapDays(req.user!.userId, semesterId, parsedA, parsedB);
+    await CacheService.invalidateUser(req.user!.userId);
+    res.json(result);
+  }
+
+  static async shiftDay(req: AuthenticatedRequest, res: Response) {
+    const { semesterId, sourceDay, targetDay } = req.body;
+    if (sourceDay === undefined || targetDay === undefined || !semesterId) {
+      return res.status(400).json({ error: "Missing semesterId, sourceDay, or targetDay" });
+    }
+    
+    const parseDay = (day: any): number => {
+      if (typeof day === 'number' && !isNaN(day)) return day;
+      const d = String(day).toLowerCase();
+      if (d.startsWith('mon')) return 0;
+      if (d.startsWith('tue')) return 1;
+      if (d.startsWith('wed')) return 2;
+      if (d.startsWith('thu')) return 3;
+      if (d.startsWith('fri')) return 4;
+      if (d.startsWith('sat')) return 5;
+      if (d.startsWith('sun')) return 6;
+      return Number(day);
+    };
+
+    const parsedSource = parseDay(sourceDay);
+    const parsedTarget = parseDay(targetDay);
+
+    if (isNaN(parsedSource) || isNaN(parsedTarget)) {
+      return res.status(400).json({ error: "Invalid day values provided." });
+    }
+
+    const result = await TimetableService.shiftDay(req.user!.userId, semesterId, parsedSource, parsedTarget);
+    await CacheService.invalidateUser(req.user!.userId);
+    res.json(result);
   }
 
   static async swapSlots(req: AuthenticatedRequest, res: Response) {
@@ -43,7 +107,12 @@ export class TimetableController {
     if (!slotAId || !slotBId) {
       return res.status(400).json({ error: "Missing slotAId or slotBId" });
     }
-    const result = await TimetableService.swapSlots(slotAId, slotBId);
+    // SEC-M03 FIX: Validate types to prevent NoSQL/MongoDB style object injection if the ORM allows it, or general bad input crashes
+    if (typeof slotAId !== 'string' || typeof slotBId !== 'string') {
+      return res.status(400).json({ error: "Invalid slot ID format" });
+    }
+    
+    const result = await TimetableService.swapSlots(req.user!.userId, slotAId, slotBId);
     await CacheService.invalidateUser(req.user!.userId);
     res.json(result);
   }
@@ -51,7 +120,7 @@ export class TimetableController {
   static async deleteSlot(req: AuthenticatedRequest, res: Response) {
     const slotId = String(req.params.id);
     const preserveHistory = req.query.preserveHistory !== "false";
-    await TimetableService.deleteSlot(slotId, preserveHistory);
+    await TimetableService.deleteSlot(req.user!.userId, slotId, preserveHistory);
     await CacheService.invalidateUser(req.user!.userId);
     res.json({ message: "Slot deleted", preservedHistory: preserveHistory });
   }
@@ -61,7 +130,7 @@ export class TimetableController {
     if (!Array.isArray(slotIds)) {
       return res.status(400).json({ error: "slotIds array is required" });
     }
-    const result = await TimetableService.deleteSlotsBatch(slotIds, preserveHistory);
+    const result = await TimetableService.deleteSlotsBatch(req.user!.userId, slotIds, preserveHistory);
     await CacheService.invalidateUser(req.user!.userId);
     res.json({ message: "Slots deleted", count: result.count, preservedHistory: preserveHistory });
   }
@@ -73,12 +142,13 @@ export class TimetableController {
     if (!semesterId || !subjectId) {
       return res.status(400).json({ error: "semesterId and subjectId are required" });
     }
-    const result = await TimetableService.deleteSubjectSlots(semesterId, subjectId, preserveHistory);
+    const result = await TimetableService.deleteSubjectSlots(req.user!.userId, semesterId, subjectId, preserveHistory);
     await CacheService.invalidateUser(req.user!.userId);
     res.json({ message: "Subject slots deleted", count: result.count, preservedHistory: preserveHistory });
   }
 
   static async addExtraClass(req: AuthenticatedRequest, res: Response) {
+    req.body.userId = req.user!.userId;
     const extra = await TimetableService.addExtraClass(req.body);
     await CacheService.invalidateUser(req.user!.userId);
     res.status(201).json(extra);
@@ -89,7 +159,7 @@ export class TimetableController {
     if (!id) {
       return res.status(400).json({ error: "id is required" });
     }
-    await TimetableService.deleteExtraClass(id);
+    await TimetableService.deleteExtraClass(req.user!.userId, id);
     await CacheService.invalidateUser(req.user!.userId);
     res.json({ message: "Extra class deleted" });
   }
@@ -107,13 +177,23 @@ export class TimetableController {
     }
 
     try {
-      const mimeType = file.mimetype || "application/pdf";
+      // SEC-M07 FIX: Do not trust client-supplied MIME type, check magic bytes
+      const header = file.buffer.subarray(0, 4).toString("hex").toUpperCase();
+      let verifiedMime = "";
+      if (header.startsWith("25504446")) verifiedMime = "application/pdf";
+      else if (header.startsWith("89504E47")) verifiedMime = "image/png";
+      else if (header.startsWith("FFD8FF")) verifiedMime = "image/jpeg";
+      
+      if (!verifiedMime) {
+        return res.status(400).json({ error: "Invalid file type. Only PDF, PNG, and JPEG are allowed." });
+      }
+
       const fileName = file.originalname || "timetable.pdf";
-      const ocrResult = await TimetableService.processOcrImage(file.buffer, mimeType, fileName, semesterId, userId);
+      const ocrResult = await TimetableService.processOcrImage(file.buffer, verifiedMime, fileName, semesterId, userId);
       
       // Store document
       try {
-        await DocumentService.storeDocument(userId, file.buffer, fileName, mimeType, "TIMETABLE");
+        await DocumentService.storeDocument(userId, file.buffer, fileName, verifiedMime, "TIMETABLE");
       } catch (e) {
         console.error("Failed to store timetable document", e);
       }

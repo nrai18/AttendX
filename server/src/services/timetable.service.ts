@@ -8,43 +8,74 @@ import { normalizeTimeString } from "../utils/timeUtils";
 
 export class TimetableService {
   
-  static async getArchivedTimetables(semesterId: string) {
-    const archivedSlots = await prisma.timetableSlot.findMany({
+  static async getArchivedTimetables(userId: string, semesterId: string) {
+    const allSlots = await prisma.timetableSlot.findMany({
       where: { 
-        semesterId, 
-        validUntil: { not: null } 
+        semesterId,
+        semester: { userId }
       },
-      include: { subject: true },
-      orderBy: [
-        { validUntil: 'desc' },
-        { dayOfWeek: 'asc' },
-        { startTime: 'asc' }
-      ]
+      include: { subject: true }
     });
     
-    const versionsMap = new Map<string, any>();
+    // Find all distinct mutation timestamps (when slots were archived)
+    const rawMutationTimes = Array.from(new Set(
+      allSlots
+        .filter(s => s.validUntil !== null)
+        .map(s => s.validUntil!.getTime())
+    )).sort((a, b) => a - b); // Ascending order for clustering
     
-    for (const slot of archivedSlots) {
-      if (!slot.validUntil || !slot.validFrom) continue;
-      const key = `${slot.validFrom.getTime()}_${slot.validUntil.getTime()}`;
-      
-      if (!versionsMap.has(key)) {
-        versionsMap.set(key, {
-          id: key,
-          validFrom: slot.validFrom,
-          validUntil: slot.validUntil,
-          slots: []
-        });
+    // Cluster mutations that occur within 24 hours of each other to avoid 
+    // flooding the archive with micro-versions from a single editing session.
+    // We keep the EARLIEST mutation in each cluster (which gives us the stable state BEFORE the edits began).
+    const CLUSTER_WINDOW_MS = 24 * 60 * 60 * 1000;
+    const mutationTimes: number[] = [];
+    
+    let currentClusterStart = -1;
+    for (const time of rawMutationTimes) {
+      if (currentClusterStart === -1 || time - currentClusterStart > CLUSTER_WINDOW_MS) {
+        currentClusterStart = time;
+        mutationTimes.push(time);
       }
-      versionsMap.get(key).slots.push(slot);
     }
     
-    return Array.from(versionsMap.values());
+    // Sort descending for UI (newest archives first)
+    mutationTimes.sort((a, b) => b - a);
+    
+    const versions = mutationTimes.map(time => {
+      // Reconstruct timetable exactly as it existed right before this mutation
+      const activeSlotsAtTime = allSlots.filter(s => {
+        const from = s.validFrom.getTime();
+        const until = s.validUntil ? s.validUntil.getTime() : Infinity;
+        // The slot must have been created strictly before this mutation time, 
+        // and must not have been deleted strictly before this mutation time.
+        return from < time && until >= time;
+      });
+      
+      // Sort slots cleanly
+      activeSlotsAtTime.sort((a, b) => {
+        if (a.dayOfWeek !== b.dayOfWeek) return a.dayOfWeek - b.dayOfWeek;
+        return a.startTime.localeCompare(b.startTime);
+      });
+
+      return {
+        id: `version_${time}`,
+        archivedAt: new Date(time),
+        validFrom: new Date(time), // Kept for backwards compatibility with UI
+        validUntil: new Date(time), // Kept for backwards compatibility with UI
+        slots: activeSlotsAtTime
+      };
+    });
+    
+    return versions;
   }
 
-  static async getTimetable(semesterId: string, group?: string) {
+  static async getTimetable(userId: string, semesterId: string, group?: string) {
     const slots = await prisma.timetableSlot.findMany({
-      where: { semesterId, validUntil: null },
+      where: { 
+        semesterId,
+        semester: { userId }, // SEC-H04 FIX: Ensure semester belongs to the requester
+        validUntil: null 
+      },
       include: {
         subject: {
           select: {
@@ -99,83 +130,222 @@ export class TimetableService {
         startTime: normalizeTimeString(data.startTime, "09:00"),
         endTime: normalizeTimeString(data.endTime, "10:00"),
         room: data.room,
-        slotType: data.slotType || "lecture",
+        slotType: data.slotType ? data.slotType.toLowerCase() : "lecture",
       },
       include: { subject: true },
     });
   }
 
-  static async updateSlot(slotId: string, data: any) {
-    return prisma.timetableSlot.update({
+  // SEC-04 FIX: Helper to verify slot ownership
+  static async verifySlotOwnership(userId: string, slotId: string) {
+    const slot = await prisma.timetableSlot.findUnique({
       where: { id: slotId },
-      data: {
-        subjectId: data.subjectId,
-        dayOfWeek: data.dayOfWeek !== undefined ? Number(data.dayOfWeek) : undefined,
-        startTime: data.startTime !== undefined ? normalizeTimeString(data.startTime, "09:00") : undefined,
-        endTime: data.endTime !== undefined ? normalizeTimeString(data.endTime, "10:00") : undefined,
-        room: data.room,
-        slotType: data.slotType,
-      },
-      include: { subject: true },
+      include: { semester: true }
+    });
+    if (!slot) throw new Error("Slot not found");
+    if (slot.semester.userId !== userId) throw new Error("Forbidden: Slot does not belong to user");
+    return slot;
+  }
+
+  static async updateSlot(userId: string, slotId: string, data: any) {
+    const oldSlot = await this.verifySlotOwnership(userId, slotId);
+    const now = new Date();
+    
+    return prisma.$transaction(async (tx) => {
+      await tx.timetableSlot.update({
+        where: { id: slotId },
+        data: { validUntil: now }
+      });
+      
+      return tx.timetableSlot.create({
+        data: {
+          semesterId: oldSlot.semesterId,
+          subjectId: data.subjectId !== undefined ? data.subjectId : oldSlot.subjectId,
+          dayOfWeek: data.dayOfWeek !== undefined ? Number(data.dayOfWeek) : oldSlot.dayOfWeek,
+          startTime: data.startTime !== undefined ? normalizeTimeString(data.startTime, oldSlot.startTime) : oldSlot.startTime,
+          endTime: data.endTime !== undefined ? normalizeTimeString(data.endTime, oldSlot.endTime) : oldSlot.endTime,
+          room: data.room !== undefined ? data.room : oldSlot.room,
+          slotType: data.slotType !== undefined ? data.slotType : oldSlot.slotType,
+          validFrom: now
+        },
+        include: { subject: true }
+      });
     });
   }
 
-  static async swapSlots(slotAId: string, slotBId: string) {
-    const slotA = await prisma.timetableSlot.findUnique({ where: { id: slotAId } });
-    const slotB = await prisma.timetableSlot.findUnique({ where: { id: slotBId } });
 
-    if (!slotA || !slotB) {
-      throw new Error("One or both slots not found");
+  static async swapDays(userId: string, semesterId: string, dayA: number, dayB: number) {
+    const semester = await prisma.semester.findFirst({ where: { id: semesterId, userId } });
+    if (!semester) throw new Error("Semester not found or unauthorized");
+
+    const slotsA = await prisma.timetableSlot.findMany({ where: { semesterId, dayOfWeek: dayA, validUntil: null } });
+    const slotsB = await prisma.timetableSlot.findMany({ where: { semesterId, dayOfWeek: dayB, validUntil: null } });
+    
+    const operations = [];
+    const now = new Date();
+
+    for (const slot of slotsA) {
+      operations.push(prisma.timetableSlot.update({ where: { id: slot.id }, data: { validUntil: now } }));
+      operations.push(prisma.timetableSlot.create({
+        data: {
+          semesterId: slot.semesterId,
+          subjectId: slot.subjectId,
+          dayOfWeek: dayB,
+          startTime: slot.startTime,
+          endTime: slot.endTime,
+          room: slot.room,
+          slotType: slot.slotType,
+          validFrom: now
+        }
+      }));
+    }
+    for (const slot of slotsB) {
+      operations.push(prisma.timetableSlot.update({ where: { id: slot.id }, data: { validUntil: now } }));
+      operations.push(prisma.timetableSlot.create({
+        data: {
+          semesterId: slot.semesterId,
+          subjectId: slot.subjectId,
+          dayOfWeek: dayA,
+          startTime: slot.startTime,
+          endTime: slot.endTime,
+          room: slot.room,
+          slotType: slot.slotType,
+          validFrom: now
+        }
+      }));
+    }
+    
+    await prisma.$transaction(operations);
+    
+    return { success: true, swapped: slotsA.length + slotsB.length };
+  }
+
+  static async shiftDay(userId: string, semesterId: string, sourceDay: number, targetDay: number) {
+    const semester = await prisma.semester.findFirst({ where: { id: semesterId, userId } });
+    if (!semester) throw new Error("Semester not found or unauthorized");
+
+    const slotsToShift = await prisma.timetableSlot.findMany({ where: { semesterId, dayOfWeek: sourceDay, validUntil: null } });
+    
+    const operations = [];
+    const now = new Date();
+
+    for (const slot of slotsToShift) {
+      operations.push(prisma.timetableSlot.update({ where: { id: slot.id }, data: { validUntil: now } }));
+      operations.push(prisma.timetableSlot.create({
+        data: {
+          semesterId: slot.semesterId,
+          subjectId: slot.subjectId,
+          dayOfWeek: targetDay,
+          startTime: slot.startTime,
+          endTime: slot.endTime,
+          room: slot.room,
+          slotType: slot.slotType,
+          validFrom: now
+        }
+      }));
     }
 
-    if (slotA.dayOfWeek !== slotB.dayOfWeek) {
-      throw new Error("Cannot swap slots across different days");
-    }
+    await prisma.$transaction(operations);
+    return { success: true, shifted: slotsToShift.length };
+  }
+
+  static async swapSlots(userId: string, slotAId: string, slotBId: string) {
+    const slotA = await this.verifySlotOwnership(userId, slotAId);
+    const slotB = await this.verifySlotOwnership(userId, slotBId);
+
+    const now = new Date();
 
     return prisma.$transaction([
       prisma.timetableSlot.update({
         where: { id: slotAId },
+        data: { validUntil: now }
+      }),
+      prisma.timetableSlot.create({
         data: {
-          startTime: slotB.startTime,
-          endTime: slotB.endTime,
+          semesterId: slotA.semesterId,
+          subjectId: slotA.subjectId,
+          dayOfWeek: slotA.dayOfWeek, // keeps original day
+          startTime: slotB.startTime, // gets new time
+          endTime: slotB.endTime, // gets new time
+          room: slotA.room,
+          slotType: slotA.slotType,
+          validFrom: now
         }
       }),
       prisma.timetableSlot.update({
         where: { id: slotBId },
+        data: { validUntil: now }
+      }),
+      prisma.timetableSlot.create({
         data: {
-          startTime: slotA.startTime,
-          endTime: slotA.endTime,
+          semesterId: slotB.semesterId,
+          subjectId: slotB.subjectId,
+          dayOfWeek: slotB.dayOfWeek, // keeps original day
+          startTime: slotA.startTime, // gets new time
+          endTime: slotA.endTime, // gets new time
+          room: slotB.room,
+          slotType: slotB.slotType,
+          validFrom: now
         }
       })
     ]);
   }
 
-  static async deleteSlot(slotId: string, preserveHistory = true) {
+  static async deleteSlot(userId: string, slotId: string, preserveHistory = true) {
+    await this.verifySlotOwnership(userId, slotId);
+    
+    // Always use validUntil for soft delete so we preserve history 
+    // unless explicitly told otherwise.
     if (preserveHistory) {
-      await prisma.attendance.updateMany({
-        where: { timetableSlotId: slotId },
-        data: { timetableSlotId: null },
+      return prisma.timetableSlot.update({
+        where: { id: slotId },
+        data: { validUntil: new Date() }
       });
     }
+
+    // Hard delete fallback (if needed for cleanup tasks)
+    await prisma.attendance.updateMany({
+      where: { timetableSlotId: slotId, userId },
+      data: { timetableSlotId: null },
+    });
     return prisma.timetableSlot.delete({
       where: { id: slotId },
     });
   }
 
-  static async deleteSlotsBatch(slotIds: string[], preserveHistory = true) {
+  static async deleteSlotsBatch(userId: string, slotIds: string[], preserveHistory = true) {
     if (!slotIds || slotIds.length === 0) return { count: 0 };
+    
+    // SEC-04: Verify all slots belong to the user
+    const slots = await prisma.timetableSlot.findMany({
+      where: { id: { in: slotIds } },
+      include: { semester: true }
+    });
+    for (const slot of slots) {
+      if (slot.semester.userId !== userId) throw new Error("Forbidden: Cannot batch delete another user's slots");
+    }
+
     if (preserveHistory) {
-      await prisma.attendance.updateMany({
-        where: { timetableSlotId: { in: slotIds } },
-        data: { timetableSlotId: null },
+      return prisma.timetableSlot.updateMany({
+        where: { id: { in: slotIds } },
+        data: { validUntil: new Date() }
       });
     }
+
+    await prisma.attendance.updateMany({
+      where: { timetableSlotId: { in: slotIds }, userId },
+      data: { timetableSlotId: null },
+    });
     return prisma.timetableSlot.deleteMany({
       where: { id: { in: slotIds } },
     });
   }
 
-  static async deleteSubjectSlots(semesterId: string, subjectId: string, preserveHistory = true) {
+  static async deleteSubjectSlots(userId: string, semesterId: string, subjectId: string, preserveHistory = true) {
+    // SEC-04: Verify the semester belongs to the user
+    const sem = await prisma.semester.findUnique({ where: { id: semesterId } });
+    if (!sem || sem.userId !== userId) throw new Error("Forbidden: Semester does not belong to user");
+
     const slots = await prisma.timetableSlot.findMany({
       where: { semesterId, subjectId },
       select: { id: true },
@@ -185,7 +355,7 @@ export class TimetableService {
 
     if (preserveHistory) {
       await prisma.attendance.updateMany({
-        where: { timetableSlotId: { in: slotIds } },
+        where: { timetableSlotId: { in: slotIds }, userId },
         data: { timetableSlotId: null },
       });
     }
@@ -195,13 +365,18 @@ export class TimetableService {
   }
 
   static async addExtraClass(data: {
+    userId?: string;
     semesterId?: string;
     subjectId: string;
     date: string | Date;
     startTime?: string;
     endTime?: string;
     reason?: string;
+    markStatus?: string;
+    remarks?: string;
   }) {
+    if (!data.userId) throw new Error("userId is required for extra class");
+    
     let semesterId = data.semesterId;
     if (!semesterId && data.subjectId) {
       const subject = await prisma.subject.findUnique({
@@ -214,23 +389,19 @@ export class TimetableService {
 
     if (!semesterId) {
       const activeSem = await prisma.semester.findFirst({
-        where: { isActive: true },
+        where: { isActive: true, userId: data.userId }, // SEC FIX: Only check the user's active semester
       });
       semesterId = activeSem?.id;
     }
 
+    // Removed the global fallback that leaked cross-tenant data.
     if (!semesterId) {
-      const anySem = await prisma.semester.findFirst();
-      semesterId = anySem?.id;
-    }
-
-    if (!semesterId) {
-      throw new Error("Unable to resolve semester for extra class override");
+      throw new Error("Unable to resolve an active semester for this user");
     }
 
     const dateObj = data.date instanceof Date ? data.date : new Date(data.date);
 
-    return prisma.timetableOverride.create({
+    const override = await prisma.timetableOverride.create({
       data: {
         semesterId,
         subjectId: data.subjectId,
@@ -242,11 +413,34 @@ export class TimetableService {
       },
       include: { subject: true },
     });
+
+    if (data.markStatus && data.userId) {
+      await prisma.attendance.create({
+        data: {
+          userId: data.userId,
+          subjectId: data.subjectId,
+          date: dateObj,
+          status: data.markStatus as any,
+          overrideId: override.id,
+          remarks: data.remarks || data.reason || "Previous Timetable / Extra Class",
+        }
+      });
+    }
+
+    return override;
   }
 
-  static async deleteExtraClass(id: string) {
+  static async deleteExtraClass(userId: string, id: string) {
+    // SEC-05: Verify ownership
+    const override = await prisma.timetableOverride.findUnique({
+      where: { id },
+      include: { semester: true }
+    });
+    if (!override) throw new Error("Extra class override not found");
+    if (override.semester.userId !== userId) throw new Error("Forbidden: Override does not belong to user");
+
     await prisma.attendance.deleteMany({
-      where: { overrideId: id }
+      where: { overrideId: id, userId }
     });
     return prisma.timetableOverride.delete({
       where: { id }
@@ -267,8 +461,7 @@ export class TimetableService {
     const targetSemName = targetSemester?.name || "the user's semester";
 
     try {
-      const { GoogleGenAI } = require("@google/genai");
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      const { AIManager } = require("../utils/ai_manager");
       
       const prompt = `You are an expert academic timetable parser.
 Parse the attached timetable document/image.
@@ -309,8 +502,8 @@ Return a JSON object containing:
   ]
 }`;
 
-      const response = await ai.models.generateContent({
-        model: "gemini-3.8-flash",
+      const response = await AIManager.generateContent({
+        model: "gemini-3.5-flash-lite",
         contents: [
           {
             role: "user",

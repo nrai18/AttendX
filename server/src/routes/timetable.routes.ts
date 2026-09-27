@@ -16,6 +16,8 @@ router.get("/:semesterId", TimetableController.getTimetable);
 router.post("/slots", TimetableController.createSlot);
 router.patch("/slots/:id", TimetableController.updateSlot);
 router.post("/slots/swap", TimetableController.swapSlots);
+router.post("/days/swap", TimetableController.swapDays);
+router.post("/days/shift", TimetableController.shiftDay);
 router.delete("/slots/:id", TimetableController.deleteSlot);
 router.post("/slots/delete-batch", TimetableController.deleteSlotsBatch);
 router.delete("/semester/:semesterId/subject/:subjectId/slots", TimetableController.deleteSubjectSlots);
