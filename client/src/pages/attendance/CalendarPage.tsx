@@ -452,7 +452,7 @@ export const CalendarPage = () => {
                   </div>
 
                   {/* Hover Agenda Tooltip (Hidden on Mobile) */}
-                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 bg-card border border-border rounded-xl shadow-2xl p-3 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 pointer-events-none hidden sm:flex flex-col gap-2 text-left scale-95 group-hover:scale-100 origin-bottom">
+                  <div className={`absolute ${Math.floor(i / 7) <= 1 ? 'top-full mt-2 origin-top' : 'bottom-full mb-2 origin-bottom'} ${i % 7 === 0 ? 'left-0' : i % 7 === 6 ? 'right-0' : 'left-1/2 -translate-x-1/2'} w-64 bg-card border border-border rounded-xl shadow-2xl p-3 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 pointer-events-auto hidden sm:flex flex-col gap-2 text-left scale-95 group-hover:scale-100 max-h-[350px] overflow-y-auto custom-scrollbar`}>
                     {/* Header */}
                     <div className="flex justify-between items-center pb-2 border-b border-border/50">
                       <span className="font-bold text-sm text-foreground">{format(d, "d MMM")}</span>
