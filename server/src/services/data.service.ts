@@ -119,7 +119,7 @@ export class DataService {
         "Title": event.title,
         "Description": event.description || "",
         "Date": event.date.toISOString().split("T")[0],
-        "End Date": event.endDate ? event.endDate.toISOString().split("T")[0] : "",
+        "End Date": event.endDate ? event.endDate.toISOString().split("T")[0] : event.date.toISOString().split("T")[0],
         "Type": event.eventType,
         "All Day": event.allDay ? "Yes" : "No",
         "Is Holiday": event.isHoliday ? "Yes" : "No"

@@ -58,10 +58,17 @@ export class CacheService {
 
   static async invalidateUser(userId: string): Promise<void> {
     try {
-      const pattern = `cache:${userId}:*`;
-      let cursor = '0';
       const keysToDelete: string[] = [];
 
+      // 1. Get keys from the explicit tracker SET
+      const trackedKeys = await redisClient.smembers(`user_keys:${userId}`);
+      if (trackedKeys && trackedKeys.length > 0) {
+        keysToDelete.push(...trackedKeys);
+      }
+
+      // 2. Also try SCAN as a fallback
+      const pattern = `cache:${userId}:*`;
+      let cursor = '0';
       do {
         const res = await redisClient.scan(cursor, 'MATCH', pattern, 'COUNT', '100');
         cursor = res[0];
@@ -70,11 +77,13 @@ export class CacheService {
         }
       } while (cursor !== '0');
 
-      if (keysToDelete.length > 0) {
-        await redisClient.del(...keysToDelete);
+      // Deduplicate keys
+      const uniqueKeys = Array.from(new Set(keysToDelete));
+
+      if (uniqueKeys.length > 0) {
+        await redisClient.del(...uniqueKeys);
       }
       
-      // Clean up the legacy set if it exists
       await redisClient.del(`user_keys:${userId}`);
     } catch (redisError) {
       console.warn(`Redis invalidateUser failed for ${userId}:`, redisError);
