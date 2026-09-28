@@ -640,7 +640,7 @@ So I'll just apply the dark mode theme.
   --muted-foreground: 8 47% 87% / 0.8;
   --color-muted-foreground: hsl(8 47% 87% / 0.8);
 }
- 
+
 /* Theme: Orbital (Calendar) */
 
 .light .theme-orbital, html.light body.theme-orbital {
@@ -765,7 +765,7 @@ So I'll just apply the dark mode theme.
   background-attachment: fixed;
 }
 
-.theme-aether *:not(.chatbot-btn):not(.chatbot-btn *) {
+.theme-aether *:not(.chatbot-btn):not(.chatbot-btn *):not(.chatbot-window):not(.chatbot-window *) {
   border-radius: 0 !important;
 }
 
@@ -985,3 +985,7 @@ So I'll just apply the dark mode theme.
   letter-spacing: -0.02em;
   text-transform: uppercase;
 }
+.scrollbar-hide::-webkit-scrollbar { display: none; } .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+
+.scrollbar-hide::-webkit-scrollbar { display: none; }
+.scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }

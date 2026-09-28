@@ -28,7 +28,6 @@ import {
   Compass,
   Activity,
   AlertTriangle,
-  Plus,
   AudioLines
 } from "lucide-react";
 import { FormattedChatMessage } from "./FormattedChatMessage";
@@ -38,7 +37,10 @@ import { useAuthStore } from "../../stores/authStore";
 import { NativeVoiceService } from "../../services/NativeVoiceService";
 import { Capacitor } from "@capacitor/core";
 import { useCacheStore } from "../../stores/cacheStore";
+import { useThemeStore } from "../../stores/themeStore";
+import { useNotificationStore } from "../../stores/notificationStore";
 import { NotificationService } from "../../services/NotificationService";
+import { useAssignmentStore } from "../../stores/assignmentStore";
 import { App } from "@capacitor/app";
 
 interface ActionPayload {
@@ -55,10 +57,15 @@ interface ActionPayload {
 
 const DESTRUCTIVE_ACTIONS = new Set<string>([
   "REMOVE_SUBJECT",
+  "UPDATE_SUBJECT",
   "DROP_SUBJECT_FROM_TIMETABLE",
   "REMOVE_ATTENDANCE",
   "MARK_FULL_DAY_OFF",
   "SHIFT_TIMETABLE_SLOT",
+  "ADD_TIMETABLE_SLOT",
+  "REMOVE_TIMETABLE_SLOT",
+  "SWAP_TIMETABLE_DAYS",
+  "SHIFT_TIMETABLE_DAY",
   "ADD_SUBJECT",
   "CHANGE_TARGET",
   "CHANGE_GLOBAL_TARGET",
@@ -112,6 +119,45 @@ const SEARCH_STAGES = [
 export const FloatingChatbot: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
+
+  const chatTheme = React.useMemo(() => {
+    const path = location.pathname;
+    if (path.startsWith("/assignments")) return "slate";
+    if (path.startsWith("/today")) return "mint";
+    if (path.startsWith("/timetable")) return "sage";
+    if (path.startsWith("/calendar")) return "lavender";
+    if (path.startsWith("/semester")) return "stone";
+    if (path.startsWith("/subjects")) return "indigo";
+    if (path.startsWith("/settings")) return "amber";
+    return "rose";
+  }, [location.pathname]);
+
+  const getChatBubbleClasses = () => {
+    switch(chatTheme) {
+      case "slate": return "bg-slate-200 text-slate-900 border-slate-300";
+      case "mint": return "bg-teal-100 text-teal-950 border-teal-200";
+      case "sage": return "bg-emerald-100/70 text-emerald-950 border-emerald-200/80";
+      case "lavender": return "bg-purple-100 text-purple-950 border-purple-200";
+      case "stone": return "bg-stone-200 text-stone-900 border-stone-300";
+      case "indigo": return "bg-indigo-100/70 text-indigo-950 border-indigo-200";
+      case "amber": return "bg-amber-100/80 text-amber-950 border-amber-200";
+      default: return "bg-rose-100 text-rose-950 border-rose-200";
+    }
+  };
+
+  const getPillClasses = () => {
+    switch(chatTheme) {
+      case "slate": return "bg-slate-800 text-slate-50 border-slate-700 dark:bg-slate-200 dark:text-slate-900 shadow-slate-900/25";
+      case "mint": return "bg-teal-800 text-teal-50 border-teal-700 dark:bg-teal-200 dark:text-teal-950 shadow-teal-900/25";
+      case "sage": return "bg-emerald-800 text-emerald-50 border-emerald-700 dark:bg-emerald-200 dark:text-emerald-950 shadow-emerald-900/25";
+      case "lavender": return "bg-purple-800 text-purple-50 border-purple-700 dark:bg-purple-200 dark:text-purple-950 shadow-purple-900/25";
+      case "stone": return "bg-stone-800 text-stone-50 border-stone-700 dark:bg-stone-200 dark:text-stone-950 shadow-stone-900/25";
+      case "indigo": return "bg-indigo-800 text-indigo-50 border-indigo-700 dark:bg-indigo-200 dark:text-indigo-950 shadow-indigo-900/25";
+      case "amber": return "bg-amber-700 text-amber-50 border-amber-600 dark:bg-amber-200 dark:text-amber-950 shadow-amber-900/25";
+      default: return "bg-rose-800 text-rose-50 border-rose-700 dark:bg-rose-200 dark:text-rose-950 shadow-rose-900/25";
+    }
+  };
+
   const [isOpen, setIsOpen] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [isVoiceOpen, setIsVoiceOpen] = useState(false);
@@ -121,8 +167,36 @@ export const FloatingChatbot: React.FC = () => {
   const [searchStageIndex, setSearchStageIndex] = useState(0);
   const [appVersion, setAppVersion] = useState("Unknown");
 
+  const [isServerOnline, setIsServerOnline] = useState(true);
+
   useEffect(() => {
     App.getInfo().then(info => setAppVersion(info.version)).catch(() => {});
+    
+    // Poll server health
+    const checkHealth = async () => {
+      try {
+        await api.get("/health", { timeout: 3000 });
+        setIsServerOnline(true);
+      } catch (e) {
+        setIsServerOnline(false);
+      }
+    };
+    checkHealth();
+    const interval = setInterval(checkHealth, 15000);
+
+    // Instantly check health when the app comes to foreground or network reconnects
+    const handleOnline = () => checkHealth();
+    window.addEventListener('online', handleOnline);
+    
+    const appStateListener = App.addListener('appStateChange', ({ isActive }) => {
+      if (isActive) checkHealth();
+    });
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('online', handleOnline);
+      appStateListener.then(listener => listener.remove());
+    };
   }, []);
 
   const { overallPercentage, targetPercentage, totalAttended, totalClasses, subjects, hasActiveSemester, fetchStats } = useAttendanceStore();
@@ -150,6 +224,7 @@ export const FloatingChatbot: React.FC = () => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const lastInputMethodRef = useRef<'text' | 'voice'>('text');
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   // Cycling search status animations
   useEffect(() => {
@@ -271,7 +346,15 @@ export const FloatingChatbot: React.FC = () => {
     setMessages([]);
   };
 
-  const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'voice'): Promise<string | undefined> => {
+  const handleStopGeneration = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+      setIsLoading(false);
+    }
+  };
+
+  const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'voice' | 'voice_overlay'): Promise<string | undefined> => {
     const effectiveInputMethod = inputMethod || lastInputMethodRef.current;
     // Reset tracker back to default 'text' for subsequent interactions
     lastInputMethodRef.current = 'text';
@@ -282,6 +365,28 @@ export const FloatingChatbot: React.FC = () => {
     // Immediately stop any currently playing speech to prevent audio clash
     await NativeVoiceService.stopSpeaking();
     setSpeakingId(null);
+
+    // Voice/Text Confirmation Intercept for Pending Actions
+    const cleanQuery = query.trim().toLowerCase().replace(/[.,!]/g, '');
+    const isConfirming = /^(yes|yeah|yep|do it|confirm|execute|sure|ok|okay|yes please|sure do it|yeah do it)/.test(cleanQuery);
+    const isCanceling = /^(no|nope|cancel|abort|stop|don't|do not|no thanks)/.test(cleanQuery);
+
+    if (isConfirming || isCanceling) {
+      const lastAssistantMsg = messages.slice().reverse().find(m => m.role === 'assistant');
+      if (lastAssistantMsg && lastAssistantMsg.pendingActions && !lastAssistantMsg.actionsExecuted) {
+        if (isConfirming && (window as any)._executePendingActions) {
+          (window as any)._executePendingActions(lastAssistantMsg.id);
+          if (effectiveInputMethod.includes('voice')) NativeVoiceService.speak("Action confirmed.");
+          setInput("");
+          return;
+        } else if (isCanceling && (window as any)._cancelPendingActions) {
+          (window as any)._cancelPendingActions(lastAssistantMsg.id);
+          if (effectiveInputMethod.includes('voice')) NativeVoiceService.speak("Action cancelled.");
+          setInput("");
+          return;
+        }
+      }
+    }
 
     const userMessage: Message = {
       id: String(Date.now()),
@@ -295,6 +400,7 @@ export const FloatingChatbot: React.FC = () => {
     setIsLoading(true);
 
     try {
+      abortControllerRef.current = new AbortController();
       const history = messages.slice(-4).map(m => ({
         role: m.role,
         content: m.content
@@ -329,8 +435,10 @@ export const FloatingChatbot: React.FC = () => {
         total_attended: currentAttended,
         total_classes: currentTotal,
         subjects: currentSubjects,
+        timetable_slots: useCacheStore.getState().timetable?.slots || [],
         history_logs: currentLogs.slice(0, 150),
-        calendar_events: currentEvents.slice(0, 50)
+        calendar_events: currentEvents.slice(0, 50),
+        assignments: useAssignmentStore.getState().assignments || []
       };
 
       const selectedItems: any[] = [];
@@ -349,21 +457,21 @@ export const FloatingChatbot: React.FC = () => {
         message: query,
         currentRoute: location.pathname,
         selectedItems,
-        localTime: new Date().toISOString(),
+        localTime: new Date().toString(),
         history,
         student_context: studentContext
-      });
+      }, { signal: abortControllerRef.current?.signal });
 
       const data = res.data;
 
       // Requirement R2: TTS must ONLY trigger automatically if the user's prompt came from voice
-      // and VoiceModeOverlay is not open (overlay handles its own speech)
+      // The overlay handles its own speech (voice_overlay), so we only speak if it's the inline mic ('voice')
       const textToSpeak = data.response || data.reply;
-      if (effectiveInputMethod === 'voice' && !isVoiceOpen && textToSpeak) {
+      if (effectiveInputMethod === 'voice' && textToSpeak) {
         await NativeVoiceService.stopSpeaking();
         await NativeVoiceService.speak(textToSpeak);
       } else {
-        // When inputMethod === 'text', mute automatic TTS and explicitly ensure any audio is stopped
+        // Mute automatic TTS and explicitly ensure any audio is stopped
         await NativeVoiceService.stopSpeaking();
       }
     
@@ -447,6 +555,9 @@ export const FloatingChatbot: React.FC = () => {
         } else if (action.type === 'REMOVE_SUBJECT') {
           await api.delete(`/subjects/${action.payload.subjectId}`);
           refresh = true;
+        } else if (action.type === 'UPDATE_SUBJECT') {
+          await api.patch(`/subjects/${action.payload.subjectId}`, action.payload.updates);
+          refresh = true;
         } else if (action.type === 'DROP_SUBJECT_FROM_TIMETABLE') {
           await api.delete(`/timetable/semester/${action.payload.semesterId}/subject/${action.payload.subjectId}/slots`);
           refresh = true;
@@ -462,20 +573,67 @@ export const FloatingChatbot: React.FC = () => {
             navigator.clipboard.writeText(appLink);
           }
         } else if (action.type === 'CHANGE_REMINDER_FREQUENCY') {
-          const rawFreq = action.payload.frequency || 'daily';
+          const rawFreq = String(action.payload.frequency || 'daily');
           let capFreq: 'Never'|'Daily'|'Weekly'|'Monthly'|'Yearly' = 'Daily';
-          if (rawFreq.toLowerCase() === 'never') capFreq = 'Never';
-          if (rawFreq.toLowerCase() === 'weekly') capFreq = 'Weekly';
-          if (rawFreq.toLowerCase() === 'monthly') capFreq = 'Monthly';
-          if (rawFreq.toLowerCase() === 'yearly') capFreq = 'Yearly';
+          let subValue: string | undefined = action.payload.subValue;
+
+          if (/never|none|off|false|disable/i.test(rawFreq)) capFreq = 'Never';
+          else if (/weekly/i.test(rawFreq)) { capFreq = 'Weekly'; if (!subValue) subValue = 'Sun'; }
+          else if (/monthly/i.test(rawFreq)) { capFreq = 'Monthly'; if (!subValue) subValue = '1'; }
+          else if (/yearly/i.test(rawFreq)) { capFreq = 'Yearly'; if (!subValue) subValue = 'Jan'; }
+          else if (/daily/i.test(rawFreq)) capFreq = 'Daily';
           
-          const freqData = { type: capFreq };
+          const freqData = { type: capFreq, subValue };
           useCacheStore.getState().setReminderFrequency(freqData);
           NotificationService.scheduleAcademicUpdates(freqData);
-          toast.success(`Reminder frequency updated to ${capFreq}`);
+          const subLabel = subValue ? ` (${subValue})` : '';
+          toast.success(`Reminder frequency updated to ${capFreq}${subLabel}`);
+        } else if (action.type === 'SWITCH_THEME') {
+          const theme = action.payload.theme || 'system';
+          useThemeStore.getState().setTheme(theme);
+        } else if (action.type === 'CHANGE_SUMMARY_TIME') {
+          // Use model-specified bracket if given, otherwise fall back to the stored active frequency
+          const bracket = action.payload.bracket || useCacheStore.getState().reminderFrequency?.type || 'Daily';
+          if (bracket === 'Weekly') useNotificationStore.getState().updateConfig({ weeklySummaryTime: action.payload.time });
+          else if (bracket === 'Monthly') useNotificationStore.getState().updateConfig({ monthlySummaryTime: action.payload.time });
+          else if (bracket === 'Yearly') useNotificationStore.getState().updateConfig({ yearlySummaryTime: action.payload.time });
+          else useNotificationStore.getState().updateConfig({ summaryTime: action.payload.time });
+          toast.success(`${bracket} briefing time updated to ${action.payload.time}`);
+        } else if (action.type === 'CHANGE_CLASS_REMINDER_OFFSET') {
+          useNotificationStore.getState().updateConfig({ classReminderOffset: action.payload.offsetMinutes });
+          toast.success(`Class reminders set to ${action.payload.offsetMinutes} mins before`);
+        } else if (action.type === 'ADD_TIMETABLE_SLOT') {
+          await api.post(`/timetable/slots`, {
+            semesterId: studentContext.active_semester_id,
+            subjectId: action.payload.subjectId,
+            dayOfWeek: action.payload.dayOfWeek,
+            startTime: action.payload.startTime,
+            endTime: action.payload.endTime,
+            room: action.payload.room || "TBD",
+            slotType: action.payload.slotType || "LECTURE"
+          });
+          refresh = true;
+        } else if (action.type === 'REMOVE_TIMETABLE_SLOT') {
+          const ttRes = await api.get(`/timetable/${studentContext.active_semester_id}`);
+          const timetable = ttRes.data;
+          let targetSlotId = null;
+          for (const day of Object.values(timetable.weeklySchedule) as any[]) {
+            const slot = day.find((s: any) => s.subject.id === action.payload.subjectId && s.dayOfWeek === action.payload.dayOfWeek && s.startTime === action.payload.startTime);
+            if (slot) {
+              targetSlotId = slot.id;
+              break;
+            }
+          }
+          if (targetSlotId) {
+            await api.delete(`/timetable/slots/${targetSlotId}`);
+            refresh = true;
+          } else {
+            console.error("Could not find timetable slot to remove.");
+          }
         } else if (action.type === 'SHIFT_TIMETABLE_SLOT') {
           // Fetch timetable to find the slot
-          const ttRes = await api.get(`/timetable/${action.payload.semesterId}`);
+          const targetSemesterId = action.payload.semesterId || studentContext.active_semester_id;
+          const ttRes = await api.get(`/timetable/${targetSemesterId}`);
           const timetable = ttRes.data;
           // Find the slot matching subjectId and dayOfWeek
           let targetSlotId = null;
@@ -488,6 +646,7 @@ export const FloatingChatbot: React.FC = () => {
           }
           if (targetSlotId) {
             await api.patch(`/timetable/slots/${targetSlotId}`, {
+              dayOfWeek: action.payload.newDayOfWeek !== undefined ? action.payload.newDayOfWeek : undefined,
               startTime: action.payload.newStartTime,
               endTime: action.payload.newEndTime
             });
@@ -495,6 +654,48 @@ export const FloatingChatbot: React.FC = () => {
           } else {
             console.error("Could not find timetable slot to shift.");
           }
+        } else if (action.type === 'SWAP_TIMETABLE_DAYS') {
+          await api.post(`/timetable/days/swap`, {
+            semesterId: studentContext.active_semester_id,
+            dayA: action.payload.dayA,
+            dayB: action.payload.dayB
+          });
+          refresh = true;
+        } else if (action.type === 'SHIFT_TIMETABLE_DAY') {
+          await api.post(`/timetable/days/shift`, {
+            semesterId: studentContext.active_semester_id,
+            sourceDay: action.payload.sourceDay,
+            targetDay: action.payload.targetDay
+          });
+          refresh = true;
+        } else if (action.type === 'ADD_ASSIGNMENT') {
+          await api.post(`/assignments`, {
+            title: action.payload.title,
+            description: action.payload.description || "",
+            deadline: action.payload.deadline,
+            subjectId: action.payload.subjectId || null,
+            priority: action.payload.priority || "medium"
+          });
+          // Refresh assignments via store
+          await useAssignmentStore.getState().fetchAssignments();
+        } else if (action.type === 'MARK_ASSIGNMENT_COMPLETED') {
+          if (action.payload.assignmentId) {
+             await api.post(`/assignments/${action.payload.assignmentId}/complete`);
+          } else if (action.payload.title) {
+             const assignments = useAssignmentStore.getState().assignments;
+             const target = assignments.find(a => a.title.toLowerCase().includes(action.payload.title.toLowerCase()));
+             if (target) await api.post(`/assignments/${target.id}/complete`);
+          }
+          await useAssignmentStore.getState().fetchAssignments();
+        } else if (action.type === 'DELETE_ASSIGNMENT') {
+          if (action.payload.assignmentId) {
+             await api.delete(`/assignments/${action.payload.assignmentId}`);
+          } else if (action.payload.title) {
+             const assignments = useAssignmentStore.getState().assignments;
+             const target = assignments.find(a => a.title.toLowerCase().includes(action.payload.title.toLowerCase()));
+             if (target) await api.delete(`/assignments/${target.id}`);
+          }
+          await useAssignmentStore.getState().fetchAssignments();
         }
         return refresh;
       };
@@ -593,6 +794,10 @@ export const FloatingChatbot: React.FC = () => {
 
       return data.response || data.reply;
     } catch (err: any) {
+      if (err.name === 'CanceledError' || err.code === 'ERR_CANCELED') {
+        console.log("AI Chat generation stopped by user.");
+        return;
+      }
       console.error("AI Chat error:", err);
       const errorMessage: Message = {
         id: String(Date.now() + 1),
@@ -614,18 +819,18 @@ export const FloatingChatbot: React.FC = () => {
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
           onClick={() => setIsOpen(prev => !prev)}
-          className="chatbot-btn group relative flex items-center gap-2.5 bg-primary text-white px-4 py-3 rounded-full shadow-xl shadow-primary/25 border border-white/20 transition-all cursor-pointer text-xs font-semibold"
+          className={`chatbot-btn group relative flex items-center gap-2.5 px-4 py-3 rounded-full shadow-xl transition-all cursor-pointer text-xs font-semibold ${getPillClasses()}`}
           aria-label="Open AttendX AI"
         >
           <div className="relative">
-            <Sparkles className="w-4 h-4 text-amber-300 animate-pulse" />
+            <Sparkles className="w-4 h-4 text-current animate-pulse" />
             <span className="absolute -top-1 -right-1 flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-none bg-emerald-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-none h-2 w-2 bg-emerald-400"></span>
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-current opacity-50"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-current"></span>
             </span>
           </div>
           <span className="font-bold tracking-wide">AttendX AI</span>
-          <span className="hidden sm:inline-block text-[10px] text-white/80 bg-white/20 px-1.5 py-0.5 rounded-none font-mono">
+          <span className="hidden sm:inline-block text-[10px] px-1.5 py-0.5 rounded-md font-mono border border-current opacity-70">
             Ctrl+/
           </span>
         </motion.button>
@@ -638,6 +843,17 @@ export const FloatingChatbot: React.FC = () => {
         onSendMessage={async (q, inputMethod = 'voice') => {
           return await handleSendMessage(q, inputMethod);
         }}
+        pendingActionMsgId={messages.slice().reverse().find(m => m.role === 'assistant' && m.pendingActions && !m.actionsExecuted)?.id}
+        onConfirmPendingAction={(id) => {
+           if ((window as any)._executePendingActions) {
+              (window as any)._executePendingActions(id);
+           }
+        }}
+        onCancelPendingAction={(id) => {
+           if ((window as any)._cancelPendingActions) {
+              (window as any)._cancelPendingActions(id);
+           }
+        }}
       />
 
       {/* Main Chat Drawer with Fluid Spring Opening Animation */}
@@ -648,36 +864,28 @@ export const FloatingChatbot: React.FC = () => {
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.88, y: 25 }}
             transition={{ type: "spring", damping: 22, stiffness: 280 }}
-            className={`fixed z-50 flex flex-col bg-card border border-primary/20 dark:border-primary/30 shadow-2xl shadow-primary/20 overflow-hidden text-foreground ${
+            className={`chatbot-window fixed z-50 flex flex-col bg-card dark:bg-black border border-primary/20 dark:border-primary/30 shadow-2xl shadow-primary/20 overflow-hidden text-foreground ${
               isExpanded
                 ? "bottom-4 right-4 sm:bottom-6 sm:right-6 w-[calc(100vw-2rem)] sm:w-[680px] h-[88vh] max-h-[780px] rounded-none"
                 : "bottom-24 md:bottom-20 right-4 sm:right-6 w-[calc(100vw-2rem)] sm:w-[440px] h-[80vh] max-h-[620px] rounded-none"
             }`}
           >
             {/* Header with Frosted Glass Top Bar */}
-            <div className="px-5 py-3.5 border-b border-primary/10 dark:border-black dark:border-white bg-white/70 dark:bg-[#11172a]/70 backdrop-blur-md flex items-center justify-between">
+            <div className="px-5 py-3.5 border-b border-primary/10 dark:border-black dark:border-white bg-white/70 dark:bg-black/70 backdrop-blur-md flex items-center justify-between">
               <div className="flex items-center gap-3 min-w-0">
-                {messages.length > 0 && (
-                  <button
-                    onClick={() => setMessages([])}
-                    className="p-1.5 rounded-none hover:bg-primary/10 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
-                    title="New Chat"
-                  >
-                    <RotateCcw className="w-4 h-4" />
-                  </button>
-                )}
+
                 <div className="relative">
-                  <div className="w-8 h-8 rounded-none bg-primary flex items-center justify-center text-white font-bold shadow-md shadow-primary/20">
-                    <Bot className="w-4 h-4" />
+                  <div className="w-8 h-8 rounded-full bg-blue-500/10 flex items-center justify-center text-blue-500 font-bold shadow-sm border border-blue-500/20">
+                    <Sparkles className="w-4 h-4" />
                   </div>
                   <span className="absolute -bottom-0.5 -right-0.5 flex h-2.5 w-2.5">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-none bg-emerald-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-none h-2.5 w-2.5 bg-emerald-500 border-2 border-white dark:border-slate-900"></span>
+                    {isServerOnline && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>}
+                    <span className={`relative inline-flex rounded-full h-2.5 w-2.5 border-2 border-white dark:border-slate-900 ${isServerOnline ? 'bg-emerald-500' : 'bg-yellow-500'}`}></span>
                   </span>
                 </div>
                 <div className="min-w-0">
                   <h3 className="text-xs font-bold tracking-tight text-foreground flex items-center gap-1.5">
-                    AttendX Policy AI
+                    AttendX AI
                     
                   </h3>
                   
@@ -719,6 +927,14 @@ export const FloatingChatbot: React.FC = () => {
               </div>
             </div>
 
+            {/* Offline Banner */}
+            {!isServerOnline && (
+              <div className="bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 px-4 py-2 flex items-center gap-2 text-xs border-b border-yellow-500/20">
+                <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                <span><strong>Offline Mode:</strong> Connecting to AttendX AI failed. Chat and voice features are temporarily unavailable.</span>
+              </div>
+            )}
+
             {/* Main Content Area */}
             <div className="flex-1 overflow-y-auto">
               {messages.length === 0 ? (
@@ -731,8 +947,8 @@ export const FloatingChatbot: React.FC = () => {
                   }}
                   className="flex-1 flex flex-col items-center justify-center p-8 text-center space-y-4"
                 >
-                  <div className="w-16 h-16 bg-blue-500/10 rounded-none flex items-center justify-center mb-2">
-                    <Bot className="w-8 h-8 text-blue-500" />
+                  <div className="w-16 h-16 bg-blue-500/10 rounded-full flex items-center justify-center mb-2 shadow-sm border border-blue-500/20">
+                    <Sparkles className="w-8 h-8 text-blue-500" />
                   </div>
                   <h2 className="text-2xl font-bold tracking-tight text-foreground">
                     Hey {user?.name?.split(" ")[0] || "there"},<br/>how can I help you today?
@@ -753,25 +969,25 @@ export const FloatingChatbot: React.FC = () => {
                       className={`flex flex-col ${msg.role === "user" ? "items-end" : "items-start"}`}
                     >
                       {msg.role === "user" ? (
-                        // User Message: Soft yellow/gold pill in light mode or high-contrast in dark mode
-                        <div className="max-w-[85%] rounded-none rounded-tr-xs bg-amber-100/90 dark:bg-primary text-amber-950 dark:text-primary-foreground border border-amber-300/60 dark:border-primary/40 px-4 py-2.5 text-[13px] font-medium shadow-sm">
+                        // User Message: Light pink theme with max contrast text
+                        <div className={`max-w-[85%] rounded-none rounded-tr-xs px-4 py-2.5 text-[13px] font-medium shadow-sm ${getChatBubbleClasses()}`}>
                           <FormattedChatMessage content={msg.content} isUser={true} />
-                          <div className="text-right text-[9px] opacity-70 mt-1 font-mono">{msg.timestamp}</div>
+                          <div className="text-right text-[9px] mt-1 font-mono opacity-70 mix-blend-multiply">{msg.timestamp}</div>
                         </div>
                       ) : (
                         // Assistant Message: Crisp elevated card with soft border & citation badges
                         <div className="w-full space-y-2">
                           <div className="flex items-center justify-between text-[11px] text-muted-foreground">
                             <span className="font-bold text-foreground flex items-center gap-1.5">
-                              <div className="w-4 h-4 rounded-none bg-primary/20 text-primary dark:text-primary flex items-center justify-center">
-                                <Bot className="w-2.5 h-2.5" />
+                              <div className="w-4 h-4 rounded-full bg-blue-500/10 text-blue-500 dark:text-blue-500 flex items-center justify-center border border-blue-500/20">
+                                <Sparkles className="w-2.5 h-2.5" />
                               </div>
                               AttendX AI
                             </span>
                             <span className="text-[10px] font-mono opacity-70">{msg.timestamp}</span>
                           </div>
 
-                          <div className="p-4 rounded-none bg-white/90 dark:bg-[#151b2e]/90 border border-black dark:border-black dark:border-white text-foreground/90 leading-relaxed shadow-sm">
+                          <div className="p-4 rounded-none bg-white/90 dark:bg-black/90 border border-black dark:border-black dark:border-white text-foreground/90 leading-relaxed shadow-sm">
                             <FormattedChatMessage content={msg.content} isUser={false} />
 
                             {/* Simulation Sandbox Card */}
@@ -783,12 +999,12 @@ export const FloatingChatbot: React.FC = () => {
                                     <span className="text-xs font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400">Simulation Complete</span>
                                   </div>
                                   <p className="text-[13px] font-medium mb-3">
-                                    If you skip <span className="font-bold">{msg.simulation.skipCount}</span> class(es) of <span className="font-bold">{msg.simulation.subjectName}</span>:
+                                    If you {msg.simulation.skipCount < 0 ? `attend ${Math.abs(msg.simulation.skipCount)}` : `skip ${msg.simulation.skipCount}`} class(es) of <span className="font-bold">{msg.simulation.subjectName}</span>:
                                   </p>
                                   <div className="flex items-center justify-between p-2 rounded-none bg-white/50 dark:bg-black/20 text-xs">
                                     <div>
                                       <div className="text-muted-foreground mb-1">New Attendance</div>
-                                      <div className="font-mono">{msg.simulation.currentAttended} / {msg.simulation.currentTotal + msg.simulation.skipCount}</div>
+                                      <div className="font-mono">{msg.simulation.skipCount < 0 ? msg.simulation.currentAttended + Math.abs(msg.simulation.skipCount) : msg.simulation.currentAttended} / {msg.simulation.currentTotal + Math.abs(msg.simulation.skipCount)}</div>
                                     </div>
                                     <div className="text-right">
                                       <div className="text-muted-foreground mb-1">Projected %</div>
@@ -815,7 +1031,7 @@ export const FloatingChatbot: React.FC = () => {
                                     <span className="text-xs font-bold uppercase tracking-wider text-primary dark:text-primary">Semester Projection</span>
                                   </div>
                                   <p className="text-[13px] font-medium mb-3">
-                                    If you {msg.semesterProjection.skipCountPerSubject > 0 ? `skip ${msg.semesterProjection.skipCountPerSubject} classes` : 'attend all remaining classes'} per subject until {msg.semesterProjection.endDate}:
+                                    If you {msg.semesterProjection.skipCountPerSubject === 0 ? 'attend all remaining classes' : (msg.semesterProjection.skipCountPerSubject === -1 ? 'miss all remaining classes' : `skip ${msg.semesterProjection.skipCountPerSubject} classes`)} per subject until {new Date(msg.semesterProjection.endDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}:
                                   </p>
                                   <div className="space-y-2">
                                     {msg.semesterProjection.subjects.map((sub, idx) => (
@@ -989,19 +1205,14 @@ export const FloatingChatbot: React.FC = () => {
                   e.preventDefault();
                   handleSendMessage();
                 }}
-                className="relative flex items-center gap-2 bg-[#1b1b1b] dark:bg-[#1a1a24] rounded-[24px] px-2 py-1.5 shadow-[0_0_15px_rgba(0,0,0,0.1)] dark:shadow-[0_0_15px_rgba(0,0,0,0.5)] mx-1 border border-white/10"
+                className="relative flex items-center gap-2 bg-slate-100 dark:bg-black rounded-[24px] px-2 py-1.5 shadow-sm dark:shadow-[0_0_15px_rgba(0,0,0,0.5)] mx-1 border border-slate-200 dark:border-white/10"
               >
-                {/* Plus icon on the left */}
-                <div className="pl-3 pr-1 text-muted-foreground/70">
-                  <Plus className="w-5 h-5 text-gray-400" />
-                </div>
-
-                <div className="flex-1">
+                <div className="flex-1 pl-3">
                   <input
                     ref={inputRef}
                     type="text"
                     value={input}
-                    placeholder="Ask Gemini"
+                    placeholder="Ask AttendX AI"
                     onChange={(e) => {
                       setInput(e.target.value);
                       lastInputMethodRef.current = 'text';
@@ -1011,14 +1222,23 @@ export const FloatingChatbot: React.FC = () => {
                         lastInputMethodRef.current = 'text';
                       }
                     }}
-                    className="w-full bg-transparent text-sm text-white focus:outline-none placeholder:text-gray-400 py-2"
+                    className="w-full bg-transparent text-sm text-slate-900 dark:text-white focus:outline-none placeholder:text-slate-500 dark:placeholder:text-gray-400 py-2"
                     disabled={isLoading}
                   />
                 </div>
 
                 {/* Right Actions */}
                 <div className="flex items-center gap-1 pr-1">
-                  {input.trim() ? (
+                  {isLoading ? (
+                    <button
+                      type="button"
+                      onClick={handleStopGeneration}
+                      className="w-9 h-9 rounded-full bg-slate-200 dark:bg-white/10 text-slate-700 dark:text-white flex items-center justify-center hover:bg-slate-300 dark:hover:bg-white/20 transition-colors cursor-pointer"
+                      title="Stop generation"
+                    >
+                      <div className="w-3.5 h-3.5 bg-current rounded-[2px]"></div>
+                    </button>
+                  ) : input.trim() ? (
                     <button
                       type="submit"
                       disabled={isLoading}
@@ -1034,8 +1254,8 @@ export const FloatingChatbot: React.FC = () => {
                         onClick={toggleMic}
                         className={`w-9 h-9 rounded-full flex items-center justify-center transition-all cursor-pointer ${
                           isListeningMic
-                            ? "bg-rose-500/20 text-rose-500 animate-pulse"
-                            : "hover:bg-white/10 text-gray-400 hover:text-white"
+                            ? "bg-rose-500/10 dark:bg-rose-500/20 text-rose-500 animate-pulse"
+                            : "hover:bg-slate-200 dark:hover:bg-white/10 text-slate-500 dark:text-gray-400 hover:text-slate-900 dark:hover:text-white"
                         }`}
                         title={isListeningMic ? "Listening..." : "Speech to text"}
                       >
@@ -1044,7 +1264,7 @@ export const FloatingChatbot: React.FC = () => {
                       <button
                         type="button"
                         onClick={() => setIsVoiceOpen(true)}
-                        className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-white/10 text-blue-400 hover:text-blue-300 transition-colors cursor-pointer"
+                        className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-slate-200 dark:hover:bg-white/10 text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors cursor-pointer"
                         title="Live Voice Mode"
                       >
                         <AudioLines className="w-4.5 h-4.5" />
@@ -1060,3 +1280,4 @@ export const FloatingChatbot: React.FC = () => {
     </>
   );
 };
+

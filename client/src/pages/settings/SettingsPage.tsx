@@ -69,7 +69,9 @@ import { ChangelogModal } from "../../components/settings/ChangelogModal";
 import { NotificationService } from "../../services/NotificationService";
 
 export const SettingsPage: React.FC = () => {
-const renderDocuments = (type: string) => {
+  const currentAppVersion = (Capacitor.isNativePlatform() ? localStorage.getItem("app_version") : null) || import.meta.env.VITE_APP_VERSION || "4.1.1";
+
+  const renderDocuments = (type: string) => {
     // For backups, only show the most recent one (index 0 because it's sorted desc by createdAt on backend)
     let docs = storedDocuments.filter((d: any) => d.type === type);
     if (type === "BACKUP" && docs.length > 0) {
@@ -180,7 +182,7 @@ const renderDocuments = (type: string) => {
       try {
         const { data } = await api.get("/system/update");
         if (data) {
-          const localVersion = localStorage.getItem("app_version") || "3.0.0";
+          const localVersion = currentAppVersion;
           const serverChangelog = data.changelog || [];
           const index = serverChangelog.findIndex((c: any) => c.version === localVersion);
           data.changelog = index !== -1 ? serverChangelog.slice(index) : serverChangelog;
@@ -221,7 +223,7 @@ const renderDocuments = (type: string) => {
   const [notifyBirthday, setNotifyBirthday] = useState(true);
   const [dndEnabled, setDndEnabled] = useState(true);
 
-  const { reminderFrequency, setReminderFrequency } = useCacheStore();
+  const { reminderFrequency, setReminderFrequency, frequencyMemory } = useCacheStore();
   const { config: notifConfig, updateConfig } = useNotificationStore();
 
   useEffect(() => {
@@ -1099,6 +1101,7 @@ const renderDocuments = (type: string) => {
             <FrequencySelector
               value={reminderFrequency}
               onChange={setReminderFrequency}
+              memory={frequencyMemory}
             />
           </div>
           {['Weekly', 'Monthly', 'Yearly'].includes(reminderFrequency.type) && (
@@ -1109,8 +1112,18 @@ const renderDocuments = (type: string) => {
               </div>
               <input
                 type="time"
-                value={notifConfig.summaryTime || "18:00"}
-                onChange={(e) => updateConfig({ summaryTime: e.target.value })}
+                value={
+                  reminderFrequency.type === 'Weekly' ? (notifConfig.weeklySummaryTime || notifConfig.summaryTime || "18:00") :
+                  reminderFrequency.type === 'Monthly' ? (notifConfig.monthlySummaryTime || notifConfig.summaryTime || "18:00") :
+                  reminderFrequency.type === 'Yearly' ? (notifConfig.yearlySummaryTime || notifConfig.summaryTime || "18:00") :
+                  (notifConfig.summaryTime || "18:00")
+                }
+                onChange={(e) => {
+                  if (reminderFrequency.type === 'Weekly') updateConfig({ weeklySummaryTime: e.target.value });
+                  else if (reminderFrequency.type === 'Monthly') updateConfig({ monthlySummaryTime: e.target.value });
+                  else if (reminderFrequency.type === 'Yearly') updateConfig({ yearlySummaryTime: e.target.value });
+                  else updateConfig({ summaryTime: e.target.value });
+                }}
                 className="bg-white dark:bg-black text-slate-900 dark:text-white text-sm font-semibold rounded-lg px-3 py-1.5 border border-black/10 dark:border-white/10 outline-none focus:ring-2 focus:ring-slate-900 dark:focus:ring-white"
               />
             </div>
@@ -1118,7 +1131,6 @@ const renderDocuments = (type: string) => {
         </div>
       </div>
 
-      {reminderFrequency.type === 'Daily' && (
       <div className="space-y-3">
         <h2 className="text-xs font-bold text-slate-500 uppercase tracking-wider px-1">
           Timetable Alerts
@@ -1131,17 +1143,17 @@ const renderDocuments = (type: string) => {
             </div>
             
             <div className="flex w-full bg-slate-100 dark:bg-slate-900 p-1 rounded-xl">
-              {[5, 10, 15].map((mins) => (
+              {[-1, 5, 10, 15].map((mins) => (
                 <button
                   key={mins}
                   onClick={() => { updateConfig({ classReminderOffset: mins }); NotificationService.autoScheduleFromTimetable(); }}
                   className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all ${
                     notifConfig.classReminderOffset === mins
-                      ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow-sm'
+                      ? 'bg-slate-900 text-[#ffffff] dark:bg-white dark:text-slate-900 shadow-sm'
                       : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
                   }`}
                 >
-                  {mins} min
+                  {mins === -1 ? 'Off' : `${mins} min`}
                 </button>
               ))}
             </div>
@@ -1152,7 +1164,7 @@ const renderDocuments = (type: string) => {
                 <span className="text-xs text-slate-500 dark:text-slate-400">Include room in notifications</span>
               </div>
               <button
-                onClick={() => updateConfig({ showLocation: !notifConfig.showLocation })}
+                onClick={() => { updateConfig({ showLocation: !notifConfig.showLocation }); NotificationService.autoScheduleFromTimetable(); }}
                 className={`w-11 h-6 rounded-full transition-colors relative ${notifConfig.showLocation ? 'bg-primary' : 'bg-muted'}`}
               >
                 <div className={`w-5 h-5 bg-white rounded-full absolute top-0.5 transition-transform ${notifConfig.showLocation ? 'left-[22px]' : 'left-0.5'}`} />
@@ -1165,7 +1177,7 @@ const renderDocuments = (type: string) => {
                 <span className="text-xs text-muted-foreground">Notify when current class ends</span>
               </div>
               <button
-                onClick={() => updateConfig({ notifyNextClassOnEnd: !notifConfig.notifyNextClassOnEnd })}
+                onClick={() => { updateConfig({ notifyNextClassOnEnd: !notifConfig.notifyNextClassOnEnd }); NotificationService.autoScheduleFromTimetable(); }}
                 className={`w-11 h-6 rounded-full transition-colors relative ${notifConfig.notifyNextClassOnEnd ? 'bg-primary' : 'bg-muted'}`}
               >
                 <div className={`w-5 h-5 bg-white rounded-full absolute top-0.5 transition-transform ${notifConfig.notifyNextClassOnEnd ? 'left-[22px]' : 'left-0.5'}`} />
@@ -1178,7 +1190,7 @@ const renderDocuments = (type: string) => {
                 <span className="text-xs text-muted-foreground">Get a 'Done for the day' alert</span>
               </div>
               <button
-                onClick={() => updateConfig({ endOfDaySummary: !notifConfig.endOfDaySummary })}
+                onClick={() => { updateConfig({ endOfDaySummary: !notifConfig.endOfDaySummary }); NotificationService.autoScheduleFromTimetable(); }}
                 className={`w-11 h-6 rounded-full transition-colors relative ${notifConfig.endOfDaySummary ? 'bg-primary' : 'bg-muted'}`}
               >
                 <div className={`w-5 h-5 bg-white rounded-full absolute top-0.5 transition-transform ${notifConfig.endOfDaySummary ? 'left-[22px]' : 'left-0.5'}`} />
@@ -1187,7 +1199,6 @@ const renderDocuments = (type: string) => {
           </div>
         </div>
       </div>
-      )}
 
 
       {/* CATEGORY 3: Data Management */}
@@ -1374,7 +1385,7 @@ const renderDocuments = (type: string) => {
           {/* Share App */}
           <button
             onClick={() => {
-              const appLink = "https://drive.google.com/file/d/1XZBMJBfY8YMGaY82k3FTBHtHmymWggF1/view?usp=sharing";
+              const appLink = "https://drive.google.com/file/d/1keZCOjuM23ABMsCxfenegcOPXyhJOb6J/view?usp=sharing";
               if (navigator.share) {
                 navigator.share({
                   title: "Smart Attendance Manager",
@@ -1429,7 +1440,7 @@ const renderDocuments = (type: string) => {
                   App info
                 </h3>
                 <p className="text-xs text-muted-foreground">
-                  Version v{import.meta.env.VITE_APP_VERSION || "3.8"} & Developer details
+                  Version v{currentAppVersion} & Developer details
                 </p>
               </div>
             </div>
@@ -1875,7 +1886,7 @@ const renderDocuments = (type: string) => {
                   AttendX
                 </h2>
                 <p className="text-xs font-semibold text-primary">
-                  Smart Attendance Manager <span className="md:hidden">• v{localStorage.getItem("app_version") || "3.0.0"}</span>
+                  Smart Attendance Manager <span className="md:hidden">• v{currentAppVersion}</span>
                 </p>
                 <p className="text-xs text-muted-foreground">
                   Built for IIITU Ecosystem

@@ -15,6 +15,7 @@ export interface VoiceSpeakOptions {
   rate?: number;
   pitch?: number;
   volume?: number;
+  voice?: number;
   onStart?: () => void;
   onEnd?: () => void;
   onError?: (err: any) => void;
@@ -23,6 +24,7 @@ export interface VoiceSpeakOptions {
 export class NativeVoiceService {
   private static isListeningState = false;
   private static activeWebRecognition: any = null;
+  private static startPromise: Promise<any> | null = null; // FE-H09 FIX: Promise lock for native plugin start
 
   /**
    * Check whether speech recognition is available on the current device / browser.
@@ -106,13 +108,16 @@ export class NativeVoiceService {
         });
 
         this.isListeningState = true;
-        const result = await SpeechRecognition.start({
+        // FE-H09 FIX: Store the start promise so stopListening can wait for it
+        this.startPromise = SpeechRecognition.start({
           language: options.lang || 'en-IN',
           maxResults: 1,
           prompt: 'Listening...',
           partialResults: true,
           popup: false,
         });
+        
+        const result = await this.startPromise;
 
         if (result && result.matches && result.matches.length > 0) {
           const transcript = result.matches[0];
@@ -127,6 +132,8 @@ export class NativeVoiceService {
         options.onError?.(err);
         options.onEnd?.();
         return false;
+      } finally {
+        this.startPromise = null;
       }
     } else {
       // Safe Web browser fallback
@@ -147,7 +154,7 @@ export class NativeVoiceService {
 
       try {
         const rec = new SpeechRecognitionClass();
-        rec.continuous = false;
+        rec.continuous = true;
         rec.interimResults = true;
         rec.lang = options.lang || "en-IN";
 
@@ -164,14 +171,18 @@ export class NativeVoiceService {
 
         rec.onerror = (event: any) => {
           console.warn("Web speech recognition error:", event.error);
-          this.isListeningState = false;
-          this.activeWebRecognition = null;
+          if (this.activeWebRecognition === rec) {
+            this.isListeningState = false;
+            this.activeWebRecognition = null;
+          }
           options.onError?.(event);
         };
 
         rec.onend = () => {
-          this.isListeningState = false;
-          this.activeWebRecognition = null;
+          if (this.activeWebRecognition === rec) {
+            this.isListeningState = false;
+            this.activeWebRecognition = null;
+          }
           options.onEnd?.();
         };
 
@@ -195,6 +206,12 @@ export class NativeVoiceService {
    */
   static async stopListening(): Promise<void> {
     this.isListeningState = false;
+    
+    // FE-H09 FIX: Wait for the plugin to actually start before attempting to stop it
+    if (this.startPromise) {
+      try { await this.startPromise; } catch (e) {}
+    }
+
     if (Capacitor.isNativePlatform()) {
       try {
         await SpeechRecognition.stop();
@@ -213,6 +230,8 @@ export class NativeVoiceService {
         // ignore
       }
       this.activeWebRecognition = null;
+      // Allow the browser hardware loop to fully release the mic before returning
+      await new Promise(r => setTimeout(r, 150));
     }
   }
 
@@ -220,12 +239,25 @@ export class NativeVoiceService {
    * Speak clean text aloud.
    * Flushes currently playing audio before starting a new utterance to prevent voice overlap.
    */
+  static async getVoices() {
+    try {
+      const result = await TextToSpeech.getSupportedVoices();
+      return result.voices || [];
+    } catch (err) {
+      console.warn("Failed to get voices:", err);
+      return [];
+    }
+  }
+
   static async speak(text: string, options?: VoiceSpeakOptions): Promise<boolean> {
     const cleanText = this.cleanTextForSpeech(text);
     if (!cleanText) return false;
 
     // Audio clash prevention: stop any ongoing audio before starting new playback
     await this.stopSpeaking();
+
+    const preferredVoiceStr = typeof window !== 'undefined' ? localStorage.getItem("attendx_preferred_voice_index") : null;
+    const voiceIndex = preferredVoiceStr !== null ? parseInt(preferredVoiceStr, 10) : undefined;
 
     try {
       options?.onStart?.();
@@ -235,6 +267,7 @@ export class NativeVoiceService {
         rate: options?.rate ?? 1.05,
         pitch: options?.pitch ?? 1.0,
         volume: options?.volume ?? 1.0,
+        voice: !isNaN(voiceIndex as any) ? voiceIndex : undefined,
         queueStrategy: 0, // QueueStrategy.Flush on native
       });
       options?.onEnd?.();
@@ -258,12 +291,19 @@ export class NativeVoiceService {
     }
     if (typeof window !== 'undefined' && 'speechSynthesis' in window && window.speechSynthesis) {
       try {
+        // Workaround for Chrome bug: cancel() leaves TTS in a broken state unless resumed first
+        window.speechSynthesis.resume();
         window.speechSynthesis.cancel();
       } catch {
         // ignore
       }
     }
   }
+
+  /**
+   * Pauses TTS playback. Supported natively on Web. On native platforms, falls back to stop.
+   */
+
 
   /**
    * Strip markdown, system prompt tokens, and URLs to ensure natural TTS audio.
