@@ -678,7 +678,7 @@ export class NotificationService {
             id: notifId,
             title: cleanHolidayName.toLowerCase().includes("holiday") ? "Holiday Today: " + cleanHolidayName : "Event Today: " + cleanHolidayName,
             body: customMessage,
-            largeBody: "✨ " + cleanHolidayName + "\n\n" + customMessage,
+            largeBody: "\u2728 " + cleanHolidayName + "\n\n" + customMessage,
             summaryText: "Holiday Event",
             smallIcon: "ic_stat_adobe",
             iconColor: "#10B981", 
@@ -842,7 +842,7 @@ export class NotificationService {
               id: notifId,
               title: cleanHolidayName.toLowerCase().includes("holiday") ? "Holiday Today: " + cleanHolidayName : "Event Today: " + cleanHolidayName,
               body: specialMessage || "No classes scheduled! Enjoy your day off.",
-              largeBody: "✨ " + cleanHolidayName + "\n\n" + (specialMessage || "No classes scheduled! Enjoy your day off."),
+              largeBody: "\u2728 " + cleanHolidayName + "\n\n" + (specialMessage || "No classes scheduled! Enjoy your day off."),
               summaryText: "Holiday Event",
               smallIcon: "ic_stat_adobe",
               iconColor: "#10B981", 
@@ -916,42 +916,44 @@ export class NotificationService {
           const timeStr = classStartObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
           const roomStr = (config?.showLocation && slot.room) ? slot.room.trim() : '';
 
-          if (headsUpTime && headsUpTime.getTime() > Date.now()) {
-            const headsUpId = getNotificationIdForSlot(slotId, formatLocalDate(currentDay), 'headsup');
-            notificationsToSchedule.push({
-              id: headsUpId,
-              title: `Upcoming (Heads Up): ${subjectName}`,
-              body: `Starts at ${timeStr} ${roomStr ? `| ${roomStr}` : ''}`,
-              largeBody: `📚 Class: ${subjectName}\n⏰ Time: ${timeStr} - ${endTimeStr || 'TBD'}\n📍 Room: ${roomStr || 'N/A'}\n\nTap the action button below to instantly mute your phone for the duration of this class.`,
-              summaryText: "Class Reminder",
-              smallIcon: "ic_stat_adobe",
-              iconColor: "#6366F1", 
-              channelId: 'class_alerts',
-              foreground: true,
-              actionTypeId: 'CLASS_REMINDER_ACTIONS',
-              extra: { classTitle: subjectName, endTimeStr, startTimeStr },
-              schedule: { at: headsUpTime, allowWhileIdle: true }
-            });
-            scheduledCount++;
-          }
+          if (reminderOffset > -1) {
+            if (headsUpTime && headsUpTime.getTime() > Date.now()) {
+              const headsUpId = getNotificationIdForSlot(slotId, formatLocalDate(currentDay), 'headsup');
+              notificationsToSchedule.push({
+                id: headsUpId,
+                title: `Upcoming (Heads Up): ${subjectName}`,
+                body: `Starts at ${timeStr} ${roomStr ? `| ${roomStr}` : ''}`,
+                largeBody: `📚 Class: ${subjectName}\n⏰ Time: ${timeStr} - ${endTimeStr || 'TBD'}\n📍 Room: ${roomStr || 'N/A'}\n\nTap the action button below to instantly mute your phone for the duration of this class.`,
+                summaryText: "Class Reminder",
+                smallIcon: "ic_stat_adobe",
+                iconColor: "#6366F1", 
+                channelId: 'class_alerts',
+                foreground: true,
+                actionTypeId: 'CLASS_REMINDER_ACTIONS',
+                extra: { classTitle: subjectName, endTimeStr, startTimeStr },
+                schedule: { at: headsUpTime, allowWhileIdle: true }
+              });
+              scheduledCount++;
+            }
 
-          if (standardNotifyTime.getTime() > Date.now()) {
-            const standardId = getNotificationIdForSlot(slotId, formatLocalDate(currentDay), 'standard');
-            notificationsToSchedule.push({
-              id: standardId,
-              title: `Upcoming: ${subjectName}`,
-              body: `Starts at ${timeStr} ${roomStr ? `| ${roomStr}` : ''}`,
-              largeBody: `📚 Class: ${subjectName}\n⏰ Time: ${timeStr} - ${endTimeStr || 'TBD'}\n📍 Room: ${roomStr || 'N/A'}\n\nTap the action button below to instantly mute your phone for the duration of this class.`,
-              summaryText: "Class Reminder",
-              smallIcon: "ic_stat_adobe",
-              iconColor: "#6366F1", 
-              channelId: 'class_alerts',
-              foreground: true,
-              actionTypeId: 'CLASS_REMINDER_ACTIONS',
-              extra: { classTitle: subjectName, endTimeStr, startTimeStr },
-              schedule: { at: standardNotifyTime, allowWhileIdle: true }
-            });
-            scheduledCount++;
+            if (standardNotifyTime.getTime() > Date.now()) {
+              const standardId = getNotificationIdForSlot(slotId, formatLocalDate(currentDay), 'standard');
+              notificationsToSchedule.push({
+                id: standardId,
+                title: `Upcoming: ${subjectName}`,
+                body: `Starts at ${timeStr} ${roomStr ? `| ${roomStr}` : ''}`,
+                largeBody: `📚 Class: ${subjectName}\n⏰ Time: ${timeStr} - ${endTimeStr || 'TBD'}\n📍 Room: ${roomStr || 'N/A'}\n\nTap the action button below to instantly mute your phone for the duration of this class.`,
+                summaryText: "Class Reminder",
+                smallIcon: "ic_stat_adobe",
+                iconColor: "#6366F1", 
+                channelId: 'class_alerts',
+                foreground: true,
+                actionTypeId: 'CLASS_REMINDER_ACTIONS',
+                extra: { classTitle: subjectName, endTimeStr, startTimeStr },
+                schedule: { at: standardNotifyTime, allowWhileIdle: true }
+              });
+              scheduledCount++;
+            }
           }
           
           if (endTimeStr) {
@@ -993,7 +995,7 @@ export class NotificationService {
             const tomorrowIsOff = tomorrowHolidayTitle !== null || tomorrowSlots.length === 0;
 
             if (tomorrowHolidayTitle) {
-              endOfDayLargeBody = `✨ All classes for today have concluded. Prepare for the upcoming ${tomorrowHolidayTitle} tomorrow!`;
+              endOfDayLargeBody = `\u2728 All classes for today have concluded. Prepare for the upcoming ${tomorrowHolidayTitle} tomorrow!`;
               endOfDayBody = `Classes ended. Enjoy ${tomorrowHolidayTitle} tomorrow!`;
             } else if (currentDay.getDay() === 5) { // Friday
               const saturdaySlots = tomorrowSlots;
@@ -1285,7 +1287,12 @@ export class NotificationService {
       if (!frequency || frequency.type === 'Never') return;
 
       const config = useNotificationStore.getState().config;
-      const scheduledDates = calculateNextSummaryDates(frequency, config?.summaryTime || "18:00", new Date());
+      let targetTime = config?.summaryTime || "18:00";
+      if (frequency.type === 'Weekly') targetTime = config?.weeklySummaryTime || targetTime;
+      if (frequency.type === 'Monthly') targetTime = config?.monthlySummaryTime || targetTime;
+      if (frequency.type === 'Yearly') targetTime = config?.yearlySummaryTime || targetTime;
+
+      const scheduledDates = calculateNextSummaryDates(frequency, targetTime, new Date());
       const notificationsToSchedule = [];
 
       const allEvents = useAttendanceStore.getState().events || [];
@@ -1302,7 +1309,7 @@ export class NotificationService {
         let id = ACADEMIC_UPDATES_START_ID + i;
         let title = "Tomorrow's Briefing";
         let body = "You have classes coming up tomorrow.";
-        let largeBody = "🎒 Prepare for Tomorrow\n\nYou have classes scheduled. Tap to review your timetable, check for assignments, and pack your bag!";
+        let largeBody = "\uD83C\uDF92 Prepare for Tomorrow\n\nYou have classes scheduled. Tap to review your timetable, check for assignments, and pack your bag!";
 
         if (frequency.type === 'Daily') {
           const isMorningBriefing = notifyDate.getHours() < 14;
@@ -1331,15 +1338,15 @@ export class NotificationService {
           if (targetHolidayTitle) {
             title = `${dayLabel}: ${targetHolidayTitle}`;
             body = `No regular classes scheduled ${dayLabelLower} for ${targetHolidayTitle}. Enjoy your day off!`;
-            largeBody = `✨ ${dayLabelPossessive} Briefing\n\n${dayLabel} is ${targetHolidayTitle}! No regular classes are scheduled. Enjoy your day!`;
+            largeBody = `\u2728 ${dayLabelPossessive} Briefing\n\n${dayLabel} is ${targetHolidayTitle}! No regular classes are scheduled. Enjoy your day!`;
           } else if (!targetHasClasses) {
             title = `${dayLabelPossessive} Briefing: Day Off`;
             body = `No classes scheduled for ${dayLabelLower}. Take some time to relax or catch up on studies!`;
-            largeBody = `🎒 ${dayLabelPossessive} Briefing\n\nYou have no classes scheduled for ${dayLabelLower}. Enjoy your day off or review your coursework!`;
+            largeBody = `\uD83C\uDF92 ${dayLabelPossessive} Briefing\n\nYou have no classes scheduled for ${dayLabelLower}. Enjoy your day off or review your coursework!`;
           } else {
             title = `${dayLabelPossessive} Briefing`;
             body = `You have ${targetSlots.length} class${targetSlots.length === 1 ? '' : 'es'} scheduled ${dayLabelLower}.`;
-            largeBody = `🎒 Prepare for ${dayLabel}\n\nYou have ${targetSlots.length} class${targetSlots.length === 1 ? '' : 'es'} scheduled ${dayLabelLower}. Tap to review your schedule!`;
+            largeBody = `\uD83C\uDF92 Prepare for ${dayLabel}\n\nYou have ${targetSlots.length} class${targetSlots.length === 1 ? '' : 'es'} scheduled ${dayLabelLower}. Tap to review your schedule!`;
           }
         } else if (frequency.type === 'Weekly') {
           id = 8810 + i;
@@ -1353,20 +1360,20 @@ export class NotificationService {
             const end = e.endDate ? parseLocalDate(e.endDate) : start;
             return start.getTime() <= endOfWeekDay.getTime() && end.getTime() >= startOfWeekDay.getTime();
           });
-          largeBody = "📅 Weekly Review\n\nTake a look back at your attendance performance this week and plan ahead for the upcoming week.";
+          largeBody = "\uD83D\uDCC5 Weekly Review\n\nTake a look back at your attendance performance this week and plan ahead for the upcoming week.";
           if (weekEvents.some(e => (e.eventType || e.type || "").toLowerCase() === "holiday" || (e.title || "").toLowerCase().includes("holiday"))) {
-            largeBody = "📅 Weekly Review\n\nIt was a short week with some holidays! Check how your attendance was impacted and review your targets.";
+            largeBody = "\uD83D\uDCC5 Weekly Review\n\nIt was a short week with some holidays! Check how your attendance was impacted and review your targets.";
           }
         } else if (frequency.type === 'Monthly') {
           id = 8820 + i;
           title = "Monthly Attendance Summary";
           body = "Your monthly review is ready! See how well you did this month.";
-          largeBody = `📈 Monthly Summary\n\nYour overall attendance is currently at ${overallPct}%. Tap to see your detailed breakdown and performance across all subjects.`;
+          largeBody = `\uD83D\uDCC8 Monthly Summary\n\nYour overall attendance is currently at ${overallPct}%. Tap to see your detailed breakdown and performance across all subjects.`;
         } else if (frequency.type === 'Yearly') {
           id = 8830 + i;
           title = "Yearly Attendance Summary";
           body = "Your annual academic attendance recap is ready.";
-          largeBody = `🎓 Yearly Summary\n\nYour overall cumulative attendance is at ${overallPct}%. Tap to review your attendance performance across all semesters.`;
+          largeBody = `\uD83C\uDF93 Yearly Summary\n\nYour overall cumulative attendance is at ${overallPct}%. Tap to review your attendance performance across all semesters.`;
         }
 
         notificationsToSchedule.push({

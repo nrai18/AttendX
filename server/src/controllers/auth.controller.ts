@@ -70,7 +70,7 @@ export class AuthController {
       setRefreshCookie(res, refreshToken);
       res.status(200).json({ accessToken });
     } catch (error: any) {
-      if (/invalid|expired|not found/i.test(error.message)) {
+      if (/invalid|expired|not found|reuse/i.test(error.message)) {
         clearRefreshCookie(res);
         res.status(401).json({ message: error.message });
       } else {

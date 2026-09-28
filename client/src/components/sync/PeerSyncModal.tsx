@@ -95,14 +95,16 @@ export const PeerSyncModal = () => {
         contextType,
         dateRange
       });
-      setActiveCode(String(res.data.code), Number(res.data.expiresIn) || 300);
+      // FE-L04 FIX: Properly handle 0 TTL by using explicit null check rather than falsy || operator
+      setActiveCode(String(res.data.code), res.data.expiresIn != null ? Number(res.data.expiresIn) : 300);
       toast.success("Code generated securely!");
     } catch (error: any) {
       console.log("Error caught in PeerSyncModal:", error);
       const errRes = error.response;
-      if (errRes?.data?.code || errRes?.data?.message?.includes("already have an active")) {
-        const recoveredCode = String(errRes?.data?.code || "000000"); 
-        let recoveredExp = Number(errRes?.data?.expiresIn);
+      if (errRes?.data?.code) {
+        // FE-H07 FIX: Only recover if the backend actually provides the code
+        const recoveredCode = String(errRes.data.code); 
+        let recoveredExp = Number(errRes.data.expiresIn);
         if (isNaN(recoveredExp) || recoveredExp <= 0) recoveredExp = 300; 
         
         setActiveCode(recoveredCode, recoveredExp);
@@ -145,6 +147,8 @@ export const PeerSyncModal = () => {
     } catch (error: any) {
       const msg = error.response?.data?.error || error.response?.data?.message || "Failed to import schedule.";
       toast.error(msg);
+      // FE-H08 FIX: Clear reviewData on failure to prevent duplicate import spamming
+      setReviewData(null);
     } finally {
       setLoading(false);
     }

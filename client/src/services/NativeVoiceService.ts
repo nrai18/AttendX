@@ -257,17 +257,26 @@ export class NativeVoiceService {
     await this.stopSpeaking();
 
     const preferredVoiceStr = typeof window !== 'undefined' ? localStorage.getItem("attendx_preferred_voice_index") : null;
-    const voiceIndex = preferredVoiceStr !== null ? parseInt(preferredVoiceStr, 10) : undefined;
+    const prefVoiceIndex = preferredVoiceStr !== null ? parseInt(preferredVoiceStr, 10) : undefined;
+    
+    // Explicit options override localStorage preferences (crucial for settings preview)
+    const finalVoiceIndex = options?.voice !== undefined ? options.voice : prefVoiceIndex;
+    
+    const prefPitch = typeof window !== 'undefined' ? localStorage.getItem("attendx_preferred_voice_pitch") : null;
+    const prefRate = typeof window !== 'undefined' ? localStorage.getItem("attendx_preferred_voice_rate") : null;
+    
+    const finalPitch = options?.pitch ?? (prefPitch ? parseFloat(prefPitch) : 1.0);
+    const finalRate = options?.rate ?? (prefRate ? parseFloat(prefRate) : 1.05);
 
     try {
       options?.onStart?.();
       await TextToSpeech.speak({
         text: cleanText,
         lang: options?.lang || 'en-IN',
-        rate: options?.rate ?? 1.05,
-        pitch: options?.pitch ?? 1.0,
+        rate: finalRate,
+        pitch: finalPitch,
         volume: options?.volume ?? 1.0,
-        voice: !isNaN(voiceIndex as any) ? voiceIndex : undefined,
+        voice: !isNaN(finalVoiceIndex as any) ? finalVoiceIndex : undefined,
         queueStrategy: 0, // QueueStrategy.Flush on native
       });
       options?.onEnd?.();

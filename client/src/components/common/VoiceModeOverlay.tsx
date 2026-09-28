@@ -50,9 +50,102 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
   });
   const [previewVoice, setPreviewVoice] = useState<number | null>(null);
 
+
+
+  useEffect(() => {
+    const fetchVoices = async () => {
+      const voices = await NativeVoiceService.getVoices();
+      setAvailableVoices(voices);
+    };
+    
+    fetchVoices();
+    
+    // Web Speech API dynamically loads voices asynchronously
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      window.speechSynthesis.onvoiceschanged = fetchVoices;
+    }
+  }, []);
+
+  const curatedVoices = useMemo(() => {
+    const englishVoices = availableVoices.filter(v => v.lang.startsWith('en'));
+    const isWeb = !Capacitor.isNativePlatform();
+
+    const aliases = [
+       { name: "Nova", desc: "Female (Clear & Professional)", gender: "female", sample: "This is a sample voice. I am Nova, clear and professional.", pitch: 1.5, rate: 1.1 },
+       { name: "Echo", desc: "Male (Calm & Affirming)", gender: "male", sample: "This is a sample voice. I am Echo, calm and affirming.", pitch: 0.8, rate: 0.9 },
+       { name: "Breeze", desc: "Female (Animated & Earnest)", gender: "female", sample: "This is a sample voice. I am Breeze, animated and earnest.", pitch: 1.2, rate: 1.2 },
+       { name: "Cove", desc: "Male (Deep & Composed)", gender: "male", sample: "This is a sample voice. I am Cove, deep and composed.", pitch: 0.6, rate: 0.85 },
+       { name: "Sky", desc: "Female (Bright & Clear)", gender: "female", sample: "This is a sample voice. I am Sky, bright and clear.", pitch: 1.8, rate: 1.0 }
+    ];
+
+    const getGender = (vName: string) => {
+        const name = (vName || "").toLowerCase();
+        if (name.includes('female') || name.includes('zira') || name.includes('samantha') || name.includes('karen') || name.includes('victoria') || name.includes('tessa') || name.includes('ava') || name.includes('moira') || name.includes('susan') || name.includes('fiona')) return 'female';
+        if (name.includes(' male') || name.includes('-male') || name.includes('david') || name.includes('daniel') || name.includes('mark') || name.includes('george') || name.includes('alex') || name.includes('tom') || name.includes('oliver') || name.includes('rishi') || name.includes('arthur')) return 'male';
+        return 'unknown';
+    };
+
+    const selected: any[] = [];
+    const usedIndices = new Set<number>();
+
+    // For Web, intelligently pick voices matching the required alias gender
+    for (const alias of aliases) {
+      let matchedVoice = null;
+      if (isWeb) {
+        matchedVoice = englishVoices.find((v, idx) => !usedIndices.has(idx) && getGender(v.name) === alias.gender);
+      }
+      // Fallback 1: Just get one from a distinct region
+      if (!matchedVoice) {
+        const regions = ['en-US', 'en-GB', 'en-AU', 'en-IN', 'en-IE'];
+        for (const region of regions) {
+          const regionVoice = englishVoices.find((v, idx) => !usedIndices.has(idx) && v.lang.toLowerCase().includes(region.toLowerCase()));
+          if (regionVoice) {
+            matchedVoice = regionVoice;
+            break;
+          }
+        }
+      }
+      // Fallback 2: Pick anything available
+      if (!matchedVoice) {
+        matchedVoice = englishVoices.find((v, idx) => !usedIndices.has(idx));
+      }
+      
+      if (matchedVoice) {
+        selected.push(matchedVoice);
+        usedIndices.add(englishVoices.indexOf(matchedVoice));
+      } else {
+        break; // No more voices available
+      }
+    }
+
+    return selected.map((v, i) => {
+      const alias = aliases[i % aliases.length];
+      
+      // On Web (laptop), browsers already have distinct, high-quality male/female voices.
+      // Extreme pitch shifting ruins them. We use a much milder modifier on Web.
+      const finalPitch = isWeb 
+        ? 1.0 + (alias.pitch - 1.0) * 0.2 // Shrinks [0.6, 1.8] to [0.92, 1.16]
+        : alias.pitch;
+        
+      const finalRate = isWeb
+        ? 1.0 + (alias.rate - 1.0) * 0.5 // Milder speed tweaks on Web
+        : alias.rate;
+
+      return {
+        originalIndex: availableVoices.indexOf(v),
+        voice: v,
+        alias: alias.name,
+        desc: alias.desc,
+        sample: alias.sample,
+        pitch: finalPitch,
+        rate: finalRate
+      };
+    });
+  }, [availableVoices]);
+
   const openVoiceSettings = () => {
-    setPreviewVoice(selectedVoice);
     setShowVoiceSettings(true);
+    
     // Force stop the microphone so it doesn't transcribe the sample voices!
     if (isListeningRef.current) {
       NativeVoiceService.stopListening();
@@ -64,28 +157,6 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
       setIsSpeaking(false);
     }
   };
-
-  useEffect(() => {
-    NativeVoiceService.getVoices().then(voices => setAvailableVoices(voices));
-  }, []);
-
-  // Curate 5 nice English voices and alias them
-  const curatedVoices = useMemo(() => {
-    const englishVoices = availableVoices.filter(v => v.lang.startsWith('en'));
-    const names = [
-       { name: "Nova", desc: "Energetic and professional" },
-       { name: "Echo", desc: "Calm and affirming" },
-       { name: "Breeze", desc: "Animated and earnest" },
-       { name: "Cove", desc: "Deep and composed" },
-       { name: "Sky", desc: "Bright and clear" }
-    ];
-    return englishVoices.slice(0, 5).map((v, i) => ({
-      originalIndex: availableVoices.indexOf(v),
-      voice: v,
-      alias: names[i % names.length].name,
-      desc: names[i % names.length].desc
-    }));
-  }, [availableVoices]);
 
   const handleVoiceScroll = () => {
     if (scrollTimeoutRef.current) {
@@ -99,20 +170,24 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
       
       if (curatedVoices[index]) {
         const cv = curatedVoices[index];
-        // Ensure we don't re-trigger if it's already previewing
-        setPreviewVoice((currentPreview) => {
-          if (currentPreview !== cv.originalIndex) {
-            NativeVoiceService.speak(`Hi, I am ${cv.alias}. ${cv.desc}.`, { voice: cv.originalIndex, lang: cv.voice.lang });
-            return cv.originalIndex;
-          }
-          return currentPreview;
-        });
+        // Compare with a ref to avoid side effects inside setPreviewVoice
+        if (previewVoiceRef.current !== cv.originalIndex) {
+          previewVoiceRef.current = cv.originalIndex;
+          setPreviewVoice(cv.originalIndex);
+          NativeVoiceService.speak(cv.sample, { 
+            voice: cv.originalIndex, 
+            lang: cv.voice.lang,
+            pitch: cv.pitch,
+            rate: cv.rate
+          });
+        }
       }
     }, 250);
   };
   
   const isOpenRef = useRef(isOpen);
   const voiceEnabledRef = useRef(voiceEnabled);
+  const previewVoiceRef = useRef<number | null>(null);
 
   // Sync scroll position when opening settings
   useEffect(() => {
@@ -124,8 +199,27 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
       setTimeout(() => {
         if (carouselRef.current) {
           carouselRef.current.scrollTo({ left: targetIndex * carouselRef.current.clientWidth, behavior: 'instant' });
+          
+          // Force a sample playback for the initial open, regardless of whether a scroll event fired
+          const activeCv = curatedVoices[targetIndex];
+          if (activeCv) {
+            if (previewVoiceRef.current !== activeCv.originalIndex) {
+              previewVoiceRef.current = activeCv.originalIndex;
+              setPreviewVoice(activeCv.originalIndex);
+              NativeVoiceService.speak(activeCv.sample, { 
+                voice: activeCv.originalIndex, 
+                lang: activeCv.voice.lang,
+                pitch: activeCv.pitch,
+                rate: activeCv.rate
+              });
+            }
+          }
         }
-      }, 50);
+      }, 100);
+    } else if (!showVoiceSettings) {
+      // Reset preview voice when settings close so it will play again if opened
+      previewVoiceRef.current = null;
+      setPreviewVoice(null);
     }
   }, [showVoiceSettings, curatedVoices, selectedVoice]);
   const isSpeakingRef = useRef(isSpeaking);
@@ -262,9 +356,7 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
       await NativeVoiceService.stopSpeaking();
       // We don't await speak or pass onEnd because the master timeline controls state now
       NativeVoiceService.speak(cleanText, {
-        lang: "en-IN",
-        rate: 1.05,
-        pitch: 1.0
+        lang: "en-IN"
       });
     }
   };
@@ -395,9 +487,7 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
                         const remainingText = currentUtteranceRef.current.split(/\s+/).slice(elapsedWords).join(" ");
                         if (remainingText) {
                             NativeVoiceService.speak(remainingText, {
-                              lang: "en-IN",
-                              rate: 1.05,
-                              pitch: 1.0
+                              lang: "en-IN"
                             });
                         }
                     }
@@ -633,6 +723,12 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
                           if (previewVoice !== null) {
                             setSelectedVoice(previewVoice);
                             localStorage.setItem("attendx_preferred_voice_index", previewVoice.toString());
+                            
+                            const selectedCv = curatedVoices.find(v => v.originalIndex === previewVoice);
+                            if (selectedCv) {
+                                localStorage.setItem("attendx_preferred_voice_pitch", selectedCv.pitch.toString());
+                                localStorage.setItem("attendx_preferred_voice_rate", selectedCv.rate.toString());
+                            }
                           }
                           setShowVoiceSettings(false);
                         }}

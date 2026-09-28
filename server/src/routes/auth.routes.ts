@@ -83,15 +83,9 @@ router.get(
       setRefreshCookie(res, refreshToken);
       
       const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
-      // SEC-H02 FIX: Do not pass access token in URL (leaks to browser history, referer headers).
-      // Pass a very short-lived (5 minute) secure cookie for the frontend to pick up, or redirect to a page that fetches /users/me relying on the refresh token.
-      res.cookie("oauth_success", accessToken, {
-        httpOnly: false, // Must be readable by frontend JS to extract the token and clear it
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "lax",
-        maxAge: 5 * 60 * 1000 // 5 minutes
-      });
-      res.redirect(`${frontendUrl}/login?oauth_success=true`);
+      // SEC-H02 FIX: Do not pass access token in URL query (leaks to server logs).
+      // Pass it in the URL hash fragment (#) instead, which is never sent to the server.
+      res.redirect(`${frontendUrl}/login#oauth_token=${accessToken}`);
     } catch (error) {
       console.error("Google Auth Error:", error);
       res.redirect((process.env.FRONTEND_URL || "http://localhost:5173") + "/login?error=server");

@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import { Response, Request } from "express";
 import { AuthenticatedRequest } from "../middleware/authenticate";
 import { prisma } from "../lib/prisma";
@@ -29,7 +30,7 @@ export class TransferController {
       });
 
       // 2. Generate cryptographically secure 6-digit code
-      const generateCode = () => Math.floor(100000 + Math.random() * 900000).toString();
+      const generateCode = () => crypto.randomInt(100000, 1000000).toString();
       let code = generateCode();
       
       // Ensure it's unique

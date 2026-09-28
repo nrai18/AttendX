@@ -133,7 +133,7 @@ export class UserController {
     }
   }
 
-  static async getSessions(req: AuthenticatedRequest, res: Response) { console.log("getSessions called!");
+  static async getSessions(req: AuthenticatedRequest, res: Response) { 
     try {
       const userId = req.user!.userId;
       const sessionId = req.user!.sessionId;

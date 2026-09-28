@@ -54,7 +54,8 @@ export const LoginPage: React.FC = () => {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const token = params.get("token");
+    const hashParams = new URLSearchParams(window.location.hash.substring(1));
+    const token = hashParams.get("oauth_token");
     const err = params.get("error");
     
     if (err) {
@@ -62,16 +63,19 @@ export const LoginPage: React.FC = () => {
       window.history.replaceState({}, document.title, window.location.pathname);
     } else if (token) {
       setLoading(true);
-      api.get("/users/me", { headers: { Authorization: `Bearer ${token}` } })
-          .then(res => {
-            setAuth(res.data, token);
-            navigate("/today");
-          })
-          .catch(e => {
-            console.error(e);
-            setError("Failed to verify Google Login.");
-            setLoading(false);
-          });
+      // Clear the hash immediately for security
+      window.history.replaceState({}, document.title, window.location.pathname);
+        
+        api.get("/users/me", { headers: { Authorization: `Bearer ${token}` } })
+            .then(res => {
+              setAuth(res.data, token);
+              navigate("/today");
+            })
+            .catch(e => {
+              console.error(e);
+              setError("Failed to verify Google Login.");
+              setLoading(false);
+            });
     }
   }, [navigate, setAuth]);
 

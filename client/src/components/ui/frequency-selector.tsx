@@ -16,6 +16,7 @@ interface FrequencySelectorProps {
   value: FrequencyData;
   onChange: (data: FrequencyData) => void;
   className?: string;
+  memory?: Record<string, string | undefined>;
 }
 
 /* ---------- Motion Config ---------- */
@@ -53,6 +54,7 @@ export const FrequencySelector: React.FC<FrequencySelectorProps> = ({
   value,
   onChange,
   className = '',
+  memory = {},
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [tempType, setTempType] = useState<FrequencyType>(value.type);
@@ -62,7 +64,7 @@ export const FrequencySelector: React.FC<FrequencySelectorProps> = ({
 
   const handleOpen = () => {
     setTempType(value.type);
-    setTempSubValue(value.subValue || SUB_OPTIONS[value.type][0]);
+    setTempSubValue(value.subValue || memory[value.type] || SUB_OPTIONS[value.type][0]);
     setIsOpen(true);
   };
 
@@ -133,7 +135,7 @@ export const FrequencySelector: React.FC<FrequencySelectorProps> = ({
                       key={type}
                       onClick={() => {
                         setTempType(type);
-                        setTempSubValue(SUB_OPTIONS[type][0]);
+                        setTempSubValue(memory[type] || SUB_OPTIONS[type][0]);
                       }}
                       className={`relative flex h-full flex-none items-center justify-center px-4 text-xs font-bold transition-colors sm:flex-1 sm:min-w-fit sm:px-6 sm:text-[15px] ${
                         tempType === type ? 'text-slate-900 dark:text-white' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
@@ -155,9 +157,9 @@ export const FrequencySelector: React.FC<FrequencySelectorProps> = ({
                 <motion.button
                   whileTap={{ scale: 0.9 }}
                   onClick={handleConfirm}
-                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-900 text-white dark:bg-white dark:text-slate-900 sm:h-12 sm:w-12 shadow-md hover:opacity-90 transition-opacity"
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-900 text-[#ffffff] dark:bg-white dark:text-slate-900 sm:h-12 sm:w-12 shadow-md hover:opacity-90 transition-opacity"
                 >
-                  <Check size={18} className="text-white dark:text-slate-900" strokeWidth={2.5} />
+                  <Check size={18} className="text-[#ffffff] dark:text-slate-900" strokeWidth={2.5} />
                 </motion.button>
               </div>
 

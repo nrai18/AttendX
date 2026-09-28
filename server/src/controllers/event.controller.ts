@@ -53,6 +53,10 @@ export class EventController {
       return res.status(400).json({ error: "Missing required fields" });
     }
     try {
+      // SEC-M04 FIX: Verify ownership
+      const { prisma } = require('../lib/prisma');
+      const ownsSemester = await prisma.semester.findFirst({ where: { id: semesterId, userId: req.user!.userId }});
+      if (!ownsSemester) return res.status(403).json({ error: 'Unauthorized semester access' });
       const created = await EventService.saveWizardEvents(req.user!.userId, semesterId, events);
       await CacheService.invalidateUser(req.user!.userId);
       res.json({ message: "Events saved successfully", events: created });

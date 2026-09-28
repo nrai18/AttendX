@@ -941,7 +941,7 @@ export const TodayPage = () => {
             {activeSemester && (
               <button
                 onClick={openAddExtraModal}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-yellow-500/10 text-yellow-500 border border-yellow-500/20 hover:bg-yellow-500/20 transition-all shadow-sm cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-pink-500/10 text-pink-500 border border-pink-500/20 hover:bg-pink-500/20 transition-all shadow-sm cursor-pointer"
               >
                 <Plus className="w-4 h-4" />
                 Add Extra

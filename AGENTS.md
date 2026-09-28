@@ -47,8 +47,12 @@ When designing, updating, or overhauling the UI of a specific page:
 5. **No +1/-1 Micro Commits:** Commits should be significant, cohesive blocks of work. Do not litter the git history with tiny `+1 -1` single-line fix commits. Squash them into the relevant feature or chore commits.
 6. **Native Tools over Python Scripts:** Never write ad-hoc Python/Node scripts to modify files unless absolutely necessary. Rely strictly on the `replace_file_content` tool for surgical edits to prevent disruptive full-file git diffs caused by carriage return/line ending mismatches.
 
+7. **Strict Fix Retention (No Regressions):** Once a bug is resolved or a feature successfully added, you MUST meticulously ensure that subsequent commands or git operations (like `git reset`, `git revert`, `git checkout`, or branch switches) do not accidentally wipe out those fixes. Never blindly revert or reset the working directory without first verifying that doing so won't delete unrelated work. If a fix is lost during a git rollback, you MUST immediately cherry-pick or manually restore the exact files containing those fixes before proceeding.
+
 ## Intelligent Changelog & OTA Notes (Nothing OS Style)
 1. **Running Documentation:** Do not wait until an OTA deployment to write the changelog. Maintain a highly descriptive, running log of all implemented features, UX improvements, and bug fixes in `dev_log.md` as you work.
 2. **Categorization:** Group changelog entries logically into headers such as **New Features**, **Visual Enhancements**, **Architecture & Performance**, and **General Improvements and Bug Fixes.
 3. **Emoji Logic:** Every bullet point MUST start with a single, highly relevant emoji that dictates the nature of the change (e.g., ?? for ML tools, ??? for voice plugins, ?? for theming, ?? for offline handling, ?? for performance/timeouts). DO NOT spam unrelated emojis.
 4. **Descriptive Depth:** Write clean, descriptive, and user-facing benefits (e.g., 'Introduced Native Voice Mode with Capacitor plugins, offering seamless hands-free interaction without overlapping audio.'). Avoid empty marketing buzzwords.
+
+

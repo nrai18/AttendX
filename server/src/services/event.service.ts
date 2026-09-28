@@ -54,43 +54,7 @@ export class EventService {
     return Array.from(uniqueEvents.values());
   }
 
-  static async processCalendarOcr(userId: string, fileBuffer: Buffer, semesterId: string, fileName: string = "", mimeType: string = "") {
-    let extractedText = "";
 
-    try {
-      const form = new FormData();
-      // fileBuffer is a Node.js Buffer, FormData in native fetch expects a Blob.
-      // So we convert Buffer to Blob
-      const blob = new Blob([fileBuffer as any], { type: mimeType || 'application/pdf' });
-      form.append('file', blob, fileName || 'calendar.pdf');
-
-      const mlServerUrl = process.env.ML_SERVER_URL || "https://attendx-ml-server.onrender.com";
-      const response = await fetch(`${mlServerUrl}/upload/calendar-ocr`, {
-        method: 'POST',
-        body: form
-      });
-
-      if (!response.ok) {
-        throw new Error(`ML Server error: ${response.statusText}`);
-      }
-
-      const data = await response.json();
-
-      if (data && data.rawEvents) {
-        return {
-          status: "needs_setup",
-          rawEvents: data.rawEvents
-        };
-      }
-    } catch (err: any) {
-      console.error("ML Server Calendar OCR Error:", err.message);
-    }
-
-    return {
-      status: "needs_setup",
-      rawEvents: []
-    };
-  }
 
   static async saveWizardEvents(userId: string, semesterId: string, events: any[]) {
     // Validate semesterId to prevent foreign key constraint violations
@@ -105,6 +69,9 @@ export class EventService {
     // Save the user confirmed events, avoiding duplicates by title and date
     const createdEvents = [];
     for (const evt of events) {
+      // Normalize field aliases — older exports used description/type, newer use title/eventType
+      const evtTitle: string = evt.title || evt.description || "Event";
+      const evtEventType: string = evt.eventType || evt.type || "";
       const evtDate = new Date(evt.date || evt.startDate);
       
       // Check for duplicate
@@ -112,7 +79,7 @@ export class EventService {
         where: {
           semesterId,
           userId,
-          title: evt.title,
+          title: evtTitle,
           date: evtDate,
         }
       });
@@ -125,8 +92,8 @@ export class EventService {
 
       let mappedType: any = "other";
       
-      const rawType = (evt.eventType || evt.category || "").toLowerCase();
-      const titleLower = (evt.title || "").toLowerCase();
+      const rawType = evtEventType.toLowerCase();
+      const titleLower = evtTitle.toLowerCase();
 
       if (rawType === "holiday") {
         mappedType = "holiday";
@@ -140,10 +107,10 @@ export class EventService {
         mappedType = "institute";
       } else if (rawType === "lab_exam" || titleLower.includes("lab") || titleLower.includes("practical")) {
         mappedType = "lab_exam";
-      } else if (rawType === "exam" || rawType === "ct") {
-        if (titleLower.includes("mid")) {
+      } else if (rawType === "exam" || rawType === "ct" || rawType === "midsem" || rawType === "endsem") {
+        if (rawType === "midsem" || titleLower.includes("mid")) {
           mappedType = "midsem";
-        } else if (titleLower.includes("end") || titleLower.includes("theory")) {
+        } else if (rawType === "endsem" || titleLower.includes("end") || titleLower.includes("theory")) {
           mappedType = "endsem";
         } else if (titleLower.includes("cycle") || titleLower.includes("ct")) {
           mappedType = "ct";
@@ -176,9 +143,7 @@ export class EventService {
           }
         });
         
-        // If conflict exists and titles are similar (or just blindly replace, user said "preserve AC entry explicitly")
         if (conflictingHoliday) {
-          // Delete the pre-loaded holiday list event so the Academic Calendar one takes priority
           await prisma.event.delete({ where: { id: conflictingHoliday.id } });
         }
       }
@@ -187,7 +152,7 @@ export class EventService {
         data: {
           userId,
           semesterId,
-          title: evt.title,
+          title: evtTitle,
           eventType: mappedType,
           date: evtDate,
           endDate: evt.endDate ? new Date(evt.endDate) : null,

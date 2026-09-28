@@ -75,7 +75,7 @@ export class AdminController {
       const iv = encryptedBuffer.slice(0, 16);
       const encryptedData = encryptedBuffer.slice(16);
       
-      const decipher = crypto.createDecipheriv("aes-256-cbc", Buffer.from(key), iv);
+      const decipher = crypto.createDecipheriv("aes-256-gcm", Buffer.from(key), iv);
       const decrypted = Buffer.concat([decipher.update(encryptedData), decipher.final()]);
 
       res.setHeader('Content-Type', 'application/zip');

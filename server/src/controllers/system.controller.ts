@@ -5,9 +5,73 @@ import fs from "fs";
 export class SystemController {
   static async getUpdateManifest(req: Request, res: Response) {
     const manifest = {
-      latestVersion: process.env.LATEST_APP_VERSION || "4.1.0",
-      title: "The Architecture Update",
+      latestVersion: process.env.LATEST_APP_VERSION || "4.1.1",
+      title: "AI Timetable Engine Update",
       changelog: [
+        {
+          "version": "4.1.1",
+          "date": "Sep 29, 2026",
+          "title": "UI Fixes Hotfix",
+                    "sections": [
+            {
+              "title": "New Features",
+              "items": [
+                { "icon": "🗣️", "text": "Added a ChatGPT-style Voice Selection bottom sheet with a swipeable carousel of curated voices." },
+                { "icon": "🎤", "text": "Integrated Native Voice Service to dynamically read and cache your preferred text-to-speech voice." }
+              ]
+            },
+            {
+              "title": "Architecture & Performance",
+              "items": [
+                { "icon": "🗃️", "text": "Rewrote the Timetable Archive engine to cluster 24-hour micro-edits, preventing the archive from flooding with dozens of versions." }
+              ]
+            },
+            {
+              "title": "General Improvements and Bug Fixes",
+              "items": [
+                { "icon": "🔇", "text": "Added a microphone kill-switch that auto-pauses listening when opening voice settings to prevent audio feedback loops." },
+                { "icon": "📜", "text": "Upgraded the Voice Mode Overlay with a scrollable, gradient-masked text container to read the AI\'s long responses." },
+                { "icon": "🏁", "text": "Tied Speech-to-Text listener callbacks to a specific session ID to prevent race conditions when the microphone is rapidly toggled." },
+                { "icon": "💬", "text": "Removed Voice Mode processing transcription wipes so the UI retains your text while processing." },
+                { "icon": "🎨", "text": "Themed the Voice Mode processing orb pink based on user request." },
+                { "icon": "📅", "text": "Replaced calendar event dots with colorful pills to make events like Janmashtami stand out." },
+                { "icon": "🐛", "text": "Fixed the calendar 'yellow dot' bug for naturally empty days and future unmarked days." },
+                { "icon": "🤖", "text": "Added 'Marked by AttendX Copilot' auto-remarks for AI-driven timetable changes." },
+                { "icon": "🐛", "text": "Fixed the Monthly Report bug accidentally triggering Weekly emails." },
+                { "icon": "🐛", "text": "Fixed timetable deduplication overlapping bug in calendar agenda for archived classes." },
+                { "icon": "🐛", "text": "Fixed AI Copilot 'Full Day Marked' duplicates on historical timetable slots." },
+                { "icon": "🐛", "text": "Fixed Calendar Agenda corruption on archived dates by mirroring Today page deduplication cache logic." },
+                { "icon": "🐛", "text": "Fixed the mobile Calendar Agenda view incorrectly displaying 'Other' for future and unmapped classes." },
+                { "icon": "🔐", "text": "Prevented OAuth CSRF by generating and verifying cryptographic nonces in cookies" },
+                { "icon": "🔐", "text": "Upgraded AES-256-CBC to authenticated AES-256-GCM encryption in admin controllers" },
+                { "icon": "🔐", "text": "Implemented Magic-Byte inspection for timetable file uploads to block malicious non-image files" },
+                { "icon": "🛡️", "text": "Introduced strict 50 reqs/15m rate limiting on the /refresh endpoint" },
+                { "icon": "🚀", "text": "Rewrote cron birthday evaluation using PostgreSQL $queryRaw to prevent OOM memory crashes" },
+                { "icon": "🤖", "text": "Expanded AI Copilot capabilities to parse and dispatch custom dynamic date ranges for attendance reports" },
+                { "icon": "🛠️", "text": "Corrected getState() anti-pattern within attendanceStore.ts mutations to utilize get() safely" },
+                { "icon": "🤖", "text": "Built ADD_TIMETABLE_SLOT and REMOVE_TIMETABLE_SLOT payload support into the Copilot and UI executor, finally enabling fully autonomous addition and deletion of specific recurring weekly slots by the AI" },
+                { "icon": "🤖", "text": "Rewrote AI SHIFT_TIMETABLE prompt definitions to explicitly reject dangerous full-day bulk swaps, and patched UI executor to officially support moving a specific slot to a different day via the newDayOfWeek payload property" },
+                { "icon": "🤖", "text": "Exposed 'ADD_EXTRA_CLASS' destructive payload directly to Gemini Copilot and Fallback parser, allowing automated calculation of 50-minute (lecture) and 100-minute (lab) durations for makeup classes" },
+                { "icon": "🤖", "text": "Built REMOVE_ATTENDANCE validation interceptor to prevent staging deletion of non-existent attendance records by querying the agenda strictly before payload delivery" },
+                { "icon": "🤖", "text": "Rewrote AI prompt instructions to map definitive statements ('I am not going', 'I am bunking') to MARK_ATTENDANCE (Absent) instead of hypothetically staging FORECAST_SIMULATION" },
+                { "icon": "📅", "text": "Updated cron scheduler to dispatch Weekly Reports on Fridays at 6:00 PM IST (after classes conclude) and Monthly Reports on the 1st of every month" },
+                { "icon": "🤖", "text": "Built Bulk MARK_ATTENDANCE engine mapping blanket intent requests into batched safe actions for each class, throwing validation checks if the target day is empty" },
+                { "icon": "🤖", "text": "Built MARK_FULL_DAY_OFF backend interceptor to validate timetable/extra classes before staging full day off modifications on empty days" },
+                { "icon": "📊", "text": "Missing classes are now explicitly annotated with subject names in the daily report summary" },
+                { "icon": "🤖", "text": "Fixed AI timetable context blindspot to properly recognize scheduled Extra Classes when forecasting tomorrow's attendance" },
+                { "icon": "🤖", "text": "Added UPDATE_SUBJECT action intent allowing users to dynamically rename subjects and change colors via the AI Copilot" },
+                { "icon": "🤖", "text": "Fixed AI Simulation fallback logic to prompt the user to configure 'Last Teaching Day' if remaining classes are unknown" },
+                { "icon": "🤖", "text": "Added case-insensitive name matching to subject resolution in simulation requests to prevent UUID hallucination failures" },
+                { "icon": "🤖", "text": "Rewrote AI FORECAST_SIMULATION engine to strictly enforce mathematical upper-bound constraints on remaining semester classes and accurately calculate skip counts" },
+                { "icon": "🐛", "text": "Fixed the UI bug causing the Timetable Alerts section to be hidden when report frequency was not Daily." },
+                { "icon": "⚙️", "text": "Added a dedicated 'Off' option for class reminders to bypass standard scheduling." },
+                { "icon": "⚙️", "text": "Wired UI toggles to immediately recalculate device alarms on flip without needing an app restart." },
+                { "icon": "🐛", "text": "Fixed Active Pill text-white contrast invisible text bug on Light Mode." }
+              
+]
+            }
+          ]
+        },
         {
           "version": "4.1.0",
           "date": "Sep 24, 2026",

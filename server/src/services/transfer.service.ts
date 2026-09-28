@@ -54,10 +54,28 @@ export class TransferService {
       payload.lectureLogs = logs;
     } 
     else if (contextType === "TIMETABLE_CALENDAR") {
-      payload.academicCalendar = events.map((e: any) => ({ date: e.date, type: e.eventType, description: e.title, isHolidayList: e.isHolidayList }));
+      payload.academicCalendar = events.map((e: any) => ({
+        title: e.title,
+        eventType: e.eventType,
+        date: e.date,
+        endDate: e.endDate ?? null,
+        isHolidayList: e.isHolidayList,
+        // Legacy aliases kept for backward compat with older app versions
+        description: e.title,
+        type: e.eventType,
+      }));
     }
     else if (contextType === "SCHEDULE_STATUS") {
-      payload.academicCalendar = events.map((e: any) => ({ date: e.date, type: e.eventType, description: e.title, isHolidayList: e.isHolidayList }));
+      payload.academicCalendar = events.map((e: any) => ({
+        title: e.title,
+        eventType: e.eventType,
+        date: e.date,
+        endDate: e.endDate ?? null,
+        isHolidayList: e.isHolidayList,
+        // Legacy aliases kept for backward compat with older app versions
+        description: e.title,
+        type: e.eventType,
+      }));
 
       
       // Strip personal marks for SCHEDULE_STATUS
