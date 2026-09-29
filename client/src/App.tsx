@@ -111,7 +111,12 @@ export function App() {
             
             if (isNativeNewer) {
               localStorage.setItem("app_version", nativeVersion);
-              window.location.reload();
+              try {
+                await CapacitorUpdater.reset();
+              } catch (e) {
+                console.error("CapacitorUpdater reset failed:", e);
+                window.location.reload();
+              }
               return;
             }
           } catch(e) {}
