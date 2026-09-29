@@ -9,36 +9,36 @@ type Size = 'sm' | 'md' | 'lg';
 
 const SIZE_CONFIG = {
   sm: {
-    height: 52,
-    circleWidth: 52,
-    idleWidth: 108,
-    savedWidth: 128,
-    text: 'text-[18px]',
-    icon: 'text-2xl',
-    spinner: 'w-7 h-7',
+    height: 36,
+    circleWidth: 36,
+    idleWidth: 84,
+    savedWidth: 104,
+    text: 'text-sm',
+    icon: 'text-lg',
+    spinner: 'w-5 h-5',
+    gap: 'gap-1.5',
+    padding: 'px-3',
+  },
+  md: {
+    height: 44,
+    circleWidth: 44,
+    idleWidth: 100,
+    savedWidth: 120,
+    text: 'text-base',
+    icon: 'text-xl',
+    spinner: 'w-6 h-6',
     gap: 'gap-2',
     padding: 'px-4',
   },
-  md: {
-    height: 56,
-    circleWidth: 56,
-    idleWidth: 120,
-    savedWidth: 140,
-    text: 'text-[20px]',
-    icon: 'text-3xl',
-    spinner: 'w-8 h-8',
-    gap: 'gap-3',
-    padding: 'px-5',
-  },
   lg: {
-    height: 68,
-    circleWidth: 68,
-    idleWidth: 144,
-    savedWidth: 168,
-    text: 'text-[22px]',
-    icon: 'text-[28px]',
-    spinner: 'w-9 h-9',
-    gap: 'gap-4',
+    height: 52,
+    circleWidth: 52,
+    idleWidth: 120,
+    savedWidth: 144,
+    text: 'text-lg',
+    icon: 'text-2xl',
+    spinner: 'w-7 h-7',
+    gap: 'gap-2.5',
     padding: 'px-5',
   },
 };
@@ -161,7 +161,8 @@ export const SaveToggle: React.FC<SaveToggleProps> = ({
                 initial={{ opacity: 0, y: 15 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -15, x: -20 }}
-                className={`absolute inset-0 flex items-center justify-center font-bold tracking-tight ${cfg.text} text-[#2C2A26] dark:text-zinc-200`}
+                style={{ color: theme === 'dark' ? '#e4e4e7' : '#2C2A26' }}
+                className={`absolute inset-0 flex items-center justify-center font-bold tracking-tight ${cfg.text}`}
               >
                 {idleText}
               </motion.span>
@@ -189,13 +190,13 @@ export const SaveToggle: React.FC<SaveToggleProps> = ({
                     cx="13"
                     cy="13"
                     r="10"
-                    stroke={theme === 'dark' ? '#52525b' : '#D0CCC6'}
+                    stroke={theme === 'dark' ? '#e4e4e7' : '#D0CCC6'}
                     strokeWidth="3"
                     fill="none"
                   />
                   <path
                     d="M13 3 A10 10 0 0 1 23 13"
-                    stroke={theme === 'dark' ? '#a1a1aa' : 'white'}
+                    stroke={theme === 'dark' ? '#27272a' : 'white'}
                     strokeWidth="3"
                     strokeLinecap="round"
                     fill="none"
@@ -238,7 +239,8 @@ export const SaveToggle: React.FC<SaveToggleProps> = ({
                       animate={{ opacity: 1, x: 0 }}
                       exit={{ opacity: 0 }}
                       transition={{ delay: 0.1 }}
-                      className={`font-bold tracking-tight whitespace-nowrap ${cfg.text} z-20 text-zinc-900 dark:text-zinc-400`}
+                      style={{ color: theme === 'dark' ? '#d4d4d8' : '#18181b' }}
+                      className={`font-bold tracking-tight whitespace-nowrap ${cfg.text} z-20`}
                     >
                       {savedText}
                     </motion.span>

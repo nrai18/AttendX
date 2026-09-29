@@ -243,9 +243,16 @@ api.interceptors.response.use(
           duration: 5000,
         });
       });
-    } else if (error.response?.status !== 401 && error.response?.status !== 429) {
+    } else if (error.response?.status !== 401 && error.response?.status !== 429 && !originalRequest?.url?.includes("/health") && !originalRequest?.url?.includes("/ai/tts")) {
       import("sonner").then(({ toast }) => {
-        toast.error(`API Error: ${error.response?.data?.message || error.message}`, {
+        let errorMsg = error.response?.data?.message || error.message;
+        
+        // Make timeout errors less scary
+        if (errorMsg && errorMsg.toLowerCase().includes("timeout")) {
+          errorMsg = "Network request took too long. Please check your connection.";
+        }
+
+        toast.error(`API Error: ${errorMsg}`, {
           duration: 10000,
           action: {
             label: "Email Developer",
@@ -267,3 +274,4 @@ api.interceptors.response.use(
     return Promise.reject(error);
   }
 );
+

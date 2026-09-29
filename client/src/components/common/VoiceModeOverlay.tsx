@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Mic, MicOff, Volume2, VolumeX, X, Menu, Settings, Globe, ChevronLeft, ChevronRight } from "lucide-react";
 import { NativeVoiceService } from "../../services/NativeVoiceService";
+import { useBackHandlerStore } from "../../stores/backHandlerStore";
 
 interface VoiceModeOverlayProps {
   isOpen: boolean;
@@ -23,6 +24,58 @@ const VISUAL_FILLER_PHRASES = [
   "Processing..."
 ];
 
+const CinematicText = ({ text, startTime }: { text: string, startTime: number }) => {
+  const [elapsed, setElapsed] = useState(0);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    let frameId: number;
+    const update = () => {
+      setElapsed(Date.now() - startTime);
+      frameId = requestAnimationFrame(update);
+    };
+    frameId = requestAnimationFrame(update);
+    return () => cancelAnimationFrame(frameId);
+  }, [startTime]);
+
+  const words = useMemo(() => text.split(/\s+/), [text]);
+  const rate = 2.3; // words per second
+  const activeIndex = Math.floor((elapsed / 1000) * rate);
+
+  useEffect(() => {
+    if (containerRef.current) {
+      containerRef.current.scrollTop = containerRef.current.scrollHeight;
+    }
+  }, [activeIndex]);
+
+  return (
+    <div ref={containerRef} className="max-h-[180px] md:max-h-[260px] overflow-y-auto w-full px-4 scroll-smooth" style={{
+      maskImage: 'linear-gradient(to bottom, transparent 0%, black 20%, black 80%, transparent 100%)',
+      WebkitMaskImage: 'linear-gradient(to bottom, transparent 0%, black 20%, black 80%, transparent 100%)'
+    }}>
+      <div className="py-[60px] flex flex-wrap justify-center content-center gap-x-[0.35em] gap-y-2">
+        {words.map((word, i) => {
+          const isPast = i < activeIndex;
+          const isCurrent = i === activeIndex;
+          
+          return (
+            <span
+              key={i}
+              className={`text-2xl md:text-3xl lg:text-4xl font-semibold tracking-tight transition-all duration-300 ${
+                isCurrent ? "text-white opacity-100 scale-105 drop-shadow-[0_0_12px_rgba(255,255,255,0.8)]" :
+                isPast ? "text-white/70 opacity-100" :
+                "text-white/20 opacity-40 blur-[1px]"
+              }`}
+            >
+              {word}
+            </span>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
 export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
   isOpen,
   onClose,
@@ -38,6 +91,18 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
   const [transcript, setTranscript] = useState("");
   const [lastResponse, setLastResponse] = useState("");
   const [voiceEnabled, setVoiceEnabled] = useState(true);
+
+  // Handle hardware back button to close overlay
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const unregister = useBackHandlerStore.getState().register(() => {
+      onClose();
+      return true;
+    });
+
+    return () => unregister();
+  }, [isOpen, onClose]);
 
   // Voice Settings State
   const [showVoiceSettings, setShowVoiceSettings] = useState(false);
@@ -66,82 +131,32 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
     }
   }, []);
 
+  // 21 Free ElevenLabs Premade Voices (Alternating Male/Female)
   const curatedVoices = useMemo(() => {
-    const englishVoices = availableVoices.filter(v => v.lang.startsWith('en'));
-    const isWeb = !Capacitor.isNativePlatform();
-
-    const aliases = [
-       { name: "Nova", desc: "Female (Clear & Professional)", gender: "female", sample: "This is a sample voice. I am Nova, clear and professional.", pitch: 1.5, rate: 1.1 },
-       { name: "Echo", desc: "Male (Calm & Affirming)", gender: "male", sample: "This is a sample voice. I am Echo, calm and affirming.", pitch: 0.8, rate: 0.9 },
-       { name: "Breeze", desc: "Female (Animated & Earnest)", gender: "female", sample: "This is a sample voice. I am Breeze, animated and earnest.", pitch: 1.2, rate: 1.2 },
-       { name: "Cove", desc: "Male (Deep & Composed)", gender: "male", sample: "This is a sample voice. I am Cove, deep and composed.", pitch: 0.6, rate: 0.85 },
-       { name: "Sky", desc: "Female (Bright & Clear)", gender: "female", sample: "This is a sample voice. I am Sky, bright and clear.", pitch: 1.8, rate: 1.0 }
+    return [
+      { originalIndex: 0, alias: "Adam", desc: "Male (Dominant & Firm)", elevenLabsId: "pNInz6obpgDQGcFmaJgB", pitch: 1.0, rate: 1.0, sample: "I'm ready when you are. Let's tackle your schedule for today." },
+      { originalIndex: 1, alias: "Bella", desc: "Female (Bright & Warm)", elevenLabsId: "hpp4J3VqNfWAUOO0d1Us", pitch: 1.0, rate: 1.0, sample: "Hi there! I can help you stay organized and keep track of your classes." },
+      { originalIndex: 2, alias: "Charlie", desc: "Male (Deep & Energetic)", elevenLabsId: "IKne3meq5aSn9XLyUdCD", pitch: 1.0, rate: 1.0, sample: "Alright, let's get moving! What's on the agenda for today?" },
+      { originalIndex: 3, alias: "Jessica", desc: "Female (Playful & Bright)", elevenLabsId: "cgSgspJ2msm6clMCkdW9", pitch: 1.0, rate: 1.0, sample: "Hey! I'm here to help make your day just a little bit easier. How's it going?" },
+      { originalIndex: 4, alias: "George", desc: "Male (Warm Storyteller)", elevenLabsId: "JBFqnCBsd6RMkjVDRZzb", pitch: 1.0, rate: 1.0, sample: "The best way to start the day is with a solid plan. Let's look at your timetable." },
+      { originalIndex: 5, alias: "Sarah", desc: "Female (Mature & Reassuring)", elevenLabsId: "EXAVITQu4vr4xnSDxMaL", pitch: 1.0, rate: 1.0, sample: "Hello. I'll make sure everything is in order so you can focus on what matters." },
+      { originalIndex: 6, alias: "Roger", desc: "Male (Laid-Back & Casual)", elevenLabsId: "CwhRBWXzGAHq8TQ4Fs17", pitch: 1.0, rate: 1.0, sample: "Hey, what's up? Just let me know what you need help with, and I've got you covered." },
+      { originalIndex: 7, alias: "Laura", desc: "Female (Quirky Enthusiast)", elevenLabsId: "FGY2WhTYpPnrIDTdsKH5", pitch: 1.0, rate: 1.0, sample: "Ooh, let's see what we have planned today! I'm super excited to get started." },
+      { originalIndex: 8, alias: "Callum", desc: "Male (Husky Trickster)", elevenLabsId: "N2lVS1w4EtoT3dr4eOWO", pitch: 1.0, rate: 1.0, sample: "Got a busy day ahead? Don't worry, I know all the shortcuts." },
+      { originalIndex: 9, alias: "Alice", desc: "Female (Clear Educator)", elevenLabsId: "Xb7hH8MSUJpSbSDYk0k2", pitch: 1.0, rate: 1.0, sample: "Welcome back. Let's go through your upcoming classes step by step." },
+      { originalIndex: 10, alias: "Harry", desc: "Male (Fierce Warrior)", elevenLabsId: "SOYHLrjzK2X1ezoPC6cr", pitch: 1.0, rate: 1.0, sample: "Whatever challenges you face today, we will handle them together." },
+      { originalIndex: 11, alias: "Matilda", desc: "Female (Knowledgeable)", elevenLabsId: "XrExE9yKIg1WjnnlVkGX", pitch: 1.0, rate: 1.0, sample: "Good to see you. I have all your attendance data and reports right here." },
+      { originalIndex: 12, alias: "Liam", desc: "Male (Energetic Creator)", elevenLabsId: "TX3LPaxmHKxFdv7VOQHJ", pitch: 1.0, rate: 1.0, sample: "Hey everyone! Let's dive right in and check out what's happening today." },
+      { originalIndex: 13, alias: "Lily", desc: "Female (Velvety Actress)", elevenLabsId: "pFZP5JQG7iQjIQuC4Bku", pitch: 1.0, rate: 1.0, sample: "Whenever you're ready, I'll gracefully guide you through your schedule." },
+      { originalIndex: 14, alias: "Will", desc: "Male (Relaxed Optimist)", elevenLabsId: "bIHbv24MWmeRgasZH58o", pitch: 1.0, rate: 1.0, sample: "No stress at all. We'll take today's schedule one step at a time." },
+      { originalIndex: 15, alias: "Eric", desc: "Male (Smooth & Trustworthy)", elevenLabsId: "cjVigY5qzO86Huf0OWal", pitch: 1.0, rate: 1.0, sample: "You can count on me. I'll keep your schedule running like clockwork." },
+      { originalIndex: 16, alias: "Chris", desc: "Male (Charming)", elevenLabsId: "iP95p4xoKVk53GoZ742B", pitch: 1.0, rate: 1.0, sample: "It's a great day to get things done. What can I do for you?" },
+      { originalIndex: 17, alias: "Brian", desc: "Male (Deep & Resonant)", elevenLabsId: "nPczCjzI2devNBz1zQrb", pitch: 1.0, rate: 1.0, sample: "Take a deep breath. I have your entire timetable organized and ready." },
+      { originalIndex: 18, alias: "Daniel", desc: "Male (Steady Broadcaster)", elevenLabsId: "onwK4e9ZLuTAKqWW03F9", pitch: 1.0, rate: 1.0, sample: "This is your daily briefing. Let's take a look at your attendance records." },
+      { originalIndex: 19, alias: "Bill", desc: "Male (Wise & Mature)", elevenLabsId: "pqHfZKP75CvOlQylNhV4", pitch: 1.0, rate: 1.0, sample: "Experience has taught me that preparation is everything. Let's review your day." },
+      { originalIndex: 20, alias: "River", desc: "Neutral (Relaxed & Informative)", elevenLabsId: "SAz9YHcvj6GT2YYXdXww", pitch: 1.0, rate: 1.0, sample: "Hello. I am here to assist you with all your administrative and scheduling tasks." }
     ];
-
-    const getGender = (vName: string) => {
-        const name = (vName || "").toLowerCase();
-        if (name.includes('female') || name.includes('zira') || name.includes('samantha') || name.includes('karen') || name.includes('victoria') || name.includes('tessa') || name.includes('ava') || name.includes('moira') || name.includes('susan') || name.includes('fiona')) return 'female';
-        if (name.includes(' male') || name.includes('-male') || name.includes('david') || name.includes('daniel') || name.includes('mark') || name.includes('george') || name.includes('alex') || name.includes('tom') || name.includes('oliver') || name.includes('rishi') || name.includes('arthur')) return 'male';
-        return 'unknown';
-    };
-
-    const selected: any[] = [];
-    const usedIndices = new Set<number>();
-
-    // For Web, intelligently pick voices matching the required alias gender
-    for (const alias of aliases) {
-      let matchedVoice = null;
-      if (isWeb) {
-        matchedVoice = englishVoices.find((v, idx) => !usedIndices.has(idx) && getGender(v.name) === alias.gender);
-      }
-      // Fallback 1: Just get one from a distinct region
-      if (!matchedVoice) {
-        const regions = ['en-US', 'en-GB', 'en-AU', 'en-IN', 'en-IE'];
-        for (const region of regions) {
-          const regionVoice = englishVoices.find((v, idx) => !usedIndices.has(idx) && v.lang.toLowerCase().includes(region.toLowerCase()));
-          if (regionVoice) {
-            matchedVoice = regionVoice;
-            break;
-          }
-        }
-      }
-      // Fallback 2: Pick anything available
-      if (!matchedVoice) {
-        matchedVoice = englishVoices.find((v, idx) => !usedIndices.has(idx));
-      }
-      
-      if (matchedVoice) {
-        selected.push(matchedVoice);
-        usedIndices.add(englishVoices.indexOf(matchedVoice));
-      } else {
-        break; // No more voices available
-      }
-    }
-
-    return selected.map((v, i) => {
-      const alias = aliases[i % aliases.length];
-      
-      // On Web (laptop), browsers already have distinct, high-quality male/female voices.
-      // Extreme pitch shifting ruins them. We use a much milder modifier on Web.
-      const finalPitch = isWeb 
-        ? 1.0 + (alias.pitch - 1.0) * 0.2 // Shrinks [0.6, 1.8] to [0.92, 1.16]
-        : alias.pitch;
-        
-      const finalRate = isWeb
-        ? 1.0 + (alias.rate - 1.0) * 0.5 // Milder speed tweaks on Web
-        : alias.rate;
-
-      return {
-        originalIndex: availableVoices.indexOf(v),
-        voice: v,
-        alias: alias.name,
-        desc: alias.desc,
-        sample: alias.sample,
-        pitch: finalPitch,
-        rate: finalRate
-      };
-    });
-  }, [availableVoices]);
+  }, []);
 
   const openVoiceSettings = () => {
     setShowVoiceSettings(true);
@@ -176,7 +191,7 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
           setPreviewVoice(cv.originalIndex);
           NativeVoiceService.speak(cv.sample, { 
             voice: cv.originalIndex, 
-            lang: cv.voice.lang,
+            elevenlabsVoiceId: cv.elevenLabsId,
             pitch: cv.pitch,
             rate: cv.rate
           });
@@ -208,7 +223,7 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
               setPreviewVoice(activeCv.originalIndex);
               NativeVoiceService.speak(activeCv.sample, { 
                 voice: activeCv.originalIndex, 
-                lang: activeCv.voice.lang,
+                elevenlabsVoiceId: activeCv.elevenLabsId,
                 pitch: activeCv.pitch,
                 rate: activeCv.rate
               });
@@ -250,14 +265,14 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
     };
   }, []);
 
-  const handleClose = async () => {
+  const handleClose = () => {
     isOpenRef.current = false; // Killswitch for TTS
-    await NativeVoiceService.stopSpeaking();
-    await NativeVoiceService.stopListening();
+    onClose();
     setIsSpeaking(false);
     setIsListening(false);
     setIsProcessing(false);
-    onClose();
+    NativeVoiceService.stopSpeaking().catch(() => {});
+    NativeVoiceService.stopListening().catch(() => {});
   };
 
   const listenSessionRef = useRef<number>(0);
@@ -288,6 +303,8 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
         console.warn("Voice overlay recognition error:", err);
         if (err && err.error && err.error !== "no-speech" && err.error !== "aborted") {
           toast.error(`Mic Error: ${err.error}`);
+        } else if (err && err.message) {
+          toast.error(`Mic Error: ${err.message}`);
         }
         if (listenSessionRef.current === currentSession) {
           setIsListening(false);
@@ -463,10 +480,10 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
           className="chatbot-window fixed inset-0 z-[100] flex flex-col bg-black text-white"
         >
           {/* Top Bar - Mimicking ChatGPT layout */}
-          <header className="flex items-center justify-between p-6 pt-safe-8">
+          <header className="flex items-center justify-between p-6 pt-safe-8 relative z-[60]">
             <button
               onClick={handleClose}
-              className="flex items-center justify-center w-12 h-12 rounded-full bg-red-500 hover:bg-red-600 text-white shadow-lg shadow-red-500/20 transition-all cursor-pointer"
+              className="flex items-center justify-center w-12 h-12 rounded-full bg-red-500 hover:bg-red-600 text-white shadow-lg shadow-red-500/20 transition-all cursor-pointer relative z-[70]"
             >
               <X className="w-6 h-6 stroke-[3]" />
             </button>
@@ -516,23 +533,20 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
                         <p className="text-sm text-white/50 italic">Heard: "{transcript}"</p>
                         <p className="text-xl text-white/80 animate-pulse">{lastResponse}</p>
                      </motion.div>
-                  ) : uiState === "SPEAKING" ? (
-                     <motion.div 
-                       key="speaking" 
-                       initial={{opacity:0}} 
-                       animate={{opacity:1}} 
-                       exit={{opacity:0}} 
-                       className="max-h-[160px] md:max-h-[220px] overflow-y-auto w-full px-2"
-                       style={{
-                         maskImage: 'linear-gradient(to bottom, black 70%, transparent 100%)',
-                         WebkitMaskImage: 'linear-gradient(to bottom, black 70%, transparent 100%)'
-                       }}
-                     >
-                       <p className="text-xl md:text-2xl font-medium text-white/90 leading-relaxed text-center pb-8 drop-shadow-md">
-                         {NativeVoiceService.cleanTextForSpeech(lastResponse)}
-                       </p>
-                     </motion.div>
-                  ) : (
+                   ) : uiState === "SPEAKING" ? (
+                      <motion.div 
+                        key="speaking" 
+                        initial={{opacity:0}} 
+                        animate={{opacity:1}} 
+                        exit={{opacity:0}}
+                        className="w-full flex items-center justify-center"
+                      >
+                        <CinematicText 
+                          text={NativeVoiceService.cleanTextForSpeech(lastResponse)} 
+                          startTime={speechStartTimeRef.current} 
+                        />
+                      </motion.div>
+                   ) : (
                      <motion.p key="idle" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} className="text-lg text-white/50 font-light">
                        {uiState === "LISTENING" ? "Listening..." : "Tap the microphone to speak"}
                      </motion.p>
@@ -667,76 +681,7 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
                   {curatedVoices.length === 0 ? (
                     <p className="text-white/40 text-sm text-center py-8">No voices found on this device.</p>
                   ) : (
-                    <div className="w-full relative">
-                      {/* Left Arrow */}
-                      <button 
-                        onClick={() => carouselRef.current?.scrollBy({ left: -300, behavior: 'smooth' })}
-                        className="absolute left-0 top-1/2 -translate-y-1/2 p-2 text-white/50 hover:text-white transition-colors cursor-pointer z-10 hidden sm:block"
-                      >
-                        <ChevronLeft className="w-6 h-6" />
-                      </button>
-
-                      <div 
-                        ref={carouselRef} 
-                        onScroll={handleVoiceScroll}
-                        className="flex overflow-x-auto snap-x snap-mandatory scrollbar-hide py-4 items-center"
-                      >
-                        {curatedVoices.map((cv, i) => (
-                          <div 
-                            key={i} 
-                            className="min-w-[100%] shrink-0 snap-center flex flex-col items-center justify-center cursor-pointer select-none"
-                            onClick={() => {
-                              if (carouselRef.current) {
-                                carouselRef.current.scrollTo({ left: i * carouselRef.current.clientWidth, behavior: 'smooth' });
-                              }
-                            }}
-                          >
-                            <h2 className={`text-2xl font-bold transition-colors ${previewVoice === cv.originalIndex ? "text-white" : "text-white/40"}`}>
-                              {cv.alias}
-                            </h2>
-                            <p className="text-sm text-white/50 mt-1">{cv.desc}</p>
-                          </div>
-                        ))}
-                      </div>
-
-                      {/* Right Arrow */}
-                      <button 
-                        onClick={() => carouselRef.current?.scrollBy({ left: 300, behavior: 'smooth' })}
-                        className="absolute right-0 top-1/2 -translate-y-1/2 p-2 text-white/50 hover:text-white transition-colors cursor-pointer z-10 hidden sm:block"
-                      >
-                        <ChevronRight className="w-6 h-6" />
-                      </button>
-                      
-                      {/* Dots */}
-                      <div className="flex justify-center gap-2 mt-4">
-                        {curatedVoices.map((cv, i) => (
-                          <div 
-                            key={i} 
-                            className={`w-1.5 h-1.5 rounded-full transition-colors ${previewVoice === cv.originalIndex ? "bg-white" : "bg-white/20"}`} 
-                          />
-                        ))}
-                      </div>
-                      
-                      {/* Confirm Button */}
-                      <button 
-                        onClick={() => {
-                          if (previewVoice !== null) {
-                            setSelectedVoice(previewVoice);
-                            localStorage.setItem("attendx_preferred_voice_index", previewVoice.toString());
-                            
-                            const selectedCv = curatedVoices.find(v => v.originalIndex === previewVoice);
-                            if (selectedCv) {
-                                localStorage.setItem("attendx_preferred_voice_pitch", selectedCv.pitch.toString());
-                                localStorage.setItem("attendx_preferred_voice_rate", selectedCv.rate.toString());
-                            }
-                          }
-                          setShowVoiceSettings(false);
-                        }}
-                        className="w-full bg-white text-black font-semibold rounded-2xl py-3 mt-6 hover:bg-gray-200 transition-colors cursor-pointer"
-                      >
-                        Confirm Voice
-                      </button>
-                    </div>
+                    <div className="w-full relative max-h-[50vh] overflow-y-auto pr-2" style={{ scrollbarWidth: "thin" }}><div className="flex flex-col gap-2">{curatedVoices.map((cv, i) => (<div key={i} className={`p-4 rounded-xl flex flex-col cursor-pointer transition-all ${previewVoice === cv.originalIndex ? "bg-white/20 border border-white/30" : "bg-white/5 hover:bg-white/10 border border-transparent"}`} onClick={() => {setPreviewVoice(cv.originalIndex); NativeVoiceService.speak(cv.sample, {voice: cv.originalIndex, pitch: cv.pitch, rate: cv.rate, elevenlabsVoiceId: cv.elevenLabsId}).catch(console.error);}}><h2 className={`text-lg font-bold transition-colors ${previewVoice === cv.originalIndex ? "text-white" : "text-white/60"}`}>{cv.alias}</h2><p className="text-xs text-white/50 mt-1">{cv.desc}</p></div>))}</div><button onClick={() => {if (previewVoice !== null) {setSelectedVoice(previewVoice); localStorage.setItem("attendx_preferred_voice_index", previewVoice.toString()); const selectedCv = curatedVoices.find(v => v.originalIndex === previewVoice); if (selectedCv) {localStorage.setItem("attendx_elevenlabs_voice_id", selectedCv.elevenLabsId);}} setShowVoiceSettings(false);}} className="w-full bg-white text-black font-semibold rounded-2xl py-3 mt-6 hover:bg-gray-200 transition-colors cursor-pointer sticky bottom-0 z-10 shadow-[0_-20px_20px_-10px_rgba(30,30,30,0.9)]">Confirm Voice</button></div>
                   )}
                 </motion.div>
               </>
@@ -748,3 +693,21 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
     </AnimatePresence>
   );
 };
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

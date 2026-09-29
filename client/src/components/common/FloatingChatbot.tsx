@@ -302,8 +302,13 @@ export const FloatingChatbot: React.FC = () => {
         setInput(text);
         lastInputMethodRef.current = "voice";
       },
-      onError: (err) => {
+      onError: (err: any) => {
         console.warn("Inline mic error:", err);
+        if (err && err.error && err.error !== "no-speech" && err.error !== "aborted") {
+          toast.error(`Mic Error: ${err.error}`);
+        } else if (err && err.message) {
+          toast.error(`Mic Error: ${err.message}`);
+        }
         setIsListeningMic(false);
       },
       onEnd: () => {

@@ -1,6 +1,7 @@
 import { Capacitor } from '@capacitor/core';
 import { SpeechRecognition } from '@capacitor-community/speech-recognition';
 import { TextToSpeech } from '@capacitor-community/text-to-speech';
+import { api } from '../lib/api';
 
 export interface VoiceListenOptions {
   onPartialResult?: (text: string) => void;
@@ -16,6 +17,7 @@ export interface VoiceSpeakOptions {
   pitch?: number;
   volume?: number;
   voice?: number;
+  elevenlabsVoiceId?: string;
   onStart?: () => void;
   onEnd?: () => void;
   onError?: (err: any) => void;
@@ -25,6 +27,7 @@ export class NativeVoiceService {
   private static isListeningState = false;
   private static activeWebRecognition: any = null;
   private static startPromise: Promise<any> | null = null; // FE-H09 FIX: Promise lock for native plugin start
+  private static currentAudio: HTMLAudioElement | null = null;
 
   /**
    * Check whether speech recognition is available on the current device / browser.
@@ -51,6 +54,7 @@ export class NativeVoiceService {
   static async requestPermissions(): Promise<boolean> {
     if (Capacitor.isNativePlatform()) {
       try {
+        const { SpeechRecognition } = await import('@capacitor-community/speech-recognition');
         const hasPermission = await SpeechRecognition.checkPermissions();
         if (hasPermission.speechRecognition === 'granted') {
           return true;
@@ -91,7 +95,7 @@ export class NativeVoiceService {
       try {
         const granted = await this.requestPermissions();
         if (!granted) {
-          options.onError?.(new Error("Microphone permission not granted"));
+          options.onError?.(new Error("Microphone permission not granted. Please enable it in Android App Settings."));
           options.onEnd?.();
           return false;
         }
@@ -268,24 +272,54 @@ export class NativeVoiceService {
     const finalPitch = options?.pitch ?? (prefPitch ? parseFloat(prefPitch) : 1.0);
     const finalRate = options?.rate ?? (prefRate ? parseFloat(prefRate) : 1.05);
 
+    const prefElevenLabsVoiceId = options?.elevenlabsVoiceId || (typeof window !== 'undefined' ? localStorage.getItem("attendx_elevenlabs_voice_id") : null);
+    
     try {
       options?.onStart?.();
-      await TextToSpeech.speak({
-        text: cleanText,
-        lang: options?.lang || 'en-IN',
-        rate: finalRate,
-        pitch: finalPitch,
-        volume: options?.volume ?? 1.0,
-        voice: !isNaN(finalVoiceIndex as any) ? finalVoiceIndex : undefined,
-        queueStrategy: 0, // QueueStrategy.Flush on native
-      });
-      options?.onEnd?.();
+      
+      const response = await api.post('/ai/tts', { 
+        text: cleanText, 
+        voice_id: prefElevenLabsVoiceId || 'pNInz6obpgDQGcFmaJgB' // Default to Adam
+      }, { responseType: 'blob' });
+      const blobUrl = URL.createObjectURL(response.data);
+      
+      const audio = new Audio(blobUrl);
+      this.currentAudio = audio;
+
+      audio.onended = () => {
+        URL.revokeObjectURL(blobUrl);
+        if (this.currentAudio === audio) this.currentAudio = null;
+        options?.onEnd?.();
+      };
+      
+      audio.onerror = (e) => {
+        URL.revokeObjectURL(blobUrl);
+        if (this.currentAudio === audio) this.currentAudio = null;
+        options?.onError?.(e);
+        options?.onEnd?.();
+      };
+
+      await audio.play();
       return true;
     } catch (err) {
-      console.error("TextToSpeech error:", err);
-      options?.onError?.(err);
-      options?.onEnd?.();
-      return false;
+      console.error("ElevenLabs TTS error:", err);
+      try {
+        await TextToSpeech.speak({
+          text: cleanText,
+          lang: options?.lang || 'en-IN',
+          rate: finalRate,
+          pitch: finalPitch,
+          volume: options?.volume ?? 1.0,
+          voice: !isNaN(finalVoiceIndex as any) ? finalVoiceIndex : undefined,
+          queueStrategy: 0, // QueueStrategy.Flush on native
+        });
+        options?.onEnd?.();
+        return true;
+      } catch (fallbackErr) {
+        options?.onError?.(fallbackErr);
+        options?.onEnd?.();
+        return false;
+      }
     }
   }
 
@@ -293,6 +327,12 @@ export class NativeVoiceService {
    * Explicitly stop any active text-to-speech audio across platforms.
    */
   static async stopSpeaking(): Promise<void> {
+    if (this.currentAudio) {
+      this.currentAudio.pause();
+      this.currentAudio.currentTime = 0;
+      this.currentAudio = null;
+    }
+    
     try {
       await TextToSpeech.stop();
     } catch {
@@ -349,4 +389,8 @@ export class NativeVoiceService {
     return clean;
   }
 }
+
+
+
+
 
