@@ -22,6 +22,10 @@ export const verifyAccessToken = (token: string) => {
   return jwt.verify(token, getSecret("access")) as { userId: string; role: string; sessionId?: string };
 };
 
+export const verifyAccessTokenIgnoreExpiration = (token: string) => {
+  return jwt.verify(token, getSecret("access"), { ignoreExpiration: true }) as { userId: string; role: string; sessionId?: string };
+};
+
 export const verifyRefreshToken = (token: string) => {
   return jwt.verify(token, getSecret("refresh")) as { userId: string };
 };

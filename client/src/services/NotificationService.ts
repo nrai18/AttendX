@@ -354,6 +354,11 @@ export class NotificationService {
 
       PushNotifications.addListener('pushNotificationActionPerformed', (notification) => {
         console.log('[FCM] Push action performed: ', notification);
+        const data = notification.notification.data;
+        if (data && data.type === 'ota_update') {
+          // Tell the OTAUpdateModal to fetch the manifest and show itself
+          window.dispatchEvent(new Event('check_ota_update'));
+        }
       });
     } catch (e) {
       console.warn("Could not register push notifications:", e);

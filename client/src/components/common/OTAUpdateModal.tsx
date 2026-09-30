@@ -48,11 +48,20 @@ export const OTAUpdateModal: React.FC<Props> = ({ localVersion }) => {
         console.error("Failed to check for updates:", err);
       }
     };
+    
+    // Check immediately on mount
     checkUpdates();
+    
+    // Also listen for push notifications that might trigger an update check
+    window.addEventListener('check_ota_update', checkUpdates);
 
     if (Capacitor.isNativePlatform()) {
       CapacitorUpdater.notifyAppReady();
     }
+    
+    return () => {
+      window.removeEventListener('check_ota_update', checkUpdates);
+    };
   }, [localVersion]);
 
   const handleDownload = async () => {

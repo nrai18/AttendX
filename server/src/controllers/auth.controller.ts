@@ -84,23 +84,22 @@ export class AuthController {
   static async logout(req: Request, res: Response) {
     try {
       // 1. Try to delete session using the access token's sessionId.
-      // SEC-02 FIX: Use verifyAccessToken() (signature-verified) NOT jwt.decode()
+      // SEC-02 FIX: Use verifyAccessTokenIgnoreExpiration() (signature-verified) NOT jwt.decode()
       // (which does zero verification). jwt.decode() lets any attacker craft a token
       // with an arbitrary sessionId and delete any other user's session from the DB.
       const authHeader = req.headers.authorization;
       if (authHeader && authHeader.startsWith("Bearer ")) {
         const token = authHeader.split(" ")[1];
         try {
-          const { verifyAccessToken } = require("../utils/jwt");
-          // If the token is expired or the signature is invalid, this throws —
-          // we catch it silently and fall through to the refresh-cookie path below.
-          const payload = verifyAccessToken(token);
+          const { verifyAccessTokenIgnoreExpiration } = require("../utils/jwt");
+          // By ignoring expiration, we can still cryptographically verify the signature
+          // to extract the true sessionId and delete the active device from the DB!
+          const payload = verifyAccessTokenIgnoreExpiration(token);
           if (payload?.sessionId) {
             await prisma.refreshToken.deleteMany({ where: { id: payload.sessionId } });
           }
         } catch (e) {
-          // Token invalid / expired — perfectly normal at logout.
-          // The refresh token cookie (step 2 below) still revokes the session correctly.
+          // Token invalid (bad signature) — ignore.
         }
       }
 

@@ -1384,17 +1384,22 @@ export const SettingsPage: React.FC = () => {
         <div className="bg-card border border-border/70 rounded-2xl divide-y divide-border/50 shadow-md">
           {/* Share App */}
           <button
-            onClick={() => {
-              const appLink = "https://drive.google.com/file/d/1keZCOjuM23ABMsCxfenegcOPXyhJOb6J/view?usp=sharing";
-              if (navigator.share) {
-                navigator.share({
-                  title: "Smart Attendance Manager",
-                  text: "Download AttendX to manage your academic attendance easily!",
-                  url: appLink,
-                });
-              } else {
-                navigator.clipboard.writeText(appLink);
-                toast.success("App link copied to clipboard!");
+            onClick={async () => {
+              const appLink = "https://drive.google.com/file/d/1XZBMJBfY8YMGaY82k3FTBHtHmymWggF1/view?usp=sharing";
+              const shareText = `Download AttendX to manage your academic attendance easily!\n\n${appLink}`;
+              try {
+                const { Capacitor } = await import("@capacitor/core");
+                if (Capacitor.isNativePlatform()) {
+                  const { Share } = await import("@capacitor/share");
+                  await Share.share({ title: "Smart Attendance Manager", text: shareText, dialogTitle: "Share AttendX" });
+                } else if (navigator.share) {
+                  await navigator.share({ title: "Smart Attendance Manager", text: shareText });
+                } else {
+                  navigator.clipboard.writeText(shareText);
+                  toast.success("App link copied to clipboard!");
+                }
+              } catch (e) {
+                console.warn("Share failed", e);
               }
             }}
             className="w-full text-left p-4 hover:bg-muted/50 transition-colors flex items-center gap-3 cursor-pointer"

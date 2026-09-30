@@ -5,9 +5,36 @@ import fs from "fs";
 export class SystemController {
   static async getUpdateManifest(req: Request, res: Response) {
     const manifest = {
-      latestVersion: process.env.LATEST_APP_VERSION || "4.1.1",
-      title: "AI Timetable Engine Update",
+      latestVersion: "4.2.0",
+      title: "Voice Assistant & Push Engine Update",
       changelog: [
+        {
+          "version": "4.2.0",
+          "date": "Sep 30, 2026",
+          "title": "Hardware Access & Notifications",
+          "sections": [
+            {
+              "title": "New Features",
+              "items": [
+                { "icon": "🔔", "text": "Introduced Birthday Push Notifications — the server will now ping your phone at 8:00 AM on your friend's birthday!" },
+                { "icon": "🎙️", "text": "Upgraded Voice Mode to use native Android OS microphone permission prompts and Google Assistant overlays for flawless voice recognition." }
+              ]
+            },
+            {
+              "title": "Visual Enhancements",
+              "items": [
+                { "icon": "✨", "text": "Engineered a flawless 400ms CSS injection system for the Light/Dark mode toggle, enabling smooth cinematic cross-fades without lagging the app." }
+              ]
+            },
+            {
+              "title": "Bug Fixes",
+              "items": [
+                { "icon": "🐛", "text": "Fixed a Postgres timezone bug that caused birthdays to misfire for users in the IST timezone." },
+                { "icon": "🐛", "text": "Upgraded the Share App button to use Capacitor's native Share Sheet, preventing apps like WhatsApp from dropping the text payload." }
+              ]
+            }
+          ]
+        },
         {
           "version": "4.1.1",
           "date": "Sep 29, 2026",

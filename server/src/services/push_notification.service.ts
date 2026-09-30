@@ -25,7 +25,7 @@ export class PushNotificationService {
       
       return true;
     } catch (error) {
-      console.error([PushNotification] Failed to send to user \:, error);
+      console.error("[PushNotification] Failed to send to user:", error);
       return false;
     }
   }
@@ -42,7 +42,8 @@ export class PushNotificationService {
         select: { fcmToken: true }
       });
 
-      const tokens = users.map(u => u.fcmToken as string).filter(t => t.trim() !== '');
+      const rawTokens = users.map(u => u.fcmToken as string).filter(t => t.trim() !== '');
+      const tokens = Array.from(new Set(rawTokens));
       if (tokens.length === 0) return true;
 
       const BATCH_SIZE = 500;
@@ -61,10 +62,10 @@ export class PushNotificationService {
         failureCount += response.failureCount;
       }
 
-      console.log([PushNotification] Broadcasted to \ devices, \ failed.);
+      console.log(`[PushNotification] Broadcasted to ${successCount} devices, ${failureCount} failed.`);
       return true;
     } catch (error) {
-      console.error([PushNotification] Broadcast failed:, error);
+      console.error("[PushNotification] Broadcast failed:", error);
       return false;
     }
   }

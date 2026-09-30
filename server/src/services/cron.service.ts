@@ -1,6 +1,7 @@
 import cron from 'node-cron';
 import { prisma } from '../lib/prisma';
 import { EmailService } from './email.service';
+import { PushNotificationService } from './push_notification.service';
 
 export class CronService {
   static init() {
@@ -17,18 +18,28 @@ export class CronService {
         const currentDay = todayIST.getDate(); // 1-31
 
         // AI-M07 FIX: Push date filtering to the database to prevent loading all users into memory
-        const birthdayUsers = await prisma.$queryRaw<any[]>`SELECT email, name FROM "User" WHERE EXTRACT(MONTH FROM birthday) = ${currentMonth} AND EXTRACT(DAY FROM birthday) = ${currentDay}`;
+        const birthdayUsers = await prisma.$queryRaw<any[]>`SELECT id, email, name FROM "User" WHERE EXTRACT(MONTH FROM birthday AT TIME ZONE 'Asia/Kolkata') = ${currentMonth} AND EXTRACT(DAY FROM birthday AT TIME ZONE 'Asia/Kolkata') = ${currentDay}`;
 
         console.log(`[Cron] Found ${birthdayUsers.length} users with birthdays today.`);
 
-        // AI-M08 FIX: Send emails in throttled batches to avoid blowing past Resend's 10 req/sec limit
+        // AI-M08 FIX: Send emails and push notifications in throttled batches
         const BATCH_SIZE = 10;
         for (let i = 0; i < birthdayUsers.length; i += BATCH_SIZE) {
           const batch = birthdayUsers.slice(i, i + BATCH_SIZE);
-          await Promise.all(batch.map(user => {
+          await Promise.all(batch.map(async user => {
             if (user.email && user.name) {
               console.log(`[Cron] Sending birthday greeting to ${user.email}`);
-              return EmailService.sendBirthdayGreeting(user.email, user.name).catch(e => console.error(e));
+              
+              // 1. Send Email
+              await EmailService.sendBirthdayGreeting(user.email, user.name).catch(e => console.error(e));
+              
+              // 2. Send Native Push Notification
+              if (user.id) {
+                await PushNotificationService.sendToUser(user.id, {
+                  title: 'Happy Birthday! 🎉',
+                  body: `Wishing you a fantastic birthday from the AttendX team, ${user.name}! 🎂`,
+                }).catch(e => console.error('[Push] Failed to send birthday push:', e));
+              }
             }
           }));
           if (i + BATCH_SIZE < birthdayUsers.length) {

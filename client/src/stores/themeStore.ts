@@ -20,6 +20,9 @@ export const applyThemeToDOM = (targetTheme: ThemeMode) => {
   const root = document.documentElement;
   const isDark = targetTheme === "dark";
 
+  // Add a temporary class to trigger smooth CSS transitions
+  root.classList.add("theme-transitioning");
+
   if (isDark) {
     root.classList.remove("light");
     root.classList.add("dark");
@@ -29,6 +32,11 @@ export const applyThemeToDOM = (targetTheme: ThemeMode) => {
     root.classList.add("light");
     root.style.colorScheme = "light";
   }
+
+  // Remove the transition class after the animation completes
+  setTimeout(() => {
+    root.classList.remove("theme-transitioning");
+  }, 400);
 };
 
 export const useThemeStore = create<ThemeState>((set, get) => ({

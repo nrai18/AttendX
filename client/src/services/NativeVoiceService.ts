@@ -54,13 +54,14 @@ export class NativeVoiceService {
   static async requestPermissions(): Promise<boolean> {
     if (Capacitor.isNativePlatform()) {
       try {
-        const { SpeechRecognition } = await import('@capacitor-community/speech-recognition');
-        const hasPermission = await SpeechRecognition.checkPermissions();
-        if (hasPermission.speechRecognition === 'granted') {
+        const { VoiceRecorder } = await import('capacitor-voice-recorder');
+        // Use VoiceRecorder because it natively triggers the OS permission dialog much more reliably
+        const hasPermission = await VoiceRecorder.hasAudioRecordingPermission();
+        if (hasPermission.value) {
           return true;
         }
-        const requested = await SpeechRecognition.requestPermissions();
-        return requested.speechRecognition === 'granted';
+        const requested = await VoiceRecorder.requestAudioRecordingPermission();
+        return requested.value;
       } catch (err) {
         console.warn("Speech recognition permission request failed:", err);
         return false;
@@ -118,7 +119,7 @@ export class NativeVoiceService {
           maxResults: 1,
           prompt: 'Listening...',
           partialResults: true,
-          popup: false,
+          popup: true, // MUST be true on Android 13/14+ to guarantee Google Assistant hooks the mic
         });
         
         const result = await this.startPromise;

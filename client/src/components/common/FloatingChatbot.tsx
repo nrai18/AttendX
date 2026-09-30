@@ -568,14 +568,19 @@ export const FloatingChatbot: React.FC = () => {
           refresh = true;
         } else if (action.type === 'SHARE_APP') {
           const appLink = "https://drive.google.com/file/d/1XZBMJBfY8YMGaY82k3FTBHtHmymWggF1/view?usp=sharing";
-          if (navigator.share) {
-            navigator.share({
-              title: "Smart Attendance Manager",
-              text: "Download AttendX to manage your academic attendance easily!",
-              url: appLink,
-            }).catch(() => {});
-          } else {
-            navigator.clipboard.writeText(appLink);
+          const shareText = `Download AttendX to manage your academic attendance easily!\n\n${appLink}`;
+          try {
+            const { Capacitor } = await import("@capacitor/core");
+            if (Capacitor.isNativePlatform()) {
+              const { Share } = await import("@capacitor/share");
+              await Share.share({ title: "Smart Attendance Manager", text: shareText, dialogTitle: "Share AttendX" });
+            } else if (navigator.share) {
+              await navigator.share({ title: "Smart Attendance Manager", text: shareText });
+            } else {
+              navigator.clipboard.writeText(shareText);
+            }
+          } catch (e) {
+            console.warn("Share failed", e);
           }
         } else if (action.type === 'CHANGE_REMINDER_FREQUENCY') {
           const rawFreq = String(action.payload.frequency || 'daily');
