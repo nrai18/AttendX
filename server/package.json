@@ -17,6 +17,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@elevenlabs/elevenlabs-js": "^2.70.0",
     "@google/genai": "^2.22.0",
     "@langchain/google-genai": "^2.2.0",
     "@prisma/adapter-pg": "^7.9.1",
@@ -35,6 +36,7 @@
     "express": "^4.22.2",
     "express-async-errors": "^3.1.1",
     "express-rate-limit": "^8.7.0",
+    "firebase-admin": "^14.5.0",
     "geoip-lite": "^2.0.3",
     "google-auth-library": "^11.0.2",
     "helmet": "^8.3.0",

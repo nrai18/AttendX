@@ -986,6 +986,7 @@ Return a JSON object containing:
             userId, semesterId,
             title: event.title || event.description || "Event",
             date: new Date(event.date),
+            endDate: event.endDate ? new Date(event.endDate) : null,
             eventType: resolvedType,
             isHolidayList: event.isHolidayList || false,
           };

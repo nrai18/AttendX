@@ -1,4 +1,5 @@
 import { LocalNotifications } from '@capacitor/local-notifications';
+import { PushNotifications } from '@capacitor/push-notifications';
 import { Capacitor } from '@capacitor/core';
 import { App as CapacitorApp } from '@capacitor/app';
 import { mutePhone, unmutePhone, checkAndReconcileRinger, setScheduledUnmuteTime, PERMISSION_WARNING_NOTIF_ID } from '../lib/ringer';
@@ -316,6 +317,49 @@ export class NotificationService {
     }
   }
 
+  static async registerPushNotifications() {
+    if (!Capacitor.isNativePlatform()) return;
+
+    try {
+      let permStatus = await PushNotifications.checkPermissions();
+
+      if (permStatus.receive === 'prompt') {
+        permStatus = await PushNotifications.requestPermissions();
+      }
+
+      if (permStatus.receive !== 'granted') {
+        console.warn('User denied push notification permissions.');
+        return;
+      }
+
+      await PushNotifications.register();
+
+      PushNotifications.addListener('registration', async (token) => {
+        console.log('[FCM] Push registration success, token: ' + token.value);
+        try {
+          // Send FCM token to the backend
+          await api.patch('/users/me', { fcmToken: token.value });
+        } catch (error) {
+          console.error('[FCM] Failed to sync FCM token to backend:', error);
+        }
+      });
+
+      PushNotifications.addListener('registrationError', (error: any) => {
+        console.error('[FCM] Error on registration: ' + JSON.stringify(error));
+      });
+
+      PushNotifications.addListener('pushNotificationReceived', (notification) => {
+        console.log('[FCM] Push received: ', notification);
+      });
+
+      PushNotifications.addListener('pushNotificationActionPerformed', (notification) => {
+        console.log('[FCM] Push action performed: ', notification);
+      });
+    } catch (e) {
+      console.warn("Could not register push notifications:", e);
+    }
+  }
+
   static async init() {
     if (!Capacitor.isNativePlatform() || this.isInitialized) return;
     this.isInitialized = true;
@@ -326,6 +370,9 @@ export class NotificationService {
       if (perm.display !== 'granted') {
         await LocalNotifications.requestPermissions();
       }
+
+      // Initialize Push Notifications
+      await this.registerPushNotifications();
     } catch (permErr) {
       console.warn("Could not check/request notification permissions:", permErr);
     }

@@ -10,6 +10,10 @@ export class TransferService {
 
     const exportedTimetable = await TimetableService.exportTimetable(userId, activeSem.id);
 
+    if (!exportedTimetable.slots || exportedTimetable.slots.length === 0) {
+      throw new Error("Cannot generate transfer code: Your active semester has no timetable data.");
+    }
+
     const payload: any = {
       slots: exportedTimetable.slots,
       academicCalendar: [],

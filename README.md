@@ -19,8 +19,9 @@
     <img src="assets/tech/nodejs.svg" width="40" alt="Node.js" title="Node.js" style="margin: 0 10px;" />
     <img src="assets/tech/postgresql.svg" width="40" alt="PostgreSQL" title="PostgreSQL" style="margin: 0 10px;" />
     <img src="assets/tech/redis.svg" width="40" alt="Redis" title="Redis" style="margin: 0 10px;" />
-    <img src="assets/tech/python.svg" width="40" alt="Python" title="Python" style="margin: 0 10px;" />
+    <img src="assets/tech/firebase.svg" width="40" alt="Firebase" title="Firebase" style="margin: 0 10px;" />
     <img src="assets/tech/gemini.svg" width="40" alt="Google Gemini" title="Google Gemini Flash 3.8" style="margin: 0 10px;" />
+    <img src="assets/tech/elevenlabs.svg" width="40" alt="ElevenLabs" title="ElevenLabs Voice AI" style="margin: 0 10px;" />
   </p>
 </div>
 
@@ -35,6 +36,8 @@ AttendX entirely eradicates the friction of university scheduling. Unlike generi
 - **🧠 AI-Powered Timetable Extraction**: Upload a photo of your schedule, and the LangGraph orchestration pipeline invokes Gemini 3.8 Flash to intelligently generate a perfect JSON structural timetable in seconds.
 - **📈 Predictive Mathematics**: Treat attendance as an optimization problem. Set a global target (e.g., 75%), and the engine calculates exactly how many consecutive classes you need to attend or how many "Safe Leaves" you can take.
 - **🔄 Peer-to-Peer DataComm Synchronization**: Class Representatives (CRs) can bundle their timetable and generate an ephemeral 6-digit TTL code. Peers input the code and seamlessly merge the structural data instantly.
+- **🎙️ Conversational Voice AI**: Engage with a floating chatbot powered by Gemini and ElevenLabs for natural, context-aware academic guidance and real-time audio responses.
+- **🔔 Live Push Notifications**: Stay updated with OTA deployment alerts, class reminders, and critical announcements instantly delivered to your lock screen via Firebase Cloud Messaging.
 - **⚡ Brutalist, Anti-Slop UI**: A pristine, high-contrast brutalist design system engineered for tactile feedback and 60fps performance on low-end Android devices.
 - **📱 Over-The-Air (OTA) Updates**: Bypasses traditional app store bottlenecks by streaming ZIP payloads directly to the Android WebView wrapper.
 

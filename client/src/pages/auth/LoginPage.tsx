@@ -361,7 +361,7 @@ export const LoginPage: React.FC = () => {
                         id="reset-email"
                         name="email"
                         type="email"
-                        autoComplete="email"
+                        autoComplete="username"
                         value={email}
                         onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEmail(e.target.value)}
                         required
@@ -441,7 +441,7 @@ export const LoginPage: React.FC = () => {
                       id="email"
                       name="email"
                       type="email"
-                      autoComplete="email"
+                      autoComplete="username"
                       value={email}
                       onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEmail(e.target.value)}
                       required
@@ -528,4 +528,5 @@ export const LoginPage: React.FC = () => {
     </div>
   );
 };
+
 

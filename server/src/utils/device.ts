@@ -92,29 +92,7 @@ export async function getDeviceDetails(req: any) {
      if (hardwareModel && hardwareModel.includes('::')) {
        try {
          const [manufacturer, rawModel] = hardwareModel.split('::');
-         
-         // 1. Custom Overrides for modern devices not yet in the npm package
-         const manualOverrides: Record<string, string> = {
-           'A063': 'Nothing Phone (1)',
-           'A065': 'Nothing Phone (2)',
-           'AIN065': 'Nothing Phone (2)',
-           'A142': 'Nothing Phone (2a)',
-           'A142P': 'Nothing Phone (2a) Plus',
-           'A059': 'Nothing Phone (3a)',
-           'A059P': 'Nothing Phone (3a) Pro',
-           'A001T': 'Nothing Phone (3a) Lite',
-           'A024': 'Nothing Phone (3)',
-           'A069': 'Nothing Phone (4a)',
-           'A069P': 'Nothing Phone (4a) Pro',
-           'A009P': 'Nothing Phone (4b)'
-         };
-         
-         let marketName = manualOverrides[rawModel];
-         
-         // 2. Fallback to npm package database
-         if (!marketName) {
-           marketName = getModelName(rawModel);
-         }
+         const marketName = getModelName(rawModel);
          
          if (marketName && marketName !== rawModel) {
            finalDeviceString = marketName;

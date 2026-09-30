@@ -45,6 +45,14 @@
 - **TTL Code Generation:** CRs can snapshot their timetable and generate a 6-digit sync code valid for a short duration.
 - **Conflict-Free Merge:** Students input the code to update their schedule. Historical attendance data remains strictly isolated.
 
+#### Epic 4: Voice AI Agent (ElevenLabs + Gemini)
+- **Real-Time Conversational UI:** A floating chatbot powered by Gemini processes context-aware academic queries.
+- **Natural Voice Synthesis:** Integration with ElevenLabs API streams ultra-realistic, low-latency text-to-speech audio for a natural assistant experience.
+
+#### Epic 5: Push Notification Pipeline (Firebase)
+- **FCM Device Registration:** Frontend utilizes Capacitor Push Notifications to retrieve FCM tokens securely.
+- **Targeted Broadcasts:** Server-side Firebase Admin SDK dynamically sends OTA update alerts, assignment reminders, and critical announcements instantly to user lock screens.
+
 ### 5. Non-Functional Requirements (NFRs)
 - **Performance:** UI rendering must maintain 60fps on low-end Android WebViews (enforced via Capacitor).
 - **Latency:** Core API responses (excluding AI) must resolve in < 150ms.

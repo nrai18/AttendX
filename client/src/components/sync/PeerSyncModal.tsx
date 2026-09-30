@@ -32,6 +32,7 @@ export const PeerSyncModal = () => {
   const setActiveCode = useSyncStore((state) => state.setActiveCode);
   const clearActiveCode = useSyncStore((state) => state.clearActiveCode);
   const activeSemesterId = useAttendanceStore((state) => state.activeSemesterId);
+  const isSemesterLoading = useAttendanceStore((state) => state.isLoading);
 
   const [remainingTime, setRemainingTime] = useState<number>(0);
 
@@ -65,6 +66,7 @@ export const PeerSyncModal = () => {
   }, [expiresAt, activeCode, clearActiveCode]);
 
   const handleGenerateCode = async () => {
+    if (isSemesterLoading) return toast.error("Semester data is still syncing, please wait a moment.");
     setLoading(true);
     try {
       let dateRange: any = undefined;
@@ -118,6 +120,7 @@ export const PeerSyncModal = () => {
   };
 
   const handleRetrieveCode = async () => {
+    if (isSemesterLoading) return toast.error("Semester data is still syncing, please wait a moment.");
     if (inputCode.length !== 6) return toast.error("Code must be 6 digits.");
     if (!activeSemesterId) return toast.error("No active semester found to import into.");
     
