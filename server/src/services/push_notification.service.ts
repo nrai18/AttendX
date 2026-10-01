@@ -60,6 +60,28 @@ export class PushNotificationService {
         
         successCount += response.successCount;
         failureCount += response.failureCount;
+
+        // Clean up invalid tokens from the database
+        if (response.failureCount > 0) {
+          const failedTokens: string[] = [];
+          response.responses.forEach((resp, idx) => {
+            if (!resp.success) {
+              const errorCode = resp.error?.code;
+              if (errorCode === 'messaging/invalid-registration-token' || 
+                  errorCode === 'messaging/registration-token-not-registered') {
+                failedTokens.push(batch[idx]);
+              }
+            }
+          });
+          
+          if (failedTokens.length > 0) {
+            await prisma.user.updateMany({
+              where: { fcmToken: { in: failedTokens } },
+              data: { fcmToken: null }
+            });
+            console.log(`[PushNotification] Purged ${failedTokens.length} dead tokens from database.`);
+          }
+        }
       }
 
       console.log(`[PushNotification] Broadcasted to ${successCount} devices, ${failureCount} failed.`);
