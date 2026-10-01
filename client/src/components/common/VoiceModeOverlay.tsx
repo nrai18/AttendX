@@ -2,7 +2,7 @@ import { toast } from "sonner";
 import { Capacitor } from '@capacitor/core';
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Mic, MicOff, Volume2, VolumeX, X, Menu, Settings, Globe, ChevronLeft, ChevronRight } from "lucide-react";
+import { Mic, MicOff, Volume2, VolumeX, X, Menu, Settings, Globe, ChevronLeft, ChevronRight, Square } from "lucide-react";
 import { NativeVoiceService } from "../../services/NativeVoiceService";
 import { useBackHandlerStore } from "../../stores/backHandlerStore";
 
@@ -24,9 +24,10 @@ const VISUAL_FILLER_PHRASES = [
   "Processing..."
 ];
 
-const CinematicText = ({ text, startTime }: { text: string, startTime: number }) => {
+const CinematicText = ({ text, startTime, durationMs }: { text: string, startTime: number, durationMs: number }) => {
   const [elapsed, setElapsed] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
+  const activeWordRef = useRef<HTMLSpanElement>(null);
 
   useEffect(() => {
     let frameId: number;
@@ -39,12 +40,13 @@ const CinematicText = ({ text, startTime }: { text: string, startTime: number })
   }, [startTime]);
 
   const words = useMemo(() => text.split(/\s+/), [text]);
-  const rate = 2.3; // words per second
-  const activeIndex = Math.floor((elapsed / 1000) * rate);
+  const activeIndex = durationMs > 0 
+    ? Math.min(words.length - 1, Math.floor((elapsed / durationMs) * words.length))
+    : Math.floor((elapsed / 1000) * 2.3);
 
   useEffect(() => {
-    if (containerRef.current) {
-      containerRef.current.scrollTop = containerRef.current.scrollHeight;
+    if (activeWordRef.current) {
+      activeWordRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
   }, [activeIndex]);
 
@@ -61,6 +63,7 @@ const CinematicText = ({ text, startTime }: { text: string, startTime: number })
           return (
             <span
               key={i}
+              ref={isCurrent ? activeWordRef : null}
               className={`text-2xl md:text-3xl lg:text-4xl font-semibold tracking-tight transition-all duration-300 ${
                 isCurrent ? "text-white opacity-100 scale-105 drop-shadow-[0_0_12px_rgba(255,255,255,0.8)]" :
                 isPast ? "text-white/70 opacity-100" :
@@ -91,13 +94,14 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
   const [transcript, setTranscript] = useState("");
   const [lastResponse, setLastResponse] = useState("");
   const [voiceEnabled, setVoiceEnabled] = useState(true);
+  const [speechDuration, setSpeechDuration] = useState(0);
 
   // Handle hardware back button to close overlay
   useEffect(() => {
     if (!isOpen) return;
 
     const unregister = useBackHandlerStore.getState().register(() => {
-      onClose();
+      handleClose();
       return true;
     });
 
@@ -111,7 +115,7 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
   const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [selectedVoice, setSelectedVoice] = useState<number>(() => {
     const saved = typeof window !== 'undefined' ? localStorage.getItem("attendx_preferred_voice_index") : null;
-    return saved !== null ? parseInt(saved, 10) : -1;
+    return saved !== null ? parseInt(saved, 10) : 1; // Default to Bella
   });
   const [previewVoice, setPreviewVoice] = useState<number | null>(null);
 
@@ -126,9 +130,7 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
     fetchVoices();
     
     // Web Speech API dynamically loads voices asynchronously
-    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-      window.speechSynthesis.onvoiceschanged = fetchVoices;
-    }
+    NativeVoiceService.bindVoicesChanged(fetchVoices);
   }, []);
 
   // 21 Free ElevenLabs Premade Voices (Alternating Male/Female)
@@ -243,8 +245,33 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
 
   const speechStartTimeRef = useRef<number>(0);
   const speechTotalDurationRef = useRef<number>(0);
-  const speechSimulatedTimeoutRef = useRef<any>(null);
   const currentUtteranceRef = useRef<string>("");
+  const silenceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const resetSilenceTimeout = () => {
+    if (silenceTimeoutRef.current) {
+      clearTimeout(silenceTimeoutRef.current);
+      silenceTimeoutRef.current = null;
+    }
+    if (isOpenRef.current && !isProcessingRef.current && !isSpeakingRef.current) {
+      silenceTimeoutRef.current = setTimeout(() => {
+        if (isOpenRef.current && !isProcessingRef.current && !NativeVoiceService.isSpeaking()) {
+          toast.info("Hands-free paused due to 10s of inactivity.");
+          stopListening();
+        }
+      }, 10000);
+    }
+  };
+
+  const checkVoiceBreakout = (text: string) => {
+    const norm = text.trim().toLowerCase().replace(/[.,!?;:]/g, "");
+    const breakoutWords = ["stop", "cancel", "stop conversation", "goodbye", "exit", "quit"];
+    if (breakoutWords.includes(norm)) {
+      handleClose();
+      return true;
+    }
+    return false;
+  };
   
   useEffect(() => { voiceEnabledRef.current = voiceEnabled; }, [voiceEnabled]);
   useEffect(() => { isListeningRef.current = isListening; }, [isListening]);
@@ -259,93 +286,97 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
   // Stop all active voice operations on unmount
   useEffect(() => {
     return () => {
-      NativeVoiceService.stopSpeaking();
-      NativeVoiceService.stopListening();
-      if (speechSimulatedTimeoutRef.current) clearTimeout(speechSimulatedTimeoutRef.current);
+      NativeVoiceService.stopContinuousLoop();
+      if (silenceTimeoutRef.current) clearTimeout(silenceTimeoutRef.current);
     };
   }, []);
 
   const handleClose = () => {
     isOpenRef.current = false; // Killswitch for TTS
+    if (silenceTimeoutRef.current) {
+      clearTimeout(silenceTimeoutRef.current);
+      silenceTimeoutRef.current = null;
+    }
+    NativeVoiceService.stopContinuousLoop();
     onClose();
     setIsSpeaking(false);
     setIsListening(false);
     setIsProcessing(false);
-    NativeVoiceService.stopSpeaking().catch(() => {});
-    NativeVoiceService.stopListening().catch(() => {});
   };
 
-  const listenSessionRef = useRef<number>(0);
+  const getListenOptions = () => ({
+    lang: "en-IN",
+    onPartialResult: (text: string) => {
+      if (!isSpeakingRef.current && !isProcessingRef.current && isOpenRef.current) {
+        setTranscript(text);
+        resetSilenceTimeout();
+        checkVoiceBreakout(text);
+      }
+    },
+    onFinalResult: (text: string) => {
+      if (!isSpeakingRef.current && !isProcessingRef.current && isOpenRef.current) {
+        setTranscript(text);
+        resetSilenceTimeout();
+        checkVoiceBreakout(text);
+      }
+    },
+    onError: (err: any) => {
+      console.warn("Voice overlay recognition error:", err);
+      if (err && err.error && err.error !== "no-speech" && err.error !== "aborted") {
+        toast.error(`Mic Error: ${err.error}`);
+      } else if (err && err.message) {
+        toast.error(`Mic Error: ${err.message}`);
+      }
+      if (isOpenRef.current) {
+        setIsListening(false);
+      }
+    },
+    onEnd: () => {
+      if (isOpenRef.current && !NativeVoiceService.isContinuousLoop()) {
+        setIsListening(false);
+      }
+    },
+  });
 
   const startListening = async () => {
+    if (!isOpenRef.current) return;
     await NativeVoiceService.stopSpeaking();
     setIsSpeaking(false);
     setTranscript("");
     setIsProcessing(false);
     setIsListening(true);
-    
-    const currentSession = Date.now();
-    listenSessionRef.current = currentSession;
+    resetSilenceTimeout();
 
-    const started = await NativeVoiceService.startListening({
-      lang: "en-IN",
-      onPartialResult: (text) => {
-        if (!isSpeakingRef.current && !isProcessingRef.current && listenSessionRef.current === currentSession) {
-          setTranscript(text);
-        }
-      },
-      onFinalResult: (text) => {
-        if (!isSpeakingRef.current && !isProcessingRef.current && listenSessionRef.current === currentSession) {
-          setTranscript(text);
-        }
-      },
-      onError: (err: any) => {
-        console.warn("Voice overlay recognition error:", err);
-        if (err && err.error && err.error !== "no-speech" && err.error !== "aborted") {
-          toast.error(`Mic Error: ${err.error}`);
-        } else if (err && err.message) {
-          toast.error(`Mic Error: ${err.message}`);
-        }
-        if (listenSessionRef.current === currentSession) {
-          setIsListening(false);
-        }
-      },
-      onEnd: () => {
-        if (listenSessionRef.current === currentSession) {
-          setIsListening(false);
-        }
-      },
-    });
-
-    if (!started && listenSessionRef.current === currentSession) {
+    const options = getListenOptions();
+    NativeVoiceService.startContinuousLoop(options);
+    const started = await NativeVoiceService.startListening(options);
+    if (!started && isOpenRef.current) {
       setIsListening(false);
     }
   };
 
   const stopListening = async () => {
+    if (silenceTimeoutRef.current) {
+      clearTimeout(silenceTimeoutRef.current);
+      silenceTimeoutRef.current = null;
+    }
     setIsListening(false);
-    await NativeVoiceService.stopListening();
+    NativeVoiceService.stopContinuousLoop();
   };
 
   const handleSpeakText = async (text: string) => {
     if (!isOpenRef.current) return; // Abort if closed
 
-    const triggerListen = () => {
-      setTimeout(() => {
-        setIsProcessing(prevIsProcessing => {
-          if (!prevIsProcessing && isOpenRef.current) {
-            if (Capacitor.isNativePlatform() || !isListeningRef.current) {
-              startListening();
-            }
-          }
-          return prevIsProcessing;
-        });
-      }, 500);
-    };
+    if (silenceTimeoutRef.current) {
+      clearTimeout(silenceTimeoutRef.current);
+      silenceTimeoutRef.current = null;
+    }
 
     const cleanText = NativeVoiceService.cleanTextForSpeech(text);
     if (!cleanText) {
-      triggerListen();
+      if (isOpenRef.current) {
+        startListening();
+      }
       return;
     }
 
@@ -356,38 +387,65 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
     
     speechStartTimeRef.current = Date.now();
     speechTotalDurationRef.current = expectedDurationMs;
+    setSpeechDuration(expectedDurationMs);
 
     setIsSpeaking(true);
-    
-    if (speechSimulatedTimeoutRef.current) {
-        clearTimeout(speechSimulatedTimeoutRef.current);
-    }
-    
-    // The master timeline that opens the mic when the AI finishes, whether audio is playing or silently skipped
-    speechSimulatedTimeoutRef.current = setTimeout(() => {
-        setIsSpeaking(false);
-        triggerListen();
-    }, expectedDurationMs);
 
     if (voiceEnabledRef.current) {
       await NativeVoiceService.stopSpeaking();
-      // We don't await speak or pass onEnd because the master timeline controls state now
-      NativeVoiceService.speak(cleanText, {
-        lang: "en-IN"
+      await NativeVoiceService.speak(cleanText, {
+        lang: "en-IN",
+        autoResumeListening: true,
+        listenOptions: getListenOptions(),
+        onDuration: (durationMs) => {
+          // Sync exact audio length to the cinematic text
+          speechTotalDurationRef.current = durationMs;
+          setSpeechDuration(durationMs);
+        },
+        onStart: () => {
+          setIsSpeaking(true);
+        },
+        onEnd: () => {
+          setIsSpeaking(false);
+          if (isOpenRef.current) {
+            setIsListening(true);
+            resetSilenceTimeout();
+          }
+        },
+        onError: () => {
+          setIsSpeaking(false);
+          if (isOpenRef.current) {
+            startListening();
+          }
+        }
       });
+    } else {
+      setIsSpeaking(false);
+      if (isOpenRef.current) {
+        startListening();
+      }
     }
   };
 
   const handleProcessVoiceInput = async () => {
     if (!transcript.trim() || isProcessing) return;
 
+    if (silenceTimeoutRef.current) {
+      clearTimeout(silenceTimeoutRef.current);
+      silenceTimeoutRef.current = null;
+    }
+
     const query = transcript.trim();
+    if (checkVoiceBreakout(query)) {
+      return;
+    }
     
     // On native, we must stop the mic to avoid feedback loops and crashes.
-    // On Web, stopping and restarting the mic programmatically is blocked by browsers (requires user gesture).
-    // Instead, we leave it running (it ignores input while isProcessing is true).
+    // IMPORTANT: Only pause the mic session — do NOT kill the continuous loop flag
+    // so that handlePlaybackEnd can auto-resume listening after TTS finishes.
     if (Capacitor.isNativePlatform()) {
-      await stopListening();
+      setIsListening(false);
+      await NativeVoiceService.stopListening();
     }
     
     setIsProcessing(true);
@@ -544,6 +602,7 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
                         <CinematicText 
                           text={NativeVoiceService.cleanTextForSpeech(lastResponse)} 
                           startTime={speechStartTimeRef.current} 
+                          durationMs={speechDuration}
                         />
                       </motion.div>
                    ) : (
@@ -554,7 +613,7 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
                </AnimatePresence>
             </div>
 
-            {/* The Animated ChatGPT-style Orb */}
+            {/* The Animated ChatGPT-style Orb (Clean Anti-Slop Compliant Palette) */}
             <div className="relative flex items-center justify-center w-64 h-64 mt-12">
                {/* Ambient Glow */}
                <motion.div
@@ -564,7 +623,7 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
                   }}
                   transition={{ repeat: Infinity, duration: uiState === "SPEAKING" ? 1.5 : 2, ease: "easeInOut" }}
                   className={`absolute w-56 h-56 rounded-full blur-3xl ${
-                    uiState === "LISTENING" ? "bg-white/40" : uiState === "SPEAKING" ? "bg-pink-500/50" : uiState === "PROCESSING" ? "bg-cyan-500/30" : "bg-white/10"
+                    uiState === "LISTENING" ? "bg-emerald-500/20" : uiState === "SPEAKING" ? "bg-white/30" : uiState === "PROCESSING" ? "bg-slate-400/20" : "bg-white/10"
                   }`}
                />
                
@@ -574,14 +633,14 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
                     scale: uiState === "LISTENING" ? [1, 1.05, 1] : uiState === "SPEAKING" ? [1, 1.15, 0.95, 1.05, 1] : uiState === "PROCESSING" ? [1, 1.08, 1] : [1, 1.02, 1],
                   }}
                   transition={{ repeat: Infinity, duration: uiState === "SPEAKING" ? 1.2 : 2, ease: "easeInOut" }}
-                  className={`relative z-10 w-36 h-36 sm:w-44 sm:h-44 rounded-full shadow-2xl transition-colors duration-700 bg-gradient-to-tr ${
+                  className={`relative z-10 w-36 h-36 sm:w-44 sm:h-44 rounded-full shadow-2xl transition-colors duration-700 ${
                     uiState === "LISTENING" 
-                      ? "from-gray-100 to-white shadow-white/40" 
+                      ? "bg-slate-100 shadow-white/40" 
                       : uiState === "SPEAKING" 
-                      ? "from-pink-300 via-rose-400 to-white shadow-pink-500/50" 
+                      ? "bg-white shadow-white/50" 
                       : uiState === "PROCESSING" 
-                      ? "from-cyan-100 to-cyan-300 shadow-cyan-500/40" 
-                      : "from-gray-600 to-gray-400"
+                      ? "bg-slate-300 shadow-slate-400/30" 
+                      : "bg-slate-600 shadow-slate-700/30"
                   }`}
                />
             </div>
@@ -618,9 +677,9 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
             </AnimatePresence>
           </main>
 
-          {/* Bottom Bar Controls - Mimicking ChatGPT layout */}
+          {/* Bottom Bar Controls - Mimicking ChatGPT layout with explicit Stop Conversation */}
           <footer className="p-6 pb-12 flex justify-center w-full">
-            <div className="flex items-center gap-2 bg-white/10 backdrop-blur-xl p-2 rounded-[2rem] w-full max-w-md border border-white/5 shadow-2xl">
+            <div className="flex items-center gap-2 bg-slate-900/90 backdrop-blur-xl p-2 rounded-[2rem] w-full max-w-md border border-slate-700/50 shadow-2xl">
               
               {/* Fake Text Input -> Returns to Text Chat */}
               <button
@@ -630,12 +689,25 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
                 <span className="text-xl mr-3 font-light">+</span> Ask AttendX...
               </button>
 
+              {/* Explicit High-Contrast Stop Conversation Button (R3) */}
+              <button
+                type="button"
+                onClick={handleClose}
+                className="flex items-center gap-1.5 px-3.5 h-12 rounded-full bg-rose-600 hover:bg-rose-500 active:bg-rose-700 text-white font-medium text-xs sm:text-sm transition-colors cursor-pointer shadow-md shrink-0"
+                title="Stop Conversation"
+              >
+                <Square className="w-4 h-4 fill-current" />
+                <span className="hidden sm:inline">Stop Conversation</span>
+                <span className="sm:hidden">Stop</span>
+              </button>
+
               {/* Center Mic Button */}
               <button
                 onClick={uiState === "LISTENING" ? stopListening : startListening}
                 className={`flex items-center justify-center w-14 h-14 shrink-0 rounded-full transition-colors cursor-pointer ${
                    uiState === "LISTENING" ? "bg-white text-black hover:bg-gray-200 shadow-[0_0_15px_rgba(255,255,255,0.5)]" : "bg-white/20 text-white hover:bg-white/30"
                 }`}
+                title={uiState === "LISTENING" ? "Mute Microphone" : "Unmute Microphone"}
               >
                 {uiState === "LISTENING" ? (
                   <Mic className="w-6 h-6 text-rose-500 animate-pulse" />

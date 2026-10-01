@@ -36,7 +36,7 @@ export const applyThemeToDOM = (targetTheme: ThemeMode) => {
   // Remove the transition class after the animation completes
   setTimeout(() => {
     root.classList.remove("theme-transitioning");
-  }, 400);
+  }, 150);
 };
 
 export const useThemeStore = create<ThemeState>((set, get) => ({

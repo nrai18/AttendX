@@ -36,8 +36,8 @@ export class CronService {
               // 2. Send Native Push Notification
               if (user.id) {
                 await PushNotificationService.sendToUser(user.id, {
-                  title: 'Happy Birthday! 🎉',
-                  body: `Wishing you a fantastic birthday from the AttendX team, ${user.name}! 🎂`,
+                  title: 'Happy Birthday! \uD83C\uDF89',
+                  body: `Wishing you a fantastic birthday from the AttendX team, ${user.name}! \uD83C\uDF82`,
                 }).catch(e => console.error('[Push] Failed to send birthday push:', e));
               }
             }

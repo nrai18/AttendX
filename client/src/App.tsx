@@ -9,6 +9,8 @@ import { useCacheStore } from "./stores/cacheStore";
 import { AppShell } from "./components/layout/AppShell";
 import { LoginPage } from "./pages/auth/LoginPage";
 import { SignupPage } from "./pages/auth/SignupPage";
+import { NotificationService } from "./services/NotificationService";
+import { NativeVoiceService } from "./services/NativeVoiceService";
 import { SubjectsPage } from "./pages/subjects/SubjectsPage";
 import { SubjectDetailPage } from "./pages/subjects/SubjectDetailPage";
 import { TimetablePage } from "./pages/timetable/TimetablePage";
@@ -62,7 +64,6 @@ const RootRoute: React.FC = () => {
 };
 
 import { App as CapacitorApp } from "@capacitor/app";
-import { NotificationService } from "./services/NotificationService";
 import { OTAUpdateModal } from "./components/common/OTAUpdateModal";
 import { CapacitorUpdater } from "@capgo/capacitor-updater";
 import { Capacitor } from "@capacitor/core";
@@ -129,6 +130,12 @@ export function App() {
         }
 
         try {
+          await NativeVoiceService.requestPermissions();
+        } catch (e) {
+          console.error("Failed to request voice permissions on launch", e);
+        }
+
+        try {
           await NotificationService.autoScheduleFromTimetable();
         } catch (e) {
           console.error("Failed to auto-schedule timetable notifications", e);
@@ -168,6 +175,13 @@ export function App() {
     };
     initServices();
   }, []);
+
+  const { isAuthenticated, _hasHydrated: hydrated } = useAuthStore();
+  useEffect(() => {
+    if (isAuthenticated && hydrated) {
+      NotificationService.syncFcmToken();
+    }
+  }, [isAuthenticated, hydrated]);
 
   return (
     <ErrorBoundary>

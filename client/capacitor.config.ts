@@ -1,4 +1,4 @@
-﻿import { CapacitorConfig } from '@capacitor/cli';
+import { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
   appId: 'com.attendx.app',
@@ -29,6 +29,11 @@ const config: CapacitorConfig = {
       enabled: true,
     },
     CapacitorHttp: { enabled: false },
+    CapacitorUpdater: {
+      autoDeleteFailed: true,
+      autoDeletePrevious: true,
+      resetWhenUpdate: false
+    }
   },
 };
 

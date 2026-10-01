@@ -6,31 +6,41 @@ export class SystemController {
   static async getUpdateManifest(req: Request, res: Response) {
     const manifest = {
       latestVersion: "4.2.0",
-      title: "Voice Assistant & Push Engine Update",
+      title: "Event & Holiday Notification Fix",
       changelog: [
         {
           "version": "4.2.0",
-          "date": "Sep 30, 2026",
-          "title": "Hardware Access & Notifications",
+          "date": "Oct 1, 2026",
+          "title": "Continuous Voice & Performance Overhaul",
           "sections": [
             {
               "title": "New Features",
               "items": [
-                { "icon": "🔔", "text": "Introduced Birthday Push Notifications — the server will now ping your phone at 8:00 AM on your friend's birthday!" },
-                { "icon": "🎙️", "text": "Upgraded Voice Mode to use native Android OS microphone permission prompts and Google Assistant overlays for flawless voice recognition." }
+                { "icon": "\ud83d\udd14", "text": "Introduced Birthday Push Notifications — the app will now ping your phone at 9:00 AM for friends' birthdays, and 8:00 AM for your own!" },
+                { "icon": "\ud83d\udcc6", "text": "Added support for adding Custom Events directly into the calendar via the Semester Hub!" },
+                { "icon": "🎙️", "text": "Upgraded Voice Mode to a truly hands-free continuous loop. The AI now automatically resumes listening after speaking, creating seamless back-and-forth conversations." }
+              ]
+            },
+            {
+              "title": "Architecture & Performance",
+              "items": [
+                { "icon": "⚡", "text": "Massive performance fix: Removed a global CSS transition that was causing severe UI jitter and frame drops when switching tabs across the app." },
+                { "icon": "🛡️", "text": "Hardened Voice Mode against audio echoes by injecting a strict 200ms acoustic kill-switch before AI playback begins." }
               ]
             },
             {
               "title": "Visual Enhancements",
               "items": [
-                { "icon": "✨", "text": "Engineered a flawless 400ms CSS injection system for the Light/Dark mode toggle, enabling smooth cinematic cross-fades without lagging the app." }
+                { "icon": "✨", "text": "Engineered a flawless CSS transition for the Light/Dark mode toggle, enabling smooth cinematic cross-fades globally." },
+                { "icon": "🎨", "text": "Fixed dark mode text legibility and cleaned up dropdown categories on the Add Custom Event modal." }
               ]
             },
             {
               "title": "Bug Fixes",
               "items": [
-                { "icon": "🐛", "text": "Fixed a Postgres timezone bug that caused birthdays to misfire for users in the IST timezone." },
-                { "icon": "🐛", "text": "Upgraded the Share App button to use Capacitor's native Share Sheet, preventing apps like WhatsApp from dropping the text payload." }
+                { "icon": "🐛", "text": "Fixed Firebase Push Notifications bug where devices occasionally failed to sync FCM tokens on login." },
+                { "icon": "\ud83d\udcc6", "text": "Fixed calendar loop bug where some regular events (like Cultural Fests) failed to dispatch morning push notifications." },
+                { "icon": "\ud83c\udf89", "text": "Restricted Holidays now correctly dispatch morning notifications without accidentally erasing your class timetable for the day." }
               ]
             }
           ]

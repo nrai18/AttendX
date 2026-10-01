@@ -6,6 +6,7 @@ import { mutePhone, unmutePhone, checkAndReconcileRinger, setScheduledUnmuteTime
 import { useAttendanceStore } from '../stores/attendanceStore';
 import { useAssignmentStore } from '../stores/assignmentStore';
 import { useNotificationStore } from '../stores/notificationStore';
+import { useAuthStore } from '../stores/authStore';
 import { useCacheStore } from '../stores/cacheStore';
 import { api } from '../lib/api';
 import { toast } from 'sonner';
@@ -336,11 +337,12 @@ export class NotificationService {
 
       PushNotifications.addListener('registration', async (token) => {
         console.log('[FCM] Push registration success, token: ' + token.value);
+        localStorage.setItem('fcm_token', token.value);
         try {
-          // Send FCM token to the backend
+          // Send FCM token to the backend (might fail if not logged in yet)
           await api.patch('/users/me', { fcmToken: token.value });
         } catch (error) {
-          console.error('[FCM] Failed to sync FCM token to backend:', error);
+          console.error('[FCM] Failed to sync FCM token to backend (will retry on login):', error);
         }
       });
 
@@ -362,6 +364,18 @@ export class NotificationService {
       });
     } catch (e) {
       console.warn("Could not register push notifications:", e);
+    }
+  }
+
+  static async syncFcmToken() {
+    const token = localStorage.getItem('fcm_token');
+    if (token) {
+      try {
+        await api.patch('/users/me', { fcmToken: token });
+        console.log('[FCM] Successfully synced FCM token to backend after login.');
+      } catch (error) {
+        console.error('[FCM] Failed to sync FCM token:', error);
+      }
     }
   }
 
@@ -449,7 +463,7 @@ export class NotificationService {
             actions: [
               {
                 id: 'UNMUTE_ACTION',
-                title: '🔊 Unmute Phone',
+                title: '\uD83D\uDD0A Unmute Phone',
                 foreground: false,
                 destructive: false
               }
@@ -460,7 +474,7 @@ export class NotificationService {
             actions: [
               {
                 id: 'MUTE_ACTION',
-                title: '🔕 Mute Phone for Class',
+                title: '\uD83D\uDD15 Mute Phone for Class',
                 foreground: false,
                 destructive: false
               }
@@ -648,7 +662,7 @@ export class NotificationService {
             id: notifId,
             title: type === 'headsup' ? `Upcoming (Heads Up): ${cleanTitle}` : `Upcoming: ${cleanTitle}`,
             body: `Starts at ${timeStr} ${location ? `| ${location.trim()}` : ''}`,
-            largeBody: `📚 Class: ${cleanTitle}\n⏰ Time: ${timeStr} - ${endTimeStr || 'TBD'}\n📍 Room: ${location ? location.trim() : 'N/A'}\n\nTap the action button below to instantly mute your phone for the duration of this class.`,
+            largeBody: `\uD83D\uDCDA Class: ${cleanTitle}\n\u23F0 Time: ${timeStr} - ${endTimeStr || 'TBD'}\n\uD83D\uDCCD Room: ${location ? location.trim() : 'N/A'}\n\nTap the action button below to instantly mute your phone for the duration of this class.`,
             summaryText: "Class Reminder",
             smallIcon: "ic_stat_adobe",
             iconColor: "#6366F1", 
@@ -683,7 +697,7 @@ export class NotificationService {
             id: PINNED_MUTE_NOTIF_ID,
             title: `Class in Session`,
             body: `Phone is silenced until ${timeStr}`,
-            largeBody: `🔕 Current Class: ${cleanClassName}\n\nYour phone has been manually muted via AttendX. It will restore to normal volume automatically at ${timeStr}, or you can unmute manually below.`,
+            largeBody: `\uD83D\uDD15 Current Class: ${cleanClassName}\n\nYour phone has been manually muted via AttendX. It will restore to normal volume automatically at ${timeStr}, or you can unmute manually below.`,
             summaryText: "Do Not Disturb Active",
             smallIcon: "ic_stat_adobe",
             iconColor: "#EF4444", 
@@ -771,7 +785,7 @@ export class NotificationService {
             id: notifId,
             title: "Happy Birthday!",
             body: `Wish ${cleanName} a great birthday today!`,
-            largeBody: `🎂 It's ${cleanName}'s birthday today!\n\nDon't forget to send them your best wishes and make their day special!`,
+            largeBody: `\uD83C\uDF82 It's ${cleanName}'s birthday today!\n\nDon't forget to send them your best wishes and make their day special!`,
             summaryText: "Birthday Event",
             smallIcon: "ic_stat_adobe",
             iconColor: "#F59E0B", 
@@ -846,26 +860,53 @@ export class NotificationService {
 
       const config = useNotificationStore.getState().config;
       const reminderOffset = (config && typeof config.classReminderOffset === 'number') ? config.classReminderOffset : 10;
+      const user = useAuthStore.getState().user;
 
       for (let i = 0; i < 7; i++) {
         const currentDay = addDays(today, i);
         
+        // Handle User's own birthday
+        if (user?.birthday) {
+          const userDob = new Date(user.birthday);
+          if (userDob.getDate() === currentDay.getDate() && userDob.getMonth() === currentDay.getMonth()) {
+            const notifyTime = setHours(currentDay, 8); // 8 AM greeting
+            if (notifyTime.getTime() > Date.now()) {
+              const firstName = (user.name || "there").split(' ')[0];
+              notificationsToSchedule.push({
+                id: getBirthdayNotificationId("Self", formatLocalDate(currentDay)),
+                title: "\ud83c\udf82 Happy Birthday!",
+                body: `Happy Birthday ${firstName}! Have a wonderful day!`,
+                largeBody: `\uD83C\uDF82 Happy Birthday ${firstName}!\n\nWe hope you have an incredible day filled with joy and celebration. Take a break and treat yourself today!`,
+                summaryText: "Your Birthday",
+                smallIcon: "ic_stat_adobe",
+                iconColor: "#F59E0B", 
+                channelId: "system_alerts",
+                schedule: { at: notifyTime, allowWhileIdle: true }
+              });
+              scheduledCount++;
+            }
+          }
+        }
+
         // Multi-day event support: check if currentDay falls anywhere within event date range
         const dayEvents = allEvents.filter(e => isEventActiveOnDate(e, currentDay));
 
         let isClassOff = false;
-        let specialTitle: string | undefined = undefined;
-        let specialMessage: string | undefined = undefined;
+        let eventNotifIndex = 0;
         
         for (const e of dayEvents) {
           const lowerTitle = (e.title || "").toLowerCase();
           const typeLower = (e.type || e.eventType || "").toLowerCase();
           
+          let eventCancelsClasses = false;
+          let specialMessage = "You have an event today.";
+          
           if (typeLower === 'holiday' || lowerTitle.includes('holiday')) {
             if (typeLower !== 'restricted' && typeLower !== 'restricted_holiday' && !lowerTitle.includes('restricted')) {
-              isClassOff = true;
-              specialTitle = e.title;
+              eventCancelsClasses = true;
               specialMessage = "No classes scheduled! Enjoy your day off.";
+            } else {
+              specialMessage = "Restricted Holiday today.";
             }
           } else if (
             typeLower === 'exam' || 
@@ -873,64 +914,68 @@ export class NotificationService {
             lowerTitle.includes('endsem') || lowerTitle.includes('end sem') || lowerTitle.includes('end-sem') ||
             lowerTitle.includes('exam')
           ) {
-            isClassOff = true;
-            specialTitle = e.title;
+            eventCancelsClasses = true;
             specialMessage = "All the best for your exams!";
           } else if (lowerTitle.includes('vacation') || lowerTitle.includes('break')) {
-            isClassOff = true;
-            specialTitle = e.title;
-            specialMessage = "Enjoy your midsem/endsem vacation!";
+            eventCancelsClasses = true;
+            specialMessage = "Enjoy your vacation!";
           }
-        }
 
-        const birthdayEvent = dayEvents.find(e => (e.title || "").toLowerCase().includes("birthday"));
+          if (eventCancelsClasses) isClassOff = true;
 
-        if (isClassOff && specialTitle) {
+          // 1. Handle Birthdays (Exclude public holidays with "Birthday" in the title)
+          if (lowerTitle.includes("birthday") && !typeLower.includes('holiday')) {
+            const notifyTime = setHours(currentDay, 9);
+            if (notifyTime.getTime() > Date.now()) {
+              let cleanName = (e.title || "Friend").trim();
+              cleanName = cleanName
+                .replace(/^(?:happy\s+)?birthday\s+of\s+/i, '')
+                .replace(/^(?:happy\s+)?birthday\s+/i, '')
+                .replace(/(?:'s|s)?\s*birthday.*$/i, '')
+                .replace(/^(?:of\s+)/i, '')
+                .trim();
+              if (!cleanName) cleanName = "Friend";
+              const notifId = getBirthdayNotificationId(cleanName, formatLocalDate(currentDay)) + eventNotifIndex;
+              notificationsToSchedule.push({
+                id: notifId,
+                title: "\ud83c\udf82 Happy Birthday!",
+                body: `Wish ${cleanName} a great birthday today!`,
+                largeBody: `\uD83C\uDF82 It's ${cleanName}'s birthday today!\n\nDon't forget to send them your best wishes and make their day special!`,
+                summaryText: "Birthday Event",
+                smallIcon: "ic_stat_adobe",
+                iconColor: "#F59E0B", 
+                channelId: "class_alerts",
+                schedule: { at: notifyTime, allowWhileIdle: true }
+              });
+              scheduledCount++;
+              eventNotifIndex++;
+            }
+            continue; 
+          }
+
+          // 2. Generic Event / Holiday Notification
           const notifyTime = setHours(currentDay, 8);
           if (notifyTime.getTime() > Date.now()) {
-            const cleanHolidayName = (specialTitle || "Holiday").trim();
-            const notifId = getHolidayNotificationId(formatLocalDate(currentDay));
+            const cleanHolidayName = (e.title || "Event").trim();
+            const notifId = getHolidayNotificationId(formatLocalDate(currentDay)) + eventNotifIndex;
             notificationsToSchedule.push({
               id: notifId,
-              title: cleanHolidayName.toLowerCase().includes("holiday") ? "Holiday Today: " + cleanHolidayName : "Event Today: " + cleanHolidayName,
-              body: specialMessage || "No classes scheduled! Enjoy your day off.",
-              largeBody: "\u2728 " + cleanHolidayName + "\n\n" + (specialMessage || "No classes scheduled! Enjoy your day off."),
-              summaryText: "Holiday Event",
+              title: (eventCancelsClasses || typeLower.includes('holiday') || lowerTitle.includes('holiday')) ? "\ud83c\udf89 Holiday: " + cleanHolidayName : "\ud83d\udcc6 Event: " + cleanHolidayName,
+              body: specialMessage,
+              largeBody: "\u2728 " + cleanHolidayName + "\n\n" + specialMessage,
+              summaryText: eventCancelsClasses ? "Holiday Event" : "Calendar Event",
               smallIcon: "ic_stat_adobe",
-              iconColor: "#10B981", 
+              iconColor: eventCancelsClasses ? "#10B981" : "#3B82F6", 
               channelId: "class_alerts",
               schedule: { at: notifyTime, allowWhileIdle: true }
             });
             scheduledCount++;
+            eventNotifIndex++;
           }
-          continue; 
         }
 
-        if (birthdayEvent) {
-          const notifyTime = setHours(currentDay, 9);
-          if (notifyTime.getTime() > Date.now()) {
-            let cleanName = (birthdayEvent.title || "Friend").trim();
-            cleanName = cleanName
-              .replace(/^(?:happy\s+)?birthday\s+of\s+/i, '')
-              .replace(/^(?:happy\s+)?birthday\s+/i, '')
-              .replace(/(?:'s|s)?\s*birthday.*$/i, '')
-              .replace(/^(?:of\s+)/i, '')
-              .trim();
-            if (!cleanName) cleanName = "Friend";
-            const notifId = getBirthdayNotificationId(cleanName, formatLocalDate(currentDay));
-            notificationsToSchedule.push({
-              id: notifId,
-              title: "Happy Birthday!",
-              body: `Wish ${cleanName} a great birthday today!`,
-              largeBody: `🎂 It's ${cleanName}'s birthday today!\n\nDon't forget to send them your best wishes and make their day special!`,
-              summaryText: "Birthday Event",
-              smallIcon: "ic_stat_adobe",
-              iconColor: "#F59E0B", 
-              channelId: "class_alerts",
-              schedule: { at: notifyTime, allowWhileIdle: true }
-            });
-            scheduledCount++;
-          }
+        if (isClassOff) {
+          continue; 
         }
 
         let dbDay = currentDay.getDay() - 1;
@@ -975,7 +1020,7 @@ export class NotificationService {
                 id: headsUpId,
                 title: `Upcoming (Heads Up): ${subjectName}`,
                 body: `Starts at ${timeStr} ${roomStr ? `| ${roomStr}` : ''}`,
-                largeBody: `📚 Class: ${subjectName}\n⏰ Time: ${timeStr} - ${endTimeStr || 'TBD'}\n📍 Room: ${roomStr || 'N/A'}\n\nTap the action button below to instantly mute your phone for the duration of this class.`,
+                largeBody: `\uD83D\uDCDA Class: ${subjectName}\n\u23F0 Time: ${timeStr} - ${endTimeStr || 'TBD'}\n\uD83D\uDCCD Room: ${roomStr || 'N/A'}\n\nTap the action button below to instantly mute your phone for the duration of this class.`,
                 summaryText: "Class Reminder",
                 smallIcon: "ic_stat_adobe",
                 iconColor: "#6366F1", 
@@ -994,7 +1039,7 @@ export class NotificationService {
                 id: standardId,
                 title: `Upcoming: ${subjectName}`,
                 body: `Starts at ${timeStr} ${roomStr ? `| ${roomStr}` : ''}`,
-                largeBody: `📚 Class: ${subjectName}\n⏰ Time: ${timeStr} - ${endTimeStr || 'TBD'}\n📍 Room: ${roomStr || 'N/A'}\n\nTap the action button below to instantly mute your phone for the duration of this class.`,
+                largeBody: `\uD83D\uDCDA Class: ${subjectName}\n\u23F0 Time: ${timeStr} - ${endTimeStr || 'TBD'}\n\uD83D\uDCCD Room: ${roomStr || 'N/A'}\n\nTap the action button below to instantly mute your phone for the duration of this class.`,
                 summaryText: "Class Reminder",
                 smallIcon: "ic_stat_adobe",
                 iconColor: "#6366F1", 
@@ -1020,7 +1065,7 @@ export class NotificationService {
           if (maxEndTimeObj.getTime() > Date.now()) {
             let endOfDayTitle = "Done for the day!";
             let endOfDayBody = "All classes have ended. Enjoy your evening!";
-            let endOfDayLargeBody = "🌙 All classes for today have concluded. You can pack up and enjoy the rest of your day. See you tomorrow!";
+            let endOfDayLargeBody = "\uD83C\uDF19 All classes for today have concluded. You can pack up and enjoy the rest of your day. See you tomorrow!";
 
             const tomorrow = addDays(currentDay, 1);
             const tomorrowEvents = allEvents.filter(e => isEventActiveOnDate(e, tomorrow));
@@ -1029,7 +1074,7 @@ export class NotificationService {
             for (const e of tomorrowEvents) {
               const lowerTitle = (e.title || "").toLowerCase();
               const typeLower = (e.type || e.eventType || "").toLowerCase();
-              if (typeLower === 'holiday' || typeLower === 'exam' || lowerTitle.includes('holiday') || lowerTitle.includes('exam') || lowerTitle.includes('fest') || lowerTitle.includes('break') || lowerTitle.includes('vacation')) {
+              if (typeLower === 'holiday' || typeLower === 'exam' || lowerTitle.includes('holiday') || lowerTitle.includes('exam') || lowerTitle.includes('break') || lowerTitle.includes('vacation')) {
                 if (typeLower !== 'restricted' && typeLower !== 'restricted_holiday' && !lowerTitle.includes('restricted')) {
                   tomorrowHolidayTitle = e.title;
                   break;
@@ -1065,14 +1110,14 @@ export class NotificationService {
               const sundayIsOff = sundayHoliday || sundaySlots.length === 0;
 
               if (saturdaySlots.length === 0 && sundayIsOff) {
-                endOfDayLargeBody = `🎉 All classes for the week have concluded. Pack up and enjoy your weekend!`;
+                endOfDayLargeBody = `\uD83C\uDF89 All classes for the week have concluded. Pack up and enjoy your weekend!`;
                 endOfDayBody = `All classes ended. Enjoy the weekend!`;
               }
             } else if (currentDay.getDay() === 6 && tomorrowIsOff) { // Saturday
-              endOfDayLargeBody = `🎉 All classes for today have concluded. Pack up and enjoy your Sunday off!`;
+              endOfDayLargeBody = `\uD83C\uDF89 All classes for today have concluded. Pack up and enjoy your Sunday off!`;
               endOfDayBody = `All classes ended. Enjoy your day off tomorrow!`;
             } else if (tomorrowIsOff) {
-              endOfDayLargeBody = `🌙 All classes for today have concluded. Enjoy your day off tomorrow!`;
+              endOfDayLargeBody = `\uD83C\uDF19 All classes for today have concluded. Enjoy your day off tomorrow!`;
               endOfDayBody = `All classes ended. Enjoy your day off tomorrow!`;
             }
 
@@ -1242,7 +1287,7 @@ export class NotificationService {
               id: notifId,
               title: rem.title,
               body: cleanTitle,
-              largeBody: `⏰ Reminder: "${cleanTitle}" is ${rem.text} at ${deadline.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`,
+              largeBody: `\u23F0 Reminder: "${cleanTitle}" is ${rem.text} at ${deadline.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`,
               channelId: "assignment_alerts",
               smallIcon: "ic_stat_adobe",
               iconColor: "#EF4444",
@@ -1375,7 +1420,7 @@ export class NotificationService {
           for (const e of targetEvents) {
             const lowerTitle = (e.title || "").toLowerCase();
             const typeLower = (e.type || e.eventType || "").toLowerCase();
-            if (typeLower === 'holiday' || typeLower === 'exam' || lowerTitle.includes('holiday') || lowerTitle.includes('fest') || lowerTitle.includes('break') || lowerTitle.includes('vacation')) {
+            if (typeLower === 'holiday' || typeLower === 'exam' || lowerTitle.includes('holiday') || lowerTitle.includes('break') || lowerTitle.includes('vacation')) {
               if (typeLower !== 'restricted' && typeLower !== 'restricted_holiday' && !lowerTitle.includes('restricted')) {
                 targetHolidayTitle = e.title;
                 break;

@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Oswald:wght@700&display=swap');
+@import url("https://fonts.googleapis.com/css2?family=Oswald:wght@700&display=swap");
 @import "tailwindcss";
 
 @plugin "tailwindcss-animate";
@@ -6,7 +6,9 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme {
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+  --font-sans:
+    "Inter", ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji",
+    "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
 
   --color-border: hsl(var(--border));
   --color-input: hsl(var(--input));
@@ -118,7 +120,7 @@
   html.dark {
     color-scheme: dark;
   }
-  
+
   /* Dark Theme Default Atmosphere */
   body {
     @apply bg-background text-foreground;
@@ -148,7 +150,9 @@
   html.light .bg-\[\#12131f\] {
     background-color: #ffffff !important;
     border-color: #e2e8f0 !important;
-    box-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.05), 0 2px 6px -1px rgba(15, 23, 42, 0.02) !important;
+    box-shadow:
+      0 4px 20px -2px rgba(15, 23, 42, 0.05),
+      0 2px 6px -1px rgba(15, 23, 42, 0.02) !important;
   }
 
   html.light .bg-black\/40,
@@ -333,62 +337,61 @@
   }
 }
 
-
 .theme-nova-green {
   --background: 0 0% 0%;
   --color-background: hsl(0 0% 0%);
-  
+
   --foreground: 210 40% 98%;
   --color-foreground: hsl(210 40% 98%);
-  
+
   --card: 0 0% 4%;
   --color-card: hsl(0 0% 4%);
-  
+
   --card-foreground: 210 40% 98%;
   --color-card-foreground: hsl(210 40% 98%);
-  
+
   --popover: 0 0% 4%;
   --color-popover: hsl(0 0% 4%);
-  
+
   --popover-foreground: 210 40% 98%;
   --color-popover-foreground: hsl(210 40% 98%);
-  
+
   --primary: 152 100% 50%;
   --color-primary: hsl(152 100% 50%);
-  
+
   --primary-foreground: 0 0% 0%;
   --color-primary-foreground: hsl(0 0% 0%);
-  
+
   --secondary: 0 0% 10%;
   --color-secondary: hsl(0 0% 10%);
-  
+
   --secondary-foreground: 210 40% 98%;
   --color-secondary-foreground: hsl(210 40% 98%);
-  
+
   --muted: 0 0% 12%;
   --color-muted: hsl(0 0% 12%);
-  
+
   --muted-foreground: 215 20.2% 65.1%;
   --color-muted-foreground: hsl(215 20.2% 65.1%);
-  
+
   --accent: 189 100% 50%;
   --color-accent: hsl(189 100% 50%);
-  
+
   --accent-foreground: 0 0% 0%;
   --color-accent-foreground: hsl(0 0% 0%);
-  
+
   --destructive: 0 62.8% 30.6%;
   --color-destructive: hsl(0 62.8% 30.6%);
-  
+
   --destructive-foreground: 210 40% 98%;
   --color-destructive-foreground: hsl(210 40% 98%);
-  
+
   --border: 0 0% 15%;
   --color-border: hsl(0 0% 15%);
-  
+
   --input: 0 0% 15%;
   --color-input: hsl(0 0% 15%);
-  
+
   --ring: 152 100% 50%;
   --color-ring: hsl(152 100% 50%);
 }
@@ -402,37 +405,37 @@ body.theme-nova-green {
 .light .theme-nova-green {
   --background: 210 40% 98%;
   --color-background: hsl(210 40% 98%);
-  
+
   --foreground: 222.2 84% 4.9%;
   --color-foreground: hsl(222.2 84% 4.9%);
-  
+
   --card: 0 0% 100%;
   --color-card: hsl(0 0% 100%);
-  
+
   --card-foreground: 222.2 84% 4.9%;
   --color-card-foreground: hsl(222.2 84% 4.9%);
-  
+
   --popover: 0 0% 100%;
   --color-popover: hsl(0 0% 100%);
-  
+
   --popover-foreground: 222.2 84% 4.9%;
   --color-popover-foreground: hsl(222.2 84% 4.9%);
-  
+
   --primary: 152 100% 35%;
   --color-primary: hsl(152 100% 35%);
-  
+
   --primary-foreground: 0 0% 100%;
   --color-primary-foreground: hsl(0 0% 100%);
-  
+
   --secondary: 210 40% 96.1%;
   --color-secondary: hsl(210 40% 96.1%);
-  
+
   --secondary-foreground: 222.2 47.4% 11.2%;
   --color-secondary-foreground: hsl(222.2 47.4% 11.2%);
-  
+
   --muted: 210 40% 96.1%;
   --color-muted: hsl(210 40% 96.1%);
-  
+
   --muted-foreground: 215.4 16.3% 46.9%;
   --color-muted-foreground: hsl(215.4 16.3% 46.9%);
 }
@@ -441,104 +444,103 @@ body.theme-nova-green {
   background-color: hsl(210 40% 98%);
 }
 
-
-
 /* Theme: PeakPath (Semester Overview) */
 .dark .theme-peakpath {
   --background: 163 70% 4%;
   --color-background: hsl(163 70% 4%);
-  
+
   --foreground: 0 0% 100%;
   --color-foreground: hsl(0 0% 100%);
-  
+
   --card: 163 70% 6%;
   --color-card: hsl(163 70% 6% / 0.5);
-  
+
   --card-foreground: 0 0% 100%;
   --color-card-foreground: hsl(0 0% 100%);
-  
+
   --primary: 82 87% 69%;
   --color-primary: hsl(82 87% 69%);
-  
+
   --primary-foreground: 163 70% 4%;
   --color-primary-foreground: hsl(163 70% 4%);
-  
+
   --secondary: 0 0% 0%;
   --color-secondary: hsl(0 0% 0%);
-  
+
   --secondary-foreground: 0 0% 100%;
   --color-secondary-foreground: hsl(0 0% 100%);
-  
+
   --muted: 240 4% 16%;
   --color-muted: hsl(240 4% 16%);
-  
+
   --muted-foreground: 240 5% 65%;
   --color-muted-foreground: hsl(240 5% 65%);
-  
+
   --accent: 148 100% 83%;
   --color-accent: hsl(148 100% 83%);
-  
+
   --accent-foreground: 163 70% 4%;
   --color-accent-foreground: hsl(163 70% 4%);
-  
+
   --border: 240 4% 16%;
   --color-border: hsl(240 4% 16%);
-  
+
   --input: 240 4% 16%;
   --color-input: hsl(240 4% 16%);
-  
+
   --ring: 82 87% 69%;
   --color-ring: hsl(82 87% 69%);
-  
+
   --radius: 16px;
 }
 
-.light .theme-peakpath, .theme-peakpath {
+.light .theme-peakpath,
+.theme-peakpath {
   --background: 150 40% 98%;
   --color-background: hsl(150 40% 98%);
-  
+
   --foreground: 163 70% 10%;
   --color-foreground: hsl(163 70% 10%);
-  
+
   --card: 0 0% 100%;
   --color-card: hsl(0 0% 100% / 0.7);
-  
+
   --card-foreground: 163 70% 10%;
   --color-card-foreground: hsl(163 70% 10%);
-  
+
   --primary: 160 80% 30%;
   --color-primary: hsl(160 80% 30%);
-  
+
   --primary-foreground: 0 0% 100%;
   --color-primary-foreground: hsl(0 0% 100%);
-  
+
   --secondary: 0 0% 100%;
   --color-secondary: hsl(0 0% 100%);
-  
+
   --secondary-foreground: 163 70% 10%;
   --color-secondary-foreground: hsl(163 70% 10%);
-  
+
   --muted: 150 20% 92%;
   --color-muted: hsl(150 20% 92%);
-  
+
   --muted-foreground: 163 30% 40%;
   --color-muted-foreground: hsl(163 30% 40%);
-  
+
   --accent: 148 60% 40%;
   --color-accent: hsl(148 60% 40%);
-  
+
   --accent-foreground: 0 0% 100%;
   --color-accent-foreground: hsl(0 0% 100%);
-  
+
   --border: 150 20% 85%;
   --color-border: hsl(150 20% 85%);
-  
+
   --input: 150 20% 85%;
   --color-input: hsl(150 20% 85%);
-  
+
   --ring: 160 80% 30%;
   --color-ring: hsl(160 80% 30%);
-  
+
   --radius: 16px;
 }
 
@@ -549,52 +551,53 @@ Actually they said "so first implement only for the dark mode changes only for /
 So I'll just apply the dark mode theme.
 */
 /* Theme: NeuroSync (Today's Page) */
-.dark .theme-neurosync, .theme-neurosync {
+.dark .theme-neurosync,
+.theme-neurosync {
   --background: 232 57% 3%;
   --color-background: hsl(232 57% 3%);
-  
+
   --foreground: 0 0% 100%;
   --color-foreground: hsl(0 0% 100%);
-  
+
   --card: 240 5% 10%;
   --color-card: hsl(240 5% 10% / 0.6);
-  
+
   --card-foreground: 0 0% 100%;
   --color-card-foreground: hsl(0 0% 100%);
-  
-  --primary: 240 5% 16%; 
+
+  --primary: 240 5% 16%;
   --color-primary: hsl(240 5% 16%);
-  
+
   --primary-foreground: 0 0% 100%;
   --color-primary-foreground: hsl(0 0% 100%);
-  
+
   --secondary: 240 5% 10%;
   --color-secondary: hsl(240 5% 10%);
-  
+
   --secondary-foreground: 0 0% 100%;
   --color-secondary-foreground: hsl(0 0% 100%);
-  
+
   --muted: 240 5% 16%;
   --color-muted: hsl(240 5% 16% / 0.5);
-  
+
   --muted-foreground: 240 5% 65%;
   --color-muted-foreground: hsl(240 5% 65%);
-  
+
   --accent: 280 80% 60%;
   --color-accent: hsl(280 80% 60%);
-  
+
   --accent-foreground: 0 0% 100%;
   --color-accent-foreground: hsl(0 0% 100%);
-  
+
   --border: 240 5% 15%;
   --color-border: hsl(240 5% 15%);
-  
+
   --input: 240 5% 16%;
   --color-input: hsl(240 5% 16%);
-  
+
   --ring: 240 33% 50%;
   --color-ring: hsl(240 33% 50%);
-  
+
   --radius: 8px;
 }
 
@@ -643,7 +646,8 @@ So I'll just apply the dark mode theme.
 
 /* Theme: Orbital (Calendar) */
 
-.light .theme-orbital, html.light body.theme-orbital {
+.light .theme-orbital,
+html.light body.theme-orbital {
   --primary: 12 100% 67%;
   --color-primary: hsl(12 100% 67%);
   --background: 0 0% 98%;
@@ -708,15 +712,13 @@ So I'll just apply the dark mode theme.
   --color-border: hsl(0 0% 15%);
 }
 
-
 /* Subjects Page Gradients */
 .bg-subjects-gradient {
   background: linear-gradient(135deg, #fbc2eb 0%, #e0c3fc 50%, #c2e9fb 100%);
 }
 .dark .bg-subjects-gradient {
-  background: linear-gradient(135deg, #A020F0 0%, #312e81 50%, #020617 100%);
+  background: linear-gradient(135deg, #a020f0 0%, #312e81 50%, #020617 100%);
 }
-
 
 /* Light Mode Aether (Timetable) */
 .theme-aether {
@@ -727,15 +729,21 @@ So I'll just apply the dark mode theme.
   --aether-text-muted: rgba(0, 0, 0, 0.6);
   --aether-border: rgba(0, 0, 0, 0.1);
   --aether-primary: #000000;
-  --aether-primary-fg: #FFFFFF;
+  --aether-primary-fg: #ffffff;
   --aether-grad-start: rgba(255, 255, 255, 0.2);
   --aether-grad-end: rgba(255, 255, 255, 0.6);
-  
+
   --primary: 0 0% 0%;
   --primary-foreground: 0 0% 100%;
-  
-  background-color: #F4F4F4;
-  background-image: linear-gradient(to bottom, var(--aether-grad-start), var(--aether-grad-end)), url('https://images.unsplash.com/photo-1500382017468-9049fed747ef?q=80&w=2000&auto=format&fit=crop');
+
+  background-color: #f4f4f4;
+  background-image:
+    linear-gradient(
+      to bottom,
+      var(--aether-grad-start),
+      var(--aether-grad-end)
+    ),
+    url("https://images.unsplash.com/photo-1500382017468-9049fed747ef?q=80&w=2000&auto=format&fit=crop");
   background-size: cover;
   background-position: center;
   background-attachment: fixed;
@@ -747,39 +755,52 @@ So I'll just apply the dark mode theme.
   --aether-overlay: rgba(0, 0, 0, 0.5);
   --aether-overlay-heavy: rgba(0, 0, 0, 0.7);
   --aether-overlay-light: rgba(0, 0, 0, 0.3);
-  --aether-text: #FFFFFF;
+  --aether-text: #ffffff;
   --aether-text-muted: rgba(255, 255, 255, 0.6);
   --aether-border: rgba(255, 255, 255, 0.1);
-  --aether-primary: #FFFFFF;
+  --aether-primary: #ffffff;
   --aether-primary-fg: #000000;
   --aether-grad-start: rgba(0, 0, 0, 0.3);
   --aether-grad-end: rgba(0, 0, 0, 0.7);
-  
+
   --primary: 0 0% 100%;
   --primary-foreground: 0 0% 0%;
-  
+
   background-color: #050505;
-  background-image: linear-gradient(to bottom, var(--aether-grad-start), var(--aether-grad-end)), url('https://images.unsplash.com/photo-1500382017468-9049fed747ef?q=80&w=2000&auto=format&fit=crop');
+  background-image:
+    linear-gradient(
+      to bottom,
+      var(--aether-grad-start),
+      var(--aether-grad-end)
+    ),
+    url("https://images.unsplash.com/photo-1500382017468-9049fed747ef?q=80&w=2000&auto=format&fit=crop");
   background-size: cover;
   background-position: center;
   background-attachment: fixed;
 }
 
-.theme-aether *:not(.chatbot-btn):not(.chatbot-btn *):not(.chatbot-window):not(.chatbot-window *) {
+.theme-aether
+  *:not(.chatbot-btn):not(.chatbot-btn *):not(.chatbot-window):not(
+    .chatbot-window *
+  ) {
   border-radius: 0 !important;
 }
 
-.theme-aether .bg-card, .theme-aether .bg-card\/90, .theme-aether .bg-muted\/50 {
+.theme-aether .bg-card,
+.theme-aether .bg-card\/90,
+.theme-aether .bg-muted\/50 {
   background-color: var(--aether-overlay) !important;
   backdrop-filter: blur(16px) saturate(150%);
   border-color: var(--aether-border) !important;
 }
 
-.theme-aether .border-border, .theme-aether .border-primary\/30 {
+.theme-aether .border-border,
+.theme-aether .border-primary\/30 {
   border-color: var(--aether-border) !important;
 }
 
-.theme-aether .text-foreground, .theme-aether .text-foreground\/90 {
+.theme-aether .text-foreground,
+.theme-aether .text-foreground\/90 {
   color: var(--aether-text) !important;
 }
 
@@ -800,11 +821,12 @@ So I'll just apply the dark mode theme.
 .theme-aether .text-primary {
   color: var(--aether-primary) !important;
 }
-.theme-aether .text-primary-foreground, 
+.theme-aether .text-primary-foreground,
 .theme-aether .bg-primary.text-primary-foreground {
   color: var(--aether-primary-fg) !important;
 }
-.theme-aether .shadow-primary\/20, .theme-aether .shadow-md {
+.theme-aether .shadow-primary\/20,
+.theme-aether .shadow-md {
   box-shadow: none !important;
 }
 
@@ -816,19 +838,21 @@ So I'll just apply the dark mode theme.
 }
 
 /* Aether specific geometry */
-.theme-aether .border-b, .theme-aether .border-r, .theme-aether .border {
+.theme-aether .border-b,
+.theme-aether .border-r,
+.theme-aether .border {
   border-color: var(--aether-border) !important;
 }
 
 .aether-mono {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: "JetBrains Mono", monospace;
 }
 
 .aether-btn {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: "JetBrains Mono", monospace;
   text-transform: uppercase;
   font-size: 11px;
   letter-spacing: 0.05em;
@@ -845,151 +869,192 @@ So I'll just apply the dark mode theme.
 
 /* --- Extracted from TodayPage.tsx --- */
 
-        .theme-terrascape {
-          --ts-primary: #059669;
-          --ts-accent: #D97706;
-          --ts-bg: #FFFFFF;
-          --ts-surface: #F3F4F6;
-          --ts-text-primary: #111827;
-          --ts-text-secondary: #4B5563;
-          --ts-border: #E5E7EB;
-          
-          background-color: var(--ts-bg);
-          color: var(--ts-text-primary);
-          font-family: 'Geist', sans-serif;
-        }
-        
-        .dark .theme-terrascape {
-          --ts-bg: #050505;
-          --ts-surface: rgba(18, 18, 18, 0.7);
-          --ts-text-primary: #FFFFFF;
-          --ts-text-secondary: #A1A1AA;
-          --ts-border: rgba(255, 255, 255, 0.08);
-        }
+.theme-terrascape {
+  --ts-primary: #059669;
+  --ts-accent: #d97706;
+  --ts-bg: #ffffff;
+  --ts-surface: #f3f4f6;
+  --ts-text-primary: #111827;
+  --ts-text-secondary: #4b5563;
+  --ts-border: #e5e7eb;
 
-        /* Override generic primary for the sidebar and other global elements */
-        .theme-terrascape .bg-primary {
-          background-color: var(--ts-primary) !important;
-          color: #FFFFFF !important;
-          box-shadow: none !important;
-        }
-        .theme-terrascape .text-primary {
-          color: var(--ts-primary) !important;
-        }
-        .theme-terrascape .text-primary-foreground, 
-        .theme-terrascape .bg-primary.text-primary-foreground {
-          color: #FFFFFF !important;
-        }
-        .theme-terrascape .shadow-primary\/20, .theme-terrascape .shadow-md {
-          box-shadow: none !important;
-        }
-        .theme-terrascape aside {
-          background-color: transparent !important;
-          border-color: var(--ts-border) !important;
-        }
+  background-color: var(--ts-bg);
+  color: var(--ts-text-primary);
+  font-family: "Geist", sans-serif;
+}
 
+.dark .theme-terrascape {
+  --ts-bg: #050505;
+  --ts-surface: rgba(18, 18, 18, 0.7);
+  --ts-text-primary: #ffffff;
+  --ts-text-secondary: #a1a1aa;
+  --ts-border: rgba(255, 255, 255, 0.08);
+}
 
-        .theme-terrascape * {
-          border-color: var(--ts-border) !important;
-        }
+/* Override generic primary for the sidebar and other global elements */
+.theme-terrascape .bg-primary {
+  background-color: var(--ts-primary) !important;
+  color: #ffffff !important;
+  box-shadow: none !important;
+}
+.theme-terrascape .text-primary {
+  color: var(--ts-primary) !important;
+}
+.theme-terrascape .text-primary-foreground,
+.theme-terrascape .bg-primary.text-primary-foreground {
+  color: #ffffff !important;
+}
+.theme-terrascape .shadow-primary\/20,
+.theme-terrascape .shadow-md {
+  box-shadow: none !important;
+}
+.theme-terrascape aside {
+  background-color: transparent !important;
+  border-color: var(--ts-border) !important;
+}
 
-        .theme-terrascape .bg-card, .theme-terrascape .bg-card\\/60, .theme-terrascape .bg-card\\/40, .theme-terrascape .bg-card\\/80, .theme-terrascape .bg-card\\/90 {
-          background-color: var(--ts-surface) !important;
-          border-color: var(--ts-border) !important;
-          box-shadow: none !important;
-          box-shadow: 0 4px 20px rgba(0,0,0,0.05) !important;
-          backdrop-filter: blur(12px) !important;
-        }
-        
-        .theme-terrascape .bg-white\\/5, .theme-terrascape .bg-white\\/10 {
-          background-color: var(--ts-surface) !important;
-        }
-        
-        .theme-terrascape .text-foreground, .theme-terrascape .text-white {
-          color: var(--ts-text-primary) !important;
-        }
+.theme-terrascape * {
+  border-color: var(--ts-border) !important;
+}
 
-        .theme-terrascape .text-muted-foreground, .theme-terrascape .text-white\\/80 {
-          color: var(--ts-text-secondary) !important;
-        }
+.theme-terrascape .bg-card,
+.theme-terrascape .bg-card\\/60,
+.theme-terrascape .bg-card\\/40,
+.theme-terrascape .bg-card\\/80,
+.theme-terrascape .bg-card\\/90 {
+  background-color: var(--ts-surface) !important;
+  border-color: var(--ts-border) !important;
+  box-shadow: none !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05) !important;
+  backdrop-filter: blur(12px) !important;
+}
 
-        .theme-terrascape .border-border\\/50, .theme-terrascape .border-white\\/10, .theme-terrascape .border-white\\/20 {
-          border-color: var(--ts-border) !important;
-        }
+.theme-terrascape .bg-white\\/5,
+.theme-terrascape .bg-white\\/10 {
+  background-color: var(--ts-surface) !important;
+}
 
-        /* Suppress the vibrant colored backgrounds from the old AI slop */
-        .theme-terrascape .bg-emerald-500\\/10, .theme-terrascape .bg-rose-500\\/10, .theme-terrascape .bg-amber-500\\/10, .theme-terrascape .bg-purple-500\\/10 {
-          background-color: var(--ts-surface) !important;
-          border-color: var(--ts-border) !important;
-        }
-        
-        .theme-terrascape .text-emerald-500, .theme-terrascape .text-emerald-600, .theme-terrascape .text-emerald-400 {
-          color: var(--ts-primary) !important;
-        }
-        
-        .theme-terrascape .text-rose-500, .theme-terrascape .text-rose-600, .theme-terrascape .text-rose-400 {
-          color: #DC2626 !important; /* Keep a classic red for missed classes, but a flat solid one */
-        }
-        
-        .theme-terrascape .text-amber-500, .theme-terrascape .text-amber-600 {
-          color: var(--ts-accent) !important;
-        }
-        
-        /* Disable shadow glow from the original UI */
-        .theme-terrascape .shadow-emerald-500\\/20, .theme-terrascape .shadow-rose-500\\/20, .theme-terrascape .shadow-amber-500\\/20 {
-          box-shadow: none !important;
-        }
+.theme-terrascape .text-foreground,
+.theme-terrascape .text-white {
+  color: var(--ts-text-primary) !important;
+}
 
-        .ts-hero-title {
-          font-family: 'Geist', sans-serif;
-          font-size: clamp(2.5rem, 6vw, 5rem);
-          font-weight: 500;
-          line-height: 1.04;
-          letter-spacing: -0.02em;
-          color: var(--ts-text-primary);
-        }
-        
-        .ts-pill-btn {
-          border-radius: 9999px !important;
-          background-color: var(--ts-text-primary) !important;
-          color: var(--ts-bg) !important;
-          font-weight: 500;
-          padding: 10px 24px;
-        }
+.theme-terrascape .text-muted-foreground,
+.theme-terrascape .text-white\\/80 {
+  color: var(--ts-text-secondary) !important;
+}
 
-        .ts-secondary-btn {
-          border-radius: 9999px !important;
-          background-color: transparent !important;
-          border: 1px solid var(--ts-primary) !important;
-          color: var(--ts-primary) !important;
-          font-weight: 500;
-          padding: 10px 24px;
-        }
+.theme-terrascape .border-border\\/50,
+.theme-terrascape .border-white\\/10,
+.theme-terrascape .border-white\\/20 {
+  border-color: var(--ts-border) !important;
+}
 
-        .theme-terrascape .rounded-2xl {
-          border-radius: 8px !important;
-        }
-        .theme-terrascape .rounded-xl {
-          border-radius: 8px !important;
-        }
-        
-        /* Smooth out buttons */
-        .theme-terrascape button {
-          border-radius: 9999px !important;
-        }
-      
+/* Suppress the vibrant colored backgrounds from the old AI slop */
+.theme-terrascape .bg-emerald-500\\/10,
+.theme-terrascape .bg-rose-500\\/10,
+.theme-terrascape .bg-amber-500\\/10,
+.theme-terrascape .bg-purple-500\\/10 {
+  background-color: var(--ts-surface) !important;
+  border-color: var(--ts-border) !important;
+}
+
+.theme-terrascape .text-emerald-500,
+.theme-terrascape .text-emerald-600,
+.theme-terrascape .text-emerald-400 {
+  color: var(--ts-primary) !important;
+}
+
+.theme-terrascape .text-rose-500,
+.theme-terrascape .text-rose-600,
+.theme-terrascape .text-rose-400 {
+  color: #dc2626 !important; /* Keep a classic red for missed classes, but a flat solid one */
+}
+
+.theme-terrascape .text-amber-500,
+.theme-terrascape .text-amber-600 {
+  color: var(--ts-accent) !important;
+}
+
+/* Disable shadow glow from the original UI */
+.theme-terrascape .shadow-emerald-500\\/20,
+.theme-terrascape .shadow-rose-500\\/20,
+.theme-terrascape .shadow-amber-500\\/20 {
+  box-shadow: none !important;
+}
+
+.ts-hero-title {
+  font-family: "Geist", sans-serif;
+  font-size: clamp(2.5rem, 6vw, 5rem);
+  font-weight: 500;
+  line-height: 1.04;
+  letter-spacing: -0.02em;
+  color: var(--ts-text-primary);
+}
+
+.ts-pill-btn {
+  border-radius: 9999px !important;
+  background-color: var(--ts-text-primary) !important;
+  color: var(--ts-bg) !important;
+  font-weight: 500;
+  padding: 10px 24px;
+}
+
+.ts-secondary-btn {
+  border-radius: 9999px !important;
+  background-color: transparent !important;
+  border: 1px solid var(--ts-primary) !important;
+  color: var(--ts-primary) !important;
+  font-weight: 500;
+  padding: 10px 24px;
+}
+
+.theme-terrascape .rounded-2xl {
+  border-radius: 8px !important;
+}
+.theme-terrascape .rounded-xl {
+  border-radius: 8px !important;
+}
+
+/* Smooth out buttons */
+.theme-terrascape button {
+  border-radius: 9999px !important;
+}
+
 /* --- Cinematic Font (extracted from inline styles) --- */
 
 .cinematic-font {
-  font-family: 'Oswald', sans-serif;
+  font-family: "Oswald", sans-serif;
   letter-spacing: -0.02em;
   text-transform: uppercase;
 }
-.scrollbar-hide::-webkit-scrollbar { display: none; } .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
 
-.scrollbar-hide::-webkit-scrollbar { display: none; }
-.scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
 
-
-/* Smooth Theme Transition */
-.theme-transitioning, .theme-transitioning *, .theme-transitioning *::before, .theme-transitioning *::after { transition: background-color 0.4s ease, border-color 0.4s ease, color 0.4s ease, fill 0.4s ease, stroke 0.4s ease, box-shadow 0.4s ease !important; transition-delay: 0s !important; }
+/* Smooth Theme Transition (Fast & Lag-Free) */
+.theme-transitioning,
+.theme-transitioning body,
+.theme-transitioning .bg-background,
+.theme-transitioning .bg-card,
+.theme-transitioning .bg-surface,
+.theme-transitioning .text-foreground,
+.theme-transitioning .border-border {
+  transition:
+    background-color 0.15s ease-out,
+    border-color 0.15s ease-out,
+    color 0.15s ease-out !important;
+  transition-delay: 0s !important;
+}

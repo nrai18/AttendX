@@ -10,5 +10,6 @@ router.use(authenticate, authorizeRole(["admin", "superadmin"]));
 
 router.get("/feedbacks", AdminController.getFeedbackLogs);
 router.get("/feedbacks/:id/logs", AdminController.downloadDecryptedLog);
+router.post("/broadcast", AdminController.broadcastNotification);
 
 export default router;

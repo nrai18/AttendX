@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { capacitorStorage } from "./capacitorStorage";
 import { persist, createJSONStorage } from "zustand/middleware";
 import { Preferences } from "@capacitor/preferences";
+import { api } from "../lib/api";
 
 export interface User {
   id: string;
@@ -57,13 +58,21 @@ export const useAuthStore = create<AuthState>()(
           isLoading: false,
         }),
 
-      logout: () => {
+      logout: async () => {
+        try {
+          // Clear the device FCM token in the backend so logged-out devices don't get push notifications
+          await api.patch('/users/me', { fcmToken: null });
+        } catch (error) {
+          console.error("Failed to clear FCM token on logout:", error);
+        }
+
         const keysToRemove = [
           'attendx-auth',
           'attendx-attendance-cache',
           'attendx-api-cache',
           'attendx-assignments',
-          'attendx-sync-storage'
+          'attendx-sync-storage',
+          'fcm_token'
         ];
         keysToRemove.forEach(k => {
           Preferences.remove({ key: k }).catch(() => {});

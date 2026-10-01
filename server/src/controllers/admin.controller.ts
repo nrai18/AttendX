@@ -87,4 +87,24 @@ export class AdminController {
       res.status(500).json({ message: "Failed to decrypt and download logs" });
     }
   }
+
+  static async broadcastNotification(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { title, body, data } = req.body;
+      
+      if (!title || !body) {
+        return res.status(400).json({ message: "Title and body are required." });
+      }
+
+      // We dynamically import it to avoid circular deps
+      const { PushNotificationService } = await import("../services/push_notification.service");
+      
+      await PushNotificationService.broadcastMessage(title, body, data);
+      
+      res.json({ message: "Broadcast dispatched successfully." });
+    } catch (error: any) {
+      console.error("AdminController.broadcastNotification Error:", error);
+      res.status(500).json({ message: "Failed to broadcast notification." });
+    }
+  }
 }

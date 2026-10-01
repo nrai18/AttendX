@@ -28,7 +28,9 @@ import {
   Compass,
   Activity,
   AlertTriangle,
-  AudioLines
+  AudioLines,
+  Square,
+  Radio
 } from "lucide-react";
 import { FormattedChatMessage } from "./FormattedChatMessage";
 import { VoiceModeOverlay } from "./VoiceModeOverlay";
@@ -257,13 +259,174 @@ export const FloatingChatbot: React.FC = () => {
     }
   }, [messages, isLoading]);
 
+  const [isHandsFree, setIsHandsFree] = useState(false);
+  const [handsFreeStatus, setHandsFreeStatus] = useState<"LISTENING" | "THINKING" | "SPEAKING">("LISTENING");
+  const isHandsFreeRef = useRef(false);
+  const handsFreeSilenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handsFreeAutoSubmitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isHandsFreeProcessingRef = useRef(false);
+  const handsFreeListenOptionsRef = useRef<any>(null);
+
+  const resetHandsFreeSilenceTimer = () => {
+    if (handsFreeSilenceTimerRef.current) {
+      clearTimeout(handsFreeSilenceTimerRef.current);
+      handsFreeSilenceTimerRef.current = null;
+    }
+    if (isHandsFreeRef.current && !isHandsFreeProcessingRef.current) {
+      handsFreeSilenceTimerRef.current = setTimeout(() => {
+        if (isHandsFreeRef.current && !isHandsFreeProcessingRef.current && !NativeVoiceService.isSpeaking()) {
+          stopHandsFreeMode("Hands-free paused due to 10s of inactivity.");
+        }
+      }, 10000);
+    }
+  };
+
+  const checkHandsFreeVoiceBreakout = (text: string) => {
+    const norm = text.trim().toLowerCase().replace(/[.,!?;:]/g, "");
+    const breakoutWords = ["stop", "cancel", "stop conversation", "goodbye", "exit", "quit"];
+    if (breakoutWords.includes(norm)) {
+      stopHandsFreeMode("Voice breakout command detected: conversation stopped.");
+      return true;
+    }
+    return false;
+  };
+
+  const stopHandsFreeMode = (reason?: string) => {
+    setIsHandsFree(false);
+    isHandsFreeRef.current = false;
+    isHandsFreeProcessingRef.current = false;
+    if (handsFreeSilenceTimerRef.current) {
+      clearTimeout(handsFreeSilenceTimerRef.current);
+      handsFreeSilenceTimerRef.current = null;
+    }
+    if (handsFreeAutoSubmitTimerRef.current) {
+      clearTimeout(handsFreeAutoSubmitTimerRef.current);
+      handsFreeAutoSubmitTimerRef.current = null;
+    }
+    if (isLoading) {
+      handleStopGeneration();
+    }
+    NativeVoiceService.stopContinuousLoop();
+    setIsListeningMic(false);
+    if (reason) {
+      toast.info(reason);
+    }
+  };
+
+  const startHandsFreeMode = async () => {
+    if (isHandsFree) {
+      stopHandsFreeMode();
+      return;
+    }
+
+    if (isVoiceOpen) {
+      setIsVoiceOpen(false);
+    }
+
+    await NativeVoiceService.stopSpeaking();
+    await NativeVoiceService.stopListening();
+
+    setInput("");
+    setIsHandsFree(true);
+    isHandsFreeRef.current = true;
+    setHandsFreeStatus("LISTENING");
+    lastInputMethodRef.current = "voice";
+    resetHandsFreeSilenceTimer();
+
+    const listenOptions = {
+      lang: "en-IN",
+      onPartialResult: (text: string) => {
+        if (!isHandsFreeRef.current || isHandsFreeProcessingRef.current) return;
+        setInput(text);
+        resetHandsFreeSilenceTimer();
+        if (checkHandsFreeVoiceBreakout(text)) {
+          setInput("");
+          return;
+        }
+
+        if (handsFreeAutoSubmitTimerRef.current) clearTimeout(handsFreeAutoSubmitTimerRef.current);
+        handsFreeAutoSubmitTimerRef.current = setTimeout(() => {
+          if (isHandsFreeRef.current && !isHandsFreeProcessingRef.current && text.trim()) {
+            triggerHandsFreeSubmit(text.trim());
+          }
+        }, 1500);
+      },
+      onFinalResult: (text: string) => {
+        if (!isHandsFreeRef.current || isHandsFreeProcessingRef.current) return;
+        setInput(text);
+        resetHandsFreeSilenceTimer();
+        if (checkHandsFreeVoiceBreakout(text)) {
+          setInput("");
+          return;
+        }
+
+        if (handsFreeAutoSubmitTimerRef.current) clearTimeout(handsFreeAutoSubmitTimerRef.current);
+        handsFreeAutoSubmitTimerRef.current = setTimeout(() => {
+          if (isHandsFreeRef.current && !isHandsFreeProcessingRef.current && text.trim()) {
+            triggerHandsFreeSubmit(text.trim());
+          }
+        }, 800);
+      },
+      onError: (err: any) => {
+        console.warn("Hands-free speech recognition error:", err);
+        if (err && err.error && err.error !== "no-speech" && err.error !== "aborted") {
+          toast.error(`Mic Error: ${err.error}`);
+        } else if (err && err.message) {
+          toast.error(`Mic Error: ${err.message}`);
+        }
+        if (isHandsFreeRef.current && !isHandsFreeProcessingRef.current) {
+          setHandsFreeStatus("LISTENING");
+        }
+      },
+      onEnd: () => {
+        if (isHandsFreeRef.current && !NativeVoiceService.isSpeaking() && !isHandsFreeProcessingRef.current) {
+          if (!NativeVoiceService.isListening() && NativeVoiceService.isContinuousLoop()) {
+            NativeVoiceService.startListening(listenOptions);
+          }
+        }
+      }
+    };
+
+    handsFreeListenOptionsRef.current = listenOptions;
+    NativeVoiceService.startContinuousLoop(listenOptions);
+    const started = await NativeVoiceService.startListening(listenOptions);
+    if (!started && isHandsFreeRef.current) {
+      stopHandsFreeMode("Microphone could not be started.");
+    }
+  };
+
+  const triggerHandsFreeSubmit = async (queryText: string) => {
+    if (!queryText.trim() || isHandsFreeProcessingRef.current || !isHandsFreeRef.current) return;
+    
+    if (handsFreeSilenceTimerRef.current) {
+      clearTimeout(handsFreeSilenceTimerRef.current);
+      handsFreeSilenceTimerRef.current = null;
+    }
+    if (handsFreeAutoSubmitTimerRef.current) {
+      clearTimeout(handsFreeAutoSubmitTimerRef.current);
+      handsFreeAutoSubmitTimerRef.current = null;
+    }
+
+    isHandsFreeProcessingRef.current = true;
+    setHandsFreeStatus("THINKING");
+    setInput("");
+    await handleSendMessage(queryText, 'voice');
+    isHandsFreeProcessingRef.current = false;
+  };
+
   // Global Keyboard Shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === "/") {
         e.preventDefault();
-        setIsOpen((prev) => !prev);
+        setIsOpen((prev) => {
+          if (prev && isHandsFreeRef.current) {
+            stopHandsFreeMode();
+          }
+          return !prev;
+        });
       } else if (e.key === "Escape" && isOpen) {
+        stopHandsFreeMode();
         NativeVoiceService.stopSpeaking();
         NativeVoiceService.stopListening();
         setIsOpen(false);
@@ -273,9 +436,17 @@ export const FloatingChatbot: React.FC = () => {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isOpen]);
 
+  // Synchronize hands-free state when drawer closes
+  useEffect(() => {
+    if (!isOpen && isHandsFreeRef.current) {
+      stopHandsFreeMode();
+    }
+  }, [isOpen]);
+
   // Lifecycle cleanup: ensure speech & listening terminate when component unmounts
   useEffect(() => {
     return () => {
+      stopHandsFreeMode();
       NativeVoiceService.stopSpeaking();
       NativeVoiceService.stopListening();
     };
@@ -361,6 +532,7 @@ export const FloatingChatbot: React.FC = () => {
 
   const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'voice' | 'voice_overlay'): Promise<string | undefined> => {
     const effectiveInputMethod = inputMethod || lastInputMethodRef.current;
+    const wasHandsFree = isHandsFreeRef.current;
     // Reset tracker back to default 'text' for subsequent interactions
     lastInputMethodRef.current = 'text';
 
@@ -472,9 +644,30 @@ export const FloatingChatbot: React.FC = () => {
       // Requirement R2: TTS must ONLY trigger automatically if the user's prompt came from voice
       // The overlay handles its own speech (voice_overlay), so we only speak if it's the inline mic ('voice')
       const textToSpeak = data.response || data.reply;
-      if (effectiveInputMethod === 'voice' && textToSpeak) {
+      if (isHandsFreeRef.current && textToSpeak) {
+        setHandsFreeStatus("SPEAKING");
         await NativeVoiceService.stopSpeaking();
-        await NativeVoiceService.speak(textToSpeak);
+        await NativeVoiceService.speak(textToSpeak, {
+          autoResumeListening: true,
+          listenOptions: handsFreeListenOptionsRef.current,
+          onStart: () => {
+            if (isHandsFreeRef.current) setHandsFreeStatus("SPEAKING");
+          },
+          onEnd: () => {
+            if (isHandsFreeRef.current) {
+              setHandsFreeStatus("LISTENING");
+              resetHandsFreeSilenceTimer();
+            }
+          }
+        });
+      } else if (effectiveInputMethod === 'voice' && textToSpeak) {
+        if (wasHandsFree && !isHandsFreeRef.current) {
+          // User stopped hands-free while waiting for response: do NOT speak aloud
+          await NativeVoiceService.stopSpeaking();
+        } else {
+          await NativeVoiceService.stopSpeaking();
+          await NativeVoiceService.speak(textToSpeak);
+        }
       } else {
         // Mute automatic TTS and explicitly ensure any audio is stopped
         await NativeVoiceService.stopSpeaking();
@@ -828,7 +1021,14 @@ export const FloatingChatbot: React.FC = () => {
         <motion.button
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
-          onClick={() => setIsOpen(prev => !prev)}
+          onClick={() => {
+            setIsOpen(prev => {
+              if (prev && isHandsFreeRef.current) {
+                stopHandsFreeMode();
+              }
+              return !prev;
+            });
+          }}
           className={`chatbot-btn group relative flex items-center gap-2.5 px-4 py-3 rounded-full shadow-xl transition-all cursor-pointer text-xs font-semibold ${getPillClasses()}`}
           aria-label="Open AttendX AI"
         >
@@ -925,6 +1125,7 @@ export const FloatingChatbot: React.FC = () => {
 
                 <button
                   onClick={() => {
+                    stopHandsFreeMode();
                     NativeVoiceService.stopSpeaking();
                     NativeVoiceService.stopListening();
                     setIsOpen(false);
@@ -1210,6 +1411,8 @@ export const FloatingChatbot: React.FC = () => {
 
             {/* Gemini-style Bottom Composer Pill */}
             <div className="p-3 bg-gradient-to-t from-background/90 to-transparent pb-4">
+
+
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
@@ -1258,28 +1461,16 @@ export const FloatingChatbot: React.FC = () => {
                       <Send className="w-4 h-4" />
                     </button>
                   ) : (
-                    <>
                       <button
                         type="button"
-                        onClick={toggleMic}
-                        className={`w-9 h-9 rounded-full flex items-center justify-center transition-all cursor-pointer ${
-                          isListeningMic
-                            ? "bg-rose-500/10 dark:bg-rose-500/20 text-rose-500 animate-pulse"
-                            : "hover:bg-slate-200 dark:hover:bg-white/10 text-slate-500 dark:text-gray-400 hover:text-slate-900 dark:hover:text-white"
-                        }`}
-                        title={isListeningMic ? "Listening..." : "Speech to text"}
-                      >
-                        <Mic className="w-4.5 h-4.5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setIsVoiceOpen(true)}
+                        onClick={() => {
+                          setIsVoiceOpen(true);
+                        }}
                         className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-slate-200 dark:hover:bg-white/10 text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors cursor-pointer"
                         title="Live Voice Mode"
                       >
                         <AudioLines className="w-4.5 h-4.5" />
                       </button>
-                    </>
                   )}
                 </div>
               </form>
