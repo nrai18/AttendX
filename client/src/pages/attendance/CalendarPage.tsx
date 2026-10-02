@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { format, subMonths, addMonths, startOfMonth, endOfMonth, startOfWeek, endOfWeek, isSameMonth, isSameDay, addDays } from "date-fns";
 import { PageSkeleton } from "../../components/common/PageSkeleton";
 import { ChevronLeft, ChevronRight, Loader2, MessageSquare, Upload, CalendarDays } from "lucide-react";
@@ -103,7 +103,15 @@ export const CalendarPage = () => {
     setTouchEndX(null);
   };
 
+  const abortControllerRef = useRef<AbortController | null>(null);
+
   const fetchCalendar = async (force: boolean = false) => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     const monthStr = format(currentDate, "yyyy-MM");
     try {
       if (cachedData && cachedData[monthStr]) {
@@ -112,7 +120,9 @@ export const CalendarPage = () => {
         setIsLoading(true);
       }
       
-      const res = await api.get(`/attendance/calendar?month=${monthStr}${force ? '&force=true' : ''}`);
+      const res = await api.get(`/attendance/calendar?month=${monthStr}${force ? '&force=true' : ''}`, {
+        signal: controller.signal
+      });
       let d = typeof res.data === 'string' ? { days: [], insights: [], events: [], isComplete: false, completionPercentage: 0, requiredClassesToTarget: 0, canBunk: false } : res.data;
       
       // MERGE OFFLINE/OPTIMISTIC LOGS OVER THE API RESPONSE
@@ -172,7 +182,8 @@ export const CalendarPage = () => {
         [monthStr]: d
       });
       return d;
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.name === 'CanceledError' || error?.name === 'AbortError' || error?.message?.includes('canceled')) return;
       console.error("Failed to fetch calendar:", error);
       
       // --- OFFLINE FALLBACK CALCULATION ---
@@ -267,7 +278,9 @@ export const CalendarPage = () => {
         return null;
       }
     } finally {
-      setIsLoading(false);
+      if (abortControllerRef.current === controller) {
+        setIsLoading(false);
+      }
     }
   };
 

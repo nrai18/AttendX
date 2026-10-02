@@ -53,7 +53,7 @@ export class AuthController {
       }
       const { user, accessToken, refreshToken } = await AuthService.login(req.body, req);
       setRefreshCookie(res, refreshToken);
-      res.status(200).json({ user, accessToken });
+      res.status(200).json({ user, accessToken, refreshToken });
     } catch (error: any) {
       res.status(401).json({ message: error.message });
     }
@@ -61,14 +61,14 @@ export class AuthController {
 
   static async refresh(req: Request, res: Response) {
     try {
-      const oldRefreshToken = req.cookies.refreshToken;
+      const oldRefreshToken = req.cookies.refreshToken || req.body.refreshToken;
       if (!oldRefreshToken) {
         return res.status(401).json({ message: "No refresh token provided" });
       }
 
       const { accessToken, refreshToken } = await AuthService.refresh(oldRefreshToken, req);
       setRefreshCookie(res, refreshToken);
-      res.status(200).json({ accessToken });
+      res.status(200).json({ accessToken, refreshToken });
     } catch (error: any) {
       if (/invalid|expired|not found|reuse/i.test(error.message)) {
         clearRefreshCookie(res);
@@ -123,7 +123,7 @@ export class AuthController {
 
       const { user, accessToken, refreshToken } = await AuthService.googleNativeLogin(idToken, req);
       setRefreshCookie(res, refreshToken);
-      res.status(200).json({ user, accessToken });
+      res.status(200).json({ user, accessToken, refreshToken });
     } catch (error: any) {
       console.error("Google Native Auth Error:", error);
       res.status(401).json({ message: error.message || "Authentication failed" });

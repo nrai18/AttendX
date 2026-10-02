@@ -60,6 +60,9 @@ function createInMemoryModelHandler(modelName: string) {
         const itemValue = (item as any)[key];
         const filterValue = value as any;
         if ("equals" in filterValue && itemValue !== filterValue.equals) return false;
+        if ("not" in filterValue) {
+          if (filterValue.not === null ? (itemValue === null || itemValue === undefined) : itemValue === filterValue.not) return false;
+        }
         if ("endsWith" in filterValue && typeof itemValue === "string" && !itemValue.endsWith(filterValue.endsWith)) return false;
         if ("startsWith" in filterValue && typeof itemValue === "string" && !itemValue.startsWith(filterValue.startsWith)) return false;
         if ("in" in filterValue && Array.isArray(filterValue.in) && !filterValue.in.includes(itemValue)) return false;
@@ -108,6 +111,21 @@ function createInMemoryModelHandler(modelName: string) {
         updatedAt: new Date(),
       };
       return list[index];
+    },
+    async updateMany(args: any) {
+      const list = memoryStore[storeKey];
+      let count = 0;
+      for (let i = 0; i < list.length; i++) {
+        if (matchesWhere(list[i], args?.where)) {
+          list[i] = {
+            ...list[i],
+            ...(args?.data || {}),
+            updatedAt: new Date(),
+          };
+          count++;
+        }
+      }
+      return { count };
     },
     async upsert(args: any) {
       const existing = await this.findFirst({ where: args?.where });

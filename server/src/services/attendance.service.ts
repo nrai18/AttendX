@@ -6,6 +6,18 @@ export class AttendanceService {
     return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
   }
 
+  // Parses UTC timestamps from DB that represent midnight IST dates
+  private static getDbDateUtc(d: Date): number {
+    const adj = new Date(d.getTime() + 5.5 * 3600 * 1000);
+    return Date.UTC(adj.getUTCFullYear(), adj.getUTCMonth(), adj.getUTCDate());
+  }
+
+  private static toDbLocalIso(date: Date): string {
+    const adj = new Date(date.getTime() + 5.5 * 3600 * 1000);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${adj.getUTCFullYear()}-${pad(adj.getUTCMonth() + 1)}-${pad(adj.getUTCDate())}`;
+  }
+
   /**
    * Get the agenda for a specific date:
    * 1. Get all regular TimetableSlots for the dayOfWeek
@@ -389,10 +401,11 @@ export class AttendanceService {
       if (!sub) continue;
       
       const stats = subjectStatsMap[sub.id];
-      const d = new Date(att.date);
-      const pad = (n: number) => String(n).padStart(2, '0');
-      const dateKey = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-      const dateFormatted = d.toLocaleDateString("en-US", {
+      const dbDate = new Date(att.date);
+      const dateKey = AttendanceService.toDbLocalIso(dbDate);
+      const adj = new Date(dbDate.getTime() + 5.5 * 3600 * 1000);
+      const dateFormatted = adj.toLocaleDateString("en-US", {
+        timeZone: "UTC",
         weekday: "short",
         day: "numeric",
         month: "short",
@@ -425,7 +438,7 @@ export class AttendanceService {
         id: att.id,
         date: dateKey,
         dateFormatted,
-        timestamp: d.getTime(),
+        timestamp: dbDate.getTime(),
         subjectId: sub.id,
         subjectName: sub.name,
         subjectCode: sub.code,
@@ -456,10 +469,11 @@ export class AttendanceService {
       if (!sub) continue;
       
       const stats = subjectStatsMap[sub.id];
-      const d = new Date(extra.date);
-      const pad = (n: number) => String(n).padStart(2, '0');
-      const dateKey = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-      const dateFormatted = d.toLocaleDateString("en-US", {
+      const dbDate = new Date(extra.date);
+      const dateKey = AttendanceService.toDbLocalIso(dbDate);
+      const adj = new Date(dbDate.getTime() + 5.5 * 3600 * 1000);
+      const dateFormatted = adj.toLocaleDateString("en-US", {
+        timeZone: "UTC",
         weekday: "short",
         day: "numeric",
         month: "short",
@@ -470,7 +484,7 @@ export class AttendanceService {
         id: `extra-${extra.id}-${dateKey}`,
         date: dateKey,
         dateFormatted,
-        timestamp: d.getTime(),
+        timestamp: dbDate.getTime(),
         subjectId: sub.id,
         subjectName: sub.name,
         subjectCode: sub.code,
@@ -533,12 +547,11 @@ export class AttendanceService {
         const dYear = d.getFullYear();
         const dMonth = d.getMonth();
         const dDate = d.getDate();
+        const dUTC = Date.UTC(dYear, dMonth, dDate);
         
         const dateOverrides = overrides.filter(o => 
           o.subjectId === subject.id && 
-          o.date.getFullYear() === dYear &&
-          o.date.getMonth() === dMonth &&
-          o.date.getDate() === dDate
+          AttendanceService.getDbDateUtc(o.date) === dUTC
         );
         
         let daySlotsCount = 0;
@@ -546,11 +559,9 @@ export class AttendanceService {
         let isRestrictedHoliday = false;
         let holidayReason = "Holiday";
 
-        const dUTC = Date.UTC(dYear, dMonth, dDate);
-
         const dateEvents = events.filter(e => {
-          const evStart = Date.UTC(e.date.getFullYear(), e.date.getMonth(), e.date.getDate());
-          const evEnd = e.endDate ? Date.UTC(e.endDate.getFullYear(), e.endDate.getMonth(), e.endDate.getDate()) : evStart;
+          const evStart = AttendanceService.getDbDateUtc(e.date);
+          const evEnd = e.endDate ? AttendanceService.getDbDateUtc(e.endDate) : evStart;
           return dUTC >= evStart && dUTC <= evEnd;
         });
 
@@ -573,9 +584,7 @@ export class AttendanceService {
         let markedLogs: any[] = [];
         if (subject.attendance) {
           markedLogs = subject.attendance.filter((a: any) => 
-            new Date(a.date).getFullYear() === dYear &&
-            new Date(a.date).getMonth() === dMonth &&
-            new Date(a.date).getDate() === dDate
+            AttendanceService.getDbDateUtc(a.date) === dUTC
           );
         }
         const markedClasses = markedLogs.length;
@@ -883,8 +892,8 @@ export class AttendanceService {
       const dUTC = Date.UTC(year, m - 1, day);
 
       const dayEvents = globalEvents.filter(e => {
-        const start = Date.UTC(e.date.getFullYear(), e.date.getMonth(), e.date.getDate());
-        const end = e.endDate ? Date.UTC(e.endDate.getFullYear(), e.endDate.getMonth(), e.endDate.getDate()) : start;
+        const start = AttendanceService.getDbDateUtc(e.date);
+        const end = e.endDate ? AttendanceService.getDbDateUtc(e.endDate) : start;
         return dUTC >= start && dUTC <= end;
       });
 
@@ -927,7 +936,7 @@ export class AttendanceService {
         }
       }
 
-      const dayOverrides = overrides.filter(o => AttendanceService.toLocalIso(o.date) === dateKey);
+      const dayOverrides = overrides.filter(o => AttendanceService.toDbLocalIso(o.date) === dateKey);
       
       let expectedClasses = 0;
       const expectedSubjectIds = new Set<string>();
@@ -945,7 +954,7 @@ export class AttendanceService {
       }
       
       const extras = dayOverrides.filter(o => {
-        const oDateStr = AttendanceService.toLocalIso(o.date);
+        const oDateStr = AttendanceService.toDbLocalIso(o.date);
         return o.overrideType === "extra_class" && oDateStr === dateKey;
       });
       for (const o of extras) {
@@ -956,7 +965,7 @@ export class AttendanceService {
       }
 
       // Filter attendance records for this day
-      const dayAtts = attendances.filter(a => AttendanceService.toLocalIso(a.date) === dateKey);
+      const dayAtts = attendances.filter(a => AttendanceService.toDbLocalIso(a.date) === dateKey);
 
       if (dateKey === '2026-09-07') {
         console.log('Sept 7 daySlots:', daySlots.length);
@@ -976,7 +985,7 @@ export class AttendanceService {
       if (expectedClasses === 0) {
         status = "off";
         // Note: we still check unmapped attendances if someone manually marks an off day
-        const allDayAtts = attendances.filter(a => AttendanceService.toLocalIso(a.date) === dateKey);
+        const allDayAtts = attendances.filter(a => AttendanceService.toDbLocalIso(a.date) === dateKey);
         if (allDayAtts.length > 0) {
           let presentCount = 0;
           let absentCount = 0;

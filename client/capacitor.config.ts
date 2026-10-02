@@ -28,7 +28,7 @@ const config: CapacitorConfig = {
     CapacitorCookies: {
       enabled: true,
     },
-    CapacitorHttp: { enabled: false },
+    CapacitorHttp: { enabled: true },
     CapacitorUpdater: {
       autoDeleteFailed: true,
       autoDeletePrevious: true,

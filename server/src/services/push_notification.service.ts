@@ -10,19 +10,67 @@ export class PushNotificationService {
     if (!isFirebaseInitialized) return false;
     
     try {
-      const user = await prisma.user.findUnique({
-        where: { id: userId },
+      const sessions = await prisma.refreshToken.findMany({
+        where: { userId: userId, fcmToken: { not: null } },
         select: { fcmToken: true }
       });
 
-      if (!user || !user.fcmToken) return false;
+      if (sessions.length === 0) return false;
 
-      await getMessaging().send({
-        token: user.fcmToken,
-        notification: { title, body },
-        data: data || {},
-      });
+      const rawTokens = sessions.map(s => s.fcmToken as string).filter(t => t.trim() !== '');
+      const tokens = Array.from(new Set(rawTokens));
       
+      if (tokens.length === 0) return false;
+
+      if (tokens.length === 1) {
+        try {
+          await getMessaging().send({
+            token: tokens[0],
+            notification: { title, body },
+            data: data || {},
+          });
+        } catch (err: any) {
+          if (err.code === 'messaging/invalid-registration-token' || err.code === 'messaging/registration-token-not-registered') {
+            await prisma.refreshToken.updateMany({
+              where: { fcmToken: tokens[0] },
+              data: { fcmToken: null }
+            });
+            console.log(`[PushNotification] Purged 1 dead token from database.`);
+          }
+          throw err;
+        }
+      } else {
+        const response = await getMessaging().sendEachForMulticast({
+          tokens,
+          notification: { title, body },
+          data: data || {},
+        });
+
+        if (response.failureCount > 0) {
+          const failedTokens: string[] = [];
+          response.responses.forEach((resp, idx) => {
+            if (!resp.success) {
+              const errorCode = resp.error?.code;
+              if (errorCode === 'messaging/invalid-registration-token' || 
+                  errorCode === 'messaging/registration-token-not-registered') {
+                failedTokens.push(tokens[idx]);
+              }
+            }
+          });
+
+          if (failedTokens.length > 0) {
+            await prisma.refreshToken.updateMany({
+              where: { fcmToken: { in: failedTokens } },
+              data: { fcmToken: null }
+            });
+            console.log(`[PushNotification] Purged ${failedTokens.length} dead token(s) from database for user ${userId}.`);
+          }
+        }
+
+        if (response.successCount === 0) {
+          return false;
+        }
+      }
       return true;
     } catch (error) {
       console.error("[PushNotification] Failed to send to user:", error);
@@ -37,12 +85,12 @@ export class PushNotificationService {
     if (!isFirebaseInitialized) return false;
 
     try {
-      const users = await prisma.user.findMany({
+      const sessions = await prisma.refreshToken.findMany({
         where: { fcmToken: { not: null } },
         select: { fcmToken: true }
       });
 
-      const rawTokens = users.map(u => u.fcmToken as string).filter(t => t.trim() !== '');
+      const rawTokens = sessions.map(s => s.fcmToken as string).filter(t => t.trim() !== '');
       const tokens = Array.from(new Set(rawTokens));
       if (tokens.length === 0) return true;
 
@@ -75,7 +123,7 @@ export class PushNotificationService {
           });
           
           if (failedTokens.length > 0) {
-            await prisma.user.updateMany({
+            await prisma.refreshToken.updateMany({
               where: { fcmToken: { in: failedTokens } },
               data: { fcmToken: null }
             });

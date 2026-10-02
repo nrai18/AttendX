@@ -21,14 +21,7 @@ export class UserService {
       }
     }
 
-    // 2. Delete classrooms created by this user
-    await prisma.classroom.deleteMany({ where: { createdById: userId } });
-    
-    // 3. Delete announcements and events created by user
-    await prisma.announcement.deleteMany({ where: { createdById: userId } });
-    await prisma.event.deleteMany({ where: { userId } });
-
-    // 4. Delete the user (this cascades to mostly everything else like attendance, subjects, etc.)
+    // 2. Delete the user (this cascades to mostly everything else like attendance, subjects, etc.)
     await prisma.user.delete({ where: { id: userId } });
 
     if (user && user.email) {

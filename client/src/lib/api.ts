@@ -14,7 +14,15 @@ export const api = axios.create({
 const isTokenExpired = (token: string) => {
   if (!token) return true;
   try {
-    const payload = JSON.parse(atob(token.split('.')[1]));
+    const base64Url = token.split('.')[1];
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const jsonPayload = decodeURIComponent(
+      window.atob(base64)
+        .split('')
+        .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+        .join('')
+    );
+    const payload = JSON.parse(jsonPayload);
     // 10 second buffer
     return payload.exp * 1000 < Date.now() + 10000;
   } catch (e) {
@@ -104,9 +112,11 @@ api.interceptors.request.use(
       if (!isRefreshing) {
         isRefreshing = true;
         try {
-          const response = await api.post("/auth/refresh");
+          const response = await api.post("/auth/refresh", { refreshToken: useAuthStore.getState().refreshToken });
           token = response.data.accessToken;
+          const { refreshToken } = response.data;
           useAuthStore.getState().setAccessToken(token);
+          if (refreshToken) useAuthStore.getState().setRefreshToken(refreshToken);
           processQueue(null, token);
         
         } catch (error: any) {
@@ -188,10 +198,11 @@ api.interceptors.response.use(
       isRefreshing = true;
 
       try {
-        const response = await api.post("/auth/refresh");
+        const response = await api.post("/auth/refresh", { refreshToken: useAuthStore.getState().refreshToken });
 
-        const { accessToken } = response.data;
+        const { accessToken, refreshToken } = response.data;
         useAuthStore.getState().setAccessToken(accessToken);
+        if (refreshToken) useAuthStore.getState().setRefreshToken(refreshToken);
 
         processQueue(null, accessToken);
         originalRequest.headers.Authorization = `Bearer ${accessToken}`;

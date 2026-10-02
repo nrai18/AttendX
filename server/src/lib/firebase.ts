@@ -21,8 +21,18 @@ try {
         credential: cert(serviceAccount)
       });
       console.log('[Firebase] Admin SDK initialized successfully from firebase-admin.json file.');
+    } else if (process.env.FIREBASE_PROJECT_ID && process.env.FIREBASE_CLIENT_EMAIL && process.env.FIREBASE_PRIVATE_KEY) {
+      // 3. Support Granular Env Vars (Local/Vercel standard fallback)
+      initializeApp({
+        credential: cert({
+          projectId: process.env.FIREBASE_PROJECT_ID,
+          clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+          privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n')
+        })
+      });
+      console.log('[Firebase] Admin SDK initialized from granular FIREBASE_* environment variables.');
     } else {
-      console.warn('[Firebase] Warning: firebase-admin.json not found and FIREBASE_ADMIN_JSON env var not set. Push notifications disabled.');
+      console.warn('[Firebase] Warning: No Firebase credentials found (JSON or granular vars). Push notifications disabled.');
     }
   }
 } catch (error) {

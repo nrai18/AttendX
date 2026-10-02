@@ -5,6 +5,7 @@ import { VoiceRecorder } from 'capacitor-voice-recorder';
 import { api } from '../lib/api.ts';
 
 export interface VoiceListenOptions {
+  onStart?: () => void;
   onPartialResult?: (text: string) => void;
   onFinalResult?: (text: string) => void;
   onError?: (error: any) => void;
@@ -216,6 +217,16 @@ export class NativeVoiceService {
             }
           });
 
+          await SpeechRecognition.addListener('listeningState', (event: any) => {
+            if (event.state === 'stopped') {
+              // Only consider it officially "stopped" in JS if we aren't supposed to be looping
+              if (!this.isLoopActive || this.isSpeakingState) {
+                this.isListeningState = false;
+              }
+              options.onEnd?.();
+            }
+          });
+
           // Pre-start assertion: must match current session, not speaking, and loop active if continuous
           if (
             sessionId !== this.currentSessionId ||
@@ -226,6 +237,7 @@ export class NativeVoiceService {
           }
 
           this.isListeningState = true;
+          options.onStart?.();
           // FE-H09 FIX: Store the start promise so stopListening can wait for it
           this.startPromise = SpeechRecognition.start({
             language: 'en-US', // Fallback to en-US as it is guaranteed to be installed natively
@@ -236,13 +248,12 @@ export class NativeVoiceService {
           });
           
           const result = await this.startPromise;
-
+          // DO NOT call onEnd here! On Android 11+, partialResults: true causes this promise 
+          // to resolve instantly (0-5ms). We must rely on the listeningState event above.
           if (result && result.matches && result.matches.length > 0) {
             const transcript = result.matches[0];
             options.onFinalResult?.(transcript);
           }
-          this.isListeningState = false;
-          options.onEnd?.();
           return true;
         } catch (err) {
           console.error("Native speech recognition error:", err);
@@ -297,11 +308,14 @@ export class NativeVoiceService {
           };
 
           rec.onend = () => {
+            // Only fire the onEnd callback if this instance is still the active one.
+            // If stopListening() called abort(), it already nulled activeWebRecognition.
+            // Calling onEnd() in that case would cause the hands-free loop to incorrectly restart.
             if (this.activeWebRecognition === rec) {
               this.isListeningState = false;
               this.activeWebRecognition = null;
+              options.onEnd?.();
             }
-            options.onEnd?.();
           };
 
           if (
@@ -314,6 +328,7 @@ export class NativeVoiceService {
 
           this.activeWebRecognition = rec;
           this.isListeningState = true;
+          options.onStart?.();
           rec.start();
           return true;
         } catch (err) {

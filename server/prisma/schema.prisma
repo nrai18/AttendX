@@ -128,7 +128,6 @@ model User {
   batch            String? // e.g. "2022-2026"
   targetAttendance Int
   theme            Theme     @default(system)
-  fcmToken         String?
   gender           String?   // "male" | "female" | "other"
   birthday         DateTime?
   createdAt        DateTime  @default(now())
@@ -173,6 +172,7 @@ model RefreshToken {
   deviceType  String?  // e.g. "mobile", "tablet", "desktop"
   os          String?  // e.g. "Windows", "Android", "iOS", "Mac OS"
   browser     String?  // e.g. "Chrome", "Safari", "AttendX App"
+  fcmToken    String?  // Push notification token for this specific device session
   lastActive  DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -319,8 +319,8 @@ model Classroom {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  createdBy     User              @relation("ClassroomCreator", fields: [createdById], references: [id])
-  semester      Semester?         @relation(fields: [semesterId], references: [id])
+  createdBy     User              @relation("ClassroomCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  semester      Semester?         @relation(fields: [semesterId], references: [id], onDelete: Cascade)
   members       ClassroomMember[]
   announcements Announcement[]
   events        Event[]
@@ -365,8 +365,8 @@ model Event {
   updatedAt     DateTime  @updatedAt
 
   classroom Classroom? @relation(fields: [classroomId], references: [id], onDelete: Cascade)
-  user      User?      @relation(fields: [userId], references: [id])
-  semester  Semester?  @relation(fields: [semesterId], references: [id])
+  user      User?      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  semester  Semester?  @relation(fields: [semesterId], references: [id], onDelete: Cascade)
 
   @@map("events")
 }
@@ -388,7 +388,7 @@ model Announcement {
   updatedAt      DateTime             @updatedAt
 
   classroom Classroom @relation(fields: [classroomId], references: [id], onDelete: Cascade)
-  createdBy User      @relation(fields: [createdById], references: [id])
+  createdBy User      @relation(fields: [createdById], references: [id], onDelete: Cascade)
 
   @@map("announcements")
 }

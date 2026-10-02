@@ -95,6 +95,7 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
   const [lastResponse, setLastResponse] = useState("");
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [speechDuration, setSpeechDuration] = useState(0);
+  const [speechStartTime, setSpeechStartTime] = useState(0);
 
   // Handle hardware back button to close overlay
   useEffect(() => {
@@ -306,6 +307,13 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
 
   const getListenOptions = () => ({
     lang: "en-IN",
+    onStart: () => {
+      if (isOpenRef.current) {
+        setIsListening(true);
+        setTranscript("");
+        resetSilenceTimeout();
+      }
+    },
     onPartialResult: (text: string) => {
       if (!isSpeakingRef.current && !isProcessingRef.current && isOpenRef.current) {
         setTranscript(text);
@@ -342,10 +350,7 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
     if (!isOpenRef.current) return;
     await NativeVoiceService.stopSpeaking();
     setIsSpeaking(false);
-    setTranscript("");
     setIsProcessing(false);
-    setIsListening(true);
-    resetSilenceTimeout();
 
     const options = getListenOptions();
     NativeVoiceService.startContinuousLoop(options);
@@ -385,11 +390,11 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
     // Assume ~2.3 words per second for speech rate 1.05 with punctuation pauses
     const expectedDurationMs = (wordCount / 2.3) * 1000 + 1000;
     
-    speechStartTimeRef.current = Date.now();
+    // DO NOT set speechStartTimeRef.current or setIsSpeaking(true) here!
+    // This allows the uiState to remain PROCESSING (or whatever it was) while the native TTS engine boots up and downloads audio.
+    // We only want the UI to transition to SPEAKING (and the text to start animating) once the audio actually starts.
     speechTotalDurationRef.current = expectedDurationMs;
     setSpeechDuration(expectedDurationMs);
-
-    setIsSpeaking(true);
 
     if (voiceEnabledRef.current) {
       await NativeVoiceService.stopSpeaking();
@@ -403,14 +408,15 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
           setSpeechDuration(durationMs);
         },
         onStart: () => {
+          // Now the audio has physically started playing.
+          speechStartTimeRef.current = Date.now();
+          setSpeechStartTime(Date.now());
           setIsSpeaking(true);
         },
         onEnd: () => {
           setIsSpeaking(false);
-          if (isOpenRef.current) {
-            setIsListening(true);
-            resetSilenceTimeout();
-          }
+          // UI state (LISTENING) will be automatically set by the options.onStart callback
+          // when NativeVoiceService actually boots the microphone after the 500ms cooldown.
         },
         onError: () => {
           setIsSpeaking(false);
@@ -577,14 +583,14 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
           </header>
 
           {/* Center Content: AI Orb & Transcript */}
-          <main className="flex-1 flex flex-col items-center justify-center p-6 gap-10 lg:gap-16 relative">
+          <main className="flex-1 flex flex-col items-center justify-center p-6 gap-10 lg:gap-16 relative min-h-0 overflow-y-auto">
             
             {/* Dynamic Transcript Area (above orb for visibility) */}
             <div className="w-full max-w-2xl px-8 text-center min-h-[100px] flex items-end justify-center z-10">
                <AnimatePresence mode="wait">
                   {uiState === "LISTENING" && transcript ? (
                     <motion.p key="transcript" initial={{opacity:0, y: 10}} animate={{opacity:1, y: 0}} exit={{opacity:0}} className="text-2xl font-medium text-white/90 italic">
-                      "{transcript}"
+                      "{transcript}<span className="animate-pulse inline-block ml-[2px] font-light">|</span>"
                     </motion.p>
                   ) : uiState === "PROCESSING" ? (
                      <motion.div key="processing" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} className="flex flex-col items-center gap-3">
@@ -601,7 +607,7 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
                       >
                         <CinematicText 
                           text={NativeVoiceService.cleanTextForSpeech(lastResponse)} 
-                          startTime={speechStartTimeRef.current} 
+                          startTime={speechStartTime} 
                           durationMs={speechDuration}
                         />
                       </motion.div>
@@ -613,7 +619,7 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
                </AnimatePresence>
             </div>
 
-            {/* The Animated ChatGPT-style Orb (Clean Anti-Slop Compliant Palette) */}
+            {/* The Animated ChatGPT-style Orb (Restored Beautiful Gradients) */}
             <div className="relative flex items-center justify-center w-64 h-64 mt-12">
                {/* Ambient Glow */}
                <motion.div
@@ -623,7 +629,7 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
                   }}
                   transition={{ repeat: Infinity, duration: uiState === "SPEAKING" ? 1.5 : 2, ease: "easeInOut" }}
                   className={`absolute w-56 h-56 rounded-full blur-3xl ${
-                    uiState === "LISTENING" ? "bg-emerald-500/20" : uiState === "SPEAKING" ? "bg-white/30" : uiState === "PROCESSING" ? "bg-slate-400/20" : "bg-white/10"
+                    uiState === "LISTENING" ? "bg-white/40" : uiState === "SPEAKING" ? "bg-pink-500/50" : uiState === "PROCESSING" ? "bg-cyan-500/30" : "bg-white/10"
                   }`}
                />
                
@@ -633,14 +639,14 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
                     scale: uiState === "LISTENING" ? [1, 1.05, 1] : uiState === "SPEAKING" ? [1, 1.15, 0.95, 1.05, 1] : uiState === "PROCESSING" ? [1, 1.08, 1] : [1, 1.02, 1],
                   }}
                   transition={{ repeat: Infinity, duration: uiState === "SPEAKING" ? 1.2 : 2, ease: "easeInOut" }}
-                  className={`relative z-10 w-36 h-36 sm:w-44 sm:h-44 rounded-full shadow-2xl transition-colors duration-700 ${
+                  className={`relative z-10 w-36 h-36 sm:w-44 sm:h-44 rounded-full shadow-2xl transition-colors duration-700 bg-gradient-to-tr ${
                     uiState === "LISTENING" 
-                      ? "bg-slate-100 shadow-white/40" 
+                      ? "from-gray-100 to-white shadow-white/40" 
                       : uiState === "SPEAKING" 
-                      ? "bg-white shadow-white/50" 
+                      ? "from-pink-300 via-rose-400 to-white shadow-pink-500/50" 
                       : uiState === "PROCESSING" 
-                      ? "bg-slate-300 shadow-slate-400/30" 
-                      : "bg-slate-600 shadow-slate-700/30"
+                      ? "from-cyan-100 to-cyan-300 shadow-cyan-500/40" 
+                      : "from-gray-300 to-gray-400 shadow-white/20"
                   }`}
                />
             </div>

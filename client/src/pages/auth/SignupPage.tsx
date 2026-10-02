@@ -37,7 +37,7 @@ export const SignupPage: React.FC = () => {
           headers: geoCoords ? { 'x-attendx-lat': geoCoords.lat, 'x-attendx-lon': geoCoords.lon } : {}
         });
         
-        setAuth(res.data.user, res.data.accessToken);
+        setAuth(res.data.user, res.data.accessToken, res.data.refreshToken);
         navigate("/today");
       } catch (err: any) {
         console.error("Native Google Login failed:", err);

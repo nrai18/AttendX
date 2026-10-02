@@ -98,7 +98,9 @@ export const LoginPage: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email || !password) return;
+    if (!email || !password) {
+      return;
+    }
 
     try {
       setLoading(true);
@@ -106,7 +108,7 @@ export const LoginPage: React.FC = () => {
       const res = await api.post("/auth/login", { email, password }, {
         headers: geoCoords ? { 'x-attendx-lat': geoCoords.lat, 'x-attendx-lon': geoCoords.lon } : {}
       });
-      setAuth(res.data.user, res.data.accessToken);
+      setAuth(res.data.user, res.data.accessToken, res.data.refreshToken);
       navigate("/today");
     } catch (e: any) {
       setError(e.response?.data?.message || "Login failed");
@@ -203,7 +205,7 @@ export const LoginPage: React.FC = () => {
           headers: geoCoords ? { 'x-attendx-lat': geoCoords.lat, 'x-attendx-lon': geoCoords.lon } : {}
         });
         
-        setAuth(res.data.user, res.data.accessToken);
+        setAuth(res.data.user, res.data.accessToken, res.data.refreshToken);
         navigate("/today");
       } catch (err: any) {
         console.error("Native Google Login failed:", err);
@@ -415,8 +417,9 @@ export const LoginPage: React.FC = () => {
               </CardFooter>
             </form>
           ) : (
-            <form onSubmit={handleSubmit}>
-              <CardHeader className="space-y-1">
+            <>
+              <form onSubmit={handleSubmit}>
+                <CardHeader className="space-y-1">
                 <CardTitle className="text-xl">Sign In</CardTitle>
                 <CardDescription>Enter your credentials to access your account</CardDescription>
               </CardHeader>
@@ -518,6 +521,7 @@ export const LoginPage: React.FC = () => {
                 </Button>
               </CardFooter>
             </form>
+            </>
           )}
         </Card>
 

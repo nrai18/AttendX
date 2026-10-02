@@ -6,106 +6,52 @@ export class SystemController {
   static async getUpdateManifest(req: Request, res: Response) {
     const manifest = {
       latestVersion: "4.2.0",
-      title: "Event & Holiday Notification Fix",
+      title: "Voice Sync & Layout Stability Update",
       changelog: [
         {
           "version": "4.2.0",
-          "date": "Oct 1, 2026",
+          "date": "Oct 2, 2026",
           "title": "Continuous Voice & Performance Overhaul",
           "sections": [
             {
+              "title": "General Improvements & Bug Fixes",
+              "items": [
+                { "icon": "🎙️", "text": "Completely resolved the Android 11+ rapid microphone cycling bug that could crash the voice system." },
+                { "icon": "📱", "text": "Fixed a layout bug causing the Stop Conversation footer to disappear on desktop and small screens." },
+                { "icon": "⚡", "text": "Wired cinematic typing animations perfectly to device hardware for exact lip-sync with speech audio." },
+                { "icon": "✨", "text": "Cleaned up pending action Yes/No buttons so they unmount instantly after clicking." },
+                { "icon": "🐛", "text": "Resolved timezone edge cases where dates were incorrectly compared against UTC." }
+              ]
+            },
+            {
               "title": "New Features",
               "items": [
-                { "icon": "\ud83d\udd14", "text": "Introduced Birthday Push Notifications — the app will now ping your phone at 9:00 AM for friends' birthdays, and 8:00 AM for your own!" },
-                { "icon": "\ud83d\udcc6", "text": "Added support for adding Custom Events directly into the calendar via the Semester Hub!" },
+                { "icon": "🔔", "text": "Introduced Birthday Push Notifications — the app will now ping your phone at 9:00 AM for friends' birthdays, and 8:00 AM for your own!" },
+                { "icon": "📅", "text": "Added support for adding Custom Events directly into the calendar via the Semester Hub!" },
                 { "icon": "🎙️", "text": "Upgraded Voice Mode to a truly hands-free continuous loop. The AI now automatically resumes listening after speaking, creating seamless back-and-forth conversations." }
               ]
             },
             {
               "title": "Architecture & Performance",
               "items": [
-                { "icon": "⚡", "text": "Massive performance fix: Removed a global CSS transition that was causing severe UI jitter and frame drops when switching tabs across the app." },
-                { "icon": "🛡️", "text": "Hardened Voice Mode against audio echoes by injecting a strict 200ms acoustic kill-switch before AI playback begins." }
+                { "icon": "🐛", "text": "Massive performance fix: Removed a global CSS transition that was causing severe UI jitter and frame drops when switching tabs across the app." },
+                { "icon": "🎙️", "text": "Hardened Voice Mode against audio echoes by injecting a strict 200ms acoustic kill-switch before AI playback begins." }
               ]
             },
             {
               "title": "Visual Enhancements",
               "items": [
-                { "icon": "✨", "text": "Engineered a flawless CSS transition for the Light/Dark mode toggle, enabling smooth cinematic cross-fades globally." },
-                { "icon": "🎨", "text": "Fixed dark mode text legibility and cleaned up dropdown categories on the Add Custom Event modal." }
+                { "icon": "🎨", "text": "Engineered a flawless CSS transition for the Light/Dark mode toggle, enabling smooth cinematic cross-fades globally." },
+                { "icon": "🌙", "text": "Fixed dark mode text legibility and cleaned up dropdown categories on the Add Custom Event modal." }
               ]
             },
             {
               "title": "Bug Fixes",
               "items": [
-                { "icon": "🐛", "text": "Fixed Firebase Push Notifications bug where devices occasionally failed to sync FCM tokens on login." },
-                { "icon": "\ud83d\udcc6", "text": "Fixed calendar loop bug where some regular events (like Cultural Fests) failed to dispatch morning push notifications." },
-                { "icon": "\ud83c\udf89", "text": "Restricted Holidays now correctly dispatch morning notifications without accidentally erasing your class timetable for the day." }
+                { "icon": "🛠️", "text": "Fixed Firebase Push Notifications bug where devices occasionally failed to sync FCM tokens on login." },
+                { "icon": "📅", "text": "Fixed calendar loop bug where some regular events (like Cultural Fests) failed to dispatch morning push notifications." },
+                { "icon": "🎉", "text": "Restricted Holidays now correctly dispatch morning notifications without accidentally erasing your class timetable for the day." }
               ]
-            }
-          ]
-        },
-        {
-          "version": "4.1.1",
-          "date": "Sep 29, 2026",
-          "title": "UI Fixes Hotfix",
-                    "sections": [
-            {
-              "title": "New Features",
-              "items": [
-                { "icon": "🗣️", "text": "Added a ChatGPT-style Voice Selection bottom sheet with a swipeable carousel of curated voices." },
-                { "icon": "🎤", "text": "Integrated Native Voice Service to dynamically read and cache your preferred text-to-speech voice." }
-              ]
-            },
-            {
-              "title": "Architecture & Performance",
-              "items": [
-                { "icon": "🗃️", "text": "Rewrote the Timetable Archive engine to cluster 24-hour micro-edits, preventing the archive from flooding with dozens of versions." }
-              ]
-            },
-            {
-              "title": "General Improvements and Bug Fixes",
-              "items": [
-                { "icon": "🔇", "text": "Added a microphone kill-switch that auto-pauses listening when opening voice settings to prevent audio feedback loops." },
-                { "icon": "📜", "text": "Upgraded the Voice Mode Overlay with a scrollable, gradient-masked text container to read the AI\'s long responses." },
-                { "icon": "🏁", "text": "Tied Speech-to-Text listener callbacks to a specific session ID to prevent race conditions when the microphone is rapidly toggled." },
-                { "icon": "💬", "text": "Removed Voice Mode processing transcription wipes so the UI retains your text while processing." },
-                { "icon": "🎨", "text": "Themed the Voice Mode processing orb pink based on user request." },
-                { "icon": "📅", "text": "Replaced calendar event dots with colorful pills to make events like Janmashtami stand out." },
-                { "icon": "🐛", "text": "Fixed the calendar 'yellow dot' bug for naturally empty days and future unmarked days." },
-                { "icon": "🤖", "text": "Added 'Marked by AttendX Copilot' auto-remarks for AI-driven timetable changes." },
-                { "icon": "🐛", "text": "Fixed the Monthly Report bug accidentally triggering Weekly emails." },
-                { "icon": "🐛", "text": "Fixed timetable deduplication overlapping bug in calendar agenda for archived classes." },
-                { "icon": "🐛", "text": "Fixed AI Copilot 'Full Day Marked' duplicates on historical timetable slots." },
-                { "icon": "🐛", "text": "Fixed Calendar Agenda corruption on archived dates by mirroring Today page deduplication cache logic." },
-                { "icon": "🐛", "text": "Fixed the mobile Calendar Agenda view incorrectly displaying 'Other' for future and unmapped classes." },
-                { "icon": "🔐", "text": "Prevented OAuth CSRF by generating and verifying cryptographic nonces in cookies" },
-                { "icon": "🔐", "text": "Upgraded AES-256-CBC to authenticated AES-256-GCM encryption in admin controllers" },
-                { "icon": "🔐", "text": "Implemented Magic-Byte inspection for timetable file uploads to block malicious non-image files" },
-                { "icon": "🛡️", "text": "Introduced strict 50 reqs/15m rate limiting on the /refresh endpoint" },
-                { "icon": "🚀", "text": "Rewrote cron birthday evaluation using PostgreSQL $queryRaw to prevent OOM memory crashes" },
-                { "icon": "🤖", "text": "Expanded AI Copilot capabilities to parse and dispatch custom dynamic date ranges for attendance reports" },
-                { "icon": "🛠️", "text": "Corrected getState() anti-pattern within attendanceStore.ts mutations to utilize get() safely" },
-                { "icon": "🤖", "text": "Built ADD_TIMETABLE_SLOT and REMOVE_TIMETABLE_SLOT payload support into the Copilot and UI executor, finally enabling fully autonomous addition and deletion of specific recurring weekly slots by the AI" },
-                { "icon": "🤖", "text": "Rewrote AI SHIFT_TIMETABLE prompt definitions to explicitly reject dangerous full-day bulk swaps, and patched UI executor to officially support moving a specific slot to a different day via the newDayOfWeek payload property" },
-                { "icon": "🤖", "text": "Exposed 'ADD_EXTRA_CLASS' destructive payload directly to Gemini Copilot and Fallback parser, allowing automated calculation of 50-minute (lecture) and 100-minute (lab) durations for makeup classes" },
-                { "icon": "🤖", "text": "Built REMOVE_ATTENDANCE validation interceptor to prevent staging deletion of non-existent attendance records by querying the agenda strictly before payload delivery" },
-                { "icon": "🤖", "text": "Rewrote AI prompt instructions to map definitive statements ('I am not going', 'I am bunking') to MARK_ATTENDANCE (Absent) instead of hypothetically staging FORECAST_SIMULATION" },
-                { "icon": "📅", "text": "Updated cron scheduler to dispatch Weekly Reports on Fridays at 6:00 PM IST (after classes conclude) and Monthly Reports on the 1st of every month" },
-                { "icon": "🤖", "text": "Built Bulk MARK_ATTENDANCE engine mapping blanket intent requests into batched safe actions for each class, throwing validation checks if the target day is empty" },
-                { "icon": "🤖", "text": "Built MARK_FULL_DAY_OFF backend interceptor to validate timetable/extra classes before staging full day off modifications on empty days" },
-                { "icon": "📊", "text": "Missing classes are now explicitly annotated with subject names in the daily report summary" },
-                { "icon": "🤖", "text": "Fixed AI timetable context blindspot to properly recognize scheduled Extra Classes when forecasting tomorrow's attendance" },
-                { "icon": "🤖", "text": "Added UPDATE_SUBJECT action intent allowing users to dynamically rename subjects and change colors via the AI Copilot" },
-                { "icon": "🤖", "text": "Fixed AI Simulation fallback logic to prompt the user to configure 'Last Teaching Day' if remaining classes are unknown" },
-                { "icon": "🤖", "text": "Added case-insensitive name matching to subject resolution in simulation requests to prevent UUID hallucination failures" },
-                { "icon": "🤖", "text": "Rewrote AI FORECAST_SIMULATION engine to strictly enforce mathematical upper-bound constraints on remaining semester classes and accurately calculate skip counts" },
-                { "icon": "🐛", "text": "Fixed the UI bug causing the Timetable Alerts section to be hidden when report frequency was not Daily." },
-                { "icon": "⚙️", "text": "Added a dedicated 'Off' option for class reminders to bypass standard scheduling." },
-                { "icon": "⚙️", "text": "Wired UI toggles to immediately recalculate device alarms on flip without needing an app restart." },
-                { "icon": "🐛", "text": "Fixed Active Pill text-white contrast invisible text bug on Light Mode." }
-              
-]
             }
           ]
         },

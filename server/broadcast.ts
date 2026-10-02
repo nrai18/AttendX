@@ -32,13 +32,13 @@ async function main() {
     });
   }
 
-  console.log('Fetching users from production DB...');
-  const users = await prisma.user.findMany({
+  console.log('Fetching active sessions from production DB...');
+  const sessions = await prisma.refreshToken.findMany({
     where: { fcmToken: { not: null } },
     select: { fcmToken: true }
   });
 
-  const rawTokens = users.map(u => u.fcmToken as string).filter(t => t.trim() !== '');
+  const rawTokens = sessions.map(s => s.fcmToken as string).filter(t => t.trim() !== '');
   const tokens = Array.from(new Set(rawTokens));
 
   if (tokens.length === 0) {
@@ -72,7 +72,7 @@ async function main() {
     });
 
     if (failedTokens.length > 0) {
-      await prisma.user.updateMany({
+      await prisma.refreshToken.updateMany({
         where: { fcmToken: { in: failedTokens } },
         data: { fcmToken: null }
       });

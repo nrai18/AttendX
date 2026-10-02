@@ -35,6 +35,12 @@ interface Semester {
   isActive: boolean;
 }
 
+const parseLocalDate = (dateStr: string | Date) => {
+  const dStr = typeof dateStr === 'string' ? dateStr : dateStr.toISOString();
+  const [year, month, day] = dStr.split('T')[0].split('-');
+  return new Date(parseInt(year, 10), parseInt(month, 10) - 1, parseInt(day, 10));
+};
+
 export const SemesterHubPage = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const defaultTab = (searchParams.get("tab") as any) || "timeline";
@@ -80,7 +86,7 @@ export const SemesterHubPage = () => {
   const nextEventId = React.useMemo(() => {
     const _today = startOfDay(new Date());
     return events.find(e => {
-      const isPast = isAfter(_today, new Date(e.endDate || e.date));
+      const isPast = isAfter(_today, parseLocalDate(e.endDate || e.date));
       return !isPast;
     })?.id;
   }, [events]);
@@ -331,12 +337,11 @@ export const SemesterHubPage = () => {
     day = addDays(day, 1);
   }
 
-  // Upcoming Events logic
+
   const today = startOfDay(new Date());
   const upcomingEvents = events
-    
-    .filter(e => isAfter(new Date(e.date), today) || isSameDay(new Date(e.date), today))
-    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    .filter(e => isAfter(parseLocalDate(e.date), today) || isSameDay(parseLocalDate(e.date), today))
+    .sort((a, b) => parseLocalDate(a.date).getTime() - parseLocalDate(b.date).getTime());
 
   // Semester Progress
   let progress = 0;
@@ -452,7 +457,7 @@ export const SemesterHubPage = () => {
                 <div>
                   <h4 className="text-lg font-bold text-foreground leading-tight">{upcomingEvents[0].title}</h4>
                   <p className="text-sm text-primary font-medium mt-0.5">
-                    {differenceInDays(new Date(upcomingEvents[0].date), today)} days left
+                    {differenceInDays(parseLocalDate(upcomingEvents[0].date), today)} days left
                   </p>
                 </div>
                 <div className={`w-12 h-12 rounded-xl flex items-center justify-center border ${getEventColor(upcomingEvents[0].eventType)}`}>
@@ -524,7 +529,7 @@ export const SemesterHubPage = () => {
             <div className="grid grid-cols-7 gap-1 sm:gap-2 mb-8">
               {calendarDays.map((day, i) => {
                 const dayEvents = events.filter(e => {
-                  const s = startOfDay(new Date(e.date));
+                  const s = startOfDay(parseLocalDate(e.date));
                   const ed = e.endDate ? startOfDay(new Date(e.endDate)) : s;
                   return day >= s && day <= ed;
                 });
@@ -658,8 +663,8 @@ export const SemesterHubPage = () => {
               <h2 className="text-xl font-bold text-foreground mb-8">Semester Journey</h2>
               <div className="space-y-0 relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px before:h-full before:w-0.5 before:bg-border">
                 {events.map((event) => {
-                  const isPast = isAfter(today, new Date(event.endDate || event.date));
-                  const isCurrent = isSameDay(today, new Date(event.date)) || (event.endDate && today >= new Date(event.date) && today <= new Date(event.endDate));
+                  const isPast = isAfter(today, parseLocalDate(event.endDate || event.date));
+                  const isCurrent = isSameDay(today, parseLocalDate(event.date)) || (event.endDate && today >= parseLocalDate(event.date) && today <= parseLocalDate(event.endDate));
                   
                   return (
                     <div 
@@ -679,8 +684,8 @@ export const SemesterHubPage = () => {
                       }`}>
                         <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1">
                           {event.endDate && event.endDate !== event.date 
-                            ? `${format(new Date(event.date), "MMM d, yyyy")} - ${format(new Date(event.endDate), "MMM d, yyyy")}`
-                            : format(new Date(event.date), "MMM d, yyyy")}
+                            ? `${format(parseLocalDate(event.date), "MMM d, yyyy")} - ${format(parseLocalDate(event.endDate), "MMM d, yyyy")}`
+                            : format(parseLocalDate(event.date), "MMM d, yyyy")}
                         </div>
                         <h3 className={`text-lg font-bold ${isCurrent ? 'text-primary' : 'text-foreground'}`}>{event.title}</h3>
                       </div>
@@ -694,7 +699,7 @@ export const SemesterHubPage = () => {
         {activeTab === "countdowns" && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {upcomingEvents.map(event => {
-              const daysLeft = differenceInDays(new Date(event.date), today);
+              const daysLeft = differenceInDays(parseLocalDate(event.date), today);
               return (
                 <div key={event.id} className="bg-card border border-border/60 hover:border-border transition-colors rounded-2xl p-4 flex items-center gap-4 shadow-sm">
                   <div className={`w-16 h-16 shrink-0 rounded-full flex flex-col items-center justify-center border-2 ${getEventColor(event)}`}>
@@ -705,7 +710,7 @@ export const SemesterHubPage = () => {
                     <div className="flex items-center gap-2 mt-1.5">
                       <p className="text-xs text-muted-foreground flex items-center gap-1 font-medium">
                         <CalendarIcon className="w-3.5 h-3.5" />
-                        {format(new Date(event.date), "MMM d")}
+                        {format(parseLocalDate(event.date), "MMM d")}
                       </p>
                       <span className="w-1 h-1 rounded-full bg-border" />
                       <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
@@ -728,8 +733,8 @@ export const SemesterHubPage = () => {
                   <p className="text-sm text-muted-foreground flex items-center gap-1.5">
                     <CalendarIcon className="w-3.5 h-3.5" />
                     {event.endDate && event.endDate !== event.date 
-                      ? `${format(new Date(event.date), "MMMM d, yyyy")} - ${format(new Date(event.endDate), "MMMM d, yyyy")}`
-                      : format(new Date(event.date), "MMMM d, yyyy")}
+                      ? `${format(parseLocalDate(event.date), "MMMM d, yyyy")} - ${format(parseLocalDate(event.endDate), "MMMM d, yyyy")}`
+                      : format(parseLocalDate(event.date), "MMMM d, yyyy")}
                   </p>
                 </div>
                 <div className="flex justify-start">

@@ -260,7 +260,7 @@ export const FloatingChatbot: React.FC = () => {
   }, [messages, isLoading]);
 
   const [isHandsFree, setIsHandsFree] = useState(false);
-  const [handsFreeStatus, setHandsFreeStatus] = useState<"LISTENING" | "THINKING" | "SPEAKING">("LISTENING");
+  const [handsFreeStatus, setHandsFreeStatus] = useState<"IDLE" | "LISTENING" | "THINKING" | "SPEAKING">("LISTENING");
   const isHandsFreeRef = useRef(false);
   const handsFreeSilenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const handsFreeAutoSubmitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -380,8 +380,8 @@ export const FloatingChatbot: React.FC = () => {
       },
       onEnd: () => {
         if (isHandsFreeRef.current && !NativeVoiceService.isSpeaking() && !isHandsFreeProcessingRef.current) {
-          if (!NativeVoiceService.isListening() && NativeVoiceService.isContinuousLoop()) {
-            NativeVoiceService.startListening(listenOptions);
+          if (!NativeVoiceService.isListening()) {
+            setHandsFreeStatus("IDLE");
           }
         }
       }
@@ -549,16 +549,28 @@ export const FloatingChatbot: React.FC = () => {
     const isCanceling = /^(no|nope|cancel|abort|stop|don't|do not|no thanks)/.test(cleanQuery);
 
     if (isConfirming || isCanceling) {
-      const lastAssistantMsg = messages.slice().reverse().find(m => m.role === 'assistant');
+      const lastAssistantMsg = messagesRef.current.slice().reverse().find(m => m.role === 'assistant');
       if (lastAssistantMsg && lastAssistantMsg.pendingActions && !lastAssistantMsg.actionsExecuted) {
         if (isConfirming && (window as any)._executePendingActions) {
           (window as any)._executePendingActions(lastAssistantMsg.id);
-          if (effectiveInputMethod.includes('voice')) NativeVoiceService.speak("Action confirmed.");
+          if (effectiveInputMethod.includes('voice')) {
+            NativeVoiceService.speak("Action confirmed.", {
+              autoResumeListening: isHandsFreeRef.current,
+              listenOptions: handsFreeListenOptionsRef.current,
+              onEnd: () => { if (isHandsFreeRef.current) setHandsFreeStatus("LISTENING"); }
+            });
+          }
           setInput("");
           return;
         } else if (isCanceling && (window as any)._cancelPendingActions) {
           (window as any)._cancelPendingActions(lastAssistantMsg.id);
-          if (effectiveInputMethod.includes('voice')) NativeVoiceService.speak("Action cancelled.");
+          if (effectiveInputMethod.includes('voice')) {
+            NativeVoiceService.speak("Action cancelled.", {
+              autoResumeListening: isHandsFreeRef.current,
+              listenOptions: handsFreeListenOptionsRef.current,
+              onEnd: () => { if (isHandsFreeRef.current) setHandsFreeStatus("LISTENING"); }
+            });
+          }
           setInput("");
           return;
         }
@@ -872,15 +884,23 @@ export const FloatingChatbot: React.FC = () => {
           });
           refresh = true;
         } else if (action.type === 'ADD_ASSIGNMENT') {
+          // Bug Fix: AI hallucinates the 'Z' on local times. Strip it and parse as local time to convert correctly.
+          let safeDeadline = action.payload.deadline;
+          if (safeDeadline) {
+             safeDeadline = safeDeadline.replace("Z", ""); // Force local time parsing
+             safeDeadline = new Date(safeDeadline).toISOString();
+          }
           await api.post(`/assignments`, {
             title: action.payload.title,
             description: action.payload.description || "",
-            deadline: action.payload.deadline,
+            deadline: safeDeadline,
             subjectId: action.payload.subjectId || null,
             priority: action.payload.priority || "medium"
           });
           // Refresh assignments via store
           await useAssignmentStore.getState().fetchAssignments();
+          navigate('/assignments');
+          refresh = true;
         } else if (action.type === 'MARK_ASSIGNMENT_COMPLETED') {
           if (action.payload.assignmentId) {
              await api.post(`/assignments/${action.payload.assignmentId}/complete`);
@@ -1053,7 +1073,7 @@ export const FloatingChatbot: React.FC = () => {
         onSendMessage={async (q, inputMethod = 'voice') => {
           return await handleSendMessage(q, inputMethod);
         }}
-        pendingActionMsgId={messages.slice().reverse().find(m => m.role === 'assistant' && m.pendingActions && !m.actionsExecuted)?.id}
+        pendingActionMsgId={messages.slice().reverse().find(m => m.role === 'assistant' && m.pendingActions && !m.actionsExecuted && !m.isExecutingAction)?.id}
         onConfirmPendingAction={(id) => {
            if ((window as any)._executePendingActions) {
               (window as any)._executePendingActions(id);
@@ -1412,6 +1432,41 @@ export const FloatingChatbot: React.FC = () => {
             {/* Gemini-style Bottom Composer Pill */}
             <div className="p-3 bg-gradient-to-t from-background/90 to-transparent pb-4">
 
+              <AnimatePresence>
+                {isHandsFree && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10, height: 0 }}
+                    animate={{ opacity: 1, y: 0, height: 'auto' }}
+                    exit={{ opacity: 0, y: 10, height: 0 }}
+                    className="mb-3 mx-1 bg-black/90 backdrop-blur-md rounded-[20px] border border-white/10 p-3 shadow-lg flex items-center justify-between overflow-hidden"
+                  >
+                    <div className="flex flex-col">
+                      <div className="flex items-center gap-2">
+                        <div className={`w-2.5 h-2.5 rounded-full ${
+                          handsFreeStatus === 'LISTENING' ? 'bg-emerald-500 animate-pulse' :
+                          handsFreeStatus === 'SPEAKING' ? 'bg-blue-500 animate-pulse' :
+                          'bg-amber-500 animate-pulse'
+                        }`} />
+                        <span className="text-white font-bold text-xs tracking-wider">HANDS-FREE<br/>MODE</span>
+                        <span className="text-xs bg-slate-800 text-slate-300 px-2 py-0.5 rounded-full ml-1 font-medium">
+                          {handsFreeStatus === 'LISTENING' ? 'Listening...' :
+                           handsFreeStatus === 'SPEAKING' ? 'Speaking...' :
+                           'Thinking...'}
+                        </span>
+                      </div>
+                      <span className="text-[10px] text-white/50 mt-1">Say "stop" or tap Stop Conv...</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => stopHandsFreeMode()}
+                      className="bg-[#ff004d] hover:bg-rose-500 text-white text-[11px] font-bold px-3 py-2 rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer"
+                    >
+                      <Square className="w-3 h-3 fill-current" />
+                      Stop Conversation
+                    </button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
 
               <form
                 onSubmit={(e) => {
@@ -1461,6 +1516,17 @@ export const FloatingChatbot: React.FC = () => {
                       <Send className="w-4 h-4" />
                     </button>
                   ) : (
+                    <>
+                      <button
+                        type="button"
+                        onClick={startHandsFreeMode}
+                        className={`w-9 h-9 rounded-full flex items-center justify-center transition-colors cursor-pointer ${
+                          isHandsFree ? 'bg-emerald-500/20 text-emerald-500 hover:bg-emerald-500/30' : 'text-slate-400 hover:text-slate-600 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-white/10'
+                        }`}
+                        title={isHandsFree ? "Stop Hands-Free Mode" : "Start Hands-Free Mode"}
+                      >
+                        <Radio className="w-4.5 h-4.5" />
+                      </button>
                       <button
                         type="button"
                         onClick={() => {
@@ -1471,6 +1537,7 @@ export const FloatingChatbot: React.FC = () => {
                       >
                         <AudioLines className="w-4.5 h-4.5" />
                       </button>
+                    </>
                   )}
                 </div>
               </form>

@@ -66,9 +66,26 @@ export class UserController {
   static async updateMe(req: AuthenticatedRequest, res: Response) {
     try {
       const userId = req.user!.userId;
-      const updatedUser = await UserService.updateProfile(userId, req.body);
-      await CacheService.invalidateUser(userId);
-      res.status(200).json(updatedUser);
+      const sessionId = req.user!.sessionId;
+      
+      const { fcmToken, ...userData } = req.body;
+      
+      if (fcmToken !== undefined && sessionId) {
+        const { prisma } = require("../lib/prisma");
+        await prisma.refreshToken.update({
+          where: { id: sessionId },
+          data: { fcmToken: fcmToken === null ? null : fcmToken }
+        });
+      }
+
+      if (Object.keys(userData).length > 0) {
+        const updatedUser = await UserService.updateProfile(userId, userData);
+        await CacheService.invalidateUser(userId);
+        res.status(200).json(updatedUser);
+      } else {
+        const updatedUser = await UserService.getProfile(userId);
+        res.status(200).json(updatedUser);
+      }
     } catch (error: any) {
       res.status(400).json({ message: error.message });
     }

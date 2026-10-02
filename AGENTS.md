@@ -56,3 +56,6 @@ When designing, updating, or overhauling the UI of a specific page:
 4. **Descriptive Depth:** Write clean, descriptive, and user-facing benefits (e.g., 'Introduced Native Voice Mode with Capacitor plugins, offering seamless hands-free interaction without overlapping audio.'). Avoid empty marketing buzzwords.
 
 
+ 
+ 8 .   * * A B S O L U T E   U I   &   F I X   P R E S E R V A T I O N : * *   N e v e r   b r e a k   t h e   U I   o r   r e m o v e   f i x e s   t h a t   h a v e   a l r e a d y   b e e n   i m p l e m e n t e d !   I f   y o u   ( o r   y o u r   s u b a g e n t s )   a r e   m o d i f y i n g   a   c o m p o n e n t   t o   u p d a t e   l o g i c ,   y o u   M U S T   r i g o r o u s l y   p r e s e r v e   e v e r y   e x i s t i n g   g r a d i e n t ,   a n i m a t i o n ,   c o n d i t i o n a l   r e n d e r ,   a n d   c u s t o m   s t y l i n g .   Y o u   a r e   s t r i c t l y   f o r b i d d e n   f r o m   r e v e r t i n g   o r   w i p i n g   o u t   p r e v i o u s   a r c h i t e c t u r a l   o r   v i s u a l   f i x e s   j u s t   b e c a u s e   t h e y   w e r e   m i s s i n g   i n   a n   o l d e r   c o n t e x t .  
+ 

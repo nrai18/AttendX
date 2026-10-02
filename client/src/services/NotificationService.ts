@@ -350,8 +350,22 @@ export class NotificationService {
         console.error('[FCM] Error on registration: ' + JSON.stringify(error));
       });
 
-      PushNotifications.addListener('pushNotificationReceived', (notification) => {
-        console.log('[FCM] Push received: ', notification);
+      PushNotifications.addListener('pushNotificationReceived', async (notification) => {
+        console.log('[FCM] Push received in foreground: ', notification);
+        // Force the notification to show a banner even when the app is actively open
+        if (Capacitor.isNativePlatform()) {
+           await LocalNotifications.schedule({
+             notifications: [
+               {
+                 id: Math.floor(Math.random() * 1000000),
+                 title: notification.title || "New Message",
+                 body: notification.body || "",
+                 schedule: { at: new Date(Date.now() + 100) }, // Schedule immediately
+                 extra: notification.data
+               }
+             ]
+           });
+        }
       });
 
       PushNotifications.addListener('pushNotificationActionPerformed', (notification) => {
@@ -530,6 +544,11 @@ export class NotificationService {
         try {
           // Tap on the notification body itself
           if (action.actionId === 'tap' || action.actionId === 'ACADEMIC_UPDATE_OPEN') {
+            const extra = action.notification.extra;
+            if (extra && extra.type === 'ota_update') {
+               window.dispatchEvent(new Event('check_ota_update'));
+               return;
+            }
             const id = Number(action.notification.id);
             // Academic updates series (8800..8899)
             if (id >= ACADEMIC_UPDATES_START_ID && id <= ACADEMIC_UPDATES_END_ID) {
@@ -868,7 +887,7 @@ export class NotificationService {
         // Handle User's own birthday
         if (user?.birthday) {
           const userDob = new Date(user.birthday);
-          if (userDob.getDate() === currentDay.getDate() && userDob.getMonth() === currentDay.getMonth()) {
+          if (userDob.getUTCDate() === currentDay.getDate() && userDob.getUTCMonth() === currentDay.getMonth()) {
             const notifyTime = setHours(currentDay, 8); // 8 AM greeting
             if (notifyTime.getTime() > Date.now()) {
               const firstName = (user.name || "there").split(' ')[0];
