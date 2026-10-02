@@ -219,10 +219,7 @@ export class NativeVoiceService {
 
           await SpeechRecognition.addListener('listeningState', (event: any) => {
             if (event.state === 'stopped') {
-              // Only consider it officially "stopped" in JS if we aren't supposed to be looping
-              if (!this.isLoopActive || this.isSpeakingState) {
-                this.isListeningState = false;
-              }
+              this.isListeningState = false;
               options.onEnd?.();
             }
           });

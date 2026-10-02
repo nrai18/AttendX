@@ -69,7 +69,7 @@ import { ChangelogModal } from "../../components/settings/ChangelogModal";
 import { NotificationService } from "../../services/NotificationService";
 
 export const SettingsPage: React.FC = () => {
-  const currentAppVersion = (Capacitor.isNativePlatform() ? localStorage.getItem("app_version") : null) || import.meta.env.VITE_APP_VERSION || "4.1.1";
+  const currentAppVersion = (Capacitor.isNativePlatform() ? localStorage.getItem("app_version") : null) || import.meta.env.VITE_APP_VERSION || "4.2.0";
 
   const renderDocuments = (type: string) => {
     // For backups, only show the most recent one (index 0 because it's sorted desc by createdAt on backend)

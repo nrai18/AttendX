@@ -418,7 +418,7 @@ export const LoginPage: React.FC = () => {
             </form>
           ) : (
             <>
-              <form onSubmit={handleSubmit}>
+              <form onSubmit={handleSubmit} method="POST" action="#">
                 <CardHeader className="space-y-1">
                 <CardTitle className="text-xl">Sign In</CardTitle>
                 <CardDescription>Enter your credentials to access your account</CardDescription>

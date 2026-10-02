@@ -15,12 +15,17 @@ export class SystemController {
           "sections": [
             {
               "title": "General Improvements & Bug Fixes",
-              "items": [
-                { "icon": "🎙️", "text": "Completely resolved the Android 11+ rapid microphone cycling bug that could crash the voice system." },
+                            "items": [
+                { "icon": "🎙️", "text": "Fixed a UI state freeze where Hands-Free mode wouldn't exit if the hardware mic timed out due to silence." },
+                { "icon": "🚀", "text": "Resolved a subtle race condition where Push Notifications wouldn't register on fresh logins." },
+                { "icon": "🔐", "text": "Form metadata injected to trigger Password Managers (like Google) reliably on Android WebViews." },
+                { "icon": "🐞", "text": "Restored missing Settings/FAQ route and fixed 'Go Back' button visibility on 404 pages." },
+                { "icon": "⚙️", "text": "Dynamic version numbering correctly injected into the web dashboard build." },
+                { "icon": "🎤", "text": "Completely resolved the Android 11+ rapid microphone cycling bug that could crash the voice system." },
                 { "icon": "📱", "text": "Fixed a layout bug causing the Stop Conversation footer to disappear on desktop and small screens." },
                 { "icon": "⚡", "text": "Wired cinematic typing animations perfectly to device hardware for exact lip-sync with speech audio." },
-                { "icon": "✨", "text": "Cleaned up pending action Yes/No buttons so they unmount instantly after clicking." },
-                { "icon": "🐛", "text": "Resolved timezone edge cases where dates were incorrectly compared against UTC." }
+                { "icon": "✅", "text": "Cleaned up pending action Yes/No buttons so they unmount instantly after clicking." },
+                { "icon": "🕰️", "text": "Resolved timezone edge cases where dates were incorrectly compared against UTC." }
               ]
             },
             {

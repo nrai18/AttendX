@@ -381,7 +381,7 @@ export const FloatingChatbot: React.FC = () => {
       onEnd: () => {
         if (isHandsFreeRef.current && !NativeVoiceService.isSpeaking() && !isHandsFreeProcessingRef.current) {
           if (!NativeVoiceService.isListening()) {
-            setHandsFreeStatus("IDLE");
+            stopHandsFreeMode("Closed due to inactivity");
           }
         }
       }
@@ -659,7 +659,7 @@ export const FloatingChatbot: React.FC = () => {
       if (isHandsFreeRef.current && textToSpeak) {
         setHandsFreeStatus("SPEAKING");
         await NativeVoiceService.stopSpeaking();
-        await NativeVoiceService.speak(textToSpeak, {
+        NativeVoiceService.speak(textToSpeak, {
           autoResumeListening: true,
           listenOptions: handsFreeListenOptionsRef.current,
           onStart: () => {
@@ -678,7 +678,7 @@ export const FloatingChatbot: React.FC = () => {
           await NativeVoiceService.stopSpeaking();
         } else {
           await NativeVoiceService.stopSpeaking();
-          await NativeVoiceService.speak(textToSpeak);
+          NativeVoiceService.speak(textToSpeak);
         }
       } else {
         // Mute automatic TTS and explicitly ensure any audio is stopped

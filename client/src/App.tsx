@@ -19,6 +19,7 @@ import { CalendarPage } from "./pages/attendance/CalendarPage";
 import { SemesterHubPage } from "./pages/semester/SemesterHubPage";
 import { ClassroomsPage } from "./pages/social/ClassroomsPage";
 import { ClassroomFeedPage } from "./pages/social/ClassroomFeedPage";
+import { FaqPage } from "./pages/settings/FaqPage";
 import { Loader2 } from "lucide-react";
 import { ErrorBoundary } from "./components/common/ErrorBoundary";
 
@@ -237,6 +238,7 @@ export function App() {
               <Route path="/classrooms" element={<ClassroomsPage />} />
               <Route path="/classrooms/:id" element={<ClassroomFeedPage />} />
               <Route path="/settings" element={<SettingsPage />} />
+              <Route path="/settings/faq" element={<FaqPage />} />
               <Route path="/assignments" element={<AssignmentsPage />} />
               <Route path="/report" element={<ReportView />} />
               <Route path="*" element={<NotFoundPage />} />

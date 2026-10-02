@@ -330,11 +330,11 @@ export class NotificationService {
 
       if (permStatus.receive !== 'granted') {
         console.warn('User denied push notification permissions.');
+        import('sonner').then(({ toast }) => toast.error('Notification permission denied by OS.'));
         return;
       }
 
-      await PushNotifications.register();
-
+      // MUST add listeners BEFORE calling register() to avoid race conditions!
       PushNotifications.addListener('registration', async (token) => {
         console.log('[FCM] Push registration success, token: ' + token.value);
         localStorage.setItem('fcm_token', token.value);
@@ -348,7 +348,10 @@ export class NotificationService {
 
       PushNotifications.addListener('registrationError', (error: any) => {
         console.error('[FCM] Error on registration: ' + JSON.stringify(error));
+        import('sonner').then(({ toast }) => toast.error('FCM Registration Error: ' + JSON.stringify(error)));
       });
+
+      await PushNotifications.register();
 
       PushNotifications.addListener('pushNotificationReceived', async (notification) => {
         console.log('[FCM] Push received in foreground: ', notification);
@@ -387,9 +390,13 @@ export class NotificationService {
       try {
         await api.patch('/users/me', { fcmToken: token });
         console.log('[FCM] Successfully synced FCM token to backend after login.');
+        import('sonner').then(({ toast }) => toast.success('FCM Token synced to backend!'));
       } catch (error) {
         console.error('[FCM] Failed to sync FCM token:', error);
+        import('sonner').then(({ toast }) => toast.error('Failed to sync FCM Token to DB.'));
       }
+    } else {
+      import('sonner').then(({ toast }) => toast.error('FCM Token is NULL. Device failed to register.'));
     }
   }
 

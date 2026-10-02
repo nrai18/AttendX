@@ -1,9 +1,7 @@
+import 'dotenv/config';
 import { initializeApp, cert, getApps } from 'firebase-admin/app';
 import { getMessaging } from 'firebase-admin/messaging';
-import dotenv from 'dotenv';
 import { prisma } from './src/lib/prisma.ts';
-
-dotenv.config();
 
 async function main() {
   const title = process.argv[2];
