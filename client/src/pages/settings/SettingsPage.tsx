@@ -1385,7 +1385,7 @@ export const SettingsPage: React.FC = () => {
           {/* Share App */}
           <button
             onClick={async () => {
-              const appLink = "https://drive.google.com/file/d/1XZBMJBfY8YMGaY82k3FTBHtHmymWggF1/view?usp=sharing";
+              const appLink = import.meta.env.VITE_APP_DOWNLOAD_LINK || "https://attendx.app";
               const shareText = `Download AttendX to manage your academic attendance easily!\n\n${appLink}`;
               try {
                 const { Capacitor } = await import("@capacitor/core");
@@ -1454,7 +1454,7 @@ export const SettingsPage: React.FC = () => {
 
           {/* Install APK */}
           <a
-            href="https://drive.google.com/file/d/1XZBMJBfY8YMGaY82k3FTBHtHmymWggF1/view?usp=sharing"
+            href={import.meta.env.VITE_APP_DOWNLOAD_LINK || "#"}
             target="_blank"
             rel="noopener noreferrer"
             className="w-full text-left p-4 hover:bg-muted/50 transition-colors flex items-center justify-between gap-3 cursor-pointer group"

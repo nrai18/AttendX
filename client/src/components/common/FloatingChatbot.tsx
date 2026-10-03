@@ -792,7 +792,7 @@ export const FloatingChatbot: React.FC = () => {
           await api.delete(`/timetable/semester/${action.payload.semesterId}/subject/${action.payload.subjectId}/slots`);
           refresh = true;
         } else if (action.type === 'SHARE_APP') {
-          const appLink = "https://drive.google.com/file/d/1XZBMJBfY8YMGaY82k3FTBHtHmymWggF1/view?usp=sharing";
+          const appLink = import.meta.env.VITE_APP_DOWNLOAD_LINK || "https://attendx.app";
           const shareText = `Download AttendX to manage your academic attendance easily!\n\n${appLink}`;
           try {
             const { Capacitor } = await import("@capacitor/core");
