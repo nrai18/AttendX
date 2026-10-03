@@ -967,12 +967,12 @@ export class EmailService {
       <body>
         <div class="container">
           <div class="header">
-            <h1>Happy Birthday, ${name}! ÃƒÂ°Ã…Â¸Ã…Â½Ã¢â‚¬Â°</h1>
+            <h1>Happy Birthday, ${name}! 🎉</h1>
           </div>
           <div class="content">
-            <div class="cake">ÃƒÂ°Ã…Â¸Ã…Â½Ã¢â‚¬Å¡</div>
+            <div class="cake">🎂</div>
             <p>On behalf of the entire AttendX team (and your AI Copilot), we want to wish you a very happy birthday!</p>
-            <p>We hope you have an amazing day filled with joy, celebration, and hopefully a day off from classes! ÃƒÂ°Ã…Â¸Ã‹Å“Ã¢â‚¬Â°</p>
+            <p>We hope you have an amazing day filled with joy, celebration, and hopefully a day off from classes! 🎈</p>
             <p>Thank you for being an amazing part of our community.</p>
           </div>
           <div class="footer">
@@ -988,7 +988,7 @@ export class EmailService {
       await resend.emails.send({
         from: process.env.RESEND_FROM_EMAIL || 'AttendX Team <team@mail.attendx.tech>',
         to: email,
-        subject: `Happy Birthday from AttendX, ${name}! ÃƒÂ°Ã…Â¸Ã…Â½Ã¢â‚¬Å¡`,
+        subject: `Happy Birthday from AttendX, ${name}! 🎂`,
         html,
         text: `Happy Birthday, ${name}! On behalf of the entire AttendX team, we want to wish you a very happy birthday! Have an amazing day!`
       });
