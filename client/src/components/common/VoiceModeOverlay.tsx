@@ -467,6 +467,26 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
     
     setIsProcessing(true);
 
+    if (pendingActionMsgId) {
+      const cleanQuery = query.trim().toLowerCase().replace(/[.,!]/g, '');
+      const isConfirming = /^(yes|yeah|yep|do it|confirm|execute|sure|ok|okay|yes please|sure do it|yeah do it|yes yes do it|proceed)/.test(cleanQuery);
+      const isCanceling = /^(no|nope|cancel|abort|stop|don't|do not|no thanks|no do not cancel)/.test(cleanQuery);
+
+      if (isConfirming) {
+        onConfirmPendingAction?.(pendingActionMsgId);
+        setTranscript("");
+        setIsProcessing(false);
+        await handleSpeakText("Action confirmed.");
+        return;
+      } else if (isCanceling) {
+        onCancelPendingAction?.(pendingActionMsgId);
+        setTranscript("");
+        setIsProcessing(false);
+        await handleSpeakText("Action cancelled.");
+        return;
+      }
+    }
+
     // Visually show we are processing, but do not block with spoken filler audio
     const randomFiller = VISUAL_FILLER_PHRASES[Math.floor(Math.random() * VISUAL_FILLER_PHRASES.length)];
     setLastResponse(randomFiller);
