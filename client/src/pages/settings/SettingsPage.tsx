@@ -316,6 +316,9 @@ export const SettingsPage: React.FC = () => {
         });
       }
       
+      // Reschedule local notifications (e.g. birthday) with the new profile data
+      NotificationService.autoScheduleFromTimetable();
+      
       toast.success("Profile updated successfully!");
       setIsEditProfileOpen(false);
     } catch (err: any) {
