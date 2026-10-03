@@ -15,6 +15,7 @@ import { DiscreteTabs } from "../../components/ui/discrete-tabs";
 import { toast } from "sonner";
 import { TimedUndoAction } from "../../components/ui/timed-undo-action";
 import { PeakpathRays } from "../../components/ui/peakpath-rays";
+import { ScrollToTopButton } from "../../components/common/ScrollToTopButton";
 
 interface AppEvent {
   id: string;
@@ -505,6 +506,7 @@ export const SemesterHubPage = () => {
         
         {activeTab === "calendar" && (
           <div className="h-full flex flex-col">
+            <ScrollToTopButton />
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-xl font-bold text-foreground">{format(currentDate, "MMMM yyyy")}</h2>
               <div className="flex gap-2">

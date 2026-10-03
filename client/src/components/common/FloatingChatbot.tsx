@@ -172,6 +172,9 @@ export const FloatingChatbot: React.FC = () => {
   const [isServerOnline, setIsServerOnline] = useState(true);
 
   useEffect(() => {
+    const handleOpenVoiceMode = () => setIsVoiceOpen(true);
+    window.addEventListener('open-voice-mode', handleOpenVoiceMode);
+    
     App.getInfo().then(info => setAppVersion(info.version)).catch(() => {});
     
     // Poll server health
@@ -197,6 +200,7 @@ export const FloatingChatbot: React.FC = () => {
     return () => {
       clearInterval(interval);
       window.removeEventListener('online', handleOnline);
+      window.removeEventListener('open-voice-mode', handleOpenVoiceMode);
       appStateListener.then(listener => listener.remove());
     };
   }, []);
@@ -266,6 +270,7 @@ export const FloatingChatbot: React.FC = () => {
   const handsFreeAutoSubmitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isHandsFreeProcessingRef = useRef(false);
   const handsFreeListenOptionsRef = useRef<any>(null);
+  const currentTranscriptRef = useRef<string>("");
 
   const resetHandsFreeSilenceTimer = () => {
     if (handsFreeSilenceTimerRef.current) {
@@ -275,9 +280,9 @@ export const FloatingChatbot: React.FC = () => {
     if (isHandsFreeRef.current && !isHandsFreeProcessingRef.current) {
       handsFreeSilenceTimerRef.current = setTimeout(() => {
         if (isHandsFreeRef.current && !isHandsFreeProcessingRef.current && !NativeVoiceService.isSpeaking()) {
-          stopHandsFreeMode("Hands-free paused due to 10s of inactivity.");
+          stopHandsFreeMode("Hands-free paused due to 20s of inactivity.");
         }
-      }, 10000);
+      }, 20000);
     }
   };
 
@@ -327,6 +332,7 @@ export const FloatingChatbot: React.FC = () => {
     await NativeVoiceService.stopListening();
 
     setInput("");
+    currentTranscriptRef.current = "";
     setIsHandsFree(true);
     isHandsFreeRef.current = true;
     setHandsFreeStatus("LISTENING");
@@ -338,9 +344,11 @@ export const FloatingChatbot: React.FC = () => {
       onPartialResult: (text: string) => {
         if (!isHandsFreeRef.current || isHandsFreeProcessingRef.current) return;
         setInput(text);
+        currentTranscriptRef.current = text;
         resetHandsFreeSilenceTimer();
         if (checkHandsFreeVoiceBreakout(text)) {
           setInput("");
+          currentTranscriptRef.current = "";
           return;
         }
 
@@ -349,14 +357,16 @@ export const FloatingChatbot: React.FC = () => {
           if (isHandsFreeRef.current && !isHandsFreeProcessingRef.current && text.trim()) {
             triggerHandsFreeSubmit(text.trim());
           }
-        }, 1500);
+        }, 5000);
       },
       onFinalResult: (text: string) => {
         if (!isHandsFreeRef.current || isHandsFreeProcessingRef.current) return;
         setInput(text);
+        currentTranscriptRef.current = text;
         resetHandsFreeSilenceTimer();
         if (checkHandsFreeVoiceBreakout(text)) {
           setInput("");
+          currentTranscriptRef.current = "";
           return;
         }
 
@@ -365,7 +375,7 @@ export const FloatingChatbot: React.FC = () => {
           if (isHandsFreeRef.current && !isHandsFreeProcessingRef.current && text.trim()) {
             triggerHandsFreeSubmit(text.trim());
           }
-        }, 800);
+        }, 5000);
       },
       onError: (err: any) => {
         console.warn("Hands-free speech recognition error:", err);
@@ -381,7 +391,16 @@ export const FloatingChatbot: React.FC = () => {
       onEnd: () => {
         if (isHandsFreeRef.current && !NativeVoiceService.isSpeaking() && !isHandsFreeProcessingRef.current) {
           if (!NativeVoiceService.isListening()) {
-            stopHandsFreeMode("Closed due to inactivity");
+             // If there is text in the input box, it means the native Android silence detector 
+             // decided the user finished their sentence and turned off the hardware mic.
+             // We MUST submit it immediately instead of throwing it away!
+             if (currentTranscriptRef.current.trim()) {
+                triggerHandsFreeSubmit(currentTranscriptRef.current.trim());
+             } else {
+                // The user hasn't said anything yet, but Android natively turned off the mic.
+                // Restart it silently to honor our 20s total inactivity timeout.
+                NativeVoiceService.startListening(handsFreeListenOptionsRef.current);
+             }
           }
         }
       }
@@ -410,6 +429,7 @@ export const FloatingChatbot: React.FC = () => {
     isHandsFreeProcessingRef.current = true;
     setHandsFreeStatus("THINKING");
     setInput("");
+    currentTranscriptRef.current = "";
     await handleSendMessage(queryText, 'voice');
     isHandsFreeProcessingRef.current = false;
   };

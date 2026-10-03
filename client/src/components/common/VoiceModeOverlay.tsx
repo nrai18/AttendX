@@ -243,6 +243,11 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
   const isSpeakingRef = useRef(isSpeaking);
   const isProcessingRef = useRef(isProcessing);
   const isListeningRef = useRef(isListening);
+  const transcriptRef = useRef(transcript);
+
+  useEffect(() => {
+    transcriptRef.current = transcript;
+  }, [transcript]);
 
   const speechStartTimeRef = useRef<number>(0);
   const speechTotalDurationRef = useRef<number>(0);
@@ -257,10 +262,10 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
     if (isOpenRef.current && !isProcessingRef.current && !isSpeakingRef.current) {
       silenceTimeoutRef.current = setTimeout(() => {
         if (isOpenRef.current && !isProcessingRef.current && !NativeVoiceService.isSpeaking()) {
-          toast.info("Hands-free paused due to 10s of inactivity.");
+          toast.info("Hands-free paused due to 20s of inactivity.");
           stopListening();
         }
-      }, 10000);
+      }, 20000);
     }
   };
 
@@ -340,8 +345,12 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
       }
     },
     onEnd: () => {
-      if (isOpenRef.current && !NativeVoiceService.isContinuousLoop()) {
-        setIsListening(false);
+      if (isOpenRef.current && !NativeVoiceService.isSpeaking() && !isProcessingRef.current) {
+        if (!transcriptRef.current.trim()) {
+          NativeVoiceService.startListening(getListenOptions());
+        } else {
+          setIsListening(false);
+        }
       }
     },
   });
@@ -351,6 +360,8 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
     await NativeVoiceService.stopSpeaking();
     setIsSpeaking(false);
     setIsProcessing(false);
+    setTranscript("");
+    transcriptRef.current = "";
 
     const options = getListenOptions();
     NativeVoiceService.startContinuousLoop(options);
@@ -492,7 +503,7 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
   // Auto-submit after silence or when manually stopped
   useEffect(() => {
     if (transcript.trim() && !isProcessing && !isSpeaking) {
-      const delay = isListening ? 2000 : 700;
+      const delay = isListening ? 5000 : 700;
       const timer = setTimeout(() => {
         handleProcessVoiceInput();
       }, delay);

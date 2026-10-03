@@ -390,13 +390,17 @@ export class NotificationService {
       try {
         await api.patch('/users/me', { fcmToken: token });
         console.log('[FCM] Successfully synced FCM token to backend after login.');
-        import('sonner').then(({ toast }) => toast.success('FCM Token synced to backend!'));
       } catch (error) {
         console.error('[FCM] Failed to sync FCM token:', error);
         import('sonner').then(({ toast }) => toast.error('Failed to sync FCM Token to DB.'));
       }
     } else {
-      import('sonner').then(({ toast }) => toast.error('FCM Token is NULL. Device failed to register.'));
+      console.warn('[FCM] Token is null at login. Requesting registration again to force sync.');
+      if (Capacitor.isNativePlatform()) {
+        import('@capacitor/push-notifications').then(({ PushNotifications }) => {
+          PushNotifications.register().catch(() => {});
+        });
+      }
     }
   }
 

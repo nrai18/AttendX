@@ -31,10 +31,11 @@ export const SignupPage: React.FC = () => {
         setLoading(true);
         setError(null);
         const result = await GoogleSignIn.signIn();
+        const loc = await fetchLocationOnDemand();
         
         // Send the idToken to our backend to generate our own JWT
         const res = await api.post("/auth/google/native", { idToken: result.idToken }, {
-          headers: geoCoords ? { 'x-attendx-lat': geoCoords.lat, 'x-attendx-lon': geoCoords.lon } : {}
+          headers: loc ? { 'x-attendx-lat': loc.lat, 'x-attendx-lon': loc.lon } : {}
         });
         
         setAuth(res.data.user, res.data.accessToken, res.data.refreshToken);
@@ -48,26 +49,24 @@ export const SignupPage: React.FC = () => {
         setLoading(false);
       }
     } else {
-      window.location.href = `${API_BASE_URL}/auth/google` + (geoCoords ? `?lat=${geoCoords.lat}&lon=${geoCoords.lon}` : "");
+      const loc = await fetchLocationOnDemand();
+      window.location.href = `${API_BASE_URL}/auth/google` + (loc ? `?lat=${loc.lat}&lon=${loc.lon}` : "");
     }
   };
 
-  React.useEffect(() => {
-    let mounted = true;
-    const fetchLoc = async () => {
-      try {
-        const { Geolocation } = await import('@capacitor/geolocation');
-        if (Capacitor.isNativePlatform()) {
-          const hasPerms = await Geolocation.checkPermissions();
-          if (hasPerms.location !== 'granted') await Geolocation.requestPermissions();
-        }
-        const pos = await Geolocation.getCurrentPosition({ timeout: 15000, maximumAge: 300000, enableHighAccuracy: false });
-        if (mounted) setGeoCoords({ lat: pos.coords.latitude, lon: pos.coords.longitude });
-      } catch(e) {}
-    };
-    fetchLoc();
-    return () => { mounted = false; };
-  }, []);
+  const fetchLocationOnDemand = async () => {
+    try {
+      const { Geolocation } = await import('@capacitor/geolocation');
+      if (Capacitor.isNativePlatform()) {
+        const hasPerms = await Geolocation.checkPermissions();
+        if (hasPerms.location !== 'granted') await Geolocation.requestPermissions();
+      }
+      const pos = await Geolocation.getCurrentPosition({ timeout: 15000, maximumAge: 300000, enableHighAccuracy: false });
+      return { lat: pos.coords.latitude, lon: pos.coords.longitude };
+    } catch (e) {
+      return null;
+    }
+  };
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-[#050505] text-slate-900 dark:text-slate-50 flex items-center justify-center p-4 antialiased relative">

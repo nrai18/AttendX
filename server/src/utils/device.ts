@@ -35,7 +35,7 @@ export async function getDeviceDetails(req: any) {
   if (lat && lon) {
     try {
       const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=10&addressdetails=1`, {
-        headers: { 'User-Agent': 'AttendX App' }
+        headers: { 'User-Agent': 'AttendXApp/1.0 (admin@attendx.com)' }
       });
       const data = await response.json();
       if (data && data.address) {

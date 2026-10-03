@@ -77,6 +77,9 @@ export const TodayPage = () => {
   const [onboardingStatus, setOnboardingStatus] = useState<any>(dayCache?.onboarding || null);
   const [isLoading, setIsLoading] = useState(!dayCache);
   const [isCreateSemesterOpen, setIsCreateSemesterOpen] = useState(false);
+  const [hasUsedVoiceMode, setHasUsedVoiceMode] = useState(localStorage.getItem("onboarding_voice_mode") === "true");
+  const [hasUsedPredictive, setHasUsedPredictive] = useState(localStorage.getItem("onboarding_predictive") === "true");
+  const [hasUsedPeerSync, setHasUsedPeerSync] = useState(localStorage.getItem("onboarding_peer_sync") === "true");
 
   // Extra Lecture Modal State
   const [isAddExtraModalOpen, setIsAddExtraModalOpen] = useState(false);
@@ -1001,7 +1004,7 @@ export const TodayPage = () => {
         </div>
       )}
 
-      {onboardingStatus && (!onboardingStatus.hasSemester || !onboardingStatus.hasSubjects || !onboardingStatus.hasTimetable || !onboardingStatus.hasCalendar || !onboardingStatus.hasAttendance) && (
+      {onboardingStatus && (!onboardingStatus.hasSemester || !onboardingStatus.hasSubjects || !onboardingStatus.hasTimetable || !onboardingStatus.hasCalendar || !onboardingStatus.hasAttendance || !hasUsedVoiceMode || !hasUsedPredictive || !hasUsedPeerSync) && (
         <div className="flex flex-col items-center justify-center py-6">
           <OnboardingChecklist 
             title="Getting Started"
@@ -1010,7 +1013,22 @@ export const TodayPage = () => {
               { id: 2, title: "Add subjects and set targets", isCompleted: onboardingStatus.hasSubjects, onClick: () => navigate("/subjects") },
               { id: 3, title: "Set up weekly timetable", isCompleted: onboardingStatus.hasTimetable, onClick: () => navigate("/timetable") },
               { id: 4, title: "Sync your academic calendar", isCompleted: onboardingStatus.hasCalendar, onClick: () => navigate("/calendar") },
-              { id: 5, title: "Log your first attendance", isCompleted: onboardingStatus.hasAttendance, onClick: () => navigate("/today") }
+              { id: 5, title: "Log your first attendance", isCompleted: onboardingStatus.hasAttendance, onClick: () => navigate("/today") },
+              { id: 6, title: "Explore Hands-Free Voice Mode", isCompleted: hasUsedVoiceMode, onClick: () => {
+                  localStorage.setItem("onboarding_voice_mode", "true");
+                  setHasUsedVoiceMode(true);
+                  window.dispatchEvent(new Event("open-voice-mode"));
+              } },
+              { id: 7, title: "Unlock Predictive Analytics", isCompleted: hasUsedPredictive, onClick: () => {
+                  localStorage.setItem("onboarding_predictive", "true");
+                  setHasUsedPredictive(true);
+                  navigate("/predictive");
+              } },
+              { id: 8, title: "Mirror Timetable with Peer Sync", isCompleted: hasUsedPeerSync, onClick: () => {
+                  localStorage.setItem("onboarding_peer_sync", "true");
+                  setHasUsedPeerSync(true);
+                  navigate("/settings");
+              } }
             ]} 
           />
           {!onboardingStatus.hasSemester && (

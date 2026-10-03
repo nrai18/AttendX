@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { api } from "../../lib/api";
 import { useScrollLock } from "../../hooks/useScrollLock";
+import { useAttendanceStore } from "../../stores/attendanceStore";
 import {
   Calendar,
   Plus,
@@ -108,6 +109,7 @@ export const CreateSemesterModal: React.FC<CreateSemesterModalProps> = ({
         endDate,
         isActive: true,
       });
+      await useAttendanceStore.getState().fetchStats(true); // Sync global state
       toast.success("Semester created and activated successfully!");
       onSuccess();
       onClose();
@@ -122,6 +124,7 @@ export const CreateSemesterModal: React.FC<CreateSemesterModalProps> = ({
   const handleActivate = async (id: string) => {
     try {
       await api.patch(`/semesters/${id}/activate`);
+      await useAttendanceStore.getState().fetchStats(true); // Sync global state
       toast.success("Semester activated successfully!");
       onSuccess();
       onClose();

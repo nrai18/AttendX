@@ -79,22 +79,19 @@ export const LoginPage: React.FC = () => {
     }
   }, [navigate, setAuth]);
 
-  useEffect(() => {
-    let mounted = true;
-    const fetchLoc = async () => {
-      try {
-        const { Geolocation } = await import('@capacitor/geolocation');
-        if (Capacitor.isNativePlatform()) {
-          const hasPerms = await Geolocation.checkPermissions();
-          if (hasPerms.location !== 'granted') await Geolocation.requestPermissions();
-        }
-        const pos = await Geolocation.getCurrentPosition({ timeout: 15000, maximumAge: 300000, enableHighAccuracy: false });
-        if (mounted) setGeoCoords({ lat: pos.coords.latitude, lon: pos.coords.longitude });
-      } catch(e) {}
-    };
-    fetchLoc();
-    return () => { mounted = false; };
-  }, []);
+  const fetchLocationOnDemand = async () => {
+    try {
+      const { Geolocation } = await import('@capacitor/geolocation');
+      if (Capacitor.isNativePlatform()) {
+        const hasPerms = await Geolocation.checkPermissions();
+        if (hasPerms.location !== 'granted') await Geolocation.requestPermissions();
+      }
+      const pos = await Geolocation.getCurrentPosition({ timeout: 15000, maximumAge: 300000, enableHighAccuracy: false });
+      return { lat: pos.coords.latitude, lon: pos.coords.longitude };
+    } catch (e) {
+      return null;
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -105,8 +102,9 @@ export const LoginPage: React.FC = () => {
     try {
       setLoading(true);
       setError(null);
+      const loc = await fetchLocationOnDemand();
       const res = await api.post("/auth/login", { email, password }, {
-        headers: geoCoords ? { 'x-attendx-lat': geoCoords.lat, 'x-attendx-lon': geoCoords.lon } : {}
+        headers: loc ? { 'x-attendx-lat': loc.lat, 'x-attendx-lon': loc.lon } : {}
       });
       setAuth(res.data.user, res.data.accessToken, res.data.refreshToken);
       navigate("/today");
@@ -199,10 +197,11 @@ export const LoginPage: React.FC = () => {
         setLoading(true);
         setError(null);
         const result = await GoogleSignIn.signIn();
+        const loc = await fetchLocationOnDemand();
         
         // Send the idToken to our backend to generate our own JWT
         const res = await api.post("/auth/google/native", { idToken: result.idToken }, {
-          headers: geoCoords ? { 'x-attendx-lat': geoCoords.lat, 'x-attendx-lon': geoCoords.lon } : {}
+          headers: loc ? { 'x-attendx-lat': loc.lat, 'x-attendx-lon': loc.lon } : {}
         });
         
         setAuth(res.data.user, res.data.accessToken, res.data.refreshToken);
@@ -217,7 +216,8 @@ export const LoginPage: React.FC = () => {
         setLoading(false);
       }
     } else {
-      window.location.href = `${API_BASE_URL}/auth/google` + (geoCoords ? `?lat=${geoCoords.lat}&lon=${geoCoords.lon}` : "");
+      const loc = await fetchLocationOnDemand();
+      window.location.href = `${API_BASE_URL}/auth/google` + (loc ? `?lat=${loc.lat}&lon=${loc.lon}` : "");
     }
   };
 

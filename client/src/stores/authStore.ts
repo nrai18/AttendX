@@ -89,8 +89,7 @@ export const useAuthStore = create<AuthState>()(
           'attendx-attendance-cache',
           'attendx-api-cache',
           'attendx-assignments',
-          'attendx-sync-storage',
-          'fcm_token'
+          'attendx-sync-storage'
         ];
         keysToRemove.forEach(k => {
           Preferences.remove({ key: k }).catch(() => {});

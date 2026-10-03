@@ -55,11 +55,11 @@ export const OnboardingChecklist: React.FC<ChecklistProps> = ({
 
             <div className="flex items-center gap-2 sm:gap-3 shrink-0 ml-1">
               <div className="flex gap-0.5 xs:gap-[3px]">
-                {Array.from({ length: 14 }).map((_, i) => (
+                {Array.from({ length: totalSteps }).map((_, i) => (
                   <div 
                     key={i} 
-                    className={`h-3.5 sm:h-4 w-[2.5px] sm:w-[3.5px] rounded-full transition-colors duration-500 ${
-                      i < (completedCount / totalSteps) * 14 
+                    className={`h-3.5 sm:h-4 w-4 sm:w-5 rounded-full transition-colors duration-500 ${
+                      i < completedCount 
                       ? 'bg-[#22C55E]' 
                       : 'bg-[#E5E5E7] dark:bg-[#2A2A2A]'
                     }`}
@@ -81,10 +81,14 @@ export const OnboardingChecklist: React.FC<ChecklistProps> = ({
                 animate={{ height: 'auto', opacity: 1 }}
                 exit={{ height: 0, opacity: 0 }}
                 transition={springConfig}
-                className="border-t-[1.4px] border-[#E9E8EF] dark:border-white/5 bg-white dark:bg-[#1C1C1C] rounded-t-4xl sm:rounded-t-[24px]"
+                className="border-t-[1.4px] border-[#E9E8EF] dark:border-white/5 bg-white dark:bg-[#1C1C1C]"
               >
                 <div className="p-1.5 sm:p-2 space-y-0.5 sm:y-1">
-                  {steps.map((step) => (
+                  {steps.map((step, index) => {
+                    const firstUncompletedId = steps.find(s => !s.isCompleted)?.id;
+                    const isActive = step.id === firstUncompletedId;
+                    
+                    return (
                     <div 
                       key={step.id}
                       onClick={step.onClick}
@@ -98,25 +102,25 @@ export const OnboardingChecklist: React.FC<ChecklistProps> = ({
                           </div>
                         ) : (
                           <div className={`w-5 h-4.5 sm:w-6 sm:h-5 rounded-full border-2 flex items-center justify-center text-[10px] sm:text-[12px] font-bold shrink-0 ${
-                            step.id === 3 
-                            ? 'bg-[#292929] dark:bg-[#EDEDED] border-[#292929] dark:border-[#EDEDED] shadow-sm shadow-[#1a1919] text-white dark:text-[#1A1A1A]' 
-                            : 'border-[#E5E5E7] dark:border-[#333] text-[#A1A1A1] dark:text-[#555] shadow-sm shadow-[#8f8e8e]/40'
+                            isActive 
+                            ? 'bg-[#48CAE4]/10 dark:bg-[#48CAE4]/10 border-[#48CAE4] dark:border-[#48CAE4] text-[#48CAE4] dark:text-[#48CAE4]' 
+                            : 'border-[#E5E5E7] dark:border-[#333] text-[#A1A1A1] dark:text-[#888] shadow-sm shadow-[#8f8e8e]/40'
                           }`}>
                             {step.id}
                           </div>
                         )}
                         <span className={`text-[13px] sm:text-[14px] font-medium transition-colors truncate ${
-                          step.isCompleted ? 'text-[#A1A1A1] dark:text-[#555]' : 'text-[#1A1A1A] dark:text-[#D4D4D4]'
+                          step.isCompleted ? 'text-[#A1A1A1] dark:text-[#888] line-through decoration-white/20' : 'text-[#1A1A1A] dark:text-[#D4D4D4]'
                         }`}>
                           {step.title}
                         </span>
                       </div>
                       
                       {!step.isCompleted && (
-                        <ChevronRight size={14} className="text-[#D1D1D6] dark:text-[#444] shrink-0 sm:size-4" />
+                        <ChevronRight size={14} className={`shrink-0 sm:size-4 ${isActive ? 'text-[#48CAE4]' : 'text-[#D1D1D6] dark:text-[#444]'}`} />
                       )}
                     </div>
-                  ))}
+                  )})}
                 </div>
               </motion.div>
             )}
