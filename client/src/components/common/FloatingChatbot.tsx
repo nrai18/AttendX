@@ -565,8 +565,8 @@ export const FloatingChatbot: React.FC = () => {
 
     // Voice/Text Confirmation Intercept for Pending Actions
     const cleanQuery = query.trim().toLowerCase().replace(/[.,!]/g, '');
-    const isConfirming = /^(yes|yeah|yep|do it|confirm|execute|sure|ok|okay|yes please|sure do it|yeah do it)/.test(cleanQuery);
-    const isCanceling = /^(no|nope|cancel|abort|stop|don't|do not|no thanks)/.test(cleanQuery);
+    const isConfirming = /^(yes|yeah|yep|do it|confirm|execute|sure|ok|okay|yes please|sure do it|yeah do it|yes yes do it|proceed)/.test(cleanQuery);
+    const isCanceling = /^(no|nope|cancel|abort|stop|don't|do not|no thanks|no do not cancel)/.test(cleanQuery);
 
     if (isConfirming || isCanceling) {
       const lastAssistantMsg = messagesRef.current.slice().reverse().find(m => m.role === 'assistant');
@@ -792,7 +792,7 @@ export const FloatingChatbot: React.FC = () => {
           await api.delete(`/timetable/semester/${action.payload.semesterId}/subject/${action.payload.subjectId}/slots`);
           refresh = true;
         } else if (action.type === 'SHARE_APP') {
-          const appLink = "https://drive.google.com/file/d/1XZBMJBfY8YMGaY82k3FTBHtHmymWggF1/view?usp=sharing";
+          const appLink = import.meta.env.VITE_APP_DOWNLOAD_LINK || "https://attendx.app";
           const shareText = `Download AttendX to manage your academic attendance easily!\n\n${appLink}`;
           try {
             const { Capacitor } = await import("@capacitor/core");
@@ -852,12 +852,9 @@ export const FloatingChatbot: React.FC = () => {
           const ttRes = await api.get(`/timetable/${studentContext.active_semester_id}`);
           const timetable = ttRes.data;
           let targetSlotId = null;
-          for (const day of Object.values(timetable.weeklySchedule) as any[]) {
-            const slot = day.find((s: any) => s.subject.id === action.payload.subjectId && s.dayOfWeek === action.payload.dayOfWeek && s.startTime === action.payload.startTime);
-            if (slot) {
-              targetSlotId = slot.id;
-              break;
-            }
+          const slot = timetable.find((s: any) => s.subject.id === action.payload.subjectId && s.dayOfWeek === action.payload.dayOfWeek && s.startTime === action.payload.startTime);
+          if (slot) {
+            targetSlotId = slot.id;
           }
           if (targetSlotId) {
             await api.delete(`/timetable/slots/${targetSlotId}`);
@@ -872,12 +869,9 @@ export const FloatingChatbot: React.FC = () => {
           const timetable = ttRes.data;
           // Find the slot matching subjectId and dayOfWeek
           let targetSlotId = null;
-          for (const day of Object.values(timetable.weeklySchedule) as any[]) {
-            const slot = day.find((s: any) => s.subject.id === action.payload.subjectId && s.dayOfWeek === action.payload.dayOfWeek);
-            if (slot) {
-              targetSlotId = slot.id;
-              break;
-            }
+          const slot = timetable.find((s: any) => s.subject.id === action.payload.subjectId && s.dayOfWeek === action.payload.dayOfWeek);
+          if (slot) {
+            targetSlotId = slot.id;
           }
           if (targetSlotId) {
             await api.patch(`/timetable/slots/${targetSlotId}`, {

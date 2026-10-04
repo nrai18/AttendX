@@ -5,7 +5,7 @@ import { useAttendanceStore } from '../../stores/attendanceStore';
 import { api } from '../../lib/api';
 import { ChevronLeft, Activity, BarChart3, PieChartIcon, CalendarIcon, Clock, CheckCircle2, AlertCircle } from 'lucide-react';
 import { AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
-import { format, subDays, addDays, isAfter, isBefore, parseISO, differenceInDays } from 'date-fns';
+import { format, subDays, addDays, isAfter, isBefore, parseISO, differenceInCalendarDays } from 'date-fns';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { Text, Float, Environment, ContactShadows } from '@react-three/drei';
@@ -164,8 +164,8 @@ export const ReportView: React.FC = () => {
   const { upcomingEvents, pastEvents } = useMemo(() => {
     const today = new Date();
     today.setHours(0,0,0,0);
-    const up = events?.filter((e: any) => isAfter(parseISO(e.date), today) || differenceInDays(parseISO(e.date), today) === 0).sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime()) || [];
-    const past = events?.filter((e: any) => isBefore(parseISO(e.date), today) && differenceInDays(today, parseISO(e.date)) <= 30 && differenceInDays(parseISO(e.date), today) !== 0).sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime()) || [];
+    const up = events?.filter((e: any) => isAfter(parseISO(e.date), today) || differenceInCalendarDays(parseISO(e.date), today) === 0).sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime()) || [];
+    const past = events?.filter((e: any) => isBefore(parseISO(e.date), today) && differenceInCalendarDays(today, parseISO(e.date)) <= 30 && differenceInCalendarDays(parseISO(e.date), today) !== 0).sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime()) || [];
     return { upcomingEvents: up, pastEvents: past };
   }, [events]);
 
@@ -327,7 +327,7 @@ export const ReportView: React.FC = () => {
                     <p className="text-sm opacity-50 italic">No upcoming events found.</p>
                   ) : (
                     upcomingEvents.slice(0, 5).map((e: any, index: number) => {
-                      const daysAway = differenceInDays(parseISO(e.date), new Date());
+                      const daysAway = differenceInCalendarDays(parseISO(e.date), new Date());
                       return (
                         <motion.div whileHover={{ scale: 1.02 }} key={e.id || `upcoming-${index}`} className="p-4 rounded-[16px] bg-[#74313A]/5 border border-[#74313A]/10 dark:bg-black/20 dark:border-white/5 flex items-center justify-between">
                           <div>
@@ -352,7 +352,7 @@ export const ReportView: React.FC = () => {
                     <p className="text-sm opacity-50 italic">No past events in the last 30 days.</p>
                   ) : (
                     pastEvents.slice(0, 5).map((e: any, index: number) => {
-                      const daysAgo = differenceInDays(new Date(), parseISO(e.date));
+                      const daysAgo = differenceInCalendarDays(new Date(), parseISO(e.date));
                       return (
                         <div key={e.id || `past-${index}`} className="p-4 rounded-[16px] bg-black/5 border border-black/5 dark:bg-white/5 dark:border-white/5 flex items-center justify-between opacity-80">
                           <div>

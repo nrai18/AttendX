@@ -200,7 +200,7 @@ export function App() {
       />
       {Capacitor.isNativePlatform() && (
         <OTAUpdateModal
-          localVersion={localStorage.getItem("app_version") || "4.2.0"}
+          localVersion={localStorage.getItem("app_version") || "4.3.0"}
         />
       )}
       {splashFinished && (
