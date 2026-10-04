@@ -72,6 +72,7 @@ import { Capacitor } from "@capacitor/core";
 import { NotFoundPage } from "./pages/NotFoundPage";
 import { HardwareBackButtonHandler } from "./components/common/HardwareBackButtonHandler";
 import { api } from "./lib/api";
+import { useConfigStore } from "./stores/configStore";
 
 export function App() {
   useSilentRefresh();
@@ -93,6 +94,7 @@ export function App() {
 
   useEffect(() => {
     const initServices = async () => {
+      try { await useConfigStore.getState().fetchConfig(); } catch (e) {}
       try {
         if (Capacitor.isNativePlatform()) {
           await CapacitorUpdater.notifyAppReady();
@@ -161,7 +163,7 @@ export function App() {
         });
 
         // Silent ping to ML server to wake it up on boot (Render Free Tier)
-        const mlUrl = import.meta.env.VITE_ML_API_URL;
+        const mlUrl = useConfigStore.getState().mlApiUrl || 'https://attendx-ml-server.onrender.com';
         if (mlUrl) {
           fetch(`${mlUrl}/health`).catch(() => {
             // We expect this to fail or timeout if it's asleep, 
@@ -254,4 +256,6 @@ export function App() {
 }
 
 export default App;
+
+
 

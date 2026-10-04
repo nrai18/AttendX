@@ -91,7 +91,7 @@ function getSessionTitle(session: Session) {
   
   // Try to extract hardware model if backend provided it
   // e.g. "AttendX 3.0.0 (Nothing Phone (3a))" -> "Nothing Phone (3a)"
-  const hardwareMatch = browser.match(/\((.*?)\)/);
+  const hardwareMatch = browser.match(/\((.*)\)/);
   if (hardwareMatch) {
     return hardwareMatch[1];
   }

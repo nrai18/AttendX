@@ -797,7 +797,7 @@ export const TodayPage = () => {
       <HolidayGreetingOverlay
         isOpen={showGreetingOverlay}
         holidayName={isBirthday ? `Happy Birthday, ${user?.name?.split(' ')[0]}!` : (activeEvent?.title || "Holiday")}
-        holidayAssetSrc={isBirthday ? "/lottie/happy-birthday.json" : (activeEvent ? HOLIDAY_ASSETS[getHolidayAnimation(activeEvent).animType as AnimationType] : undefined)}
+        holidayAssetSrc={isBirthday ? "https://guidelensapp-dc28c30e.web.app/lottie/happy-birthday.json" : (activeEvent ? HOLIDAY_ASSETS[getHolidayAnimation(activeEvent).animType as AnimationType] : undefined)}
         hasClasses={agenda.some(item => !item.status)}
         onMarkOff={handleMarkFullDayOff}
         onClose={() => setShowGreetingOverlay(false)}

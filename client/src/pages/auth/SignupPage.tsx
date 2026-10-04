@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { useConfigStore } from "../../stores/configStore";
 import { ArrowLeft, Loader2, Sparkles } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "../../components/ui/card";
@@ -20,7 +21,7 @@ export const SignupPage: React.FC = () => {
     // Initialize GoogleSignIn on native platforms
     if (Capacitor.isNativePlatform()) {
       GoogleSignIn.initialize({
-        clientId: import.meta.env.VITE_GOOGLE_CLIENT_ID || 'YOUR_WEB_CLIENT_ID_HERE.apps.googleusercontent.com', 
+        clientId: useConfigStore.getState().googleClientId || 'YOUR_WEB_CLIENT_ID_HERE.apps.googleusercontent.com', 
       }).catch(console.error);
     }
   }, []);
@@ -139,3 +140,5 @@ export const SignupPage: React.FC = () => {
     </div>
   );
 };
+
+

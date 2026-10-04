@@ -3,11 +3,46 @@ import path from "path";
 import fs from "fs";
 
 export class SystemController {
+  static async getConfig(req: Request, res: Response) {
+    return res.status(200).json({
+      appDownloadLink: process.env.APP_DOWNLOAD_LINK || "https://www.attendx.tech",
+      wsUrl: process.env.WS_URL || "wss://attendx-backend-fh6k.onrender.com/ws",
+      mlApiUrl: process.env.ML_API_URL || "https://attendx-ml-server.onrender.com",
+      googleClientId: process.env.GOOGLE_CLIENT_ID || "729387616931-qlajf1dss2qi1cta5pvc3dos03fh4coi.apps.googleusercontent.com"
+    });
+  }
+
   static async getUpdateManifest(req: Request, res: Response) {
     const manifest = {
-      latestVersion: "4.2.0",
-      title: "Voice Sync & Layout Stability Update",
+      appDownloadLink: process.env.APP_DOWNLOAD_LINK || "https://www.attendx.tech",
+      latestVersion: "4.3.0",
+      title: "Rich Notifications & Deep Linking",
       changelog: [
+        {
+          "version": "4.3.0",
+          "date": "Oct 5, 2026",
+          "title": "Rich Push Notifications & Deep Links",
+          "sections": [
+            {
+              "title": "New Features",
+              "items": [
+                { "icon": "🔔", "text": "Introduced rich push notifications with large image banners." },
+                { "icon": "🔗", "text": "Added support for deep linking to jump straight into modals from push notifications." },
+                { "icon": "🌐", "text": "App download links are now dynamically loaded from the environment." }
+              ]
+            },
+            {
+              "title": "Bug Fixes & Improvements",
+              "items": [
+                { "icon": "🔧", "text": "Fixed a regex bug where device names with nested parentheses (like Nothing Phone (3a)) were missing their closing bracket." },
+                { "icon": "📅", "text": "Fixed a fractional timing bug in the Events calendar causing incorrect 'Today' tags." },
+                { "icon": "⏰", "text": "Local notifications now immediately reschedule when updating your birthday." },
+                { "icon": "🎉", "text": "Corrected text encoding to properly display emojis in automated birthday emails." },
+                { "icon": "🎙️", "text": "Resolved a timetable slot removal bug and improved the chatbot's voice confirmation handling." }
+              ]
+            }
+          ]
+        },
         {
           "version": "4.2.0",
           "date": "Oct 2, 2026",
@@ -627,4 +662,5 @@ export class SystemController {
     }
   }
 }
+
 

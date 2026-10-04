@@ -475,7 +475,7 @@ export const EditProfile: React.FC<EditProfileProps> = ({ isOpen, onClose, initi
                     <Player
                       autoplay
                       loop
-                      src="/lottie/happy-birthday.json"
+                      src="https://guidelensapp-dc28c30e.web.app/lottie/happy-birthday.json"
                       style={{ height: '100%', width: '100%' }}
                     />
                   </div>

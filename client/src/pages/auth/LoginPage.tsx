@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
+import { useConfigStore } from "../../stores/configStore";
 import { Mail, Lock, Loader2, ArrowRight, ArrowLeft, CheckCircle2, Eye, EyeOff, Key } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
@@ -47,7 +48,7 @@ export const LoginPage: React.FC = () => {
     // Initialize GoogleSignIn on native platforms
     if (Capacitor.isNativePlatform()) {
       GoogleSignIn.initialize({
-        clientId: import.meta.env.VITE_GOOGLE_CLIENT_ID || 'YOUR_WEB_CLIENT_ID_HERE.apps.googleusercontent.com', 
+        clientId: useConfigStore.getState().googleClientId || 'YOUR_WEB_CLIENT_ID_HERE.apps.googleusercontent.com', 
       }).catch(console.error);
     }
   }, []);
@@ -532,5 +533,7 @@ export const LoginPage: React.FC = () => {
     </div>
   );
 };
+
+
 
 

@@ -4,6 +4,7 @@ import { Capacitor } from "@capacitor/core";
 import { Filesystem, Directory } from "@capacitor/filesystem";
 import { Share } from "@capacitor/share";
 import { useAuthStore } from "../../stores/authStore";
+import { useConfigStore } from "../../stores/configStore";
 import { useAttendanceStore } from "../../stores/attendanceStore";
 import { useCacheStore } from "../../stores/cacheStore";
 import { useNotificationStore } from "../../stores/notificationStore";
@@ -476,7 +477,7 @@ export const SettingsPage: React.FC = () => {
     setIsImportingCSV(true);
 
     try {
-      const mlApiUrl = import.meta.env.VITE_ML_API_URL || "http://localhost:8000";
+      const mlApiUrl = useConfigStore.getState().mlApiUrl || "https://attendx-ml-server.onrender.com";
 
       const res = await fetch(`${mlApiUrl}/upload/zip?user_id=${user.id}`, {
         method: "POST",
@@ -1395,7 +1396,7 @@ export const SettingsPage: React.FC = () => {
           {/* Share App */}
           <button
             onClick={async () => {
-              const appLink = import.meta.env.VITE_APP_DOWNLOAD_LINK || "https://attendx.app";
+              const appLink = updateManifest?.appDownloadLink || "https://www.attendx.tech";
               const shareText = `Download AttendX to manage your academic attendance easily!\n\n${appLink}`;
               try {
                 const { Capacitor } = await import("@capacitor/core");
@@ -1464,7 +1465,7 @@ export const SettingsPage: React.FC = () => {
 
           {/* Install APK */}
           <a
-            href={import.meta.env.VITE_APP_DOWNLOAD_LINK || "#"}
+            href={updateManifest?.appDownloadLink || "#"}
             target="_blank"
             rel="noopener noreferrer"
             className="w-full text-left p-4 hover:bg-muted/50 transition-colors flex items-center justify-between gap-3 cursor-pointer group"
@@ -2019,3 +2020,8 @@ export const SettingsPage: React.FC = () => {
     </>
   );
 };
+
+
+
+
+

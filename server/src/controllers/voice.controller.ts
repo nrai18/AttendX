@@ -53,7 +53,7 @@ export class VoiceController {
 
       const response = await elevenlabs.speechToText.convert({
         file: fs.createReadStream(req.file.path),
-        model_id: "scribe_v2"
+        modelId: "scribe_v2"
       });
 
       // Cleanup temp file

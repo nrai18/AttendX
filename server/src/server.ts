@@ -5,6 +5,10 @@ import { CronService } from "./services/cron.service";
 import "./lib/firebase";
 import { redisClient } from "./lib/redis";
 import { PushNotificationService } from "./services/push_notification.service";
+import { loadDeviceMapping } from "./utils/deviceMapper";
+
+// Dynamically cache Google Play device marketing names
+loadDeviceMapping();
 
 // Warm up the zero-token local ML Copilot engine on boot
 CustomMlCopilotService.warmup();

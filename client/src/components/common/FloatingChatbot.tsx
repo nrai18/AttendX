@@ -792,7 +792,7 @@ export const FloatingChatbot: React.FC = () => {
           await api.delete(`/timetable/semester/${action.payload.semesterId}/subject/${action.payload.subjectId}/slots`);
           refresh = true;
         } else if (action.type === 'SHARE_APP') {
-          const appLink = import.meta.env.VITE_APP_DOWNLOAD_LINK || "https://attendx.app";
+          let appLink = "https://www.attendx.tech"; try { const res = await api.get("/system/config"); if (res.data && res.data.appDownloadLink) appLink = res.data.appDownloadLink; } catch (e) {}
           const shareText = `Download AttendX to manage your academic attendance easily!\n\n${appLink}`;
           try {
             const { Capacitor } = await import("@capacitor/core");
@@ -1562,4 +1562,7 @@ export const FloatingChatbot: React.FC = () => {
     </>
   );
 };
+
+
+
 

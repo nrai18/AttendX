@@ -1,4 +1,4 @@
-const getModelName = require('android-model-names');
+import { getMarketingName } from './deviceMapper';
 import { UAParser } from 'ua-parser-js';
 import geoip from 'geoip-lite';
 
@@ -92,14 +92,7 @@ export async function getDeviceDetails(req: any) {
      if (hardwareModel && hardwareModel.includes('::')) {
        try {
          const [manufacturer, rawModel] = hardwareModel.split('::');
-         const marketName = getModelName(rawModel);
-         
-         if (marketName && marketName !== rawModel) {
-           finalDeviceString = marketName;
-         } else {
-           const cleanManufacturer = manufacturer ? manufacturer.charAt(0).toUpperCase() + manufacturer.slice(1) : '';
-           finalDeviceString = cleanManufacturer ? `${cleanManufacturer} ${rawModel}` : rawModel;
-         }
+         finalDeviceString = getMarketingName(rawModel, manufacturer);
        } catch (error) {
          console.error('Device parsing failed:', error);
        }
