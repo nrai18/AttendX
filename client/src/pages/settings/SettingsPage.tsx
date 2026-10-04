@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { useSearchParams, useNavigate } from "react-router-dom";
+import { useSearchParams, useNavigate, useLocation } from "react-router-dom";
 import { Capacitor } from "@capacitor/core";
 import { Filesystem, Directory } from "@capacitor/filesystem";
 import { Share } from "@capacitor/share";
@@ -70,6 +70,7 @@ import { NotificationService } from "../../services/NotificationService";
 
 export const SettingsPage: React.FC = () => {
   const currentAppVersion = (Capacitor.isNativePlatform() ? localStorage.getItem("app_version") : null) || import.meta.env.VITE_APP_VERSION || "4.2.0";
+  const location = useLocation();
 
   const renderDocuments = (type: string) => {
     // For backups, only show the most recent one (index 0 because it's sorted desc by createdAt on backend)
@@ -166,6 +167,12 @@ export const SettingsPage: React.FC = () => {
   const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
   const [isLinkedDevicesOpen, setIsLinkedDevicesOpen] = useState(false);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
+
+  useEffect(() => {
+    if (location.hash === "#edit-profile") {
+      setIsEditProfileOpen(true);
+    }
+  }, [location.hash]);
 
   // Stored Documents State
   const [storedDocuments, setStoredDocuments] = useState<any[]>([]);
@@ -315,6 +322,9 @@ export const SettingsPage: React.FC = () => {
           hasPassword: user?.hasPassword || !!passwordData?.newPassword
         });
       }
+      
+      // Reschedule local notifications (e.g. birthday) with the new profile data
+      NotificationService.autoScheduleFromTimetable();
       
       toast.success("Profile updated successfully!");
       setIsEditProfileOpen(false);
@@ -1385,7 +1395,7 @@ export const SettingsPage: React.FC = () => {
           {/* Share App */}
           <button
             onClick={async () => {
-              const appLink = "https://drive.google.com/file/d/1XZBMJBfY8YMGaY82k3FTBHtHmymWggF1/view?usp=sharing";
+              const appLink = import.meta.env.VITE_APP_DOWNLOAD_LINK || "https://attendx.app";
               const shareText = `Download AttendX to manage your academic attendance easily!\n\n${appLink}`;
               try {
                 const { Capacitor } = await import("@capacitor/core");
@@ -1454,7 +1464,7 @@ export const SettingsPage: React.FC = () => {
 
           {/* Install APK */}
           <a
-            href="https://drive.google.com/file/d/1XZBMJBfY8YMGaY82k3FTBHtHmymWggF1/view?usp=sharing"
+            href={import.meta.env.VITE_APP_DOWNLOAD_LINK || "#"}
             target="_blank"
             rel="noopener noreferrer"
             className="w-full text-left p-4 hover:bg-muted/50 transition-colors flex items-center justify-between gap-3 cursor-pointer group"

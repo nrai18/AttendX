@@ -90,7 +90,7 @@ export class AdminController {
 
   static async broadcastNotification(req: AuthenticatedRequest, res: Response) {
     try {
-      const { title, body, data } = req.body;
+      const { title, body, data, imageUrl, targetCondition } = req.body;
       
       if (!title || !body) {
         return res.status(400).json({ message: "Title and body are required." });
@@ -99,7 +99,11 @@ export class AdminController {
       // We dynamically import it to avoid circular deps
       const { PushNotificationService } = await import("../services/push_notification.service");
       
-      await PushNotificationService.broadcastMessage(title, body, data);
+      if (targetCondition === 'missing_birthday' || targetCondition === 'missing_password') {
+        await PushNotificationService.broadcastToTarget(targetCondition, title, body, data, imageUrl);
+      } else {
+        await PushNotificationService.broadcastMessage(title, body, data, imageUrl);
+      }
       
       res.json({ message: "Broadcast dispatched successfully." });
     } catch (error: any) {

@@ -1,5 +1,5 @@
 import React, { useEffect, useLayoutEffect } from "react";
-import { Outlet, useLocation } from "react-router-dom";
+import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { BottomNav } from "./BottomNav";
 import { Sidebar } from "./Sidebar";
 import { TopBar } from "./TopBar";
@@ -16,6 +16,7 @@ interface AppShellProps {
 export const AppShell: React.FC<AppShellProps> = ({ title, onAddClick }) => {
   const { fetchStats } = useAttendanceStore();
   const location = useLocation();
+  const navigate = useNavigate();
 
   useEffect(() => {
     // Force the correct favicon on route change
@@ -34,9 +35,20 @@ export const AppShell: React.FC<AppShellProps> = ({ title, onAddClick }) => {
       fetchStats();
       NotificationService.autoScheduleFromTimetable();
     };
+    
+    const handlePushRoute = (e: any) => {
+      if (e.detail) {
+        navigate(e.detail);
+      }
+    };
+    
     window.addEventListener("attendance-updated", handleUpdate);
-    return () => window.removeEventListener("attendance-updated", handleUpdate);
-  }, [fetchStats]);
+    window.addEventListener("push_route", handlePushRoute);
+    return () => {
+      window.removeEventListener("attendance-updated", handleUpdate);
+      window.removeEventListener("push_route", handlePushRoute);
+    };
+  }, [fetchStats, navigate]);
 
   const isReports = location.pathname.startsWith("/report");
   const isSubjects = location.pathname === "/subjects" || location.pathname.startsWith("/subjects/");

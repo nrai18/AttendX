@@ -377,6 +377,8 @@ export class NotificationService {
         if (data && data.type === 'ota_update') {
           // Tell the OTAUpdateModal to fetch the manifest and show itself
           window.dispatchEvent(new Event('check_ota_update'));
+        } else if (data && data.route) {
+          window.dispatchEvent(new CustomEvent('push_route', { detail: data.route }));
         }
       });
     } catch (e) {

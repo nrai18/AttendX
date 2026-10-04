@@ -8,7 +8,7 @@ import { CreateSemesterModal } from "../../components/semester/CreateSemesterMod
 import { SubjectModal } from "../../components/subjects/SubjectModal";
 import { useAuthStore } from "../../stores/authStore";
 import { useAttendanceStore } from "../../stores/attendanceStore";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 
 interface Subject {
   id: string;
@@ -155,6 +155,13 @@ export const SubjectsPage = () => {
   const [editingSubject, setEditingSubject] = useState<Subject | null>(null);
   const [activeSemesterId, setActiveSemesterId] = useState<string | null>(cachedSubjectsData?.activeSemesterId || null);
   const [isCreateSemesterOpen, setIsCreateSemesterOpen] = useState(false);
+  const location = useLocation();
+
+  useEffect(() => {
+    if (location.hash === "#add-subject") {
+      setIsAdding(true);
+    }
+  }, [location.hash]);
 
   const fetchData = async () => {
     try {

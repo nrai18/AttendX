@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import { useLocation } from "react-router-dom";
 import { Plus, Trash2, Loader2, CalendarPlus, Upload, Image as ImageIcon, X, Download, FileSpreadsheet, Edit3, ArrowLeft, CheckSquare, Square, CheckCircle2, Zap, Archive } from "lucide-react";
 import { PageSkeleton } from "../../components/common/PageSkeleton";
 import { toast } from "sonner";
@@ -112,6 +113,15 @@ export const TimetablePage = () => {
   const [isClearModalOpen, setIsClearModalOpen] = useState(false);
   const [isArchiveModalOpen, setIsArchiveModalOpen] = useState(false);
   const [isReconciliationOpen, setIsReconciliationOpen] = useState(false);
+  const location = useLocation();
+
+  useEffect(() => {
+    if (location.hash === "#add-class") {
+      setIsAdding(true);
+    } else if (location.hash === "#timetable-wizard") {
+      setIsWizardOpen(true);
+    }
+  }, [location.hash]);
   const [newSubjectIds, setNewSubjectIds] = useState<string[]>([]);
   const [existingSubjectIds, setExistingSubjectIds] = useState<string[]>([]);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
