@@ -468,15 +468,9 @@ Parse the attached timetable document/image.
 Extract the weekly class schedule, subjects, electives, rooms, sections, and practical lab batches ONLY for semester/branch: "${targetSemName}".
 
 CRITICAL TIMING & PERIOD RULES:
-1. Slot 1: "09:00" to "09:50"
-2. Slot 2: "09:50" to "10:40"
-3. Slot 3: "11:00" to "11:50"
-4. Slot 4: "11:50" to "12:40"
-5. Slot 5: "14:00" to "14:50"
-6. Slot 6: "14:50" to "15:40"
-7. Slot 7: "16:00" to "16:50"
-
-Return a JSON object containing:
+  Extract the exact start and end times for each slot directly from the column headers in the provided timetable image. Do not invent or hardcode times.
+  
+  Return a JSON object containing:
 {
   "detectedBranches": ["CSE", "IT", "ECE"],
   "detectedSemesters": ["Semester 1", "Semester 3"],
@@ -486,21 +480,25 @@ Return a JSON object containing:
       "semester": "Semester 3",
       "slots": [
         {
-          "subjectCode": "CS201",
-          "subjectName": "Data Structures",
-          "type": "Theory",
-          "dayOfWeek": 0,
-          "startTime": "09:00",
-          "endTime": "09:50",
-          "room": "Room 101",
-          "section": "A",
-          "labGroup": "ALL",
-          "isElective": false
-        }
-      ]
-    }
-  ]
-}`;
+          "code": "CS201",
+            "name": "Data Structures",
+            "type": "Theory",
+            "dayOfWeek": 0,
+            "startTime": "09:00",
+            "endTime": "09:50",
+            "room": "Room 101",
+            "section": "A",
+            "group": "ALL",
+            "isElective": false,
+            "isProgramElective": false,
+            "isMinorElective": false
+          }
+        ]
+      }
+    ]
+  }
+
+  Make sure to map the exact subject codes (e.g. SCMS301, CSSE301). Mark Program Electives with isProgramElective=true, and Minor/Open Electives with isMinorElective=true. Do not invent sections if they are not explicitly specified for a slot.`;
 
       const response = await AIManager.generateContent({
         model: "gemini-3.5-flash-lite",

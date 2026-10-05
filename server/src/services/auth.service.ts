@@ -55,8 +55,11 @@ export class AuthService {
     const normalizedEmail = data.email.toLowerCase().trim();
     const user = await prisma.user.findUnique({ where: { email: normalizedEmail } });
 
-    if (!user || !user.passwordHash) {
+    if (!user) {
       throw new Error("Account does not exist. Please sign up.");
+    }
+    if (!user.passwordHash) {
+      throw new Error("You created this account using Google. Please click 'Continue with Google' below.");
     }
 
     const isValid = await bcrypt.compare(data.password, user.passwordHash);

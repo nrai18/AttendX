@@ -210,10 +210,68 @@ const mappedSchedules: any = {};
                 }
                 if (!mappedSchedules[branch]) mappedSchedules[branch] = {};
                 
-                const rawSlots = s.slots || s.rawSlots || [];
+                let rawSlots = (s.slots || s.rawSlots || []).map((slot: any) => {
+                    let code = slot.code || slot.subjectCode || "";
+                    let name = slot.name || slot.subjectName || "";
+                    
+                    if (code.includes("/")) code = code.split("/")[0].trim();
+                    if (name.includes("/")) name = "";
+                    if (name.toUpperCase() === code.toUpperCase()) name = "";
+                    
+                    let slotType = (slot.type || slot.slotType || "lecture").toLowerCase();
+                    if (slotType === "theory" || slotType === "l" || slotType === "(l)") slotType = "lecture";
+                    if (slotType === "practical" || slotType === "lab" || slotType === "p" || slotType === "(p)") slotType = "practical";
+                    
+                    return {
+                        ...slot,
+                        code,
+                        name,
+                        type: slotType, // for frontend preview pill
+                        slotType, // for backend db insertion
+                        group: slot.group || slot.labGroup || "ALL",
+                        isElective: Boolean(slot.isElective),
+                        isProgramElective: Boolean(slot.isProgramElective),
+                        isMinorElective: Boolean(slot.isMinorElective)
+                    };
+                });
+                
+                // Merge consecutive practical slots (100 mins)
+                const mergedSlots: any[] = [];
+                // Sort by day and start time to reliably find consecutive slots
+                rawSlots.sort((a: any, b: any) => {
+                    if (a.dayOfWeek !== b.dayOfWeek) return a.dayOfWeek - b.dayOfWeek;
+                    return a.startTime.localeCompare(b.startTime);
+                });
+                
+                for (const slot of rawSlots) {
+                    if (mergedSlots.length > 0) {
+                        const last = mergedSlots[mergedSlots.length - 1];
+                        if (
+                            last.dayOfWeek === slot.dayOfWeek &&
+                            last.code === slot.code &&
+                            last.slotType === "practical" &&
+                            slot.slotType === "practical" &&
+                            last.group === slot.group &&
+                            last.section === slot.section &&
+                            last.endTime === slot.startTime
+                        ) {
+                            // Merge!
+                            last.endTime = slot.endTime;
+                            continue;
+                        }
+                    }
+                    mergedSlots.push(slot);
+                }
+                
+                rawSlots = mergedSlots;
+                
+                const uniqueSections = Array.from(new Set(rawSlots.map((slot: any) => slot.section).filter((sec: any) => sec && sec !== "ALL")));
+                
                 mappedSchedules[branch][semNumber] = {
                     ...s,
-                    rawSlots
+                    rawSlots,
+                    sections: uniqueSections,
+                    hasSections: uniqueSections.length > 0 || semNumber <= 4
                 };
             });
             ocrResult.schedules = mappedSchedules;
