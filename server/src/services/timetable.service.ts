@@ -524,7 +524,7 @@ Return a JSON object containing:
         }
       });
 
-      const text = response.text();
+      const text = typeof response.text === 'function' ? response.text() : response.text;
       const parsedAiResult = JSON.parse(text || "{}");
       
       return {

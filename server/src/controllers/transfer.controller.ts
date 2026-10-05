@@ -3,6 +3,7 @@ import { Response, Request } from "express";
 import { AuthenticatedRequest } from "../middleware/authenticate";
 import { prisma } from "../lib/prisma";
 import { TransferService } from "../services/transfer.service";
+import { PushNotificationService } from "../services/push_notification.service";
 
 export class TransferController {
   
@@ -96,6 +97,19 @@ export class TransferController {
         where: { id: transfer.senderUserId },
         select: { name: true, email: true, avatarUrl: true }
       });
+
+            const retriever = await prisma.user.findUnique({
+        where: { id: receiverUserId },
+        select: { name: true, email: true, avatarUrl: true }
+      });
+
+      // Send push notification to the sender instantly!
+      PushNotificationService.sendToUser(
+        transfer.senderUserId, 
+        "Schedule Synced! 🎉", 
+        `${retriever?.name || 'A user'} just redeemed your Peer Sync code.`,
+        { type: "PEER_SYNC_REDEEMED", retrieverName: retriever?.name, retrieverEmail: retriever?.email }
+      ).catch(err => console.error("FCM Error in sync:", err));
 
       return res.status(200).json({
         contextType: transfer.contextType,

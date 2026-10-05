@@ -1,10 +1,10 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Player as Lottie } from '@lottiefiles/react-lottie-player';
 
 const animations = [
-  'https://guidelensapp-dc28c30e.web.app/logo_animation.json',
-  'https://guidelensapp-dc28c30e.web.app/logo_animation_2.json'
+  '/logo_animation.json',
+  '/logo_animation_2.json'
 ];
 
 export function WebSplashScreen({ onComplete }: { onComplete: () => void }) {
@@ -61,4 +61,5 @@ export function WebSplashScreen({ onComplete }: { onComplete: () => void }) {
     </AnimatePresence>
   );
 }
+
 

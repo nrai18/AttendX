@@ -14,7 +14,7 @@ import { ClearTimetableModal } from "./ClearTimetableModal";
 import { ArchiveTimetableModal } from "./ArchiveTimetableModal";
 import { SubjectReconciliationModal } from "../../components/subjects/SubjectReconciliationModal";
 import { Wand2, Calendar } from "lucide-react";
-import { DndContext, closestCenter, DragEndEvent } from "@dnd-kit/core";
+import { DndContext, closestCenter, DragEndEvent, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { normalizeTimeString } from "../../utils/timeUtils";
 import { downloadBlob } from "../../lib/download";
@@ -53,6 +53,14 @@ const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"
 
 
 export const TimetablePage = () => {
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 5,
+      },
+    })
+  );
+
   const cachedData = useCacheStore((state) => state.timetable);
   const setCache = useCacheStore((state) => state.setCache);
 
@@ -500,7 +508,7 @@ export const TimetablePage = () => {
         setIsOcrModalOpen(false);
         setIsWizardOpen(true);
       } else {
-        toast.error("Timetable imported successfully!");
+        toast.success("Timetable imported successfully!");
         setIsOcrModalOpen(false);
         fetchData();
         window.dispatchEvent(new Event("attendance-updated"));
@@ -916,7 +924,7 @@ export const TimetablePage = () => {
                   <span className="text-xs font-semibold" style={{ color: "var(--aether-text-muted)" }}>No Classes</span>
                 </div>
               ) : (
-                <DndContext collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
                   <SortableContext items={daySlots.map(s => s.id)} strategy={verticalListSortingStrategy}>
                     {daySlots.map(slot => (
                       <SortableSlot 
@@ -967,7 +975,7 @@ export const TimetablePage = () => {
               <p className="text-sm font-medium text-muted-foreground">Free Day!</p>
             </div>
           ) : (
-            <DndContext collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
               <SortableContext items={currentDaySlots.map(s => s.id)} strategy={verticalListSortingStrategy}>
                 {currentDaySlots.map(slot => (
                   <SortableSlot 

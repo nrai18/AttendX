@@ -7,7 +7,7 @@ import { AddEventModal } from "./AddEventModal";
 import { CreateSemesterModal } from "../../components/semester/CreateSemesterModal";
 import { CalendarImportModal } from "../../components/calendar/CalendarImportModal";
 import { HolidayListTab } from "./HolidayListTab";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useSearchParams, useParams } from "react-router-dom";
 import { useAuthStore } from "../../stores/authStore";
 import { useCacheStore } from "../../stores/cacheStore";
 import { useAttendanceStore } from "../../stores/attendanceStore";
@@ -44,7 +44,8 @@ const parseLocalDate = (dateStr: string | Date) => {
 
 export const SemesterHubPage = () => {
   const [searchParams, setSearchParams] = useSearchParams();
-  const defaultTab = (searchParams.get("tab") as any) || "timeline";
+  const { tab: routeTab } = useParams<{ tab: string }>();
+  const defaultTab = (routeTab || searchParams.get("tab") as any) || "timeline";
   const [activeTab, setActiveTab] = useState<"timeline" | "calendar" | "events" | "countdowns" | "holidays">(defaultTab);
   const [currentDate, setCurrentDate] = useState(new Date());
   const cachedData = useCacheStore((state) => state.semester);
@@ -385,6 +386,7 @@ export const SemesterHubPage = () => {
   return (
     <>
       <PeakpathRays />
+      <ScrollToTopButton />
       <div className="p-4 md:p-8 w-full mx-auto pb-24 md:pb-8 flex flex-col min-h-full space-y-6 overflow-x-hidden">
       
       {/* Header */}
@@ -506,8 +508,7 @@ export const SemesterHubPage = () => {
         
         {activeTab === "calendar" && (
           <div className="h-full flex flex-col">
-            <ScrollToTopButton />
-            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center justify-between mb-6">
               <h2 className="text-xl font-bold text-foreground">{format(currentDate, "MMMM yyyy")}</h2>
               <div className="flex gap-2">
                 <button onClick={() => setCurrentDate(subMonths(currentDate, 1))} className="p-2 hover:bg-muted rounded-lg text-muted-foreground hover:text-foreground">
@@ -784,3 +785,9 @@ export const SemesterHubPage = () => {
     </>
   );
 };
+
+
+
+
+
+

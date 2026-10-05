@@ -1,5 +1,6 @@
 import React from "react";
 import { useSortable } from "@dnd-kit/sortable";
+import { useNavigate } from "react-router-dom";
 import { CSS } from "@dnd-kit/utilities";
 import { Trash2, Edit2, GripVertical, CheckCircle2, Circle } from "lucide-react";
 import { normalizeTimeString, formatTimeRange, formatTo12Hour } from "../../utils/timeUtils";
@@ -41,6 +42,7 @@ export const SortableSlot: React.FC<SortableSlotProps> = ({
   isSelected,
   onToggleSelect,
 }) => {
+  const navigate = useNavigate();
   const {
     attributes,
     listeners,
@@ -70,6 +72,8 @@ export const SortableSlot: React.FC<SortableSlotProps> = ({
         onClick={() => {
           if (isSelectMode && onToggleSelect) {
             onToggleSelect(slot.id);
+          } else if (!isSelectMode) {
+            onEdit(slot);
           }
         }}
         className={`relative group p-3 rounded-xl border transition-all duration-200 cursor-pointer ${
@@ -144,10 +148,12 @@ export const SortableSlot: React.FC<SortableSlotProps> = ({
       ref={setNodeRef}
       style={style}
       onClick={() => {
-        if (isSelectMode && onToggleSelect) {
-          onToggleSelect(slot.id);
-        }
-      }}
+          if (isSelectMode && onToggleSelect) {
+            onToggleSelect(slot.id);
+          } else if (!isSelectMode) {
+            onEdit(slot);
+          }
+        }}
       className={`flex items-center justify-between p-4 rounded-2xl border transition-all shadow-sm ${
         isSelected 
           ? "border-primary bg-primary/10 ring-1 ring-primary/40" 

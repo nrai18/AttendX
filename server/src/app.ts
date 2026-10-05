@@ -1,6 +1,7 @@
 process.env.TZ = "Asia/Kolkata"; // Fix timing and date-rollover issues
 import express from "express";
 import cors from "cors";
+import { prisma } from "./lib/prisma.ts";
 import helmet from "helmet";
 import morgan from "morgan";
 import cookieParser from "cookie-parser";
@@ -98,8 +99,15 @@ app.get("/api/curriculum/meta", (_req, res) => {
 });
 
 // Health check endpoint
-app.get("/api/health", (_req, res) => {
-  res.status(200).json({ status: "ok", message: "AttendX API is running" });
+app.get("/api/health", async (_req, res) => {
+  try {
+    // Keep the Neon database awake!
+    await prisma.$queryRaw`SELECT 1`;
+    res.status(200).json({ status: "ok", message: "AttendX API and DB are running" });
+  } catch (err) {
+    console.error("Health check DB error:", err);
+    res.status(500).json({ status: "error", message: "Database connection failed" });
+  }
 });
 
 // Error Handling Middleware for API

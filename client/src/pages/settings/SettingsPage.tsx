@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { useSearchParams, useNavigate, useLocation } from "react-router-dom";
+import { useSearchParams, useNavigate, useLocation, useParams } from "react-router-dom";
 import { Capacitor } from "@capacitor/core";
 import { Filesystem, Directory } from "@capacitor/filesystem";
 import { Share } from "@capacitor/share";
@@ -139,8 +139,11 @@ export const SettingsPage: React.FC = () => {
   };
   const { user, setUser } = useAuthStore();
   const navigate = useNavigate();
+  const { section } = useParams<{ section: string }>();
   const [activeView, setActiveView] = useState<"main" | "backup" | "contact" | "sync">(
-    "main",
+    (section === "peer-sync" || section === "sync") ? "sync" :
+    (section === "contact" || section === "contact-us") ? "contact" :
+    (section === "backup") ? "backup" : "main"
   );
 
   // Profile & Criteria
@@ -170,10 +173,14 @@ export const SettingsPage: React.FC = () => {
   const [isSavingProfile, setIsSavingProfile] = useState(false);
 
   useEffect(() => {
-    if (location.hash === "#edit-profile") {
+    if (location.hash === "#edit-profile" || section === "profile" || section === "edit-profile") {
       setIsEditProfileOpen(true);
     }
-  }, [location.hash]);
+    if (section === "devices" || section === "linked-devices") setIsLinkedDevicesOpen(true);
+    if (section === "changelog" || section === "history" || section === "update-history") setIsChangelogOpen(true);
+    if (section === "feedback" || section === "support") setIsFeedbackOpen(true);
+    if (section === "app-info") setShowAppInfoModal(true);
+  }, [location.hash, section]);
 
   // Stored Documents State
   const [storedDocuments, setStoredDocuments] = useState<any[]>([]);

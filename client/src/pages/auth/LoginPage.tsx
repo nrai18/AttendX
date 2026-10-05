@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
+import { motion, AnimatePresence } from "framer-motion";
 import { useConfigStore } from "../../stores/configStore";
 import { Mail, Lock, Loader2, ArrowRight, ArrowLeft, CheckCircle2, Eye, EyeOff, Key } from "lucide-react";
 import { Button } from "../../components/ui/button";
@@ -230,9 +231,9 @@ export const LoginPage: React.FC = () => {
       <Button 
         variant="ghost" 
         onClick={() => navigate("/")}
-        className="absolute left-4 md:left-8 flex items-center gap-2 text-slate-600 dark:text-slate-50/60 hover:text-slate-900 dark:text-slate-50 z-20" style={{ top: "calc(env(safe-area-inset-top) + 16px)" }}
+        className="absolute left-4 md:left-8 flex items-center gap-2 text-slate-600 dark:text-slate-50/60 hover:text-slate-900 dark:text-slate-50 z-20 transition-all duration-300 active:scale-90 hover:gap-3 cursor-pointer" style={{ top: "calc(env(safe-area-inset-top) + 16px)" }}
       >
-        <ArrowRight className="w-4 h-4 rotate-180" />
+        <ArrowLeft className="w-4 h-4 transition-transform duration-300" />
         Back
       </Button>
 
@@ -492,9 +493,34 @@ export const LoginPage: React.FC = () => {
               </CardContent>
 
               <CardFooter className="flex flex-col space-y-4 pt-4">
-                <Button type="submit" disabled={loading} className="w-full bg-[#E63946] hover:bg-[#E63946]/90 text-slate-900 dark:text-slate-50 rounded-none hover:bg-[#E63946] hover:bg-[#E63946]/90 text-slate-900 dark:text-slate-50 rounded-none font-semibold h-11 rounded-xl">
-                  {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <>Log In <ArrowRight className="w-4 h-4 ml-2" /></>}
-                </Button>
+                <Button type="submit" disabled={loading} className="w-full bg-[#E63946] hover:bg-[#E63946]/90 text-slate-900 dark:text-slate-50 font-semibold h-11 rounded-xl transition-all duration-300 relative overflow-hidden group">
+                    <AnimatePresence mode="wait">
+                      {loading ? (
+                        <motion.div
+                          key="loading"
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -10 }}
+                          transition={{ duration: 0.2 }}
+                          className="flex items-center justify-center gap-2"
+                        >
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          <span>Authenticating...</span>
+                        </motion.div>
+                      ) : (
+                        <motion.div
+                          key="idle"
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -10 }}
+                          transition={{ duration: 0.2 }}
+                          className="flex items-center justify-center w-full"
+                        >
+                          Log In <ArrowRight className="w-4 h-4 ml-2 transition-transform duration-300 group-hover:translate-x-1" />
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </Button>
                 
                 <div className="relative w-full py-2">
                   <div className="absolute inset-0 flex items-center">

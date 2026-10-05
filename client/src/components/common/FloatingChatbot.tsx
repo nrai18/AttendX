@@ -1087,7 +1087,7 @@ export const FloatingChatbot: React.FC = () => {
         onSendMessage={async (q, inputMethod = 'voice') => {
           return await handleSendMessage(q, inputMethod);
         }}
-        pendingActionMsgId={messages.slice().reverse().find(m => m.role === 'assistant' && m.pendingActions && !m.actionsExecuted && !m.isExecutingAction)?.id}
+        pendingActionMsgId={(function(){ const lastMsg = messages[messages.length - 1]; return (lastMsg && lastMsg.role === 'assistant' && lastMsg.pendingActions && !lastMsg.actionsExecuted && !lastMsg.isExecutingAction) ? lastMsg.id : undefined; })()}
         onConfirmPendingAction={(id) => {
            if ((window as any)._executePendingActions) {
               (window as any)._executePendingActions(id);
@@ -1562,6 +1562,7 @@ export const FloatingChatbot: React.FC = () => {
     </>
   );
 };
+
 
 
 

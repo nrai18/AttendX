@@ -439,7 +439,7 @@ Supported Intents:
 
 Action Types & Payloads:
 - Safe Actions (executed immediately):
-  * NAVIGATE: { "path": string } (e.g. "/timetable", "/settings", "/report", "/calendar", "/predictive", "/today", "/semester")
+  * NAVIGATE: { "path": string } (e.g. "/timetable", "/settings/profile", "/settings/devices", "/settings/peer-sync", "/settings/contact", "/settings/app-info", "/settings/feedback", "/settings/changelog", "/settings/backup", "/semester/timeline", "/semester/events", "/semester/holidays", "/predictive", "/today")
   * READ_STATS: {}
   * FILTER_VIEW: { "filter": string }
   * SET_SIMULATION_PREVIEW: { "subjectId": string, "skipCount": number }
@@ -1313,15 +1313,22 @@ ${masterPrompt ? `Master Context:\n${masterPrompt}` : ""}`;
     }
 
     // 4. NAVIGATE_APP
-    if (/^(navigate( to)?|open|go to|show me( my)?|view)\s+(timetable|schedule|settings|reports?|calendar|forecast|today|assignments?|peer sync|profile)/i.test(lower)) {
+    if (/^(navigate( to)?|open|go to|show me( my)?|view)\s+(timetable|schedule|settings|reports?|calendar|forecast|today|assignments?|peer sync|profile|devices|timeline|changelog|feedback|contact)/i.test(lower)) {
       let path = "/today";
       let title = "Today's Agenda";
       if (/(timetable|schedule|routine)/i.test(lower)) { path = "/timetable"; title = "Timetable"; }
-      else if (/(setting|settings|preference|profile)/i.test(lower)) { path = "/settings"; title = "Settings"; }
+      else if (/(profile|account)/i.test(lower)) { path = "/settings/profile"; title = "Profile Settings"; }
+        else if (/(device|devices|sessions)/i.test(lower)) { path = "/settings/devices"; title = "Linked Devices"; }
+        else if (/(peer|friends|sync)/i.test(lower)) { path = "/settings/peer-sync"; title = "Peer Sync Settings"; }
+        else if (/(contact|help|support)/i.test(lower)) { path = "/settings/contact"; title = "Contact Us"; }
+        else if (/(feedback|issue|bug)/i.test(lower)) { path = "/settings/feedback"; title = "Feedback"; }
+        else if (/(changelog|update|history)/i.test(lower)) { path = "/settings/changelog"; title = "Update History"; }
+        else if (/(timeline)/i.test(lower)) { path = "/semester/timeline"; title = "Timeline"; }
+        else if (/(setting|settings|preference)/i.test(lower)) { path = "/settings"; title = "Settings"; }
       else if (/(report|reports|analytic|analytics)/i.test(lower)) { path = "/report"; title = "Attendance Reports"; }
       else if (/(calendar|event|events|academic)/i.test(lower)) { path = "/calendar"; title = "Academic Calendar"; }
       else if (/(predict|prediction|predictive)/i.test(lower)) { path = "/predictive"; title = "Predictive Forecast"; }
-      else if (/(peer|friends|sync)/i.test(lower)) { path = "/settings"; title = "Peer Sync Settings"; }
+      
       else if (/(assignment|assignments|task|tasks)/i.test(lower)) { path = "/assignments"; title = "Assignments"; }
       else if (/(semester|hub|overview)/i.test(lower)) { path = "/semester"; title = "Semester Overview"; }
 
@@ -1872,3 +1879,5 @@ ${masterPrompt ? `Master Context:\n${masterPrompt}` : ""}`;
     return { startTime, endTime };
   }
 }
+
+

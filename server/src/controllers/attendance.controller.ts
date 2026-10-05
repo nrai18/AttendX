@@ -28,7 +28,7 @@ export class AttendanceController {
     }
 
     // SEC-M02 FIX: Input validation to prevent arbitrary string injection
-    const validStatuses = ["PRESENT", "ABSENT", "CANCELLED", "OFF"];
+    const validStatuses = ["PRESENT", "ABSENT", "CANCELLED", "OFF", "CLEAR", "NOT_MARKED"];
     if (!validStatuses.includes(status.toUpperCase())) {
       return res.status(400).json({ message: "Invalid attendance status" });
     }
@@ -182,3 +182,4 @@ export class AttendanceController {
     }
   }
 }
+

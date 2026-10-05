@@ -198,7 +198,39 @@ export class TimetableController {
         console.error("Failed to store timetable document", e);
       }
       
-      res.status(200).json(ocrResult);
+      
+const mappedSchedules: any = {};
+        if (Array.isArray(ocrResult.schedules)) {
+            ocrResult.schedules.forEach((s: any) => {
+                const branch = s.branch;
+                let semNumber = s.semester;
+                if (typeof semNumber === 'string') {
+                    const match = semNumber.match(/\d+/);
+                    if (match) semNumber = parseInt(match[0], 10);
+                }
+                if (!mappedSchedules[branch]) mappedSchedules[branch] = {};
+                
+                const rawSlots = s.slots || s.rawSlots || [];
+                mappedSchedules[branch][semNumber] = {
+                    ...s,
+                    rawSlots
+                };
+            });
+            ocrResult.schedules = mappedSchedules;
+        }
+
+        if (Array.isArray(ocrResult.detectedSemesters)) {
+            ocrResult.detectedSemesters = ocrResult.detectedSemesters.map((ds: any) => {
+                if (typeof ds === 'string') {
+                    const match = ds.match(/\d+/);
+                    return match ? parseInt(match[0], 10) : ds;
+                }
+                return ds;
+            }).filter((n: any) => typeof n === 'number' && !isNaN(n));
+        }
+
+        res.status(200).json({ status: "needs_setup", ...ocrResult });
+
     } catch (error: any) {
       console.error("OCR Import Error:", error);
       res.status(500).json({ error: "Failed to process timetable file" });

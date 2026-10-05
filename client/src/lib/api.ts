@@ -121,7 +121,7 @@ api.interceptors.request.use(
         
         } catch (error: any) {
           processQueue(error, null);
-          const isNetworkError = !error.response || error.response.status >= 500;
+          const isNetworkError = !error.response || error.response.status === 0 || error.response.status >= 500 || error.code === 'ECONNABORTED' || error.message === 'Network Error' || (error.message && error.message.toLowerCase().includes('timeout'));
           if (!isNetworkError) {
             useAuthStore.getState().logout();
           }
@@ -210,7 +210,7 @@ api.interceptors.response.use(
       
       } catch (refreshError: any) {
         processQueue(refreshError, null);
-        const isNetworkError = !refreshError.response || refreshError.response.status >= 500;
+        const isNetworkError = !refreshError.response || refreshError.response.status === 0 || refreshError.response.status >= 500 || refreshError.code === 'ECONNABORTED' || refreshError.message === 'Network Error' || (refreshError.message && refreshError.message.toLowerCase().includes('timeout'));
         if (!isNetworkError) {
           useAuthStore.getState().logout();
         }

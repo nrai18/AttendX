@@ -1,4 +1,4 @@
-import { useCacheStore } from "../../stores/cacheStore";
+﻿import { useCacheStore } from "../../stores/cacheStore";
 import React, { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAttendanceStore } from '../../stores/attendanceStore';
@@ -242,7 +242,7 @@ export const ReportView: React.FC = () => {
               <pointLight position={[-10, -10, -10]} intensity={0.5} />
               <GlowingRing percentage={overallPercentage} />
               <ContactShadows position={[0, -2, 0]} opacity={0.4} scale={10} blur={2} far={4} color="#74313A" />
-              <Environment files="https://guidelensapp-dc28c30e.web.app/potsdamer_platz_1k.hdr" />
+              <Environment files="/potsdamer_platz_1k.hdr" />
               
             </Canvas>
           </div>
@@ -374,3 +374,5 @@ export const ReportView: React.FC = () => {
     </div>
   );
 };
+
+

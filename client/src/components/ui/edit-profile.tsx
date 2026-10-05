@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+﻿import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Pencil, Clock, ChevronDown, CheckCircle2, Lock, ShieldAlert, Eye, EyeOff } from 'lucide-react';
 import { useAuthStore } from '../../stores/authStore';
@@ -475,7 +475,7 @@ export const EditProfile: React.FC<EditProfileProps> = ({ isOpen, onClose, initi
                     <Player
                       autoplay
                       loop
-                      src="https://guidelensapp-dc28c30e.web.app/lottie/happy-birthday.json"
+                      src="/lottie/happy-birthday.json"
                       style={{ height: '100%', width: '100%' }}
                     />
                   </div>
@@ -489,6 +489,7 @@ export const EditProfile: React.FC<EditProfileProps> = ({ isOpen, onClose, initi
     </AnimatePresence>
   );
 };
+
 
 
 

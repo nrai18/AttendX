@@ -1,20 +1,35 @@
-import 'dotenv/config';
+﻿import 'dotenv/config';
 import { initializeApp, cert, getApps } from 'firebase-admin/app';
 import { getMessaging } from 'firebase-admin/messaging';
 import { prisma } from './src/lib/prisma.ts';
 
 async function main() {
-  const title = process.argv[2];
-  const body = process.argv[3];
+  let title = '';
+  let body = '';
+  let imageUrl = undefined;
+  let route = undefined;
+  let target = undefined;
+
+  for (let i = 2; i < process.argv.length; i++) {
+    if (process.argv[i] === '--image') {
+      imageUrl = process.argv[++i];
+    } else if (process.argv[i] === '--route') {
+      route = process.argv[++i];
+    } else if (process.argv[i] === '--target') {
+      target = process.argv[++i];
+    } else if (!title) {
+      title = process.argv[i];
+    } else if (!body) {
+      body = process.argv[i];
+    }
+  }
 
   if (!title || !body) {
-    console.error("Usage: npx tsx broadcast.ts \"<Title>\" \"<Body>\"");
+    console.error("Usage: npx tsx broadcast.ts \"<Title>\" \"<Body>\" [--image <url>] [--route <path>] [--target <condition>]");
     process.exit(1);
   }
 
-  // Uses your local .env production keys
   const privateKey = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n');
-  
   if (!privateKey) {
     console.error("Missing FIREBASE_PRIVATE_KEY in .env");
     process.exit(1);
@@ -30,9 +45,17 @@ async function main() {
     });
   }
 
-  console.log('Fetching active sessions from production DB...');
+  let userCondition: any = {};
+  if (target === 'has-birthday') userCondition = { birthday: { not: null } };
+  else if (target === 'no-birthday') userCondition = { birthday: null };
+  else if (target === 'has-password') userCondition = { passwordHash: { not: null } };
+  else if (target === 'no-password') userCondition = { passwordHash: null };
+
   const sessions = await prisma.refreshToken.findMany({
-    where: { fcmToken: { not: null } },
+    where: { 
+      fcmToken: { not: null },
+      ...(target ? { user: userCondition } : {})
+    },
     select: { fcmToken: true }
   });
 
@@ -40,7 +63,7 @@ async function main() {
   const tokens = Array.from(new Set(rawTokens));
 
   if (tokens.length === 0) {
-    console.log("No users with FCM tokens found.");
+    console.log(`No users found matching target condition.`);
     process.exit(0);
   }
 
@@ -52,35 +75,29 @@ async function main() {
 
   for (let i = 0; i < tokens.length; i += BATCH_SIZE) {
     const batch = tokens.slice(i, i + BATCH_SIZE);
-    const response = await getMessaging().sendEachForMulticast({
+    
+    const payload: any = {
       tokens: batch,
       notification: { title, body },
-    });
+      android: { notification: {} },
+      apns: { payload: { aps: { mutableContent: 1 } }, fcmOptions: {} },
+      data: {}
+    };
+
+    if (imageUrl) {
+      payload.notification.imageUrl = imageUrl;
+      payload.android.notification.imageUrl = imageUrl;
+      payload.apns.fcmOptions.imageUrl = imageUrl;
+    }
+    if (route) payload.data.route = route;
+
+    const response = await getMessaging().sendEachForMulticast(payload);
     
     successCount += response.successCount;
     failureCount += response.failureCount;
-
-    const failedTokens: string[] = [];
-    response.responses.forEach((resp, idx) => {
-      if (!resp.success && resp.error) {
-        if (resp.error.code === 'messaging/invalid-registration-token' || resp.error.code === 'messaging/registration-token-not-registered') {
-          failedTokens.push(batch[idx]);
-        }
-      }
-    });
-
-    if (failedTokens.length > 0) {
-      await prisma.refreshToken.updateMany({
-        where: { fcmToken: { in: failedTokens } },
-        data: { fcmToken: null }
-      });
-      console.log(`Cleaned ${failedTokens.length} dead FCM tokens from the database.`);
-    }
   }
 
-  console.log(`\n✅ Broadcast complete!`);
-  console.log(`Success: ${successCount}`);
-  console.log(`Failed (dead tokens): ${failureCount}`);
+  console.log(`\n🎉 Broadcast complete! Success: ${successCount}`);
   process.exit(0);
 }
 

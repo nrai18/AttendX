@@ -797,7 +797,7 @@ export const TodayPage = () => {
       <HolidayGreetingOverlay
         isOpen={showGreetingOverlay}
         holidayName={isBirthday ? `Happy Birthday, ${user?.name?.split(' ')[0]}!` : (activeEvent?.title || "Holiday")}
-        holidayAssetSrc={isBirthday ? "https://guidelensapp-dc28c30e.web.app/lottie/happy-birthday.json" : (activeEvent ? HOLIDAY_ASSETS[getHolidayAnimation(activeEvent).animType as AnimationType] : undefined)}
+        holidayAssetSrc={isBirthday ? "/lottie/happy-birthday.json" : (activeEvent ? HOLIDAY_ASSETS[getHolidayAnimation(activeEvent).animType as AnimationType] : undefined)}
         hasClasses={agenda.some(item => !item.status)}
         onMarkOff={handleMarkFullDayOff}
         onClose={() => setShowGreetingOverlay(false)}
@@ -1072,7 +1072,7 @@ export const TodayPage = () => {
                 
                 <div className="min-w-0">
                   <h3 className="text-lg font-semibold text-foreground flex items-center gap-2 flex-wrap">
-                    <span className="truncate">{item.subject?.name || "Unknown Subject"}</span>
+                    <span className="truncate cursor-pointer hover:text-primary transition-colors" onClick={() => item.subject?.id && navigate(`/subjects/${item.subject.id}`)} title="Click to edit subject">{item.subject?.name || "Unknown Subject"}</span>
                     {(item.isExtra || item.type === "override" || item.slotType === "Extra") && (
                       <span className="bg-amber-500/20 text-amber-500 border border-amber-500/30 text-[10px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1 shadow-sm shrink-0">
                         <Sparkles className="w-3 h-3 text-amber-500" />
@@ -1129,7 +1129,7 @@ export const TodayPage = () => {
                   Off
                 </button>
                 {/* Delete Extra Class Button */}
-                {(item.type === "override" && item.isExtra) && (
+                {((item.type === "override" || item.type === "manual") && item.isExtra) && (
                   <button
                     onClick={() => handleDeleteExtraClass(item.id)}
                     className="flex items-center justify-center p-2 rounded-xl bg-rose-500/10 text-rose-500 hover:bg-rose-500 hover:text-white transition-colors cursor-pointer ml-2"
