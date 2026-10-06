@@ -103,6 +103,7 @@ app.get("/api/health", async (_req, res) => {
   try {
     // Keep the Neon database awake!
     await prisma.$queryRaw`SELECT 1`;
+    console.log("Health check ping received. Backend and DB are active.");
     res.status(200).json({ status: "ok", message: "AttendX API and DB are running" });
   } catch (err) {
     console.error("Health check DB error:", err);

@@ -220,9 +220,7 @@ export class AuthService {
     const user = await prisma.user.findUnique({ where: { id: payload.userId } });
     if (!user) throw new Error("User not found");
 
-    // SEC-H06 FIX: Rotate tokens on every refresh!
-    const newRefreshToken = generateRefreshToken(user.id);
-    const hashedNewRefresh = await this.hashToken(newRefreshToken);
+    // Disable strict token rotation to prevent flaky mobile network logouts (Token Reuse false positives)
     const accessToken = generateAccessToken(user.id, user.role, sessionId);
 
     const { getDeviceDetails } = require("../utils/device");
@@ -233,6 +231,7 @@ export class AuthService {
         finalLocation = tokenRecord.location;
       }
     }
+    
     // Auto-terminate inactive sessions on login
     if (user.autoTerminateMonths) {
       const cutoffDate = new Date();
@@ -245,8 +244,8 @@ export class AuthService {
     await prisma.refreshToken.update({
       where: { id: sessionId },
       data: {
-        token: hashedNewRefresh, // SEC-H06 FIX: Update the DB with the new token
-        expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // SEC-M09 FIX: Keep consistent 30-day inactivity timeout
+        // Keep the old token hash intact! Do not rotate.
+        expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), 
         lastActive: new Date(),
         userAgent,
         ipAddress,
@@ -257,7 +256,7 @@ export class AuthService {
       },
     });
 
-    return { accessToken, refreshToken: newRefreshToken }; // Return the rotated refresh token
+    return { accessToken, refreshToken: oldRefreshToken }; // Return the rotated refresh token
   }
 
   static async logout(refreshToken: string) {

@@ -1,17 +1,17 @@
-
 import { GoogleGenAI } from '@google/genai';
 
 export class AIManager {
   private static keys: string[] = [];
   private static currentKeyIndex = 0;
+  private static aiInstances: Record<string, GoogleGenAI> = {};
   
-  // The user's requested model cascade
-  private static readonly MODEL_CASCADE = [
-    'gemini-3.1-pro-preview',
+  // Strict compliance with AGENTS.md (No 3.5, 2.0, or 1.5 models)
+  private static readonly SAFE_CASCADE = [
     'gemini-3.8-flash',
     'gemini-3.7-flash',
     'gemini-3.6-flash',
-    'gemini-3.5-flash-lite'
+    'gemini-3.5-flash-lite',
+    'gemini-3.1-pro'
   ];
 
   private static init() {
@@ -26,10 +26,20 @@ export class AIManager {
 
   public static async generateContent(options: any): Promise<any> {
     this.init();
+    const startTime = Date.now();
+    const TIMEOUT_MS = 110000; // 110s max backend limit to prevent 120s frontend timeout
     
-    // Iterate through the model cascade
-    for (let mIndex = 0; mIndex < this.MODEL_CASCADE.length; mIndex++) {
-      const currentModel = this.MODEL_CASCADE[mIndex];
+    // Priority: Try the requested model first (if it's safe), then fallback to safe cascade
+    let modelsToTry = [options.model];
+    if (!options.model || options.model.includes('3.5') || options.model.includes('1.5') || options.model.includes('2.0') || options.model.includes('-lite') || options.model.includes('preview')) {
+       modelsToTry = [...this.SAFE_CASCADE];
+    } else {
+       // Append cascade for fallbacks
+       modelsToTry = [options.model, ...this.SAFE_CASCADE].filter((val, index, self) => self.indexOf(val) === index);
+    }
+    
+    for (let mIndex = 0; mIndex < modelsToTry.length; mIndex++) {
+      const currentModel = modelsToTry[mIndex];
       const modelOptions = { ...options, model: currentModel };
       
       let attemptsOnThisModel = 0;
@@ -37,11 +47,24 @@ export class AIManager {
 
       while (attemptsOnThisModel < maxAttempts) {
         const key = this.keys[this.currentKeyIndex];
-        const ai = new GoogleGenAI({ apiKey: key });
+        let ai = this.aiInstances[key];
+        if (!ai) {
+          ai = new GoogleGenAI({ apiKey: key });
+          this.aiInstances[key] = ai;
+        }
+        
+        if (Date.now() - startTime > TIMEOUT_MS) {
+          throw new Error('AI request took too long. Failing fast to prevent 5-minute hang.');
+        }
         
         try {
-          const response = await ai.models.generateContent(modelOptions);
-          return response;
+          // PER-REQUEST TIMEOUT: 25s for flash, 60s for pro models
+          const perRequestTimeout = currentModel.includes('pro') ? 60000 : 25000;
+          
+          return await Promise.race([
+             ai.models.generateContent(modelOptions),
+             new Promise((_, reject) => setTimeout(() => reject(new Error(`AI request timeout exceeded (${perRequestTimeout}ms limit)`)), perRequestTimeout))
+          ]);
         } catch (error: any) {
           attemptsOnThisModel++;
           const status = error.status || error.code || 500;
@@ -49,21 +72,16 @@ export class AIManager {
           
           console.warn(`[AIManager] Model ${currentModel} on Key ${this.currentKeyIndex} failed (${status} - ${msg}).`);
           
-          // If the model is globally overloaded (503), don't waste other API keys trying the same overloaded model
           if (status === 503 || msg.includes('503') || msg.includes('UNAVAILABLE') || msg.includes('overloaded')) {
              console.warn(`[AIManager] 503 Unavailable detected. Downgrading model immediately...`);
-             break; 
+             break;
           }
           
-          // If the model is completely deprecated/deleted (404), downgrade immediately
           if (status === 404 || msg.includes('404') || msg.includes('not found')) {
-             console.warn(`[AIManager] 404 Not Found (Model missing). Downgrading model immediately...`);
+             console.warn(`[AIManager] 404 Not Found. Downgrading model immediately...`);
              break;
           }
 
-          // For 429 (Quota Exceeded) or transient errors, rotate to the next API key horizontally.
-          // Since the user is supplying multiple keys (comma-separated), they are likely from different 
-          // projects, so horizontal rotation is exactly what they want to bypass free tier limits.
           if (status === 429 || msg.includes('429') || msg.includes('Quota')) {
              console.warn(`[AIManager] 429 Quota Exceeded. Rotating to next API key horizontally...`);
              this.currentKeyIndex = (this.currentKeyIndex + 1) % this.keys.length;
@@ -79,4 +97,3 @@ export class AIManager {
     throw new Error('All provided Gemini API keys and fallback models were exhausted.');
   }
 }
-

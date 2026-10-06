@@ -162,6 +162,7 @@ let realPrisma: any = null;
 if (process.env.DATABASE_URL && process.env.DATABASE_URL.trim().length > 0) {
   try {
     const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+    pool.on("error", (err) => { console.warn("[pg] Idle client error:", err.message); });
     const adapter = new PrismaPg(pool);
     realPrisma = new PrismaClient({ adapter });
   } catch (err) {
@@ -191,6 +192,10 @@ export const prisma = new Proxy(
               try {
                 return await originalFn.apply(targetModel, args);
               } catch (dbError: any) {
+                if (dbError?.code === 'ECONNREFUSED' || (dbError.message && dbError.message.includes('ECONNREFUSED'))) {
+                  throw new Error("CRITICAL: Database connection refused (ECONNREFUSED). Your PostgreSQL server is offline or unreachable.");
+                }
+
                 const isConnectionError = dbError?.code?.startsWith('P1') || 
                                           dbError?.message?.toLowerCase().includes('connection') ||
                                           dbError?.message?.toLowerCase().includes('timeout') ||

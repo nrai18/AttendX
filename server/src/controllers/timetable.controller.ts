@@ -229,9 +229,10 @@ const mappedSchedules: any = {};
                         type: slotType, // for frontend preview pill
                         slotType, // for backend db insertion
                         group: slot.group || slot.labGroup || "ALL",
-                        isElective: Boolean(slot.isElective),
-                        isProgramElective: Boolean(slot.isProgramElective),
-                        isMinorElective: Boolean(slot.isMinorElective)
+                        isElective: code.toUpperCase().includes("SE3") || code.toUpperCase().includes("SE4") || code.toUpperCase().startsWith("SCMS") || code.toUpperCase().startsWith("SEMS"),
+                          isProgramElective: code.toUpperCase().includes("SE3") || code.toUpperCase().includes("SE4"),
+                          isMinorElective: code.toUpperCase().startsWith("SCMS") || code.toUpperCase().startsWith("SEMS")
+
                     };
                 });
                 
@@ -265,6 +266,15 @@ const mappedSchedules: any = {};
                 
                 rawSlots = mergedSlots;
                 
+                // If semester >= 5, wipe out sections completely because they don't exist.
+                // Any '3ITA1' found by AI is actually a lab group, not a section.
+                if (semNumber >= 5) {
+                    rawSlots.forEach((slot: any) => {
+                        slot.section = "ALL";
+                    });
+                }
+                
+
                 const uniqueSections = Array.from(new Set(rawSlots.map((slot: any) => slot.section).filter((sec: any) => sec && sec !== "ALL")));
                 
                 mappedSchedules[branch][semNumber] = {

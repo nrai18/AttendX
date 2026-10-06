@@ -467,8 +467,12 @@ export class TimetableService {
 Parse the attached timetable document/image.
 Extract the weekly class schedule, subjects, electives, rooms, sections, and practical lab batches ONLY for semester/branch: "${targetSemName}".
 
-CRITICAL TIMING & PERIOD RULES:
-  Extract the exact start and end times for each slot directly from the column headers in the provided timetable image. Do not invent or hardcode times.
+CRITICAL EXTRACTION RULES:
+  1. TIMING: Extract exact start/end times directly from the column headers.
+  2. TYPE: If a cell contains "(P)", "Lab", or "Practical", strictly set "type": "Practical". If it contains "(L)", "(T)", or "Lecture", set "type": "Theory".
+  3. GROUP: If a cell specifies a specific lab batch like "3ITA1", "G1", "Batch 1", map it to "G1". If it specifies "3ITA2", "G2", map it to "G2". If it is for both groups (e.g. "3ITA1/3ITA2", "G1/G2", or no group listed), set "group": "ALL".
+  4. DAY OF WEEK: Use exact 0-indexed integers. Monday=0, Tuesday=1, Wednesday=2, Thursday=3, Friday=4, Saturday=5, Sunday=6.
+
   
   Return a JSON object containing:
 {
@@ -501,7 +505,7 @@ CRITICAL TIMING & PERIOD RULES:
   Make sure to map the exact subject codes (e.g. SCMS301, CSSE301). Mark Program Electives with isProgramElective=true, and Minor/Open Electives with isMinorElective=true. Do not invent sections if they are not explicitly specified for a slot.`;
 
       const response = await AIManager.generateContent({
-        model: "gemini-3.5-flash-lite",
+        model: "gemini-3.8-flash",
         contents: [
           {
             role: "user",
@@ -657,12 +661,13 @@ CRITICAL TIMING & PERIOD RULES:
     });
 
     // Detect all elective codes present in the raw slots
-    const allElectiveCodesSet = new Set<string>();
-    for (const slot of normalizedRawSlots) {
-      if (slot.isProgramElective || slot.isMinorElective || slot.isElective) {
-        allElectiveCodesSet.add(slot.code.toUpperCase());
-      }
-      // Also check if parallel slots exist with different codes at the same day & time
+      const allElectiveCodesSet = new Set<string>();
+      for (const slot of normalizedRawSlots) {
+        const c = slot.code.toUpperCase();
+        if (c.includes("SE3") || c.includes("SE4") || c.startsWith("SCMS") || c.startsWith("SEMS")) {
+          allElectiveCodesSet.add(c);
+        }
+        // Also check if parallel slots exist with different codes at the same day & time
       const parallelSlot = normalizedRawSlots.find(s =>
         s !== slot &&
         s.dayOfWeek === slot.dayOfWeek &&
@@ -683,13 +688,14 @@ CRITICAL TIMING & PERIOD RULES:
       }
 
       // 2. Filter Lab Groups (G1 vs G2 vs G1/G2)
-      if (!isGroupMatch(slot.group, labGroup)) {
+      const isElective = slot.code.toUpperCase().includes("SE3") || slot.code.toUpperCase().includes("SE4") || slot.code.toUpperCase().startsWith("SCMS") || slot.code.toUpperCase().startsWith("SEMS");
+        if (!isElective && !isGroupMatch(slot.group, labGroup)) {
         return false;
       }
 
       // 3. Filter Electives dynamically without hardcoded subject codes
       const slotCodeUpper = slot.code.toUpperCase();
-      const isElectiveSlot = slot.isProgramElective || slot.isMinorElective || slot.isElective || allElectiveCodesSet.has(slotCodeUpper);
+      const isElectiveSlot =  allElectiveCodesSet.has(slotCodeUpper);
 
       if (isElectiveSlot && selectedElectiveCodes.length > 0) {
         // If this slot is an elective, only include if user selected this elective code
