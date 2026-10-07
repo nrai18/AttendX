@@ -4,6 +4,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { Menu, X, ArrowLeft, ArrowRight, CalendarDays, Brain, Users, Moon, Sun, Phone, Mail } from "lucide-react";
 import { useAuthStore } from "../../stores/authStore";
 import { useThemeStore } from "../../stores/themeStore";
+import { useBackHandlerStore } from "../../stores/backHandlerStore";
 
 export const LandingPage: React.FC = () => {
   const navigate = useNavigate();
@@ -26,6 +27,14 @@ export const LandingPage: React.FC = () => {
   });
 
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  useEffect(() => {
+    const unregister = useBackHandlerStore.getState().register(() => {
+      if (isMobileMenuOpen) { setIsMobileMenuOpen(false); return true; }
+      return false;
+    });
+    return () => unregister();
+  }, [isMobileMenuOpen]);
 
   useEffect(() => {
     if (isAuthenticated) {

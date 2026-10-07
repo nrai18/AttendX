@@ -207,34 +207,40 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
   const voiceEnabledRef = useRef(voiceEnabled);
   const previewVoiceRef = useRef<number | null>(null);
 
-  // Sync scroll position when opening settings
+  // Setup when opening settings
   useEffect(() => {
-    if (showVoiceSettings && carouselRef.current && curatedVoices.length > 0) {
-      const activeIndex = curatedVoices.findIndex(cv => cv.originalIndex === selectedVoice);
-      const targetIndex = activeIndex >= 0 ? activeIndex : 0;
+    if (showVoiceSettings) {
+      stopListening();
       
-      // Delay slightly for Framer Motion to mount the DOM element with dimensions
-      setTimeout(() => {
-        if (carouselRef.current) {
-          carouselRef.current.scrollTo({ left: targetIndex * carouselRef.current.clientWidth, behavior: 'instant' });
+      if (curatedVoices.length > 0) {
+        // Find the currently selected voice
+        const activeIndex = curatedVoices.findIndex(cv => cv.originalIndex === selectedVoice);
+        const targetIndex = activeIndex >= 0 ? activeIndex : 0;
+        const activeCv = curatedVoices[targetIndex];
+        
+        if (activeCv) {
+          // Set it as the preview voice so it highlights immediately
+          previewVoiceRef.current = activeCv.originalIndex;
+          setPreviewVoice(activeCv.originalIndex);
           
-          // Force a sample playback for the initial open, regardless of whether a scroll event fired
-          const activeCv = curatedVoices[targetIndex];
-          if (activeCv) {
-            if (previewVoiceRef.current !== activeCv.originalIndex) {
-              previewVoiceRef.current = activeCv.originalIndex;
-              setPreviewVoice(activeCv.originalIndex);
-              NativeVoiceService.speak(activeCv.sample, { 
-                voice: activeCv.originalIndex, 
-                elevenlabsVoiceId: activeCv.elevenLabsId,
-                pitch: activeCv.pitch,
-                rate: activeCv.rate
-              });
+          // Scroll it into view (vertical list)
+          setTimeout(() => {
+            const el = document.getElementById(`voice-item-${activeCv.originalIndex}`);
+            if (el) {
+              el.scrollIntoView({ behavior: 'instant', block: 'center' });
             }
-          }
+          }, 50); // slight delay for DOM mount
+          
+          // Force a sample playback for the initial open
+          NativeVoiceService.speak(activeCv.sample, { 
+            voice: activeCv.originalIndex, 
+            elevenlabsVoiceId: activeCv.elevenLabsId,
+            pitch: activeCv.pitch,
+            rate: activeCv.rate
+          }).catch(console.error);
         }
-      }, 100);
-    } else if (!showVoiceSettings) {
+      }
+    } else {
       // Reset preview voice when settings close so it will play again if opened
       previewVoiceRef.current = null;
       setPreviewVoice(null);
@@ -346,11 +352,9 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
     },
     onEnd: () => {
       if (isOpenRef.current && !NativeVoiceService.isSpeaking() && !isProcessingRef.current) {
-        if (!transcriptRef.current.trim()) {
-          NativeVoiceService.startListening(getListenOptions());
-        } else {
-          setIsListening(false);
-        }
+        setIsListening(false);
+        // Do NOT call stopContinuousLoop() here! If the OS kills the mic due to a natural pause,
+        // we want to preserve the isLoopActive flag so it auto-restarts after the AI answers.
       }
     },
   });
@@ -401,9 +405,11 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
     // Assume ~2.3 words per second for speech rate 1.05 with punctuation pauses
     const expectedDurationMs = (wordCount / 2.3) * 1000 + 1000;
     
-    // DO NOT set speechStartTimeRef.current or setIsSpeaking(true) here!
-    // This allows the uiState to remain PROCESSING (or whatever it was) while the native TTS engine boots up and downloads audio.
-    // We only want the UI to transition to SPEAKING (and the text to start animating) once the audio actually starts.
+    // DO NOT set speechStartTimeRef.current to Date.now() here!
+    // This allows the uiState to remain PROCESSING while the native TTS engine boots up and downloads audio.
+    // We only want the UI to transition to SPEAKING once the audio actually starts playing.
+    speechStartTimeRef.current = 0; 
+    setSpeechStartTime(0);
     speechTotalDurationRef.current = expectedDurationMs;
     setSpeechDuration(expectedDurationMs);
 
@@ -414,7 +420,20 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
         autoResumeListening: true,
         listenOptions: getListenOptions(),
         onDuration: (durationMs) => {
-          // Sync exact audio length to the cinematic text
+          // If speech already started, adjust the startTime so the cursor doesn't jump
+          if (speechStartTimeRef.current > 0) {
+            const oldDuration = speechTotalDurationRef.current;
+            const now = Date.now();
+            const elapsed = now - speechStartTimeRef.current;
+            const ratio = elapsed / oldDuration;
+            
+            const newElapsed = ratio * durationMs;
+            const newStartTime = now - newElapsed;
+            
+            speechStartTimeRef.current = newStartTime;
+            setSpeechStartTime(newStartTime);
+          }
+          
           speechTotalDurationRef.current = durationMs;
           setSpeechDuration(durationMs);
         },
@@ -462,10 +481,12 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
     // so that handlePlaybackEnd can auto-resume listening after TTS finishes.
     if (Capacitor.isNativePlatform()) {
       setIsListening(false);
+      isListeningRef.current = false;
       await NativeVoiceService.stopListening();
     }
     
     setIsProcessing(true);
+    isProcessingRef.current = true;
 
     if (pendingActionMsgId) {
       const cleanQuery = query.trim().toLowerCase().replace(/[.,!]/g, '');
@@ -568,20 +589,22 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
     <AnimatePresence>
       {isOpen && (
         <motion.div
-          initial={{ opacity: 0, y: 50 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: "100%" }}
-          transition={{ type: "spring", damping: 25, stiffness: 300 }}
-          className="chatbot-window fixed inset-0 z-[100] flex flex-col bg-black text-white"
+          initial={{ opacity: 0, scale: 1.1, filter: "blur(15px)" }}
+          animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
+          exit={{ opacity: 0, scale: 0.95, filter: "blur(15px)" }}
+          transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+          className="chatbot-window fixed inset-0 z-[100] flex flex-col bg-black text-white origin-center"
         >
           {/* Top Bar - Mimicking ChatGPT layout */}
           <header className="flex items-center justify-between p-6 pt-safe-8 relative z-[60]">
-            <button
+            <motion.button
+              whileHover={{ scale: 1.1, rotate: 90 }}
+              whileTap={{ scale: 0.85, rotate: -90 }}
               onClick={handleClose}
-              className="flex items-center justify-center w-12 h-12 rounded-full bg-red-500 hover:bg-red-600 text-white shadow-lg shadow-red-500/20 transition-all cursor-pointer relative z-[70]"
+              className="flex items-center justify-center w-12 h-12 rounded-full bg-red-500 text-white shadow-[0_0_20px_rgba(239,68,68,0.4)] cursor-pointer relative z-[70]"
             >
               <X className="w-6 h-6 stroke-[3]" />
-            </button>
+            </motion.button>
             <button
               onClick={() => {
                 setVoiceEnabled((prev) => {
@@ -790,7 +813,7 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
                   {curatedVoices.length === 0 ? (
                     <p className="text-white/40 text-sm text-center py-8">No voices found on this device.</p>
                   ) : (
-                    <div className="w-full relative max-h-[50vh] overflow-y-auto pr-2" style={{ scrollbarWidth: "thin" }}><div className="flex flex-col gap-2">{curatedVoices.map((cv, i) => (<div key={i} className={`p-4 rounded-xl flex flex-col cursor-pointer transition-all ${previewVoice === cv.originalIndex ? "bg-white/20 border border-white/30" : "bg-white/5 hover:bg-white/10 border border-transparent"}`} onClick={() => {setPreviewVoice(cv.originalIndex); NativeVoiceService.speak(cv.sample, {voice: cv.originalIndex, pitch: cv.pitch, rate: cv.rate, elevenlabsVoiceId: cv.elevenLabsId}).catch(console.error);}}><h2 className={`text-lg font-bold transition-colors ${previewVoice === cv.originalIndex ? "text-white" : "text-white/60"}`}>{cv.alias}</h2><p className="text-xs text-white/50 mt-1">{cv.desc}</p></div>))}</div><button onClick={() => {if (previewVoice !== null) {setSelectedVoice(previewVoice); localStorage.setItem("attendx_preferred_voice_index", previewVoice.toString()); const selectedCv = curatedVoices.find(v => v.originalIndex === previewVoice); if (selectedCv) {localStorage.setItem("attendx_elevenlabs_voice_id", selectedCv.elevenLabsId);}} setShowVoiceSettings(false);}} className="w-full bg-white text-black font-semibold rounded-2xl py-3 mt-6 hover:bg-gray-200 transition-colors cursor-pointer sticky bottom-0 z-10 shadow-[0_-20px_20px_-10px_rgba(30,30,30,0.9)]">Confirm Voice</button></div>
+                    <div className="w-full relative max-h-[50vh] overflow-y-auto pr-2" style={{ scrollbarWidth: "thin" }}><div className="flex flex-col gap-2">{curatedVoices.map((cv, i) => (<div key={i} id={`voice-item-${cv.originalIndex}`} className={`p-4 rounded-xl flex flex-col cursor-pointer transition-all ${previewVoice === cv.originalIndex ? "bg-white/20 border border-white/30" : "bg-white/5 hover:bg-white/10 border border-transparent"}`} onClick={() => {setPreviewVoice(cv.originalIndex); NativeVoiceService.speak(cv.sample, {voice: cv.originalIndex, pitch: cv.pitch, rate: cv.rate, elevenlabsVoiceId: cv.elevenLabsId}).catch(console.error);}}><h2 className={`text-lg font-bold transition-colors ${previewVoice === cv.originalIndex ? "text-white" : "text-white/60"}`}>{cv.alias}</h2><p className="text-xs text-white/50 mt-1">{cv.desc}</p></div>))}</div><button onClick={() => {if (previewVoice !== null) {setSelectedVoice(previewVoice); localStorage.setItem("attendx_preferred_voice_index", previewVoice.toString()); const selectedCv = curatedVoices.find(v => v.originalIndex === previewVoice); if (selectedCv) {localStorage.setItem("attendx_elevenlabs_voice_id", selectedCv.elevenLabsId);}} setShowVoiceSettings(false);}} className="w-full bg-white text-black font-semibold rounded-2xl py-3 mt-6 hover:bg-gray-200 transition-colors cursor-pointer sticky bottom-0 z-10 shadow-[0_-20px_20px_-10px_rgba(30,30,30,0.9)]">Confirm Voice</button></div>
                   )}
                 </motion.div>
               </>

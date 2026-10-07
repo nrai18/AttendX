@@ -397,9 +397,9 @@ export const FloatingChatbot: React.FC = () => {
              if (currentTranscriptRef.current.trim()) {
                 triggerHandsFreeSubmit(currentTranscriptRef.current.trim());
              } else {
-                // The user hasn't said anything yet, but Android natively turned off the mic.
-                // Restart it silently to honor our 20s total inactivity timeout.
-                NativeVoiceService.startListening(handsFreeListenOptionsRef.current);
+                // The user hasn't said anything, and Android natively turned off the mic.
+                // Stop the loop completely instead of keeping the mic on.
+                stopHandsFreeMode("No speech detected.");
              }
           }
         }
@@ -646,7 +646,14 @@ export const FloatingChatbot: React.FC = () => {
         subjects: currentSubjects,
         timetable_slots: useCacheStore.getState().timetable?.slots || [],
         history_logs: currentLogs.slice(0, 150),
-        calendar_events: currentEvents.slice(0, 50),
+        calendar_events: currentEvents
+          .filter(e => {
+            const eventDate = new Date(e.endDate || e.date);
+            const monthAgo = new Date();
+            monthAgo.setDate(monthAgo.getDate() - 30);
+            return eventDate >= monthAgo;
+          })
+          .slice(0, 150),
         assignments: useAssignmentStore.getState().assignments || []
       };
 

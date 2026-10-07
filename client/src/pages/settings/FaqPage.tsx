@@ -1,6 +1,8 @@
 import { VolumetricRays } from "../../components/ui/volumetric-rays";
 import React, { useState } from "react";
 import { FeedbackModal } from "../../components/support/FeedbackModal";
+import { useBackHandlerStore } from "../../stores/backHandlerStore";
+import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, ChevronDown, HelpCircle, Import, Target, Smartphone, RefreshCw, LogOut } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -37,6 +39,14 @@ export const FaqPage: React.FC = () => {
   const navigate = useNavigate();
   const [openIndex, setOpenIndex] = useState<number | null>(0);
   const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
+
+  useEffect(() => {
+    const unregister = useBackHandlerStore.getState().register(() => {
+      if (isFeedbackOpen) { setIsFeedbackOpen(false); return true; }
+      return false;
+    });
+    return () => unregister();
+  }, [isFeedbackOpen]);
 
   return (
     <div className="theme-nova-green w-full min-h-screen relative text-foreground">

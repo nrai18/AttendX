@@ -19,6 +19,7 @@ import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable"
 import { normalizeTimeString } from "../../utils/timeUtils";
 import { downloadBlob } from "../../lib/download";
 import { useAttendanceStore } from "../../stores/attendanceStore";
+import { useBackHandlerStore } from "../../stores/backHandlerStore";
 import { useCacheStore } from "../../stores/cacheStore";
 import { useScrollLock } from "../../hooks/useScrollLock";
 
@@ -134,6 +135,24 @@ export const TimetablePage = () => {
   const [existingSubjectIds, setExistingSubjectIds] = useState<string[]>([]);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
+  useEffect(() => {
+    const unregister = useBackHandlerStore.getState().register(() => {
+      if (isDeleteModalOpen) { setIsDeleteModalOpen(false); return true; }
+      if (isClearModalOpen) { setIsClearModalOpen(false); return true; }
+      if (isArchiveModalOpen) { setIsArchiveModalOpen(false); return true; }
+      if (isReconciliationOpen) { setIsReconciliationOpen(false); return true; }
+      if (isWizardOpen) { setIsWizardOpen(false); return true; }
+      if (isCreateSemesterOpen) { setIsCreateSemesterOpen(false); return true; }
+      if (isOcrModalOpen) { setIsOcrModalOpen(false); return true; }
+      if (editingSlotId !== null) { setEditingSlotId(null); return true; }
+      if (isAdding) { setIsAdding(false); return true; }
+      if (isAddingExtra) { setIsAddingExtra(false); return true; }
+      if (isSelectMode) { setIsSelectMode(false); setSelectedSlotIds([]); return true; }
+      return false;
+    });
+    return () => unregister();
+  }, [isDeleteModalOpen, isClearModalOpen, isArchiveModalOpen, isReconciliationOpen, isWizardOpen, isCreateSemesterOpen, isOcrModalOpen, editingSlotId, isAdding, isAddingExtra, isSelectMode]);
+
   const fetchData = async () => {
     try {
       if (!cachedData) setIsLoading(true);
@@ -229,7 +248,7 @@ export const TimetablePage = () => {
     setIsAdding(false);
   };
 
-  const handleEditSlot = (slot: TimetableSlot) => {
+  const handleEditSlot = async (slot: TimetableSlot) => {
     setSubjectId(slot.subjectId);
     setStartTime(normalizeTimeString(slot.startTime, "09:00"));
     setEndTime(normalizeTimeString(slot.endTime, "10:00"));
@@ -238,6 +257,17 @@ export const TimetablePage = () => {
     setDayOfWeek(slot.dayOfWeek);
     setEditingSlotId(slot.id);
     setIsAdding(true);
+    
+    // Scroll to the top where the edit form is rendered
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    
+    // Trigger haptic feedback if available (it will silently ignore on web)
+    try {
+      const { Haptics, ImpactStyle } = await import("@capacitor/haptics");
+      await Haptics.impact({ style: ImpactStyle.Light });
+    } catch (e) {
+      // Ignore if not on a device that supports haptics
+    }
   };
 
   const handleAddSlot = async (e?: React.FormEvent) => {
@@ -343,6 +373,9 @@ export const TimetablePage = () => {
             slotAId: activeSlotId,
             slotBId: overSlotId
           });
+          // CRITICAL: Backend historical versioning generates NEW IDs for swapped slots.
+          // We MUST refetch to sync the UI with the new database UUIDs.
+          fetchData();
         } catch (error) {
           console.error("Failed to swap slots:", error);
           fetchData(); // Revert on failure
@@ -796,7 +829,7 @@ export const TimetablePage = () => {
           setSlotsPendingDelete([]);
         }}
         slotsToDelete={slotsPendingDelete}
-        dayName={DAYS[activeTab]}
+        dayName={slotsPendingDelete.length > 0 ? DAYS[slotsPendingDelete[0].dayOfWeek] : DAYS[activeTab]}
         onConfirmDelete={handleConfirmDelete}
       />
 

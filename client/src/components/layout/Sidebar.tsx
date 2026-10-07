@@ -111,7 +111,7 @@ export const Sidebar: React.FC = () => {
             to="/settings?action=edit-profile" 
             className="flex items-center gap-2.5 min-w-0 flex-1 hover:opacity-80 transition-opacity cursor-pointer"
           >
-            <div className={`w-8 h-8 rounded-full overflow-hidden flex items-center justify-center font-bold text-xs shrink-0 ${(isReports || isPredictive) ? "bg-[#74313A]/20 text-[#74313A] dark:bg-[#EED3CF]/20 dark:text-[#EED3CF]" : "bg-primary/20 text-primary"}`}>
+            <div className={`w-8 h-8 avatar-circle rounded-full overflow-hidden flex items-center justify-center font-bold text-xs shrink-0 ${(isReports || isPredictive) ? "bg-[#74313A]/20 text-[#74313A] dark:bg-[#EED3CF]/20 dark:text-[#EED3CF]" : "bg-primary/20 text-primary"}`}>
               {user?.avatarUrl && user?.avatarUrl !== "null" ? (<img src={user.avatarUrl} alt="Avatar" className="w-full h-full object-cover" referrerPolicy="no-referrer" onError={(e) => { e.currentTarget.src = "https://api.dicebear.com/7.x/notionists/svg?seed=" + encodeURIComponent(user?.name || "U"); }} />) : (user?.name?.[0] || "U")}
             </div>
             <div className="min-w-0 flex-1">

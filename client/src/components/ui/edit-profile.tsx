@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Pencil, Clock, ChevronDown, CheckCircle2, Lock, ShieldAlert, Eye, EyeOff } from 'lucide-react';
 import { useAuthStore } from '../../stores/authStore';
@@ -163,7 +163,7 @@ export const EditProfile: React.FC<EditProfileProps> = ({ isOpen, onClose, initi
                       className="relative group cursor-pointer"
                       onClick={() => setShowAvatarPicker(!showAvatarPicker)}
                     >
-                      <div className="w-24 h-24 rounded-full overflow-hidden border-4 border-primary/20 bg-muted">
+                      <div className="w-24 h-24 avatar-circle rounded-full overflow-hidden border-4 border-primary/20 bg-muted">
                         <img 
                           src={(formData.avatarUrl && formData.avatarUrl !== "null") ? formData.avatarUrl : "https://api.dicebear.com/7.x/notionists/svg?seed=Felix"} onError={(e) => { e.currentTarget.src = "https://api.dicebear.com/7.x/notionists/svg?seed=Felix"; }} 
                           alt="Avatar Preview" 
@@ -194,7 +194,7 @@ export const EditProfile: React.FC<EditProfileProps> = ({ isOpen, onClose, initi
                               <div 
                                 key={`m-avatar-${idx}`}
                                 onClick={() => { setFormData(prev => ({ ...prev, avatarUrl: url })); setShowAvatarPicker(false); }}
-                                className="aspect-square rounded-full overflow-hidden border-2 border-transparent hover:border-primary cursor-pointer bg-white transition-all shadow-sm"
+                                className="aspect-square avatar-circle rounded-full overflow-hidden border-2 border-transparent hover:border-primary cursor-pointer bg-white transition-all shadow-sm"
                               >
                                 <img src={url} alt={`Avatar ${idx + 1}`} className="w-full h-full object-cover" />
                               </div>
@@ -411,7 +411,7 @@ export const EditProfile: React.FC<EditProfileProps> = ({ isOpen, onClose, initi
                               <div 
                                 key={`avatar-${idx}`}
                                 onClick={() => { setFormData(prev => ({ ...prev, avatarUrl: url })); setShowAvatarPicker(false); }}
-                                className="aspect-square rounded-full overflow-hidden border-2 border-transparent hover:border-primary cursor-pointer bg-white transition-all hover:scale-105 shadow-sm"
+                                className="aspect-square avatar-circle rounded-full overflow-hidden border-2 border-transparent hover:border-primary cursor-pointer bg-white transition-all hover:scale-105 shadow-sm"
                               >
                                 <img src={url} alt={`Avatar ${idx + 1}`} className="w-full h-full object-cover" />
                               </div>
@@ -445,7 +445,7 @@ export const EditProfile: React.FC<EditProfileProps> = ({ isOpen, onClose, initi
                       className="relative mb-6 z-10 group cursor-pointer"
                       onClick={() => setShowAvatarPicker(true)}
                     >
-                      <div className="w-36 h-36 rounded-full overflow-hidden shadow-xl ring-4 ring-background border border-border/50 bg-muted">
+                      <div className="w-36 h-36 avatar-circle rounded-full overflow-hidden shadow-xl ring-4 ring-background border border-border/50 bg-muted">
                         <img src={currentAvatar} onError={(e) => { e.currentTarget.src = "https://api.dicebear.com/7.x/notionists/svg?seed=Felix"; }} alt="Avatar" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                       </div>
                       <div className="absolute inset-0 bg-black/40 rounded-full opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">

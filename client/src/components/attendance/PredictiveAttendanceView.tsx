@@ -22,6 +22,7 @@ import { api } from "../../lib/api";
 import { useAuthStore } from "../../stores/authStore";
 import { useCacheStore } from "../../stores/cacheStore";
 import { useAttendanceStore } from "../../stores/attendanceStore";
+import { useBackHandlerStore } from "../../stores/backHandlerStore";
 import { Stepper } from "../ui/stepper";
 import { Input } from "../ui/input";
 import { FutureClassesModal } from "./FutureClassesModal";
@@ -136,6 +137,14 @@ export const PredictiveAttendanceView: React.FC<PredictiveAttendanceViewProps> =
   const [simulations, setSimulations] = useState<Record<string, { addAttend: number; addMiss: number; addOff: number }>>({});
   const [dateOverrides, setDateOverrides] = useState<Record<string, Record<string, 'PRESENT' | 'ABSENT' | 'OFF'>>>({});
   const [breakdownModalSubject, setBreakdownModalSubject] = useState<{ id: string; name: string; breakdown: any[] } | null>(null);
+
+  useEffect(() => {
+    const unregister = useBackHandlerStore.getState().register(() => {
+      if (breakdownModalSubject !== null) { setBreakdownModalSubject(null); return true; }
+      return false;
+    });
+    return () => unregister();
+  }, [breakdownModalSubject]);
 
   const openModal = (sub: any) => {
      let futureItems = [...(sub.futureBreakdown || [])];

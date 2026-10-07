@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { useConfigStore } from "../../stores/configStore";
+import { useBackHandlerStore } from "../../stores/backHandlerStore";
 import { Mail, Lock, Loader2, ArrowRight, ArrowLeft, CheckCircle2, Eye, EyeOff, Key } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
@@ -25,6 +26,14 @@ export const LoginPage: React.FC = () => {
 
   // Forgot Password State
   const [forgotPasswordMode, setForgotPasswordMode] = useState(false);
+
+  useEffect(() => {
+    const unregister = useBackHandlerStore.getState().register(() => {
+      if (forgotPasswordMode) { setForgotPasswordMode(false); return true; }
+      return false;
+    });
+    return () => unregister();
+  }, [forgotPasswordMode]);
   const [resetEmailSent, setResetEmailSent] = useState(false);
   const [resetToken, setResetToken] = useState("");
   const [otp, setOtp] = useState("");

@@ -780,7 +780,7 @@ html.light body.theme-orbital {
 }
 
 .theme-aether
-  *:not(.chatbot-btn):not(.chatbot-btn *):not(.chatbot-window):not(
+  *:not(.chatbot-btn):not(.chatbot-btn *):not(.chatbot-window):not(.avatar-circle):not(.avatar-circle *):not(
     .chatbot-window *
   ) {
   border-radius: 0 !important;

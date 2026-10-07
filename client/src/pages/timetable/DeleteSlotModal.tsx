@@ -156,7 +156,7 @@ export const DeleteSlotModal: React.FC<DeleteSlotModalProps> = ({
             type="button"
             onClick={onClose}
             disabled={isDeleting}
-            className="w-full sm:w-auto px-5 py-2.5 rounded-xl text-sm font-semibold text-muted-foreground hover:bg-muted hover:text-foreground transition-colors cursor-pointer"
+            className="w-full sm:w-auto px-5 py-2.5 rounded-xl text-sm font-semibold text-muted-foreground hover:bg-muted hover:text-foreground transition-colors cursor-pointer disabled:opacity-50"
           >
             Cancel
           </button>
@@ -164,17 +164,22 @@ export const DeleteSlotModal: React.FC<DeleteSlotModalProps> = ({
             type="button"
             onClick={() => handleAction(false)}
             disabled={isDeleting}
-            className="w-full sm:w-auto px-5 py-2.5 rounded-xl text-sm font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer"
+            className="w-full sm:w-auto px-5 py-2.5 rounded-xl text-sm font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
           >
-            Delete
+            {isDeleting ? <span className="animate-spin border-2 border-rose-600 dark:border-rose-400 border-t-transparent rounded-full w-4 h-4" /> : null}
+            <span>Delete</span>
           </button>
           <button
             type="button"
             onClick={() => handleAction(true)}
             disabled={isDeleting}
-            className="w-full sm:w-auto px-6 py-2.5 rounded-xl text-sm font-bold bg-teal-600 hover:bg-teal-500 text-white shadow-lg shadow-teal-600/20 transition-all cursor-pointer flex items-center justify-center gap-2"
+            className="w-full sm:w-auto px-6 py-2.5 rounded-xl text-sm font-bold bg-teal-600 hover:bg-teal-500 text-white shadow-lg shadow-teal-600/20 transition-all cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50"
           >
-            <ShieldCheck className="w-4 h-4" />
+            {isDeleting ? (
+              <span className="animate-spin border-2 border-white border-t-transparent rounded-full w-4 h-4" />
+            ) : (
+              <ShieldCheck className="w-4 h-4" />
+            )}
             <span>Safe Delete</span>
           </button>
         </div>

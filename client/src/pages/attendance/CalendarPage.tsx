@@ -10,6 +10,7 @@ import { SyncEventsModal } from "../../components/calendar/SyncEventsModal";
 import { InlineAction } from "../../components/ui/inline-action";
 import { toast } from "sonner";
 import { useCacheStore } from "../../stores/cacheStore";
+import { useBackHandlerStore } from "../../stores/backHandlerStore";
 import { useAttendanceStore } from "../../stores/attendanceStore";
 import { useSwipeable } from "react-swipeable";
 
@@ -81,6 +82,16 @@ export const CalendarPage = () => {
   const [selectedMobileDate, setSelectedMobileDate] = useState<string | null>(null);
   const [touchStartX, setTouchStartX] = useState<number | null>(null);
   const [touchEndX, setTouchEndX] = useState<number | null>(null);
+  useEffect(() => {
+    const unregister = useBackHandlerStore.getState().register(() => {
+      if (isImportModalOpen) { setIsImportModalOpen(false); return true; }
+      if (isSyncModalOpen) { setIsSyncModalOpen(false); return true; }
+      if (selectedMobileDate !== null) { setSelectedMobileDate(null); return true; }
+      return false;
+    });
+    return () => unregister();
+  }, [isImportModalOpen, isSyncModalOpen, selectedMobileDate]);
+
   const navigate = useNavigate();
 
   const handleTouchStart = (e: React.TouchEvent) => {

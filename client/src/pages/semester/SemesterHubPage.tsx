@@ -11,6 +11,7 @@ import { Link, useSearchParams, useParams } from "react-router-dom";
 import { useAuthStore } from "../../stores/authStore";
 import { useCacheStore } from "../../stores/cacheStore";
 import { useAttendanceStore } from "../../stores/attendanceStore";
+import { useBackHandlerStore } from "../../stores/backHandlerStore";
 import { DiscreteTabs } from "../../components/ui/discrete-tabs";
 import { toast } from "sonner";
 import { TimedUndoAction } from "../../components/ui/timed-undo-action";
@@ -84,6 +85,17 @@ export const SemesterHubPage = () => {
   const [wizardPayload, setWizardPayload] = useState<any>(null);
   const [isCreateSemesterOpen, setIsCreateSemesterOpen] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+
+  useEffect(() => {
+    const unregister = useBackHandlerStore.getState().register(() => {
+      if (isImportModalOpen) { setIsImportModalOpen(false); return true; }
+      if (isAddEventOpen) { setIsAddEventOpen(false); return true; }
+      if (isWizardOpen) { setIsWizardOpen(false); return true; }
+      if (isCreateSemesterOpen) { setIsCreateSemesterOpen(false); return true; }
+      return false;
+    });
+    return () => unregister();
+  }, [isImportModalOpen, isAddEventOpen, isWizardOpen, isCreateSemesterOpen]);
 
   const nextEventId = React.useMemo(() => {
     const _today = startOfDay(new Date());

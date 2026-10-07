@@ -8,6 +8,7 @@ import { useConfigStore } from "../../stores/configStore";
 import { useAttendanceStore } from "../../stores/attendanceStore";
 import { useCacheStore } from "../../stores/cacheStore";
 import { useNotificationStore } from "../../stores/notificationStore";
+import { useBackHandlerStore } from "../../stores/backHandlerStore";
 import { api } from "../../lib/api";
 import { toast } from "sonner";
 import { Stepper } from "../../components/ui/stepper";
@@ -244,13 +245,28 @@ export const SettingsPage: React.FC = () => {
   useEffect(() => {
     // Schedule updates whenever frequency or time changes
     NotificationService.scheduleAcademicUpdates(reminderFrequency);
-  }, [reminderFrequency, notifConfig.summaryTime]);  // Reset Section Toggle
+  }, [reminderFrequency, notifConfig.summaryTime]);
+  // Reset Section Toggle
   const [enableReset, setEnableReset] = useState(false);
 
   // Reset Modals State
   const [resetModalType, setResetModalType] = useState<
     "subject" | "attendance" | "timetable" | "events" | "entire" | null
   >(null);
+
+  useEffect(() => {
+    const unregister = useBackHandlerStore.getState().register(() => {
+      if (isEditProfileOpen) { setIsEditProfileOpen(false); return true; }
+      if (isLinkedDevicesOpen) { setIsLinkedDevicesOpen(false); return true; }
+      if (showAppInfoModal) { setShowAppInfoModal(false); return true; }
+      if (isFeedbackOpen) { setIsFeedbackOpen(false); return true; }
+      if (isChangelogOpen) { setIsChangelogOpen(false); return true; }
+      if (resetModalType !== null) { setResetModalType(null); return true; }
+      if (activeView !== "main") { setActiveView("main"); return true; }
+      return false;
+    });
+    return () => unregister();
+  }, [isEditProfileOpen, isLinkedDevicesOpen, showAppInfoModal, isFeedbackOpen, isChangelogOpen, resetModalType, activeView]);
 
   const fetchSubjectsForReset = () => {
     api
@@ -819,7 +835,7 @@ export const SettingsPage: React.FC = () => {
               src="/developer-photo.jpg"
               alt="Naman Rai"
               referrerPolicy="no-referrer"
-              className="w-12 h-12 rounded-full object-cover border-2 border-emerald-500/40 shadow-sm shrink-0"
+              className="w-12 h-12 avatar-circle rounded-full object-cover border-2 border-emerald-500/40 shadow-sm shrink-0"
               onError={(e) => {
                 e.currentTarget.style.display = "none";
                 if (e.currentTarget.nextElementSibling) {
@@ -972,7 +988,7 @@ export const SettingsPage: React.FC = () => {
             className="w-full p-4 flex items-center justify-between hover:bg-muted/30 transition-colors"
           >
             <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-full overflow-hidden bg-muted border-2 border-border/50 shadow-sm shrink-0">
+              <div className="w-12 h-12 avatar-circle rounded-full overflow-hidden bg-muted border-2 border-border/50 shadow-sm shrink-0">
                 <img 
                   src={(user?.avatarUrl && user?.avatarUrl !== "null") ? user?.avatarUrl : (user?.gender === 'female' ? 'https://api.dicebear.com/7.x/notionists/svg?seed=female&gender=female' : user?.gender === 'male' ? 'https://api.dicebear.com/7.x/notionists/svg?seed=male&gender=male' : 'https://api.dicebear.com/7.x/notionists/svg?seed=user')} onError={(e) => { e.currentTarget.src = "https://api.dicebear.com/7.x/notionists/svg?seed=user"; }} 
                   alt="Avatar" 

@@ -1,8 +1,11 @@
-import { Capacitor } from '@capacitor/core';
+import { Capacitor, CapacitorHttp } from '@capacitor/core';
+import { Filesystem, Directory } from '@capacitor/filesystem';
+import { App } from '@capacitor/app';
 import { SpeechRecognition } from '@capgo/capacitor-speech-recognition';
 import { TextToSpeech } from '@capacitor-community/text-to-speech';
 import { VoiceRecorder } from 'capacitor-voice-recorder';
 import { api } from '../lib/api.ts';
+import { useAuthStore } from '../stores/authStore.ts';
 
 export interface VoiceListenOptions {
   onStart?: () => void;
@@ -463,13 +466,17 @@ export class NativeVoiceService {
     };
     
     try {
-      options?.onStart?.();
+      // Pre-flight check: Trigger api.ts interceptor to auto-refresh token if expired
+      try { await api.get('/health'); } catch (e) {}
+      let accessToken = useAuthStore.getState().accessToken || '';
+
+      let blobUrl = '';
+      const voiceId = prefElevenLabsVoiceId || 'hpp4J3VqNfWAUOO0d1Us';
       
-      const response = await api.post('/ai/tts', { 
-        text: cleanText, 
-        voice_id: prefElevenLabsVoiceId || 'hpp4J3VqNfWAUOO0d1Us' // Default to Bella
-      }, { responseType: 'blob' });
-      const blobUrl = URL.createObjectURL(response.data);
+      // Instead of downloading files natively or converting blobs (which crashes WebView memory),
+      // we can just use the standard HTML5 Audio player by giving it a direct streaming GET URL!
+      // The backend now supports ?token= in the query string to authenticate the Audio player.
+      blobUrl = `${api.defaults.baseURL}/ai/tts?text=${encodeURIComponent(cleanText)}&voiceId=${encodeURIComponent(voiceId)}&token=${encodeURIComponent(accessToken)}`;
       
       const audio = new Audio(blobUrl);
       this.currentAudio = audio;
@@ -480,25 +487,33 @@ export class NativeVoiceService {
         }
       };
 
+      const cleanupFile = () => {
+        if (blobUrl.startsWith('blob:')) URL.revokeObjectURL(blobUrl);
+      };
+
       audio.onended = async () => {
-        URL.revokeObjectURL(blobUrl);
+        cleanupFile();
         if (this.currentAudio === audio) this.currentAudio = null;
         await handlePlaybackEnd();
       };
       
       audio.onerror = (e) => {
-        URL.revokeObjectURL(blobUrl);
+        cleanupFile();
         if (this.currentAudio === audio) this.currentAudio = null;
         this.isSpeakingState = false;
         options?.onError?.(e);
         options?.onEnd?.();
       };
 
+      audio.onplay = () => {
+        options?.onStart?.();
+      };
       await audio.play();
       return true;
     } catch (err) {
       console.error("ElevenLabs TTS error:", err);
       try {
+        options?.onStart?.();
         await TextToSpeech.speak({
           text: cleanText,
           lang: options?.lang || 'en-IN',
@@ -589,6 +604,14 @@ export class NativeVoiceService {
 
     return clean;
   }
+}
+
+if (Capacitor.isNativePlatform()) {
+  App.addListener('appStateChange', ({ isActive }: { isActive: boolean }) => {
+    if (!isActive) {
+      NativeVoiceService.stopContinuousLoop();
+    }
+  });
 }
 
 
