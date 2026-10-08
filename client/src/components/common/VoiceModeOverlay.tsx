@@ -322,7 +322,6 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
       if (isOpenRef.current) {
         setIsListening(true);
         setTranscript("");
-        resetSilenceTimeout();
       }
     },
     onPartialResult: (text: string) => {
@@ -352,9 +351,20 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
     },
     onEnd: () => {
       if (isOpenRef.current && !NativeVoiceService.isSpeaking() && !isProcessingRef.current) {
-        setIsListening(false);
-        // Do NOT call stopContinuousLoop() here! If the OS kills the mic due to a natural pause,
-        // we want to preserve the isLoopActive flag so it auto-restarts after the AI answers.
+        if (transcriptRef.current.trim()) {
+           // OS killed mic with text: force submit immediately
+           setIsListening(false);
+           handleProcessVoiceInput();
+        } else {
+           // OS killed mic with NO text: restart loop seamlessly ONLY if the app actually intended to be listening
+           if (isListeningRef.current) {
+             setTimeout(() => {
+               if (isOpenRef.current && !NativeVoiceService.isSpeaking() && !isProcessingRef.current) {
+                 startListening();
+               }
+             }, 100);
+           }
+        }
       }
     },
   });
@@ -445,8 +455,8 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
         },
         onEnd: () => {
           setIsSpeaking(false);
-          // UI state (LISTENING) will be automatically set by the options.onStart callback
-          // when NativeVoiceService actually boots the microphone after the 500ms cooldown.
+          // Restart the 20s global inactivity timer now that the AI has finished answering
+          resetSilenceTimeout();
         },
         onError: () => {
           setIsSpeaking(false);

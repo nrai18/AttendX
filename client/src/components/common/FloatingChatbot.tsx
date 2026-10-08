@@ -398,8 +398,15 @@ export const FloatingChatbot: React.FC = () => {
                 triggerHandsFreeSubmit(currentTranscriptRef.current.trim());
              } else {
                 // The user hasn't said anything, and Android natively turned off the mic.
-                // Stop the loop completely instead of keeping the mic on.
-                stopHandsFreeMode("No speech detected.");
+                // Restart the mic automatically to keep the hands-free conversation alive!
+                setTimeout(async () => {
+                  if (isHandsFreeRef.current && !NativeVoiceService.isSpeaking() && !isHandsFreeProcessingRef.current) {
+                    const started = await NativeVoiceService.startListening(handsFreeListenOptionsRef.current);
+                    if (!started && isHandsFreeRef.current) {
+                       stopHandsFreeMode("Microphone could not be started.");
+                    }
+                  }
+                }, 100);
              }
           }
         }

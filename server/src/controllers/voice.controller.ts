@@ -41,37 +41,21 @@ export class VoiceController {
     } catch (error) {
       console.warn("ElevenLabs TTS Error or Quota Exceeded. Falling back to Google TTS.", error);
       try {
-        const urls = googleTTS.getAllAudioUrls(text, {
+        const chunks = await googleTTS.getAllAudioBase64(text, {
           lang: 'en',
           slow: false,
           host: 'https://translate.google.com',
         });
         
+        const buffers = chunks.map(c => Buffer.from(c.base64, 'base64'));
+        const finalBuffer = Buffer.concat(buffers);
+        
         res.set({
           'Content-Type': 'audio/mpeg',
-          'Transfer-Encoding': 'chunked',
+          'Content-Length': finalBuffer.length.toString(),
         });
-
-        // Helper to pipe streams sequentially
-        const streamNext = (index: number) => {
-          if (index >= urls.length) {
-            res.end();
-            return;
-          }
-          https.get(urls[index].url, (googleRes) => {
-            googleRes.on('data', (chunk) => res.write(chunk));
-            googleRes.on('end', () => streamNext(index + 1));
-            googleRes.on('error', (err) => {
-              console.error("Google TTS chunk failed:", err);
-              res.end();
-            });
-          }).on("error", (err) => {
-            console.error("Google TTS fallback failed:", err);
-            res.end();
-          });
-        };
-
-        streamNext(0);
+        
+        res.status(200).send(finalBuffer);
       } catch (fallbackError) {
         console.error("Google TTS fallback generation failed:", fallbackError);
         if (!res.headersSent) {
