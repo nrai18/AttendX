@@ -10,6 +10,7 @@ const router = Router();
 
 router.post("/chat", authenticate, AiController.chat);
 router.post("/tts", authenticate, VoiceController.synthesize);
+router.get("/tts", authenticate, VoiceController.synthesize);
 router.post("/stt", authenticate, upload.single("audio"), VoiceController.transcribe);
 
 export default router;

@@ -30,9 +30,20 @@ export class AiChatService {
     const endDate = context.endDate || "Not specified";
     const commencementDate = context.commencementDate || startDate;
     const lastWorkingDay = context.lastWorkingDay || endDate;
+    console.log("AI EVENTS CONTEXT LENGTH:", context.calendarEvents?.length);
+    if (context.calendarEvents?.length > 0) {
+       console.log("FIRST 5 EVENTS:", context.calendarEvents.slice(0,5).map((e: any) => e.title));
+       console.log("LAST 5 EVENTS:", context.calendarEvents.slice(-5).map((e: any) => e.title));
+    }
     const eventsSummary =
       context.calendarEvents && Array.isArray(context.calendarEvents) && context.calendarEvents.length > 0
-        ? context.calendarEvents.map((e: any) => `${e.title || e.name || e.eventName || 'Unnamed Event'} (${e.date || e.startDate || 'Unknown Date'})`).join(", ")
+        ? context.calendarEvents.map((e: any) => {
+            let dateStr = e.date || e.startDate || 'Unknown Date';
+            if (e.endDate && e.endDate !== dateStr) {
+               dateStr += ` to ${e.endDate}`;
+            }
+            return `${e.title || e.name || e.eventName || 'Unnamed Event'} (${dateStr})`;
+          }).join(", ")
         : "No upcoming holiday events recorded";
     const appVersion = context.appVersion || "4.0.0";
 

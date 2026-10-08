@@ -1,7 +1,7 @@
 process.env.TZ = "Asia/Kolkata"; // Fix timing and date-rollover issues
 import express from "express";
 import cors from "cors";
-import { prisma } from "./lib/prisma.ts";
+import { prisma } from "./lib/prisma";
 import helmet from "helmet";
 import morgan from "morgan";
 import cookieParser from "cookie-parser";

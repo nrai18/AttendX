@@ -497,12 +497,27 @@ export class NativeVoiceService {
         await handlePlaybackEnd();
       };
       
-      audio.onerror = (e) => {
+      audio.onerror = async (e) => {
         cleanupFile();
         if (this.currentAudio === audio) this.currentAudio = null;
-        this.isSpeakingState = false;
-        options?.onError?.(e);
-        options?.onEnd?.();
+        console.warn("Audio stream failed, falling back to native TTS...", e);
+        try {
+          options?.onStart?.();
+          await TextToSpeech.speak({
+            text: cleanText,
+            lang: options?.lang || 'en-IN',
+            rate: finalRate,
+            pitch: finalPitch,
+            volume: options?.volume ?? 1.0,
+            voice: !isNaN(finalVoiceIndex as any) ? finalVoiceIndex : undefined,
+            queueStrategy: 0,
+          });
+          await handlePlaybackEnd();
+        } catch (fallbackErr) {
+          this.isSpeakingState = false;
+          options?.onError?.(fallbackErr);
+          options?.onEnd?.();
+        }
       };
 
       audio.onplay = () => {

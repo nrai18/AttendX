@@ -16,13 +16,31 @@ export class SystemController {
     const manifest = {
       appDownloadLink: process.env.APP_DOWNLOAD_LINK || "https://www.attendx.tech",
       latestVersion: "4.3.0",
-      title: "Rich Notifications & Deep Linking",
+      title: "Voice Mode & Navigation Fluidity",
       changelog: [
         {
           "version": "4.3.0",
-          "date": "Oct 5, 2026",
-          "title": "Rich Push Notifications & Deep Links",
+          "date": "Oct 9, 2026",
+          "title": "Voice Mode Polish & Core Stability",
           "sections": [
+            {
+              "title": "Voice Assistant & UI Polish",
+              "items": [
+                { "icon": "\ud83c\udfa4", "text": "Implemented seamless hands-free loop handling\u2014natural pauses won't abruptly kill the continuous conversation anymore." },
+                { "icon": "\u2728", "text": "Added cinematic visionOS-style scale-and-blur entrance and exit animations to the Voice Mode overlay." },
+                { "icon": "\u23f1\ufe0f", "text": "Fixed a visual jump in the Cinematic Text cursor when transitioning between speech rate estimates and exact native metadata." },
+                { "icon": "\ud83d\udca1", "text": "Voice settings modal now instantly selects and auto-scrolls to your active voice avatar when opened." },
+                { "icon": "\ud83d\udd04", "text": "Added an interactive rotating close button in the Voice Mode overlay." }
+              ]
+            },
+            {
+              "title": "Navigation & Hardware Enhancements",
+              "items": [
+                { "icon": "\ud83d\udcf1", "text": "Fully integrated Android hardware back button support across the Auth Flow, Semester Hub, Modals, and Dashboard." },
+                { "icon": "\ud83d\udee1\ufe0f", "text": "Hardened FCM token eviction to completely drop dead or unauthorized push notification tokens from the database." },
+                { "icon": "\ud83d\udd12", "text": "Hardened the authentication refresh bypass to guarantee native mobile cookies route successfully." }
+              ]
+            },
             {
               "title": "New Features",
               "items": [

@@ -144,6 +144,7 @@ export class TimetableService {
     });
     if (!slot) throw new Error("Slot not found");
     if (slot.semester.userId !== userId) throw new Error("Forbidden: Slot does not belong to user");
+    if (slot.validUntil !== null) throw new Error("Conflict: Slot has already been modified or deleted. Please refresh.");
     return slot;
   }
 
@@ -180,42 +181,40 @@ export class TimetableService {
 
     const slotsA = await prisma.timetableSlot.findMany({ where: { semesterId, dayOfWeek: dayA, validUntil: null } });
     const slotsB = await prisma.timetableSlot.findMany({ where: { semesterId, dayOfWeek: dayB, validUntil: null } });
-    
-    const operations = [];
     const now = new Date();
 
-    for (const slot of slotsA) {
-      operations.push(prisma.timetableSlot.update({ where: { id: slot.id }, data: { validUntil: now } }));
-      operations.push(prisma.timetableSlot.create({
-        data: {
-          semesterId: slot.semesterId,
-          subjectId: slot.subjectId,
-          dayOfWeek: dayB,
-          startTime: slot.startTime,
-          endTime: slot.endTime,
-          room: slot.room,
-          slotType: slot.slotType,
-          validFrom: now
-        }
-      }));
-    }
-    for (const slot of slotsB) {
-      operations.push(prisma.timetableSlot.update({ where: { id: slot.id }, data: { validUntil: now } }));
-      operations.push(prisma.timetableSlot.create({
-        data: {
-          semesterId: slot.semesterId,
-          subjectId: slot.subjectId,
-          dayOfWeek: dayA,
-          startTime: slot.startTime,
-          endTime: slot.endTime,
-          room: slot.room,
-          slotType: slot.slotType,
-          validFrom: now
-        }
-      }));
-    }
-    
-    await prisma.$transaction(operations);
+    await prisma.$transaction(async (tx) => {
+      for (const slot of slotsA) {
+        await tx.timetableSlot.update({ where: { id: slot.id }, data: { validUntil: now } });
+        await tx.timetableSlot.create({
+          data: {
+            semesterId: slot.semesterId,
+            subjectId: slot.subjectId,
+            dayOfWeek: dayB,
+            startTime: slot.startTime,
+            endTime: slot.endTime,
+            room: slot.room,
+            slotType: slot.slotType,
+            validFrom: now
+          }
+        });
+      }
+      for (const slot of slotsB) {
+        await tx.timetableSlot.update({ where: { id: slot.id }, data: { validUntil: now } });
+        await tx.timetableSlot.create({
+          data: {
+            semesterId: slot.semesterId,
+            subjectId: slot.subjectId,
+            dayOfWeek: dayA,
+            startTime: slot.startTime,
+            endTime: slot.endTime,
+            room: slot.room,
+            slotType: slot.slotType,
+            validFrom: now
+          }
+        });
+      }
+    });
     
     return { success: true, swapped: slotsA.length + slotsB.length };
   }
@@ -225,27 +224,25 @@ export class TimetableService {
     if (!semester) throw new Error("Semester not found or unauthorized");
 
     const slotsToShift = await prisma.timetableSlot.findMany({ where: { semesterId, dayOfWeek: sourceDay, validUntil: null } });
-    
-    const operations = [];
     const now = new Date();
 
-    for (const slot of slotsToShift) {
-      operations.push(prisma.timetableSlot.update({ where: { id: slot.id }, data: { validUntil: now } }));
-      operations.push(prisma.timetableSlot.create({
-        data: {
-          semesterId: slot.semesterId,
-          subjectId: slot.subjectId,
-          dayOfWeek: targetDay,
-          startTime: slot.startTime,
-          endTime: slot.endTime,
-          room: slot.room,
-          slotType: slot.slotType,
-          validFrom: now
-        }
-      }));
-    }
-
-    await prisma.$transaction(operations);
+    await prisma.$transaction(async (tx) => {
+      for (const slot of slotsToShift) {
+        await tx.timetableSlot.update({ where: { id: slot.id }, data: { validUntil: now } });
+        await tx.timetableSlot.create({
+          data: {
+            semesterId: slot.semesterId,
+            subjectId: slot.subjectId,
+            dayOfWeek: targetDay,
+            startTime: slot.startTime,
+            endTime: slot.endTime,
+            room: slot.room,
+            slotType: slot.slotType,
+            validFrom: now
+          }
+        });
+      }
+    });
     return { success: true, shifted: slotsToShift.length };
   }
 
@@ -255,40 +252,40 @@ export class TimetableService {
 
     const now = new Date();
 
-    return prisma.$transaction([
-      prisma.timetableSlot.update({
+    return prisma.$transaction(async (tx) => {
+      await tx.timetableSlot.update({
         where: { id: slotAId },
         data: { validUntil: now }
-      }),
-      prisma.timetableSlot.create({
+      });
+      await tx.timetableSlot.create({
         data: {
           semesterId: slotA.semesterId,
           subjectId: slotA.subjectId,
-          dayOfWeek: slotA.dayOfWeek, // keeps original day
-          startTime: slotB.startTime, // gets new time
-          endTime: slotB.endTime, // gets new time
+          dayOfWeek: slotA.dayOfWeek,
+          startTime: slotB.startTime,
+          endTime: slotB.endTime,
           room: slotA.room,
           slotType: slotA.slotType,
           validFrom: now
         }
-      }),
-      prisma.timetableSlot.update({
+      });
+      await tx.timetableSlot.update({
         where: { id: slotBId },
         data: { validUntil: now }
-      }),
-      prisma.timetableSlot.create({
+      });
+      await tx.timetableSlot.create({
         data: {
           semesterId: slotB.semesterId,
           subjectId: slotB.subjectId,
-          dayOfWeek: slotB.dayOfWeek, // keeps original day
-          startTime: slotA.startTime, // gets new time
-          endTime: slotA.endTime, // gets new time
+          dayOfWeek: slotB.dayOfWeek,
+          startTime: slotA.startTime,
+          endTime: slotA.endTime,
           room: slotB.room,
           slotType: slotB.slotType,
           validFrom: now
         }
-      })
-    ]);
+      });
+    });
   }
 
   static async deleteSlot(userId: string, slotId: string, preserveHistory = true) {
