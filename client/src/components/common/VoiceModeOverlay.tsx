@@ -1,5 +1,6 @@
 import { toast } from "sonner";
 import { Capacitor } from '@capacitor/core';
+import { App } from '@capacitor/app';
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Mic, MicOff, Volume2, VolumeX, X, Menu, Settings, Globe, ChevronLeft, ChevronRight, Square } from "lucide-react";
@@ -583,6 +584,17 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
       NativeVoiceService.stopSpeaking();
     }
   }, [isOpen]);
+
+  // Stop mic immediately if app is minimized
+  useEffect(() => {
+    const listener = App.addListener('appStateChange', ({ isActive }) => {
+      if (!isActive && isOpenRef.current) {
+        stopListening();
+        NativeVoiceService.stopSpeaking();
+      }
+    });
+    return () => { listener.then(l => l.remove()); };
+  }, []);
 
   if (!isOpen) return null;
 

@@ -1062,6 +1062,24 @@ export const FloatingChatbot: React.FC = () => {
     }
   };
 
+  // Stop all active listening when app is minimized/backgrounded
+  useEffect(() => {
+    const listener = App.addListener('appStateChange', ({ isActive }) => {
+      if (!isActive) {
+        if (isHandsFreeRef.current) {
+          stopHandsFreeMode("App backgrounded.");
+        }
+        if (isVoiceOpen) {
+          setIsVoiceOpen(false);
+          NativeVoiceService.stopListening();
+          NativeVoiceService.stopSpeaking();
+          NativeVoiceService.stopContinuousLoop();
+        }
+      }
+    });
+    return () => { listener.then(l => l.remove()); };
+  }, [isVoiceOpen]);
+
   return (
     <>
       {/* Floating Trigger Dock with Ambient Glow */}
