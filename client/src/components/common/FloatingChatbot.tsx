@@ -271,6 +271,8 @@ export const FloatingChatbot: React.FC = () => {
   const isHandsFreeProcessingRef = useRef(false);
   const handsFreeListenOptionsRef = useRef<any>(null);
   const currentTranscriptRef = useRef<string>("");
+  const lastSubmittedVoiceQueryRef = useRef<string>("");
+  const handsFreeMicStartTimeRef = useRef<number>(0);
 
   const resetHandsFreeSilenceTimer = () => {
     if (handsFreeSilenceTimerRef.current) {
@@ -341,8 +343,15 @@ export const FloatingChatbot: React.FC = () => {
 
     const listenOptions = {
       lang: "en-IN",
+      onStart: () => {
+        handsFreeMicStartTimeRef.current = Date.now();
+      },
       onPartialResult: (text: string) => {
         if (!isHandsFreeRef.current || isHandsFreeProcessingRef.current) return;
+        // Anti-Ghost Echo check: Android caches the last phrase. If it repeats exactly within 1.5s of start, ignore it.
+        if (text === lastSubmittedVoiceQueryRef.current && (Date.now() - handsFreeMicStartTimeRef.current < 1500)) {
+          return;
+        }
         setInput(text);
         currentTranscriptRef.current = text;
         resetHandsFreeSilenceTimer();
@@ -361,6 +370,9 @@ export const FloatingChatbot: React.FC = () => {
       },
       onFinalResult: (text: string) => {
         if (!isHandsFreeRef.current || isHandsFreeProcessingRef.current) return;
+        if (text === lastSubmittedVoiceQueryRef.current && (Date.now() - handsFreeMicStartTimeRef.current < 1500)) {
+          return;
+        }
         setInput(text);
         currentTranscriptRef.current = text;
         resetHandsFreeSilenceTimer();
@@ -435,6 +447,7 @@ export const FloatingChatbot: React.FC = () => {
 
     isHandsFreeProcessingRef.current = true;
     setHandsFreeStatus("THINKING");
+    lastSubmittedVoiceQueryRef.current = queryText;
     setInput("");
     currentTranscriptRef.current = "";
     await handleSendMessage(queryText, 'voice');

@@ -153,10 +153,14 @@ export class TimetableService {
     const now = new Date();
     
     return prisma.$transaction(async (tx) => {
-      await tx.timetableSlot.update({
-        where: { id: slotId },
+      const updateResult = await tx.timetableSlot.updateMany({
+        where: { id: slotId, validUntil: null },
         data: { validUntil: now }
       });
+
+      if (updateResult.count === 0) {
+        throw new Error("Conflict: Slot has already been modified or deleted.");
+      }
       
       return tx.timetableSlot.create({
         data: {
@@ -294,10 +298,14 @@ export class TimetableService {
     // Always use validUntil for soft delete so we preserve history 
     // unless explicitly told otherwise.
     if (preserveHistory) {
-      return prisma.timetableSlot.update({
-        where: { id: slotId },
+      const updateResult = await prisma.timetableSlot.updateMany({
+        where: { id: slotId, validUntil: null },
         data: { validUntil: new Date() }
       });
+      if (updateResult.count === 0) {
+        throw new Error("Conflict: Slot already deleted or does not exist.");
+      }
+      return { success: true };
     }
 
     // Hard delete fallback (if needed for cleanup tasks)

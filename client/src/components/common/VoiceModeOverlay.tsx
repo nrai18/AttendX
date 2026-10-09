@@ -251,6 +251,8 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
   const isProcessingRef = useRef(isProcessing);
   const isListeningRef = useRef(isListening);
   const transcriptRef = useRef(transcript);
+  const lastSubmittedVoiceQueryRef = useRef<string>("");
+  const micStartTimeRef = useRef<number>(0);
 
   useEffect(() => {
     transcriptRef.current = transcript;
@@ -320,6 +322,7 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
   const getListenOptions = () => ({
     lang: "en-IN",
     onStart: () => {
+      micStartTimeRef.current = Date.now();
       if (isOpenRef.current) {
         setIsListening(true);
         setTranscript("");
@@ -327,6 +330,9 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
     },
     onPartialResult: (text: string) => {
       if (!isSpeakingRef.current && !isProcessingRef.current && isOpenRef.current) {
+        if (text === lastSubmittedVoiceQueryRef.current && (Date.now() - micStartTimeRef.current < 1500)) {
+          return;
+        }
         setTranscript(text);
         resetSilenceTimeout();
         checkVoiceBreakout(text);
@@ -334,6 +340,9 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
     },
     onFinalResult: (text: string) => {
       if (!isSpeakingRef.current && !isProcessingRef.current && isOpenRef.current) {
+        if (text === lastSubmittedVoiceQueryRef.current && (Date.now() - micStartTimeRef.current < 1500)) {
+          return;
+        }
         setTranscript(text);
         resetSilenceTimeout();
         checkVoiceBreakout(text);
@@ -475,14 +484,15 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
   };
 
   const handleProcessVoiceInput = async () => {
-    if (!transcript.trim() || isProcessing) return;
+    const currentTranscript = transcriptRef.current || transcript;
+    if (!currentTranscript.trim() || isProcessingRef.current) return;
 
     if (silenceTimeoutRef.current) {
       clearTimeout(silenceTimeoutRef.current);
       silenceTimeoutRef.current = null;
     }
 
-    const query = transcript.trim();
+    const query = currentTranscript.trim();
     if (checkVoiceBreakout(query)) {
       return;
     }
@@ -498,6 +508,7 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
     
     setIsProcessing(true);
     isProcessingRef.current = true;
+    lastSubmittedVoiceQueryRef.current = query;
 
     if (pendingActionMsgId) {
       const cleanQuery = query.trim().toLowerCase().replace(/[.,!]/g, '');

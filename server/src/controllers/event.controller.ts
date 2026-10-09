@@ -39,7 +39,7 @@ export class EventController {
       if (Array.isArray(events)) {
         events.forEach(group => {
           if (Array.isArray(group.events)) {
-            group.events.forEach((evt) => {
+            group.events.forEach((evt: any) => {
                const t = (evt.title || "").toLowerCase();
                let fixDate = null;
                if (t.includes("muharram")) fixDate = "2026-07-24";
@@ -57,7 +57,7 @@ export class EventController {
                }
             });
             // Sort chronologically
-            group.events.sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime());
+            group.events.sort((a: any, b: any) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime());
           }
         });
       }

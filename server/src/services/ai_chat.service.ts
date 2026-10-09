@@ -31,7 +31,7 @@ export class AiChatService {
     const commencementDate = context.commencementDate || startDate;
     const lastWorkingDay = context.lastWorkingDay || endDate;
     console.log("AI EVENTS CONTEXT LENGTH:", context.calendarEvents?.length);
-    if (context.calendarEvents?.length > 0) {
+    if (context.calendarEvents && context.calendarEvents.length > 0) {
        console.log("FIRST 5 EVENTS:", context.calendarEvents.slice(0,5).map((e: any) => e.title));
        console.log("LAST 5 EVENTS:", context.calendarEvents.slice(-5).map((e: any) => e.title));
     }

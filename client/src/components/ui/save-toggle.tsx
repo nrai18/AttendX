@@ -130,6 +130,7 @@ export const SaveToggle: React.FC<SaveToggleProps> = ({
         }}
       >
         <motion.button
+          type="button"
           onClick={handleClick}
           initial={false}
           animate={{

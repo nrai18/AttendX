@@ -26,6 +26,8 @@ export class SystemController {
             {
               "title": "Voice Assistant & UI Polish",
               "items": [
+                { "icon": "\ud83c\udfa4", "text": "Fixed Voice Mode bug causing the assistant to continuously answer the original question in hands-free loop." },
+                { "icon": "\ud83d\udd07", "text": "Added strict hardware ghost-echo filtering to ignore identical transcript overlaps." },
                 { "icon": "\ud83c\udfa4", "text": "Implemented seamless hands-free loop handling\u2014natural pauses won't abruptly kill the continuous conversation anymore." },
                 { "icon": "\u2728", "text": "Added cinematic visionOS-style scale-and-blur entrance and exit animations to the Voice Mode overlay." },
                 { "icon": "\u23f1\ufe0f", "text": "Fixed a visual jump in the Cinematic Text cursor when transitioning between speech rate estimates and exact native metadata." },
@@ -34,8 +36,10 @@ export class SystemController {
               ]
             },
             {
-              "title": "Navigation & Hardware Enhancements",
+              "title": "Core Stability & Backend",
               "items": [
+                { "icon": "\ud83d\udcc5", "text": "Fixed Timetable Duplication Bug: Editing slots will no longer duplicate them." },
+                { "icon": "\ud83d\udd10", "text": "Enforced strictly atomic backend locking to prevent data race conditions on concurrent saves." },
                 { "icon": "\ud83d\udcf1", "text": "Fully integrated Android hardware back button support across the Auth Flow, Semester Hub, Modals, and Dashboard." },
                 { "icon": "\ud83d\udee1\ufe0f", "text": "Hardened FCM token eviction to completely drop dead or unauthorized push notification tokens from the database." },
                 { "icon": "\ud83d\udd12", "text": "Hardened the authentication refresh bypass to guarantee native mobile cookies route successfully." }
