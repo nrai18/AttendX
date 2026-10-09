@@ -366,14 +366,10 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
            setIsListening(false);
            handleProcessVoiceInput();
         } else {
-           // OS killed mic with NO text: restart loop seamlessly ONLY if the app actually intended to be listening
-           if (isListeningRef.current) {
-             setTimeout(() => {
-               if (isOpenRef.current && !NativeVoiceService.isSpeaking() && !isProcessingRef.current) {
-                 startListening();
-               }
-             }, 100);
-           }
+           // OS killed mic with NO text (inactivity). 
+           // Respect the inactivity and turn off the mic, as requested by the user.
+           setIsListening(false);
+           isListeningRef.current = false;
         }
       }
     },

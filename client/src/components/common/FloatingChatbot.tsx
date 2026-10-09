@@ -230,6 +230,7 @@ export const FloatingChatbot: React.FC = () => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const lastInputMethodRef = useRef<'text' | 'voice'>('text');
+  const executeActionRef = useRef<any>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
 
   // Cycling search status animations
@@ -570,7 +571,42 @@ export const FloatingChatbot: React.FC = () => {
     }
   };
 
-  const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'voice' | 'voice_overlay'): Promise<string | undefined> => {
+  
+  // --- EXTRACTED PENDING ACTIONS LOGIC ---
+  const executePendingActions = async (msgId: string) => {
+    setMessages(prev => prev.map(m => m.id === msgId ? { ...m, isExecutingAction: true } : m));
+    let globalRefresh = false;
+    const targetMsg = messagesRef.current.find(m => m.id === msgId);
+    if (!targetMsg || !targetMsg.pendingActions) return;
+
+    for (const action of targetMsg.pendingActions) {
+       try {
+         const refreshed = await executeActionRef.current(action);
+         if (refreshed) globalRefresh = true;
+       } catch(e) {
+         console.error("Failed to execute pending action:", e);
+       }
+    }
+    if (globalRefresh) {
+       window.dispatchEvent(new Event("attendance-updated"));
+       window.dispatchEvent(new Event("subject-updated"));
+    }
+    setMessages(prev => prev.map(m => m.id === msgId ? { ...m, isExecutingAction: false, actionsExecuted: true } : m));
+    toast.success("Action confirmed and executed successfully.");
+  };
+
+  const cancelPendingActions = (msgId: string) => {
+    setMessages(prev => prev.map(m => m.id === msgId ? { ...m, pendingActions: undefined, actionsExecuted: false } : m));
+    toast.info("Action cancelled by user.");
+  };
+
+  useEffect(() => {
+    (window as any)._executePendingActions = executePendingActions;
+    (window as any)._cancelPendingActions = cancelPendingActions;
+  }, []);
+  // --- END PENDING ACTIONS LOGIC ---
+
+const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'voice' | 'voice_overlay'): Promise<string | undefined> => {
     const effectiveInputMethod = inputMethod || lastInputMethodRef.current;
     const wasHandsFree = isHandsFreeRef.current;
     // Reset tracker back to default 'text' for subsequent interactions
@@ -733,7 +769,8 @@ export const FloatingChatbot: React.FC = () => {
       }
     
       
-      const executeAction = async (action: any) => {
+      executeActionRef.current = async (action: any) => {
+        const studentContext = (await api.get("/chat/context")).data;
         let refresh = false;
         if (action.type === 'NAVIGATE' && action.payload?.path) {
           navigate(action.payload.path);
@@ -996,7 +1033,7 @@ export const FloatingChatbot: React.FC = () => {
           } else {
             // Safe actions execute immediately
             try {
-              const refreshed = await executeAction(action);
+              const refreshed = await executeActionRef.current(action);
               if (refreshed) shouldRefresh = true;
             } catch (actionErr) {
               console.error(`Error executing AI action ${action.type}:`, actionErr);
@@ -1028,33 +1065,7 @@ export const FloatingChatbot: React.FC = () => {
 
       setMessages(prev => [...prev, botResponse]);
       
-      // Expose execute function to global window so the UI button can call it
-      (window as any)._executePendingActions = async (msgId: string) => {
-        setMessages(prev => prev.map(m => m.id === msgId ? { ...m, isExecutingAction: true } : m));
-        let globalRefresh = false;
-        const targetMsg = messagesRef.current.find(m => m.id === msgId);
-        const actionsToRun = (targetMsg?.pendingActions && targetMsg.pendingActions.length > 0) ? targetMsg.pendingActions : pendingActions;
-
-        for (const action of actionsToRun) {
-           try {
-             const refreshed = await executeAction(action);
-             if (refreshed) globalRefresh = true;
-           } catch(e) {
-             console.error("Failed to execute pending action:", e);
-           }
-        }
-        if (globalRefresh) {
-           window.dispatchEvent(new Event("attendance-updated"));
-           window.dispatchEvent(new Event("subject-updated"));
-        }
-        setMessages(prev => prev.map(m => m.id === msgId ? { ...m, isExecutingAction: false, actionsExecuted: true } : m));
-        toast.success("Action confirmed and executed successfully.");
-      };
-
-      (window as any)._cancelPendingActions = (msgId: string) => {
-        setMessages(prev => prev.map(m => m.id === msgId ? { ...m, pendingActions: undefined, actionsExecuted: false } : m));
-        toast.info("Action cancelled by user.");
-      };
+      
 
       return data.response || data.reply;
     } catch (err: any) {
