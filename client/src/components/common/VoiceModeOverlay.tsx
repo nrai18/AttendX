@@ -368,8 +368,7 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
         } else {
            // OS killed mic with NO text (inactivity). 
            // Respect the inactivity and turn off the mic, as requested by the user.
-           setIsListening(false);
-           isListeningRef.current = false;
+           stopListening();
         }
       }
     },
