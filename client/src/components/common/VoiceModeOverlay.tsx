@@ -25,7 +25,7 @@ const VISUAL_FILLER_PHRASES = [
   "Processing..."
 ];
 
-const CinematicText = ({ text, startTime, durationMs }: { text: string, startTime: number, durationMs: number }) => {
+const CinematicText = ({ text, startTime, durationMs, isDone }: { text: string, startTime: number, durationMs: number, isDone?: boolean }) => {
   const [elapsed, setElapsed] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
   const activeWordRef = useRef<HTMLSpanElement>(null);
@@ -41,9 +41,11 @@ const CinematicText = ({ text, startTime, durationMs }: { text: string, startTim
   }, [startTime]);
 
   const words = useMemo(() => text.split(/\s+/), [text]);
-  const activeIndex = durationMs > 0 
-    ? Math.min(words.length - 1, Math.floor((elapsed / durationMs) * words.length))
-    : Math.floor((elapsed / 1000) * 2.3);
+  const activeIndex = isDone 
+    ? words.length
+    : durationMs > 0 
+      ? Math.min(words.length - 1, Math.floor((elapsed / durationMs) * words.length))
+      : Math.floor((elapsed / 1000) * 2.3);
 
   useEffect(() => {
     if (activeWordRef.current) {
@@ -673,7 +675,7 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
                         <p className="text-sm text-white/50 italic">Heard: "{transcript}"</p>
                         <p className="text-xl text-white/80 animate-pulse">{lastResponse}</p>
                      </motion.div>
-                   ) : uiState === "SPEAKING" ? (
+                   ) : uiState === "SPEAKING" || (uiState === "LISTENING" && !transcript && lastResponse) ? (
                       <motion.div 
                         key="speaking" 
                         initial={{opacity:0}} 
@@ -685,6 +687,7 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
                           text={NativeVoiceService.cleanTextForSpeech(lastResponse)} 
                           startTime={speechStartTime} 
                           durationMs={speechDuration}
+                          isDone={uiState !== "SPEAKING"}
                         />
                       </motion.div>
                    ) : (
