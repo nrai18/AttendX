@@ -614,8 +614,8 @@ const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'vo
 
     // Voice/Text Confirmation Intercept for Pending Actions
     const cleanQuery = query.trim().toLowerCase().replace(/[.,!]/g, '');
-    const isConfirming = /^(yes|yeah|yep|do it|confirm|execute|sure|ok|okay|yes please|sure do it|yeah do it|yes yes do it|proceed)/.test(cleanQuery);
-    const isCanceling = /^(no|nope|cancel|abort|stop|don't|do not|no thanks|no do not cancel)/.test(cleanQuery);
+    const isConfirming = /(yes|yeah|yep|do it|confirm|execute|sure|ok|okay|yes please|sure do it|yeah do it|yes yes do it|proceed)/.test(cleanQuery);
+    const isCanceling = /(no|nope|cancel|abort|stop|don't|do not|no thanks|no do not cancel)/.test(cleanQuery);
 
     if (isConfirming || isCanceling) {
       const lastAssistantMsg = messagesRef.current.slice().reverse().find(m => m.role === 'assistant');

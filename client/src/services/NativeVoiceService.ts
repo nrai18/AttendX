@@ -466,8 +466,6 @@ export class NativeVoiceService {
     };
     
     try {
-      // Pre-flight check: Trigger api.ts interceptor to auto-refresh token if expired
-      try { await api.get('/health'); } catch (e) {}
       let accessToken = useAuthStore.getState().accessToken || '';
 
       let blobUrl = '';

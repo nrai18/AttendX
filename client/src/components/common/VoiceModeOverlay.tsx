@@ -52,10 +52,7 @@ const CinematicText = ({ text, startTime, durationMs }: { text: string, startTim
   }, [activeIndex]);
 
   return (
-    <div ref={containerRef} className="max-h-[180px] md:max-h-[260px] overflow-y-auto w-full px-4 scroll-smooth" style={{
-      maskImage: 'linear-gradient(to bottom, transparent 0%, black 20%, black 80%, transparent 100%)',
-      WebkitMaskImage: 'linear-gradient(to bottom, transparent 0%, black 20%, black 80%, transparent 100%)'
-    }}>
+    <div ref={containerRef} className="max-h-[180px] md:max-h-[260px] overflow-y-auto w-full px-4 scroll-smooth relative">
       <div className="py-[60px] flex flex-wrap justify-center content-center gap-x-[0.35em] gap-y-2">
         {words.map((word, i) => {
           const isPast = i < activeIndex;
@@ -68,7 +65,7 @@ const CinematicText = ({ text, startTime, durationMs }: { text: string, startTim
               className={`text-2xl md:text-3xl lg:text-4xl font-semibold tracking-tight transition-all duration-300 ${
                 isCurrent ? "text-white opacity-100 scale-105 drop-shadow-[0_0_12px_rgba(255,255,255,0.8)]" :
                 isPast ? "text-white/70 opacity-100" :
-                "text-white/20 opacity-40 blur-[1px]"
+                "text-white/20 opacity-40"
               }`}
             >
               {word}
@@ -507,8 +504,8 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
 
     if (pendingActionMsgId) {
       const cleanQuery = query.trim().toLowerCase().replace(/[.,!]/g, '');
-      const isConfirming = /^(yes|yeah|yep|do it|confirm|execute|sure|ok|okay|yes please|sure do it|yeah do it|yes yes do it|proceed)/.test(cleanQuery);
-      const isCanceling = /^(no|nope|cancel|abort|stop|don't|do not|no thanks|no do not cancel)/.test(cleanQuery);
+      const isConfirming = /(yes|yeah|yep|do it|confirm|execute|sure|ok|okay|yes please|sure do it|yeah do it|yes yes do it|proceed)/.test(cleanQuery);
+      const isCanceling = /(no|nope|cancel|abort|stop|don't|do not|no thanks|no do not cancel)/.test(cleanQuery);
 
       if (isConfirming) {
         onConfirmPendingAction?.(pendingActionMsgId);
@@ -541,11 +538,8 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
       } else {
         setIsProcessing(false);
         setTranscript("");
-        if (isOpenRef.current) {
-          if (Capacitor.isNativePlatform() || !isListeningRef.current) {
-            startListening();
-          }
-        }
+        // Break the infinite error loop if the API returns undefined or empty
+        stopListening();
       }
     } catch (err) {
       await NativeVoiceService.stopSpeaking();
@@ -617,11 +611,11 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
     <AnimatePresence>
       {isOpen && (
         <motion.div
-          initial={{ opacity: 0, scale: 1.1, filter: "blur(15px)" }}
-          animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
-          exit={{ opacity: 0, scale: 0.95, filter: "blur(15px)" }}
-          transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
-          className="chatbot-window fixed inset-0 z-[100] flex flex-col bg-black text-white origin-center"
+          initial={{ opacity: 0, scale: 1.05 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0, scale: 0.95 }}
+          transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+          className="fixed inset-0 z-[100] flex flex-col bg-black text-white origin-center"
         >
           {/* Top Bar - Mimicking ChatGPT layout */}
           <header className="flex items-center justify-between p-6 pt-safe-8 relative z-[60]">
@@ -710,8 +704,8 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
                     opacity: uiState === "LISTENING" ? [0.3, 0.6, 0.3] : uiState === "SPEAKING" ? [0.4, 0.8, 0.4] : [0.2, 0.4, 0.2]
                   }}
                   transition={{ repeat: Infinity, duration: uiState === "SPEAKING" ? 1.5 : 2, ease: "easeInOut" }}
-                  className={`absolute w-56 h-56 rounded-full blur-3xl ${
-                    uiState === "LISTENING" ? "bg-white/40" : uiState === "SPEAKING" ? "bg-pink-500/50" : uiState === "PROCESSING" ? "bg-cyan-500/30" : "bg-white/10"
+                  className={`absolute w-64 h-64 rounded-full mix-blend-screen bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] ${
+                    uiState === "LISTENING" ? "from-white/40 via-white/10 to-transparent" : uiState === "SPEAKING" ? "from-pink-500/50 via-pink-500/10 to-transparent" : uiState === "PROCESSING" ? "from-cyan-500/30 via-cyan-500/5 to-transparent" : "from-white/10 to-transparent"
                   }`}
                />
                
@@ -747,7 +741,7 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
                       onCancelPendingAction?.(pendingActionMsgId);
                       handleSpeakText("Action cancelled.");
                     }}
-                    className="flex-1 max-w-[140px] py-3.5 rounded-full bg-white/10 hover:bg-white/20 text-white/90 border border-white/10 transition-colors backdrop-blur-md font-medium tracking-wide cursor-pointer"
+                    className="flex-1 max-w-[140px] py-3.5 rounded-full bg-white/10 hover:bg-white/20 text-white/90 border border-white/10 transition-colors font-medium tracking-wide cursor-pointer"
                   >
                     No
                   </button>
@@ -767,7 +761,7 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
 
           {/* Bottom Bar Controls - Mimicking ChatGPT layout with explicit Stop Conversation */}
           <footer className="p-6 pb-12 flex justify-center w-full">
-            <div className="flex items-center gap-2 bg-slate-900/90 backdrop-blur-xl p-2 rounded-[2rem] w-full max-w-md border border-slate-700/50 shadow-2xl">
+            <div className="flex items-center gap-2 bg-slate-900/90 p-2 rounded-[2rem] w-full max-w-md border border-slate-700/50 shadow-2xl">
               
               {/* Fake Text Input -> Returns to Text Chat */}
               <button
@@ -827,7 +821,7 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
                   onClick={() => setShowVoiceSettings(false)}
-                  className="absolute inset-0 bg-black/60 backdrop-blur-sm z-40"
+                  className="absolute inset-0 bg-black/60 z-40"
                 />
                 <motion.div
                   initial={{ y: "100%" }}
