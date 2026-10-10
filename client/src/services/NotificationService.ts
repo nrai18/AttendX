@@ -394,7 +394,6 @@ export class NotificationService {
         console.log('[FCM] Successfully synced FCM token to backend after login.');
       } catch (error) {
         console.error('[FCM] Failed to sync FCM token:', error);
-        import('sonner').then(({ toast }) => toast.error('Failed to sync FCM Token to DB.'));
       }
     } else {
       console.warn('[FCM] Token is null at login. Requesting registration again to force sync.');
