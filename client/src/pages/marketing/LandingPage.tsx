@@ -33,7 +33,7 @@ export const LandingPage: React.FC = () => {
   const [copiedLink, setCopiedLink] = useState(false);
 
   const dynamicDownloadLink = useConfigStore((state) => state.appDownloadLink);
-  const appDownloadUrl = dynamicDownloadLink || "https://github.com/nrai18/AttendX/releases/download/v4.1.1/AttendX.apk";
+  const appDownloadUrl = dynamicDownloadLink || "https://github.com/nrai18/AttendX/releases/download/v4.3.0/AttendX.apk";
 
   const getDynamicVersion = (url: string | null): string => {
     if (!url) return "Latest";
@@ -46,10 +46,9 @@ export const LandingPage: React.FC = () => {
   const dynamicVersion = getDynamicVersion(appDownloadUrl);
 
   useEffect(() => {
-    if (!dynamicDownloadLink) {
-      useConfigStore.getState().fetchConfig();
-    }
-  }, [dynamicDownloadLink]);
+    useConfigStore.getState().fetchConfig();
+  }, []);
+
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {

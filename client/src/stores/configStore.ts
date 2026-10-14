@@ -13,7 +13,7 @@ export const useConfigStore = create<ConfigState>((set) => ({
   wsUrl: null,
   mlApiUrl: null,
   googleClientId: null,
-  appDownloadLink: "https://github.com/nrai18/AttendX/releases/download/v4.1.1/AttendX.apk",
+  appDownloadLink: null,
   fetchConfig: async () => {
     try {
       const { data } = await api.get('/system/config', { timeout: 5000 });

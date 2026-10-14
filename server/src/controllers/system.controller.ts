@@ -6,7 +6,7 @@ import { BirthdayService } from "../services/birthday.service";
 export class SystemController {
   static async getConfig(req: Request, res: Response) {
     return res.status(200).json({
-      appDownloadLink: process.env.APP_DOWNLOAD_LINK || "https://github.com/nrai18/AttendX/releases/download/v4.1.1/AttendX.apk",
+      appDownloadLink: process.env.APP_DOWNLOAD_LINK || "https://github.com/nrai18/AttendX/releases/download/v4.3.0/AttendX.apk",
       wsUrl: process.env.WS_URL || "wss://attendx-backend-fh6k.onrender.com/ws",
       mlApiUrl: process.env.ML_API_URL || "https://attendx-ml-server.onrender.com",
       googleClientId: process.env.GOOGLE_CLIENT_ID || "729387616931-qlajf1dss2qi1cta5pvc3dos03fh4coi.apps.googleusercontent.com"
@@ -15,7 +15,7 @@ export class SystemController {
 
   static async getUpdateManifest(req: Request, res: Response) {
     const manifest = {
-      appDownloadLink: process.env.APP_DOWNLOAD_LINK || "https://github.com/nrai18/AttendX/releases/download/v4.1.1/AttendX.apk",
+      appDownloadLink: process.env.APP_DOWNLOAD_LINK || "https://github.com/nrai18/AttendX/releases/download/v4.3.0/AttendX.apk",
       latestVersion: "4.3.0",
       title: "Tactile Haptics, Timetable Sync & Performance Fluidity",
       changelog: [
