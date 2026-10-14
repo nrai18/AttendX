@@ -1,11 +1,10 @@
 import React, { useState } from "react";
-import { X, Calendar, Palmtree, Loader2 } from "lucide-react";
+import { X, Calendar, Palmtree, Loader2, FileUp } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { toast } from "sonner";
 import { api } from "../../lib/api";
-import { parse, format } from "date-fns";
-import { FIXED_HOLIDAYS, RESTRICTED_HOLIDAYS } from "../../pages/semester/HolidayListTab";
 import { useAttendanceStore } from "../../stores/attendanceStore";
+import { useCacheStore } from "../../stores/cacheStore";
 import { CalendarImportModal } from "./CalendarImportModal";
 import { useScrollLock } from "../../hooks/useScrollLock";
 
@@ -18,7 +17,7 @@ interface SyncEventsModalProps {
 export const SyncEventsModal: React.FC<SyncEventsModalProps> = ({ isOpen, onClose, onSuccess }) => {
   useScrollLock(isOpen);
   const [syncHolidayList, setSyncHolidayList] = useState(true);
-  const [syncAcademicCalendar, setSyncAcademicCalendar] = useState(false);
+  const [syncAcademicCalendar, setSyncAcademicCalendar] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
   const [showCalendarImport, setShowCalendarImport] = useState(false);
   const { activeSemesterId } = useAttendanceStore();
@@ -29,83 +28,34 @@ export const SyncEventsModal: React.FC<SyncEventsModalProps> = ({ isOpen, onClos
       return;
     }
 
+    if (!activeSemesterId) {
+      toast.error("No active semester found. Please create or activate a semester first.");
+      return;
+    }
+
     try {
       setIsSyncing(true);
+      const res = await api.post("/events/templates/sync", {
+        semesterId: activeSemesterId,
+        syncHolidayList,
+        syncAcademicCalendar
+      });
 
-      if (syncHolidayList) {
-        if (!activeSemesterId) {
-          toast.error("No active semester found.");
-          setIsSyncing(false);
-          return;
-        }
-
-        let payloadEvents: any[] = [];
-        
-        FIXED_HOLIDAYS.forEach(h => {
-          try {
-            const dateStr = `${h.date} 2026`;
-            const parsedDate = parse(dateStr, "dd MMMM yyyy", new Date());
-            payloadEvents.push({
-              title: h.name,
-              date: format(parsedDate, "yyyy-MM-dd"),
-              endDate: format(parsedDate, "yyyy-MM-dd"),
-              eventType: "holiday",
-              allDay: true,
-              isHolidayList: true,
-              isHoliday: true
-            });
-          } catch(e) {}
-        });
-
-        RESTRICTED_HOLIDAYS.forEach(h => {
-          try {
-            const dateStr = `${h.date} 2026`;
-            const parsedDate = parse(dateStr, "dd MMMM yyyy", new Date());
-            payloadEvents.push({
-              title: h.name,
-              date: format(parsedDate, "yyyy-MM-dd"),
-              endDate: format(parsedDate, "yyyy-MM-dd"),
-              eventType: "restricted_holiday",
-              allDay: true,
-              isHolidayList: true,
-              isHoliday: true
-            });
-          } catch(e) {}
-        });
-        
-        await api.post("/events/save-wizard", {
-          semesterId: activeSemesterId,
-          events: payloadEvents,
-        });
-        toast.success("Holiday List synced successfully!");
-      }
-
-      if (syncAcademicCalendar) {
-        setShowCalendarImport(true);
-      } else {
-        onSuccess();
-        onClose();
-      }
-    } catch (err) {
-      console.error("Failed to sync", err);
-      toast.error("Failed to sync events.");
+      const count = res.data?.syncedCount ?? 0;
+      toast.success(`Successfully synced ${count} events to your calendar!`);
+      useCacheStore.getState().setCache("calendar", null);
+      useAttendanceStore.getState().fetchStats(true);
+      window.dispatchEvent(new Event("attendance-updated"));
+      window.dispatchEvent(new Event("events-updated"));
+      onSuccess();
+      onClose();
+    } catch (err: any) {
+      console.error("Failed to sync template events", err);
+      toast.error(err?.response?.data?.message || "Failed to sync events.");
     } finally {
       setIsSyncing(false);
     }
   };
-
-  
-  // Anti-scroll lock
-  React.useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = 'unset';
-    }
-    return () => {
-      document.body.style.overflow = 'unset';
-    };
-  }, [isOpen]);
 
   return (
     <AnimatePresence>
@@ -131,7 +81,7 @@ export const SyncEventsModal: React.FC<SyncEventsModalProps> = ({ isOpen, onClos
                   <X className="w-5 h-5" />
                 </button>
               </div>
-              <p className="text-sm text-muted-foreground mt-1">Select what you would like to sync to your calendar.</p>
+              <p className="text-sm text-muted-foreground mt-1">Select official university events to sync to your calendar.</p>
             </div>
 
             <div className="p-6 space-y-4">
@@ -143,8 +93,8 @@ export const SyncEventsModal: React.FC<SyncEventsModalProps> = ({ isOpen, onClos
                   <input type="checkbox" checked={syncHolidayList} readOnly className="w-4 h-4 rounded text-primary focus:ring-primary cursor-pointer" />
                 </div>
                 <div>
-                  <h3 className="font-semibold text-foreground flex items-center gap-2"><Palmtree className="w-4 h-4 text-emerald-500" /> Sync Holiday List</h3>
-                  <p className="text-sm text-muted-foreground mt-1">Pre-loads standard and restricted holidays. Distinct UI elements are automatically applied.</p>
+                  <h3 className="font-semibold text-foreground flex items-center gap-2"><Palmtree className="w-4 h-4 text-emerald-500" /> Sync Official Holiday List</h3>
+                  <p className="text-sm text-muted-foreground mt-1">Pre-loads official fixed and restricted holidays directly from the backend catalog.</p>
                 </div>
               </div>
 
@@ -157,20 +107,31 @@ export const SyncEventsModal: React.FC<SyncEventsModalProps> = ({ isOpen, onClos
                 </div>
                 <div>
                   <h3 className="font-semibold text-foreground flex items-center gap-2"><Calendar className="w-4 h-4 text-indigo-500" /> Sync Academic Calendar</h3>
-                  <p className="text-sm text-muted-foreground mt-1">Import events via AI. Automatically resolves overlapping conflicts with the holiday list.</p>
+                  <p className="text-sm text-muted-foreground mt-1">Pre-loads official exams, lab demos, and academic milestones tailored to your active semester.</p>
                 </div>
               </div>
             </div>
 
-            <div className="p-6 pt-0 mt-2">
+            <div className="p-6 pt-0 mt-2 space-y-3">
               <button
                 onClick={handleSync}
                 disabled={isSyncing || (!syncHolidayList && !syncAcademicCalendar)}
                 className="w-full py-3 px-4 bg-primary text-primary-foreground font-semibold rounded-xl hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
               >
                 {isSyncing ? <Loader2 className="w-5 h-5 animate-spin" /> : null}
-                {isSyncing ? "Syncing..." : "Continue"}
+                {isSyncing ? "Syncing from Backend..." : "Sync to Calendar"}
               </button>
+
+              <div className="text-center pt-1">
+                <button
+                  type="button"
+                  onClick={() => setShowCalendarImport(true)}
+                  className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 transition-colors"
+                >
+                  <FileUp className="w-3.5 h-3.5" />
+                  Have a custom PDF or image? Upload via AI OCR
+                </button>
+              </div>
             </div>
           </motion.div>
         </div>
@@ -183,7 +144,11 @@ export const SyncEventsModal: React.FC<SyncEventsModalProps> = ({ isOpen, onClos
           onClose();
         }}
         onSuccess={() => {
-          onSuccess();
+          useCacheStore.getState().setCache("calendar", null);
+      useAttendanceStore.getState().fetchStats(true);
+      window.dispatchEvent(new Event("attendance-updated"));
+      window.dispatchEvent(new Event("events-updated"));
+      onSuccess();
           setShowCalendarImport(false);
           onClose();
         }}

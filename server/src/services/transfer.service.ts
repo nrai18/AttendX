@@ -16,6 +16,7 @@ export class TransferService {
 
     const payload: any = {
       slots: exportedTimetable.slots,
+      overrides: exportedTimetable.overrides || [],
       academicCalendar: [],
       lectureLogs: [],
       subjects: exportedTimetable.subjects,
@@ -28,6 +29,7 @@ export class TransferService {
     // 3. Fetch Events (Academic Calendar)
     const events = await prisma.event.findMany({
       where: { 
+        userId,
         OR: [
           { semesterId: activeSem.id },
           { semesterId: null }
@@ -42,8 +44,8 @@ export class TransferService {
       
       if (dateRange && dateRange.startDate && dateRange.endDate) {
         whereClause.date = {
-          gte: new Date(dateRange.startDate).toISOString(),
-          lte: new Date(dateRange.endDate).toISOString()
+          gte: new Date(dateRange.startDate),
+          lte: new Date(dateRange.endDate)
         };
       }
       
@@ -55,9 +57,21 @@ export class TransferService {
 
     if (contextType === "FULL_EXPORT") {
       payload.academicCalendar = events;
-      payload.lectureLogs = logs;
+      payload.overrides = exportedTimetable.overrides || [];
+      payload.lectureLogs = logs.map((log: any) => ({
+        date: log.date.toISOString().split('T')[0],
+        subjectId: log.subjectId,
+        subjectCode: log.subject?.code,
+        subjectName: log.subject?.name,
+        slot: log.timetableSlotId,
+        timetableSlotId: log.timetableSlotId,
+        overrideId: log.overrideId,
+        status: log.status,
+        remarks: log.remarks || null,
+      }));
     } 
     else if (contextType === "TIMETABLE_CALENDAR") {
+      payload.overrides = exportedTimetable.overrides || [];
       payload.academicCalendar = events.map((e: any) => ({
         title: e.title,
         eventType: e.eventType,
@@ -70,6 +84,7 @@ export class TransferService {
       }));
     }
     else if (contextType === "SCHEDULE_STATUS") {
+      payload.overrides = exportedTimetable.overrides || [];
       payload.academicCalendar = events.map((e: any) => ({
         title: e.title,
         eventType: e.eventType,
@@ -81,7 +96,6 @@ export class TransferService {
         type: e.eventType,
       }));
 
-      
       // Strip personal marks for SCHEDULE_STATUS
       payload.lectureLogs = logs.map((log: any) => {
         let status = log.status;
@@ -90,7 +104,7 @@ export class TransferService {
         if (status === "present" || status === "absent" || status === "medical" || status === "od") {
           status = "HELD";
           isConducted = true;
-        } else if (status === "off") {
+        } else if (status === "off" || status === "cancelled") {
           status = "CANCELLED";
           isConducted = false;
         }
@@ -101,6 +115,8 @@ export class TransferService {
           subjectCode: log.subject?.code,
           subjectName: log.subject?.name,
           slot: log.timetableSlotId,
+          timetableSlotId: log.timetableSlotId,
+          overrideId: log.overrideId,
           status,
           isConducted
         };

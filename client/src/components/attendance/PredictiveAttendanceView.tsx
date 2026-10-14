@@ -16,16 +16,19 @@ import {
   Info,
   Loader2,
   RefreshCw,
-  Brain
+  Brain,
+  Plus
 } from "lucide-react";
 import { api } from "../../lib/api";
 import { useAuthStore } from "../../stores/authStore";
 import { useCacheStore } from "../../stores/cacheStore";
 import { useAttendanceStore } from "../../stores/attendanceStore";
 import { useBackHandlerStore } from "../../stores/backHandlerStore";
+import { useNavigate } from "react-router-dom";
 import { Stepper } from "../ui/stepper";
 import { Input } from "../ui/input";
 import { FutureClassesModal } from "./FutureClassesModal";
+import { CreateSemesterModal } from "../semester/CreateSemesterModal";
 
 interface SubjectStat {
   id: string;
@@ -49,6 +52,7 @@ interface PredictiveAttendanceViewProps {
 export const PredictiveAttendanceView: React.FC<PredictiveAttendanceViewProps> = ({
   compact = false,
 }) => {
+  const navigate = useNavigate();
   const user = useAuthStore((state) => state.user);
   const subjects = useAttendanceStore((state) => state.subjects) as unknown as SubjectStat[];
   const isLoading = useAttendanceStore((state) => state.isLoading);
@@ -59,10 +63,12 @@ export const PredictiveAttendanceView: React.FC<PredictiveAttendanceViewProps> =
 
   const [aiInsights, setAiInsights] = useState<any>(null);
   const [isAiLoading, setIsAiLoading] = useState(false);
+  const [isCreateSemesterOpen, setIsCreateSemesterOpen] = useState(false);
 
   const [localStart, setLocalStart] = useState("");
   const [localEnd, setLocalEnd] = useState("");
   const [hasUnsavedBounds, setHasUnsavedBounds] = useState(false);
+  const [isSelectingDates, setIsSelectingDates] = useState(false);
 
   useEffect(() => {
     if (simulationBounds) {
@@ -141,10 +147,27 @@ export const PredictiveAttendanceView: React.FC<PredictiveAttendanceViewProps> =
   useEffect(() => {
     const unregister = useBackHandlerStore.getState().register(() => {
       if (breakdownModalSubject !== null) { setBreakdownModalSubject(null); return true; }
+      if (isCreateSemesterOpen) { setIsCreateSemesterOpen(false); return true; }
+      if (isSelectingDates || hasUnsavedBounds) {
+        if (typeof document !== "undefined" && document.activeElement instanceof HTMLElement) {
+          document.activeElement.blur();
+        }
+        setIsSelectingDates(false);
+        if (hasUnsavedBounds && simulationBounds) {
+          setLocalStart(simulationBounds.hasCommencement ? simulationBounds.startDate.split("T")[0] : "");
+          setLocalEnd(simulationBounds.hasLastDay ? simulationBounds.endDate.split("T")[0] : "");
+          setHasUnsavedBounds(false);
+        }
+        return true;
+      }
+      if (!compact) {
+        navigate("/subjects", { replace: true });
+        return true;
+      }
       return false;
     });
     return () => unregister();
-  }, [breakdownModalSubject]);
+  }, [breakdownModalSubject, isCreateSemesterOpen, isSelectingDates, hasUnsavedBounds, simulationBounds, compact, navigate]);
 
   const openModal = (sub: any) => {
      let futureItems = [...(sub.futureBreakdown || [])];
@@ -257,6 +280,23 @@ export const PredictiveAttendanceView: React.FC<PredictiveAttendanceViewProps> =
         <h2 className="text-2xl font-bold text-foreground">No Active Semester</h2>
         <p className="text-sm text-muted-foreground font-medium max-w-md">
           Please create and activate a semester first to start generating attendance forecasts.
+        </p>
+        <button
+          onClick={() => setIsCreateSemesterOpen(true)}
+          className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-primary-foreground px-6 py-3 rounded-xl text-sm font-bold shadow-lg shadow-primary/25 transition-all mt-2 cursor-pointer"
+        >
+          <Plus className="w-4 h-4" />
+          <span>Create Active Semester</span>
+        </button>
+        <CreateSemesterModal
+          isOpen={isCreateSemesterOpen}
+          onClose={() => setIsCreateSemesterOpen(false)}
+          onSuccess={() => {
+            useAttendanceStore.getState().fetchStats(true);
+            fetchAiInsights(true);
+            window.dispatchEvent(new Event("attendance-updated"));
+          }}
+        /><p className="hidden">
         </p>
       </div>
     );
@@ -477,6 +517,8 @@ export const PredictiveAttendanceView: React.FC<PredictiveAttendanceViewProps> =
               <Input 
                 type="date"
                 value={localStart}
+                onFocus={() => setIsSelectingDates(true)}
+                onBlur={() => setIsSelectingDates(false)}
                 onChange={(e) => {
                   setLocalStart(e.target.value);
                   setHasUnsavedBounds(true);
@@ -490,6 +532,8 @@ export const PredictiveAttendanceView: React.FC<PredictiveAttendanceViewProps> =
               <Input 
                 type="date"
                 value={localEnd}
+                onFocus={() => setIsSelectingDates(true)}
+                onBlur={() => setIsSelectingDates(false)}
                 onChange={(e) => {
                   setLocalEnd(e.target.value);
                   setHasUnsavedBounds(true);

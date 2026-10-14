@@ -1,12 +1,13 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Capacitor } from '@capacitor/core';
-import { Loader2, CheckCircle2, XCircle, AlertCircle, PartyPopper, BookOpen, Palmtree, Timer, TrendingUp, TrendingDown, Plus, MessageSquare, Sparkles, ChevronRight, ChevronLeft, X, Trash2 } from "lucide-react";
+import { Loader2, CheckCircle2, XCircle, AlertCircle, PartyPopper, BookOpen, Palmtree, Timer, TrendingUp, TrendingDown, Plus, MessageSquare, Sparkles, ChevronRight, ChevronLeft, X, Trash2, GraduationCap } from "lucide-react";
 import { PageSkeleton } from "../../components/common/PageSkeleton";
 import { api } from "../../lib/api";
 import { toast } from "sonner";
 import { useAuthStore } from "../../stores/authStore";
 import { useCacheStore } from "../../stores/cacheStore";
 import { CreateSemesterModal } from "../../components/semester/CreateSemesterModal";
+import { SemesterTransitionModal } from "../../components/semester/SemesterTransitionModal";
 import { OnboardingChecklist } from "../../components/ui/onboarding-checklist";
 
 import { useSearchParams, useNavigate } from "react-router-dom";
@@ -17,7 +18,7 @@ import { HolidayIconRenderer } from "../../components/common/HolidayIconRenderer
 import { HolidayGreetingOverlay } from "../../components/common/HolidayGreetingOverlay";
 import { NeurosyncWaves } from "../../components/ui/neurosync-waves";
 import { format } from "date-fns";
-import { FIXED_HOLIDAYS, RESTRICTED_HOLIDAYS } from "../semester/HolidayListTab";
+import { hapticLight, hapticMedium, hapticSuccess, hapticWarning, hapticSelection } from "../../utils/haptics";
 
 
 interface AgendaItem {
@@ -41,45 +42,164 @@ interface AgendaItem {
 
 export const TodayPage = () => {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const dateParam = searchParams.get("date");
   const today = new Date();
   const localTodayStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
   const targetDateStr = dateParam || localTodayStr;
 
-  const getHolidayFromList = (dateStr: string) => {
-    try {
-      const dateObj = new Date(dateStr);
-      const formattedForMatch = format(dateObj, "dd MMMM");
-      const altFormatted = format(dateObj, "d MMMM");
-      
-      const fixed = FIXED_HOLIDAYS.find(h => h.date === formattedForMatch || h.date === altFormatted);
-      if (fixed) return { title: fixed.name, eventType: "holiday" };
-      
-      const restricted = RESTRICTED_HOLIDAYS.find(h => h.date === formattedForMatch || h.date === altFormatted);
-      if (restricted) return { title: restricted.name, eventType: "restricted_holiday" };
-    } catch (e) {
-      // Ignore invalid dates
-    }
-    return null;
-  };
-
-  const syntheticHoliday = getHolidayFromList(targetDateStr);
   const cachedData = useCacheStore(state => state.today);
   const setCache = useCacheStore(state => state.setCache);
   
   const dayCache = cachedData?.[targetDateStr];
+  const initialActiveSemester = dayCache?.activeSemester || useCacheStore.getState().semester?.activeSemester || null;
 
-  const [agenda, setAgenda] = useState<AgendaItem[]>(dayCache?.agenda || []);
-  const [todayStatus, setTodayStatus] = useState<any>(dayCache?.todayStatus || null);
-  const activeEvent = syntheticHoliday || todayStatus?.activeEvent;
-  const [activeSemester, setActiveSemester] = useState<any>(dayCache?.activeSemester || null);
-  const [onboardingStatus, setOnboardingStatus] = useState<any>(dayCache?.onboarding || null);
-  const [isLoading, setIsLoading] = useState(!dayCache);
+  const buildLocalFallbackAgenda = (dateStr: string, semOverride?: any): AgendaItem[] => {
+    try {
+      const subjectsCache = useCacheStore.getState().subject_logs || {};
+      const allLogs = subjectsCache["all"]?.logs || [];
+      const logsForDay = allLogs.filter((l: any) => l.date && l.date.startsWith(dateStr));
+
+      const timetableCache = useCacheStore.getState().timetable;
+      const [y, m, d] = dateStr.split("-").map(Number);
+      const dateObj = new Date(y, (m || 1) - 1, d || 1);
+      const jsDay = dateObj.getDay();
+      const ttDay = jsDay === 0 ? 6 : jsDay - 1;
+
+      let pseudoAgenda: AgendaItem[] = [];
+
+      if (timetableCache && timetableCache.slots) {
+        const archivedVersions = timetableCache.archivedSlots || [];
+        const archivedSlotsArray = archivedVersions.flatMap((v: any) => v.slots || []);
+        const allSlots = [...timetableCache.slots, ...archivedSlotsArray];
+
+        const cachedSem = semOverride || useCacheStore.getState().semester?.activeSemester;
+        const cachedEvts = useCacheStore.getState().semester?.events || (useAttendanceStore.getState().events as any) || [];
+        const lastTeachingEvt = cachedEvts.find((e: any) => /last\s*(teaching|working)\s*day/i.test(e.title || ""));
+        const lastTeachingStr = lastTeachingEvt ? (lastTeachingEvt.endDate || lastTeachingEvt.date || "").split('T')[0] : null;
+        const semEndStr = cachedSem?.endDate ? String(cachedSem.endDate).split('T')[0] : null;
+        const isPastTeaching = (lastTeachingStr && dateStr > lastTeachingStr) || (semEndStr && dateStr > semEndStr);
+
+        const slotsForDay = isPastTeaching ? [] : allSlots.filter((s: any) => {
+          if (s.dayOfWeek !== ttDay) return false;
+          if (!s.validFrom) return true;
+          const fromDateKey = String(s.validFrom).slice(0, 10);
+          if (fromDateKey > dateStr) return false;
+          if (s.validUntil) {
+            const untilDateKey = String(s.validUntil).slice(0, 10);
+            if (untilDateKey < dateStr) return false;
+          }
+          return true;
+        });
+
+        const uniqueSlotsMap = new Map();
+        slotsForDay.forEach((s: any) => {
+          const key = `${s.startTime}-${s.subjectId}`;
+          if (!uniqueSlotsMap.has(key)) uniqueSlotsMap.set(key, s);
+        });
+        const deduplicatedSlotsForDay = Array.from(uniqueSlotsMap.values());
+
+        pseudoAgenda = deduplicatedSlotsForDay.map((slot: any) => {
+          const subjectsOverview = useCacheStore.getState().subjects_overview || [];
+          const subject = slot.subject || subjectsOverview.find((sub: any) => sub.id === slot.subjectId) || { id: slot.subjectId, name: "Unknown" };
+          const logMatch = logsForDay.find((l: any) => l.timetableSlotId === slot.id || (l.subjectId === slot.subjectId && (l.startTime === slot.startTime || l.startTime === "00:00")));
+
+          return {
+            id: slot.id,
+            type: "slot",
+            subject,
+            startTime: slot.startTime,
+            endTime: slot.endTime,
+            room: slot.room || undefined,
+            slotType: slot.type || slot.slotType || "lecture",
+            status: logMatch && logMatch.status !== "not_marked" ? logMatch.status : null,
+            remarks: logMatch ? logMatch.remarks : undefined,
+            attendanceId: logMatch && logMatch.status !== "not_marked" ? logMatch.id : null
+          };
+        });
+      }
+
+      logsForDay.forEach((l: any) => {
+        const exists = pseudoAgenda.some(item => item.id === l.timetableSlotId || (item.subject.id === l.subjectId && (item.startTime === l.startTime || l.startTime === "00:00")));
+        if (!exists) {
+          pseudoAgenda.push({
+            id: l.overrideId || l.id,
+            type: l.isExtra ? "override" : "slot",
+            isExtra: l.isExtra,
+            subject: {
+              id: l.subjectId,
+              name: l.subjectName || "Unknown",
+              code: l.subjectCode,
+              colorHex: l.subjectColor
+            },
+            startTime: l.startTime,
+            endTime: l.endTime,
+            room: l.room,
+            slotType: l.slotType || "Extra",
+            status: l.status === "not_marked" ? null : l.status,
+            remarks: l.remarks,
+            attendanceId: l.status !== "not_marked" ? l.id : null,
+          });
+        }
+      });
+
+      pseudoAgenda.sort((a, b) => (a.startTime || "").localeCompare(b.startTime || ""));
+      return pseudoAgenda;
+    } catch {
+      return [];
+    }
+  };
+
+  const resolveInitialAgenda = (dateStr: string): AgendaItem[] => {
+    const dc = useCacheStore.getState().today?.[dateStr];
+    const sem = dc?.activeSemester || useCacheStore.getState().semester?.activeSemester || null;
+    if (!sem) return [];
+    if (dc?.agenda && dc.agenda.length > 0) return dc.agenda;
+    if (dc?.todayStatus?.isHoliday || dc?.todayStatus?.isExam) return [];
+    return buildLocalFallbackAgenda(dateStr, sem);
+  };
+
+  const [agenda, setAgenda] = useState<AgendaItem[]>(() => resolveInitialAgenda(targetDateStr));
+  const agendaRef = useRef<AgendaItem[]>(resolveInitialAgenda(targetDateStr));
+  const lastStatusClickRef = useRef<{ [itemId: string]: { status: string; time: number } }>({});
+  const inFlightMarksCountRef = useRef<number>(0);
+  const fetchSeqRef = useRef<number>(0);
+  const targetDateStrRef = useRef<string>(targetDateStr);
+  targetDateStrRef.current = targetDateStr;
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const hasVerifiedSemesterRef = useRef<boolean>(false);
+
+  useEffect(() => {
+    agendaRef.current = agenda;
+  }, [agenda]);
+  const [activeSemester, setActiveSemester] = useState<any>(initialActiveSemester);
+  const [todayStatus, setTodayStatus] = useState<any>(initialActiveSemester ? (dayCache?.todayStatus || null) : null);
+  const activeEvent = activeSemester ? (todayStatus?.activeEvent || null) : null;
+  const [onboardingStatus, setOnboardingStatus] = useState<any>(() => {
+    return dayCache?.onboarding || null;
+  });
+  const [isLoading, setIsLoading] = useState(!dayCache && !initialActiveSemester);
   const [isCreateSemesterOpen, setIsCreateSemesterOpen] = useState(false);
-  const [hasUsedVoiceMode, setHasUsedVoiceMode] = useState(localStorage.getItem("onboarding_voice_mode") === "true");
-  const [hasUsedPredictive, setHasUsedPredictive] = useState(localStorage.getItem("onboarding_predictive") === "true");
-  const [hasUsedPeerSync, setHasUsedPeerSync] = useState(localStorage.getItem("onboarding_peer_sync") === "true");
+  const [isTransitionModalOpen, setIsTransitionModalOpen] = useState(false);
+  const [transitionStatus, setTransitionStatus] = useState<any>(null);
+  const [hasUsedVoiceMode, setHasUsedVoiceMode] = useState<boolean>(() => {
+    if (dayCache?.onboarding?.hasUsedVoiceMode !== undefined) {
+      return Boolean(dayCache.onboarding.hasUsedVoiceMode);
+    }
+    return localStorage.getItem("onboarding_voice_mode") === "true";
+  });
+  const [hasUsedPredictive, setHasUsedPredictive] = useState<boolean>(() => {
+    if (dayCache?.onboarding?.hasUsedPredictive !== undefined) {
+      return Boolean(dayCache.onboarding.hasUsedPredictive);
+    }
+    return localStorage.getItem("onboarding_predictive") === "true";
+  });
+  const [hasUsedPeerSync, setHasUsedPeerSync] = useState<boolean>(() => {
+    if (dayCache?.onboarding?.hasUsedPeerSync !== undefined) {
+      return Boolean(dayCache.onboarding.hasUsedPeerSync);
+    }
+    return localStorage.getItem("onboarding_peer_sync") === "true";
+  });
 
   // Extra Lecture Modal State
   const [isAddExtraModalOpen, setIsAddExtraModalOpen] = useState(false);
@@ -95,6 +215,32 @@ export const TodayPage = () => {
   // Overlay state
   const [lastGreetedDate, setLastGreetedDate] = useState<string | null>(null);
   const [showGreetingOverlay, setShowGreetingOverlay] = useState(false);
+
+  const markOnboardingStep = async (stepKey: "voice_mode" | "predictive" | "peer_sync" | "dismiss") => {
+    hapticSelection();
+    if (stepKey === "voice_mode") {
+      setHasUsedVoiceMode(true);
+      localStorage.setItem("onboarding_voice_mode", "true");
+      setOnboardingStatus((prev: any) => prev ? { ...prev, hasUsedVoiceMode: true } : prev);
+      api.patch("/users/onboarding-status", { step: "voice_mode" }).catch(() => {});
+    } else if (stepKey === "predictive") {
+      setHasUsedPredictive(true);
+      localStorage.setItem("onboarding_predictive", "true");
+      setOnboardingStatus((prev: any) => prev ? { ...prev, hasUsedPredictive: true } : prev);
+      api.patch("/users/onboarding-status", { step: "predictive" }).catch(() => {});
+    } else if (stepKey === "peer_sync") {
+      setHasUsedPeerSync(true);
+      localStorage.setItem("onboarding_peer_sync", "true");
+      setOnboardingStatus((prev: any) => prev ? { ...prev, hasUsedPeerSync: true } : prev);
+      api.patch("/users/onboarding-status", { step: "peer_sync" }).catch(() => {});
+    } else if (stepKey === "dismiss") {
+      if (typeof window !== "undefined") {
+        localStorage.setItem("onboarding_dismissed", "true");
+      }
+      setOnboardingStatus((prev: any) => prev ? { ...prev, onboardingDismissed: true } : { onboardingDismissed: true });
+      api.patch("/users/onboarding-status", { step: "dismiss" }).catch(() => {});
+    }
+  };
 
 
   const getHolidayAnimation = (activeEvent: any) => {
@@ -192,6 +338,8 @@ export const TodayPage = () => {
   const { overallPercentage } = useAttendanceStore();
   const handleMarkFullDayOff = async () => {
     if (agenda.length === 0) return;
+    fetchSeqRef.current += 1;
+    useAttendanceStore.getState().invalidateInFlightStats();
     try {
       setIsMarkingFullDayOff(true);
 
@@ -220,6 +368,7 @@ export const TodayPage = () => {
 
       // Optimistically mark all agenda items as "off"
       setAgenda(prev => prev.map(a => ({ ...a, status: "off" as any })));
+      hapticSuccess();
 
       // Trigger full day off celebration popup animation!
       const { animType, animMsg } = getHolidayAnimation(activeEvent);
@@ -241,7 +390,7 @@ export const TodayPage = () => {
       fetchData();
       fetchStats();
       useCacheStore.getState().setCache('insights', null);
-      window.dispatchEvent(new Event("attendance-updated"));
+      window.dispatchEvent(new CustomEvent("attendance-updated", { detail: { source: "today-page" } }));
     } catch (error) {
       console.error("Failed to mark full day off:", error);
       fetchData();
@@ -261,9 +410,47 @@ export const TodayPage = () => {
   };
 
   const handleAddExtraLecture = async (subjectId: string) => {
+    // 1. Optimistic 0ms UI Update
+    const tempId = `temp_extra_${Date.now()}`;
+    const selectedSub = subjectsForExtra.find(s => s.id === subjectId) || { id: subjectId, name: "Extra Lecture" };
+
+    const optimisticItem: AgendaItem = {
+      id: tempId,
+      type: "override",
+      isExtra: true,
+      subject: {
+        id: selectedSub.id,
+        name: selectedSub.name,
+        code: selectedSub.code,
+        colorHex: selectedSub.colorHex
+      },
+      startTime: "00:00",
+      endTime: "00:00",
+      slotType: "Extra",
+      status: null,
+      remarks: "Extra Lecture",
+      attendanceId: null
+    };
+
+    // Close modal and display card instantly (0ms)
+    setIsAddExtraModalOpen(false);
+    hapticSuccess();
+    setAgenda(prev => {
+      const next = [...prev, optimisticItem];
+      agendaRef.current = next;
+      const existing = useCacheStore.getState().today?.[targetDateStr];
+      if (existing) {
+        useCacheStore.getState().setCache('today', {
+          ...useCacheStore.getState().today,
+          [targetDateStr]: { ...existing, agenda: next }
+        });
+      }
+      return next;
+    });
+
     try {
       setIsAddingExtra(true);
-      await api.post("/timetable/extra-class", {
+      const res = await api.post("/timetable/extra-class", {
         semesterId: activeSemester?.id,
         subjectId,
         date: targetDateStr,
@@ -271,12 +458,32 @@ export const TodayPage = () => {
         endTime: "00:00",
         reason: "Extra Lecture"
       });
-      setIsAddExtraModalOpen(false);
-      fetchData();
+      const realId = res.data?.id;
+      if (realId) {
+        setAgenda(prev => {
+          const next = prev.map(item => item.id === tempId ? { ...item, id: realId } : item);
+          agendaRef.current = next;
+          const existing = useCacheStore.getState().today?.[targetDateStr];
+          if (existing) {
+            useCacheStore.getState().setCache('today', {
+              ...useCacheStore.getState().today,
+              [targetDateStr]: { ...existing, agenda: next }
+            });
+          }
+          return next;
+        });
+      }
       fetchStats();
-      window.dispatchEvent(new Event("attendance-updated"));
+      window.dispatchEvent(new CustomEvent("attendance-updated", { detail: { source: "today-page" } }));
     } catch (err) {
       console.error("Failed to add extra lecture:", err);
+      toast.error("Failed to add extra lecture");
+      // Roll back optimistic card
+      setAgenda(prev => {
+        const reverted = prev.filter(item => item.id !== tempId);
+        agendaRef.current = reverted;
+        return reverted;
+      });
     } finally {
       setIsAddingExtra(false);
     }
@@ -288,15 +495,37 @@ export const TodayPage = () => {
       action: {
         label: "Delete",
         onClick: async () => {
+          // 1. Optimistic 0ms Removal
+          const itemToDelete = agendaRef.current.find(item => item.id === overrideId);
+          hapticMedium();
+          setAgenda(prev => {
+            const next = prev.filter(item => item.id !== overrideId);
+            agendaRef.current = next;
+            const existing = useCacheStore.getState().today?.[targetDateStr];
+            if (existing) {
+              useCacheStore.getState().setCache('today', {
+                ...useCacheStore.getState().today,
+                [targetDateStr]: { ...existing, agenda: next }
+              });
+            }
+            return next;
+          });
+
           try {
             await api.delete(`/timetable/extra-class/${overrideId}`);
-            fetchData();
             fetchStats();
-            window.dispatchEvent(new Event("attendance-updated"));
-            toast.success("Extra class deleted");
+            window.dispatchEvent(new CustomEvent("attendance-updated", { detail: { source: "today-page" } }));
           } catch (err) {
-            toast.error("Failed to delete extra class");
             console.error("Failed to delete extra class:", err);
+            toast.error("Failed to delete extra class");
+            // Roll back if deletion failed
+            if (itemToDelete) {
+              setAgenda(prev => {
+                const next = [...prev, itemToDelete];
+                agendaRef.current = next;
+                return next;
+              });
+            }
           }
         }
       },
@@ -304,172 +533,201 @@ export const TodayPage = () => {
     });
   };
 
-  const fetchData = async () => {
+  const fetchData = async (overrideDate?: string, signal?: AbortSignal) => {
+    const reqDate = overrideDate || targetDateStrRef.current;
+    const myFetchSeq = ++fetchSeqRef.current;
     try {
-      if (!cachedData) setIsLoading(true);
-      // Fetch active semester first
-      const semRes = await api.get("/semesters/active");
-      
-      let statusPromise = Promise.resolve({ data: null });
-      if (semRes.data) {
-        setActiveSemester(semRes.data);
-        const semesterId = semRes.data.id;
-        statusPromise = api.get(`/events/today-status?semesterId=${semesterId}&date=${targetDateStr}`);
-      } else {
-        setActiveSemester(null);
+      const existingDayCache = useCacheStore.getState().today?.[reqDate];
+      const cachedSem = existingDayCache?.activeSemester || useCacheStore.getState().semester?.activeSemester || null;
+      const validCachedSem = cachedSem?.id && cachedSem.id !== "active-semester" ? cachedSem : null;
+      const knownSem = activeSemester || validCachedSem || null;
+      const knownSemesterId = knownSem?.id || useAttendanceStore.getState().activeSemesterId;
+
+      if (!existingDayCache && agendaRef.current.length === 0 && !knownSem) {
+        setIsLoading(true);
       }
 
-      // Fetch today status and attendance in parallel
-      const [statusRes, res, onboardRes] = await Promise.allSettled([
-        statusPromise,
-        api.get(`/attendance/today?date=${targetDateStr}`),
-        api.get("/users/onboarding-status")
+      // If we haven't synced with the server yet, or if knownSem is missing/unverified, verify with /api/semesters/active
+      const shouldQuerySem = !hasVerifiedSemesterRef.current || !knownSem;
+      const [semSettled, statusSettledInitial, res, onboardRes] = await Promise.allSettled([
+        !shouldQuerySem ? Promise.resolve({ data: knownSem }) : api.get("/semesters/active", { signal }),
+        knownSemesterId
+          ? api.get(`/events/today-status?semesterId=${knownSemesterId}&date=${reqDate}`, { signal })
+          : Promise.resolve({ data: null }),
+        api.get(`/attendance/today?date=${reqDate}`, { signal }),
+        api.get("/users/onboarding-status", { signal })
       ]);
+
+      // CRITICAL RACE CONDITION GUARD:
+      // If signal was aborted OR user has already navigated to a different date, DISCARD immediately!
+      if (signal?.aborted || reqDate !== targetDateStrRef.current || myFetchSeq !== fetchSeqRef.current) {
+        return;
+      }
+
+      if (semSettled.status === "fulfilled") {
+        hasVerifiedSemesterRef.current = true;
+      }
+      const semData = semSettled.status === "fulfilled" ? semSettled.value.data : knownSem;
+      let statusRes = statusSettledInitial;
+
+      if (semData) {
+        setActiveSemester(semData);
+        const semesterId = semData.id;
+        useAttendanceStore.setState({ activeSemesterId: semesterId, hasActiveSemester: true });
+        import("../../services/NotificationService")
+          .then(({ NotificationService }) => {
+            NotificationService.autoScheduleFromTimetable().catch(() => {});
+          })
+          .catch(() => {});
+
+        if (!knownSemesterId || knownSemesterId !== semesterId) {
+          const [lateStatus] = await Promise.allSettled([
+            api.get(`/events/today-status?semesterId=${semesterId}&date=${reqDate}`, { signal })
+          ]);
+          if (signal?.aborted || reqDate !== targetDateStrRef.current || myFetchSeq !== fetchSeqRef.current) {
+            return;
+          }
+          statusRes = lateStatus;
+        }
+
+        const semEndDate = new Date(semData.endDate);
+        semEndDate.setHours(23, 59, 59, 999);
+        const now = new Date();
+        const hasPromptParam = searchParams.get("promptSemesterTransition") === "true";
+        const shouldPrompt = hasPromptParam || now > semEndDate;
+        if (shouldPrompt) {
+          const dismissed = sessionStorage.getItem(`attendx_dismissed_transition_${semData.id}`);
+          if (!dismissed) {
+            setIsTransitionModalOpen(true);
+          }
+        }
+        if (hasPromptParam) {
+          const nextParams = new URLSearchParams(searchParams);
+          nextParams.delete("promptSemesterTransition");
+          setSearchParams(nextParams, { replace: true });
+        }
+      } else if (semSettled.status === "fulfilled" && !semSettled.value.data) {
+        setActiveSemester(null);
+        setTodayStatus(null);
+        setAgenda([]);
+        agendaRef.current = [];
+        useAttendanceStore.getState().resetAttendanceStore();
+        useCacheStore.getState().setCache("semester", {
+          ...useCacheStore.getState().semester,
+          activeSemester: null,
+        });
+      }
 
       if (res.status === 'rejected') throw res.reason;
 
-      let nextTodayStatus = null;
+      let nextTodayStatus = existingDayCache?.todayStatus || null;
       let nextAgenda: AgendaItem[] = [];
-      let nextOnboarding = null;
+      let nextOnboarding = existingDayCache?.onboarding || null;
 
-      if (statusRes.status === 'fulfilled') {
+      if (statusRes.status === 'fulfilled' && statusRes.value.data !== null) {
         nextTodayStatus = statusRes.value.data;
         setTodayStatus(nextTodayStatus);
       }
       
       if (res.status === 'fulfilled') {
         nextAgenda = Array.isArray(res.value.data) ? res.value.data : [];
-        setAgenda(nextAgenda);
-      } else {
+        // Self-heal if an empty array was returned on a non-holiday/non-exam day when timetable has classes
+        if (nextAgenda.length === 0 && semData && !(nextTodayStatus?.isHoliday || nextTodayStatus?.isExam)) {
+          const localFallback = buildLocalFallbackAgenda(reqDate, semData);
+          if (localFallback.length > 0) {
+            nextAgenda = localFallback;
+          }
+        }
+        if (inFlightMarksCountRef.current > 0) {
+          setAgenda(prev => {
+            const merged = nextAgenda.map(serverItem => {
+              const localItem = prev.find(p => p.id === serverItem.id);
+              if (localItem && localItem.status !== null) {
+                return { ...serverItem, status: localItem.status, remarks: localItem.remarks, attendanceId: localItem.attendanceId ?? serverItem.attendanceId };
+              }
+              return serverItem;
+            });
+            agendaRef.current = merged;
+            return merged;
+          });
+        } else {
+          setAgenda(nextAgenda);
+          agendaRef.current = nextAgenda;
+        }
+      } else if (myFetchSeq === fetchSeqRef.current) {
         setAgenda([]);
+        agendaRef.current = [];
       }
 
       if (onboardRes.status === 'fulfilled') {
         nextOnboarding = onboardRes.value.data;
+        const isDismissed = Boolean(nextOnboarding?.onboardingDismissed);
+        nextOnboarding = { ...nextOnboarding, onboardingDismissed: isDismissed };
+        if (!isDismissed) {
+          localStorage.removeItem("onboarding_dismissed");
+        }
         setOnboardingStatus(nextOnboarding);
+
+        const serverVoice = Boolean(nextOnboarding.hasUsedVoiceMode);
+        const serverPred = Boolean(nextOnboarding.hasUsedPredictive);
+        const serverSync = Boolean(nextOnboarding.hasUsedPeerSync);
+
+        const localVoice = localStorage.getItem("onboarding_voice_mode") === "true";
+        const localPred = localStorage.getItem("onboarding_predictive") === "true";
+        const localSync = localStorage.getItem("onboarding_peer_sync") === "true";
+
+        const effectiveVoice = serverVoice || localVoice;
+        const effectivePred = serverPred || localPred;
+        const effectiveSync = serverSync || localSync;
+
+        setHasUsedVoiceMode(effectiveVoice);
+        setHasUsedPredictive(effectivePred);
+        setHasUsedPeerSync(effectiveSync);
+
+        if ((localVoice && !serverVoice) || (localPred && !serverPred) || (localSync && !serverSync)) {
+          api.patch("/users/onboarding-status", {
+            hasUsedVoiceMode: effectiveVoice,
+            hasUsedPredictive: effectivePred,
+            hasUsedPeerSync: effectiveSync,
+          }).catch(() => {});
+        }
       }
 
       setCache('today', { 
         ...useCacheStore.getState().today,
-        [targetDateStr]: {
-          agenda: nextAgenda, 
+        [reqDate]: {
+          agenda: agendaRef.current, 
           todayStatus: nextTodayStatus, 
-          activeSemester: semRes.data || null,
+          activeSemester: semData || null,
           onboarding: nextOnboarding
         }
       });
 
-    } catch (error) {
+    } catch (error: any) {
+      if (signal?.aborted || error?.name === 'CanceledError' || error?.code === 'ERR_CANCELED' || reqDate !== targetDateStrRef.current || myFetchSeq !== fetchSeqRef.current) {
+        return;
+      }
       console.error("Failed to fetch today data:", error);
       
-      const todayCache = useCacheStore.getState().today?.[targetDateStr];
-      const isToday = targetDateStr === format(new Date(), "yyyy-MM-dd");
-      
-      // Attempt to load active semester from global cache if not in today cache
+      const todayCache = useCacheStore.getState().today?.[reqDate];
       const semesterCache = useCacheStore.getState().semester;
-      setActiveSemester(todayCache?.activeSemester || semesterCache?.active || null);
+      const resolvedActiveSemester = todayCache?.activeSemester || semesterCache?.activeSemester || null;
+      setActiveSemester(resolvedActiveSemester);
 
-      if (todayCache && todayCache.agenda && todayCache.agenda.length > 0) {
+      if (todayCache && todayCache.agenda && todayCache.agenda.length > 0 && resolvedActiveSemester) {
         setAgenda(todayCache.agenda);
+        agendaRef.current = todayCache.agenda;
         setTodayStatus(todayCache.todayStatus || null);
       } else {
-        // Construct agenda by merging timetable slots with attendance logs for the day
-        const subjectsCache = useCacheStore.getState().subject_logs || {};
-        const allLogs = subjectsCache["all"]?.logs || [];
-        const logsForDay = allLogs.filter((l: any) => l.date && l.date.startsWith(targetDateStr));
-
-        const timetableCache = useCacheStore.getState().timetable;
-        const dateObj = new Date(targetDateStr);
-        const jsDay = dateObj.getDay();
-        const ttDay = jsDay === 0 ? 6 : jsDay - 1;
-
-        let pseudoAgenda: AgendaItem[] = [];
-
-        if (timetableCache && timetableCache.slots) {
-          // Merge active and archived slots
-          const archivedVersions = timetableCache.archivedSlots || [];
-          const archivedSlotsArray = archivedVersions.flatMap((v: any) => v.slots || []);
-          const allSlots = [...timetableCache.slots, ...archivedSlotsArray];
-
-          // Filter slots active on this historical date
-          const slotsForDay = allSlots.filter((s: any) => {
-            if (s.dayOfWeek !== ttDay) return false;
-            if (!s.validFrom) return true;
-            const validFrom = new Date(s.validFrom);
-            validFrom.setHours(0,0,0,0);
-            const validUntil = s.validUntil ? new Date(s.validUntil) : new Date("2099-01-01");
-            validUntil.setHours(23,59,59,999);
-            const target = new Date(targetDateStr);
-            target.setHours(12,0,0,0);
-            return target >= validFrom && target <= validUntil;
-          });
-
-          // Deduplicate by startTime and subjectId
-          const uniqueSlotsMap = new Map();
-          slotsForDay.forEach((s: any) => {
-            const key = `${s.startTime}-${s.subjectId}`;
-            if (!uniqueSlotsMap.has(key)) uniqueSlotsMap.set(key, s);
-          });
-          const deduplicatedSlotsForDay = Array.from(uniqueSlotsMap.values());
-
-          pseudoAgenda = deduplicatedSlotsForDay.map((slot: any) => {
-            const subjectsOverview = useCacheStore.getState().subjects_overview || [];
-            const subject = subjectsOverview.find((sub: any) => sub.id === slot.subjectId) || { id: slot.subjectId, name: "Unknown" };
-            
-            // Find if there is a log for this specific timetable slot
-            const logMatch = logsForDay.find((l: any) => l.timetableSlotId === slot.id || (l.subjectId === slot.subjectId && l.startTime === slot.startTime));
-            
-            return {
-              id: slot.id,
-              type: "slot",
-              subject,
-              startTime: slot.startTime,
-              endTime: slot.endTime,
-              room: slot.room || undefined,
-              slotType: slot.type || "Lecture",
-              status: logMatch && logMatch.status !== "not_marked" ? logMatch.status : null,
-              remarks: logMatch ? logMatch.remarks : undefined,
-              attendanceId: logMatch && logMatch.status !== "not_marked" ? logMatch.id : null
-            };
-          });
-        }
-
-        // Add any logs that didn't match a timetable slot (Extra classes, overrides)
-        logsForDay.forEach((l: any) => {
-          const exists = pseudoAgenda.some(item => item.id === l.timetableSlotId || (item.subject.id === l.subjectId && item.startTime === l.startTime));
-          if (!exists) {
-            pseudoAgenda.push({
-               id: l.overrideId || l.id,
-               type: l.isExtra ? "override" : "slot",
-               isExtra: l.isExtra,
-               subject: {
-                  id: l.subjectId,
-                  name: l.subjectName || "Unknown",
-                  code: l.subjectCode,
-                  colorHex: l.subjectColor
-               },
-               startTime: l.startTime,
-               endTime: l.endTime,
-               room: l.room,
-               slotType: l.slotType || "Extra",
-               status: l.status === "not_marked" ? null : l.status,
-               remarks: l.remarks,
-               attendanceId: l.status !== "not_marked" ? l.id : null,
-            });
-          }
-        });
-
-        if (pseudoAgenda.length > 0) {
-          pseudoAgenda.sort((a,b) => a.startTime.localeCompare(b.startTime));
-          setAgenda(pseudoAgenda);
-          setTodayStatus(null);
-        } else {
-          setAgenda([]);
-          setTodayStatus(null);
-        }
+        const pseudoAgenda = buildLocalFallbackAgenda(reqDate, resolvedActiveSemester);
+        setAgenda(pseudoAgenda);
+        agendaRef.current = pseudoAgenda;
+        setTodayStatus(todayCache?.todayStatus || null);
       }
     } finally {
-      setIsLoading(false);
+      if (!signal?.aborted && reqDate === targetDateStrRef.current && myFetchSeq === fetchSeqRef.current) {
+        setIsLoading(false);
+      }
     }
   };
 
@@ -479,35 +737,60 @@ export const TodayPage = () => {
   }, [targetDateStr]);
 
   useEffect(() => {
+    targetDateStrRef.current = targetDateStr;
+
+    // Abort any in-flight fetch for the previous date
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     const cachedDay = useCacheStore.getState().today?.[targetDateStr];
-    if (cachedDay) {
-      setAgenda(cachedDay.agenda || []);
-      setTodayStatus(cachedDay.todayStatus || null);
-      setActiveSemester(cachedDay.activeSemester || null);
-      setOnboardingStatus(cachedDay.onboarding || null);
+    const resolvedSem = cachedDay?.activeSemester || useCacheStore.getState().semester?.activeSemester || null;
+    if (cachedDay || resolvedSem) {
+      const nextInitialAgenda = resolveInitialAgenda(targetDateStr);
+      setAgenda(nextInitialAgenda);
+      agendaRef.current = nextInitialAgenda;
+      setTodayStatus(resolvedSem ? (cachedDay?.todayStatus || null) : null);
+      setActiveSemester(resolvedSem);
+      if (cachedDay?.onboarding) setOnboardingStatus(cachedDay.onboarding);
+      setIsLoading(false);
     } else {
       setAgenda([]);
+      agendaRef.current = [];
       setTodayStatus(null);
       setIsLoading(true);
     }
-    fetchData();
+    fetchData(targetDateStr, controller.signal);
 
-    const handleUpdate = () => {
-      fetchData();
+    const handleUpdate = (e: any) => {
+      // If TodayPage itself marked attendance, only fetch stats; do not refetch and clobber local optimistic agenda!
+      if (e?.detail?.source === "today-page") {
+        fetchStats();
+        return;
+      }
+      fetchData(targetDateStr, controller.signal);
       fetchStats();
     };
     window.addEventListener("attendance-updated", handleUpdate);
-    return () => window.removeEventListener("attendance-updated", handleUpdate);
+    return () => {
+      controller.abort();
+      window.removeEventListener("attendance-updated", handleUpdate);
+    };
   }, [targetDateStr]);
 
-  // Greeting overlay effect
+  // Greeting overlay effect (persisted per session to avoid re-triggering on tab switches)
   useEffect(() => {
     if (!isLoading) {
       const shouldShowOverlay = activeEvent && ["holiday", "restricted_holiday", "vacation", "fest", "institute", "lab_exam", "midsem", "endsem", "ct", "exam"].includes(activeEvent.eventType || "");
       if (isBirthday || shouldShowOverlay) {
-        if (lastGreetedDate !== targetDateStr) {
+        const storageKey = `attendx_greeted_${targetDateStr}`;
+        const alreadyGreeted = sessionStorage.getItem(storageKey) === "true";
+        if (!alreadyGreeted && lastGreetedDate !== targetDateStr) {
           setShowGreetingOverlay(true);
           setLastGreetedDate(targetDateStr);
+          sessionStorage.setItem(storageKey, "true");
         }
       } else {
         setShowGreetingOverlay(false);
@@ -519,10 +802,19 @@ export const TodayPage = () => {
   }, [isLoading, activeEvent, targetDateStr, lastGreetedDate, isBirthday]);
 
   const markAttendance = async (item: AgendaItem, status: string, remarks?: string) => {
-    const updatedAgenda = agenda.map(a => 
-      a.id === item.id ? { ...a, status: status as any, remarks: remarks || a.remarks } : a
-    );
-    setAgenda(updatedAgenda);
+    inFlightMarksCountRef.current += 1;
+    fetchSeqRef.current += 1;
+    useAttendanceStore.getState().invalidateInFlightStats();
+
+    const normalizedStatus = status === "clear" ? null : (status as any);
+    let updatedAgenda: AgendaItem[] = [];
+    setAgenda(prev => {
+      updatedAgenda = prev.map(a => 
+        a.id === item.id ? { ...a, status: normalizedStatus, remarks: status === "clear" ? undefined : (remarks || a.remarks) } : a
+      );
+      agendaRef.current = updatedAgenda;
+      return updatedAgenda;
+    });
 
     // --- OFFLINE OPTIMISTIC UPDATE ---
     const store = useAttendanceStore.getState();
@@ -556,10 +848,12 @@ export const TodayPage = () => {
     // ---------------------------------
 
 
-    // Trigger Popup Animation
+    // Trigger Popup Animation & Haptics
     if (status === "absent") {
+      hapticWarning();
       triggerAttendancePopup("crying", "Attendance Dropped! 😭");
     } else if (status === "present" || status === "medical" || status === "od") {
+      hapticSuccess();
       const { overallPercentage, totalAttended, totalClasses } = useAttendanceStore.getState();
       const targetPct = useAuthStore.getState().user?.targetAttendance ?? 75;
       
@@ -590,6 +884,7 @@ export const TodayPage = () => {
         }
       }
     } else if (status === "off" || status === "cancelled") {
+      hapticMedium();
       const allOthersOff = updatedAgenda.every(a => a.status === "off" || a.status === "cancelled");
       if (allOthersOff && updatedAgenda.length > 0) {
         const { animType, animMsg } = getHolidayAnimation(activeEvent);
@@ -597,6 +892,8 @@ export const TodayPage = () => {
       } else {
         triggerAttendancePopup("off_class", "Yay! Off class today! 🎈🛌");
       }
+    } else if (status === "clear") {
+      hapticLight();
     }
 
     try {
@@ -613,58 +910,71 @@ export const TodayPage = () => {
         attendanceId: item.attendanceId,
       });
 
-      setAgenda(prev => prev.map(a => 
-        a.id === item.id 
-          ? { ...a, attendanceId: status === "clear" ? null : res.data.id } 
-          : a
-      ));
+      let finalAgenda: AgendaItem[] = [];
+      setAgenda(prev => {
+        const next = prev.map(a => 
+          a.id === item.id 
+            ? { ...a, status: normalizedStatus, attendanceId: status === "clear" ? null : (res.data?.id || a.attendanceId) } 
+            : a
+        );
+        finalAgenda = next;
+        agendaRef.current = next;
+        return next;
+      });
 
       // Update global offline caches optimistically
       const state = useCacheStore.getState();
       
-      // 1. Update Today Cache
+      // 1. Update Today Cache with the finalized agenda (including the saved attendanceId)
       state.setCache('today', { 
         ...state.today,
         [targetDateStr]: {
           ...state.today?.[targetDateStr],
-          agenda: updatedAgenda, 
-          todayStatus 
+          agenda: finalAgenda.length > 0 ? finalAgenda : agendaRef.current,
+          todayStatus,
+          activeSemester,
+          onboarding: onboardingStatus
         }
       });
       
-      // 2. Update Calendar Cache
+      // 2. Update Calendar Cache only if this month is already cached (never inject a partial skeleton object)
       const monthStr = targetDateStr.substring(0, 7);
-      const calCache = state.calendar?.[monthStr] || { details: {}, days: [], events: [], insights: [], isComplete: false };
-      
-      const details = calCache.details[targetDateStr] || [];
-      const existingIdx = details.findIndex((d: any) => d.subjectName === item.subject?.name);
-      
-      if (status === "clear") {
-         if (existingIdx >= 0) details.splice(existingIdx, 1);
-      } else {
-         if (existingIdx >= 0) {
-           details[existingIdx].status = status;
-           details[existingIdx].remarks = remarks;
-         } else {
-           details.push({
-             id: item.attendanceId || `optimistic-${Date.now()}`,
-             subjectName: item.subject?.name,
-             status,
-             remarks
-           });
-         }
-      }
-      
-      state.setCache('calendar', {
-        ...state.calendar,
-        [monthStr]: {
-          ...calCache,
-          details: {
-            ...calCache.details,
-            [targetDateStr]: details
-          }
+      const existingMonthCache = state.calendar?.[monthStr];
+      if (existingMonthCache && existingMonthCache.days && !Array.isArray(existingMonthCache.days)) {
+        const currentAgenda = finalAgenda.length > 0 ? finalAgenda : agendaRef.current;
+        const nextDayDetails = currentAgenda.map((a) => ({
+          id: a.attendanceId || `unmarked-${a.id}`,
+          subjectName: a.subject?.name || "Class",
+          status: a.status || "not_marked",
+          remarks: a.remarks || null,
+        }));
+
+        const isFullyMarked = currentAgenda.length > 0 && currentAgenda.every((a) => a.status && a.status !== ("not_marked" as any));
+        let nextDayStatus = "not_marked";
+        if (isFullyMarked) {
+          const hasAttended = currentAgenda.some((a) => ["present", "medical", "od"].includes(String(a.status)));
+          const hasMissed = currentAgenda.some((a) => a.status === "absent");
+          if (hasAttended && hasMissed) nextDayStatus = "mixed";
+          else if (hasAttended) nextDayStatus = "attended";
+          else if (hasMissed) nextDayStatus = "missed";
+          else nextDayStatus = "off";
         }
-      });
+
+        state.setCache('calendar', {
+          ...state.calendar,
+          [monthStr]: {
+            ...existingMonthCache,
+            days: {
+              ...existingMonthCache.days,
+              [targetDateStr]: nextDayStatus,
+            },
+            details: {
+              ...(existingMonthCache.details || {}),
+              [targetDateStr]: nextDayDetails,
+            },
+          },
+        });
+      }
       
       // 3. Update Subject Logs Cache
       const updateSubjectLog = (cacheKey: string) => {
@@ -699,26 +1009,39 @@ export const TodayPage = () => {
       if (item.subject?.id) updateSubjectLog(item.subject.id);
 
       fetchStats();
-      window.dispatchEvent(new Event("attendance-updated"));
+      window.dispatchEvent(new CustomEvent("attendance-updated", { detail: { source: "today-page" } }));
     } catch (error) {
       console.error("Failed to mark attendance offline or error:", error);
       // Offline fallback relies on the global optimistic update we just fired above);
-      window.dispatchEvent(new Event("attendance-updated"));
+      window.dispatchEvent(new CustomEvent("attendance-updated", { detail: { source: "today-page" } }));
+    } finally {
+      inFlightMarksCountRef.current = Math.max(0, inFlightMarksCountRef.current - 1);
     }
   };
 
   const handleStatusClick = (item: AgendaItem, status: string) => {
-    // If clicking the currently active status, unmark it (void)
-    if (item.status === status) {
-      markAttendance(item, "clear");
+    const currentItem = agendaRef.current.find(a => a.id === item.id) || item;
+    const now = Date.now();
+    const lastClick = lastStatusClickRef.current[item.id];
+
+    // Debounce rapid repeat taps on the same status (prevents accidental toggling to clear on fast multi-click)
+    if (lastClick && lastClick.status === status && (now - lastClick.time) < 450) {
+      return;
+    }
+
+    lastStatusClickRef.current[item.id] = { status, time: now };
+
+    // If clicking the currently active status after deliberate delay, unmark it (void)
+    if (currentItem.status === status) {
+      markAttendance(currentItem, "clear");
       return;
     }
 
     if (status === "absent") {
-      setSelectedRemarkItem({ item, status });
-      setRemarkInput(item.remarks || "");
+      setSelectedRemarkItem({ item: currentItem, status });
+      setRemarkInput(currentItem.remarks || "");
     } else {
-      markAttendance(item, status);
+      markAttendance(currentItem, status);
     }
   };
 
@@ -800,7 +1123,10 @@ export const TodayPage = () => {
         holidayAssetSrc={isBirthday ? "/lottie/happy-birthday.json" : (activeEvent ? HOLIDAY_ASSETS[getHolidayAnimation(activeEvent).animType as AnimationType] : undefined)}
         hasClasses={agenda.some(item => !item.status)}
         onMarkOff={handleMarkFullDayOff}
-        onClose={() => setShowGreetingOverlay(false)}
+        onClose={() => {
+          setShowGreetingOverlay(false);
+          sessionStorage.setItem(`attendx_greeted_${targetDateStr}`, "true");
+        }}
       />
       
       {todayStatus?.nextEvent && !activeEvent && (
@@ -907,8 +1233,9 @@ export const TodayPage = () => {
             <div className="flex items-center justify-center gap-4 mt-3">
               <button 
                 onClick={() => {
-                  const prev = new Date(targetDateStr);
-                  prev.setDate(prev.getDate() - 1);
+                  hapticSelection();
+                  const [y, m, d] = targetDateStr.split("-").map(Number);
+                  const prev = new Date(y, (m || 1) - 1, (d || 1) - 1);
                   const dateStr = `${prev.getFullYear()}-${String(prev.getMonth()+1).padStart(2,'0')}-${String(prev.getDate()).padStart(2,'0')}`;
                   navigate(`/today?date=${dateStr}`);
                 }}
@@ -918,13 +1245,17 @@ export const TodayPage = () => {
               </button>
               
               <p className="text-sm font-semibold text-muted-foreground min-w-[140px]">
-                {new Date(targetDateStr).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+                {(() => {
+                  const [y, m, d] = targetDateStr.split("-").map(Number);
+                  return new Date(y, (m || 1) - 1, d || 1).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+                })()}
               </p>
               
               <button 
                 onClick={() => {
-                  const next = new Date(targetDateStr);
-                  next.setDate(next.getDate() + 1);
+                  hapticSelection();
+                  const [y, m, d] = targetDateStr.split("-").map(Number);
+                  const next = new Date(y, (m || 1) - 1, (d || 1) + 1);
                   const dateStr = `${next.getFullYear()}-${String(next.getMonth()+1).padStart(2,'0')}-${String(next.getDate()).padStart(2,'0')}`;
                   navigate(`/today?date=${dateStr}`);
                 }}
@@ -1004,30 +1335,57 @@ export const TodayPage = () => {
         </div>
       )}
 
-      {onboardingStatus && (!onboardingStatus.hasSemester || !onboardingStatus.hasSubjects || !onboardingStatus.hasTimetable || !onboardingStatus.hasCalendar || !onboardingStatus.hasAttendance || !hasUsedVoiceMode || !hasUsedPredictive || !hasUsedPeerSync) && (
+      {/* Semester Completed Banner */}
+      {activeSemester && (() => {
+        const end = new Date(activeSemester.endDate);
+        end.setHours(23, 59, 59, 999);
+        return new Date() > end;
+      })() && (
+        <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-500 flex items-center justify-center shrink-0">
+              <GraduationCap className="w-5 h-5" />
+            </div>
+            <div>
+              <h4 className="text-sm font-bold text-foreground">
+                {activeSemester.name} has concluded!
+              </h4>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Ready for the new semester? Tap to reset app data and transition smoothly.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => setIsTransitionModalOpen(true)}
+            className="px-4 py-2 rounded-xl bg-primary text-primary-foreground text-xs font-bold transition-all hover:bg-primary/90 shadow-sm shrink-0 cursor-pointer"
+          >
+            Start Next Semester
+          </button>
+        </div>
+      )}
+
+      {onboardingStatus && !onboardingStatus.onboardingDismissed && (!onboardingStatus.hasSemester || !onboardingStatus.hasSubjects || !onboardingStatus.hasTimetable || !onboardingStatus.hasCalendar || !onboardingStatus.hasAttendance || !hasUsedVoiceMode || !hasUsedPredictive || !hasUsedPeerSync) && (
         <div className="flex flex-col items-center justify-center py-6">
           <OnboardingChecklist 
             title="Getting Started"
+            onDismiss={() => markOnboardingStep("dismiss")}
             steps={[
-              { id: 1, title: "Create an active semester", isCompleted: onboardingStatus.hasSemester, onClick: () => !onboardingStatus.hasSemester ? setIsCreateSemesterOpen(true) : navigate("/settings") },
+              { id: 1, title: "Create an active semester", isCompleted: onboardingStatus.hasSemester, onClick: () => !onboardingStatus.hasSemester ? setIsCreateSemesterOpen(true) : navigate("/semester") },
               { id: 2, title: "Add subjects and set targets", isCompleted: onboardingStatus.hasSubjects, onClick: () => navigate("/subjects") },
               { id: 3, title: "Set up weekly timetable", isCompleted: onboardingStatus.hasTimetable, onClick: () => navigate("/timetable") },
               { id: 4, title: "Sync your academic calendar", isCompleted: onboardingStatus.hasCalendar, onClick: () => navigate("/calendar") },
               { id: 5, title: "Log your first attendance", isCompleted: onboardingStatus.hasAttendance, onClick: () => navigate("/today") },
               { id: 6, title: "Explore Hands-Free Voice Mode", isCompleted: hasUsedVoiceMode, onClick: () => {
-                  localStorage.setItem("onboarding_voice_mode", "true");
-                  setHasUsedVoiceMode(true);
+                  markOnboardingStep("voice_mode");
                   window.dispatchEvent(new Event("open-voice-mode"));
               } },
               { id: 7, title: "Unlock Predictive Analytics", isCompleted: hasUsedPredictive, onClick: () => {
-                  localStorage.setItem("onboarding_predictive", "true");
-                  setHasUsedPredictive(true);
+                  markOnboardingStep("predictive");
                   navigate("/predictive");
               } },
               { id: 8, title: "Mirror Timetable with Peer Sync", isCompleted: hasUsedPeerSync, onClick: () => {
-                  localStorage.setItem("onboarding_peer_sync", "true");
-                  setHasUsedPeerSync(true);
-                  navigate("/settings");
+                  markOnboardingStep("peer_sync");
+                  navigate("/settings/peer-sync");
               } }
             ]} 
           />
@@ -1043,11 +1401,44 @@ export const TodayPage = () => {
         </div>
       )}
 
+      {!isLoading && !activeSemester && (
+        <div className="bg-primary/10 border border-primary/30 backdrop-blur-md rounded-2xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm">
+          <div>
+            <h3 className="text-base font-bold text-foreground">No Active Semester</h3>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Set up your semester start and end dates to activate daily schedule, events, and attendance tracking.
+            </p>
+          </div>
+          <button
+            onClick={() => setIsCreateSemesterOpen(true)}
+            className="inline-flex items-center justify-center gap-2 bg-primary hover:bg-primary/90 text-primary-foreground px-5 py-2.5 rounded-xl text-xs font-bold transition-all shadow-lg shadow-primary/25 shrink-0 cursor-pointer"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Create Active Semester</span>
+          </button>
+        </div>
+      )}
+
       {isLoading && !dayCache ? (
         <div className="space-y-4 animate-pulse">
            {[1, 2, 3].map(i => (
              <div key={i} className="h-28 bg-[var(--ts-surface)] rounded-xl border border-[var(--ts-border)] w-full"></div>
            ))}
+        </div>
+      ) : !activeSemester ? (
+        <div className="text-center py-12 bg-card/60 border border-border/50 backdrop-blur-md rounded-2xl shadow-sm px-4">
+          <GraduationCap className="w-12 h-12 text-primary mx-auto mb-4 opacity-80" />
+          <h3 className="text-lg font-bold text-foreground mb-2">No Active Semester</h3>
+          <p className="text-muted-foreground max-w-sm mx-auto text-sm mb-5">
+            Please create and activate a semester first to start managing your subjects, timetable, and daily attendance.
+          </p>
+          <button
+            onClick={() => setIsCreateSemesterOpen(true)}
+            className="inline-flex items-center gap-2 bg-primary hover:bg-primary/90 text-primary-foreground px-6 py-3 rounded-xl text-xs font-bold transition-all shadow-md shadow-primary/20 cursor-pointer"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Create Active Semester</span>
+          </button>
         </div>
       ) : agenda.length === 0 ? (
         <div className="text-center py-12 bg-card/60 border border-border/50 backdrop-blur-md rounded-2xl shadow-sm">
@@ -1097,7 +1488,7 @@ export const TodayPage = () => {
               <div className="flex flex-nowrap items-center gap-2 self-end md:self-auto shrink-0">
                 <button
                   onClick={() => handleStatusClick(item, "present")}
-                  className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                  className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold cursor-pointer transition-[transform,opacity] duration-75 active:scale-95 ${
                     (item.status === "present" || item.status === "medical" || item.status === "od")
                       ? "bg-emerald-500 text-white font-bold shadow-md shadow-emerald-500/20"
                       : "bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 hover:text-emerald-600"
@@ -1108,7 +1499,7 @@ export const TodayPage = () => {
                 </button>
                 <button
                   onClick={() => handleStatusClick(item, "absent")}
-                  className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                  className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold cursor-pointer transition-[transform,opacity] duration-75 active:scale-95 ${
                     item.status === "absent"
                       ? "bg-rose-500 text-white font-bold shadow-md shadow-rose-500/20"
                       : "bg-rose-500/10 text-rose-500 hover:bg-rose-500/20 hover:text-rose-600"
@@ -1119,7 +1510,7 @@ export const TodayPage = () => {
                 </button>
                 <button
                   onClick={() => handleStatusClick(item, "off")}
-                  className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                  className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold cursor-pointer transition-[transform,opacity] duration-75 active:scale-95 ${
                     item.status === "off"
                       ? "bg-amber-500 text-white font-bold shadow-md shadow-amber-500/20"
                       : "bg-amber-500/10 text-amber-500 hover:bg-amber-500/20 hover:text-amber-600"
@@ -1244,7 +1635,26 @@ export const TodayPage = () => {
       <CreateSemesterModal
         isOpen={isCreateSemesterOpen}
         onClose={() => setIsCreateSemesterOpen(false)}
-        onSuccess={fetchData}
+        onSuccess={() => {
+          fetchData();
+          fetchStats();
+          window.dispatchEvent(new Event("attendance-updated"));
+        }}
+      />
+
+      <SemesterTransitionModal
+        isOpen={isTransitionModalOpen}
+        onClose={() => {
+          setIsTransitionModalOpen(false);
+          if (activeSemester?.id) {
+            sessionStorage.setItem(`attendx_dismissed_transition_${activeSemester.id}`, "true");
+          }
+        }}
+        onSuccess={() => {
+          fetchData();
+          fetchStats();
+        }}
+        initialStatus={transitionStatus}
       />
     </div>
     </div>

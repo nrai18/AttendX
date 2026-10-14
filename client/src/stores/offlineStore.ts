@@ -82,7 +82,7 @@ export const useOfflineStore = create<OfflineState>()(
           }
           
           if (successCount > 0) {
-            toast.success(`Successfully synced ${successCount} offline actions!`);
+            // Background sync completed silently
           }
           
           if (conflictCount > 0) {

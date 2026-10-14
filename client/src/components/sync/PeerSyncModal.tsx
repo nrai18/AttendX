@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { api } from "../../lib/api";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
@@ -22,7 +23,7 @@ export const PeerSyncModal = () => {
   const [reviewData, setReviewData] = useState<any>(null);
 
   // Transfer config state
-  const [contextType, setContextType] = useState<ContextType>("SCHEDULE_STATUS");
+  const [contextType, setContextType] = useState<ContextType>("FULL_EXPORT");
   const [datePreset, setDatePreset] = useState<DateRangePreset>("Full Semester");
   const [customStartDate, setCustomStartDate] = useState<string>(format(new Date(), "yyyy-MM-dd"));
   const [customEndDate, setCustomEndDate] = useState<string>(format(new Date(), "yyyy-MM-dd"));
@@ -35,6 +36,11 @@ export const PeerSyncModal = () => {
   const isSemesterLoading = useAttendanceStore((state) => state.isLoading);
 
   const [remainingTime, setRemainingTime] = useState<number>(0);
+
+  useEffect(() => {
+    localStorage.setItem("onboarding_peer_sync", "true");
+    api.patch("/users/onboarding-status", { step: "peer_sync" }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (!expiresAt || !activeCode) {
@@ -99,7 +105,7 @@ export const PeerSyncModal = () => {
       });
       // FE-L04 FIX: Properly handle 0 TTL by using explicit null check rather than falsy || operator
       setActiveCode(String(res.data.code), res.data.expiresIn != null ? Number(res.data.expiresIn) : 300);
-      toast.success("Code generated securely!");
+      // Active code displayed directly in modal UI
     } catch (error: any) {
       console.log("Error caught in PeerSyncModal:", error);
       const errRes = error.response;
@@ -110,7 +116,7 @@ export const PeerSyncModal = () => {
         if (isNaN(recoveredExp) || recoveredExp <= 0) recoveredExp = 300; 
         
         setActiveCode(recoveredCode, recoveredExp);
-        toast.success("Recovered your active transfer code!");
+        // Recovered code displayed directly in modal UI
       } else {
         toast.error(errRes?.data?.message || "Failed to generate code.");
       }
@@ -131,7 +137,7 @@ export const PeerSyncModal = () => {
     } catch (error: any) {
       const msg = error.response?.data?.error || error.response?.data?.message || "Failed to retrieve schedule.";
       setSyncError(msg);
-      toast.error(msg);
+      setSyncError(msg);
     } finally {
       setLoading(false);
     }
@@ -143,13 +149,19 @@ export const PeerSyncModal = () => {
     try {
       await api.post(`/timetable/import/${activeSemesterId}`, reviewData.payload);
       await useAttendanceStore.getState().fetchStats();
-      
+
+      // Fire push notification to the sender AFTER import succeeds (single, deduplicated).
+      // The _syncToken encodes sender identity + retriever avatar for the notification image.
+      if (reviewData._syncToken) {
+        api.post("/transfer/confirm-sync", { _syncToken: reviewData._syncToken }).catch(function() {});
+      }
+
       toast.success("Schedule mirrored successfully!");
       setInputCode("");
       setReviewData(null);
     } catch (error: any) {
       const msg = error.response?.data?.error || error.response?.data?.message || "Failed to import schedule.";
-      toast.error(msg);
+      setSyncError(msg);
       // FE-H08 FIX: Clear reviewData on failure to prevent duplicate import spamming
       setReviewData(null);
     } finally {
@@ -158,7 +170,7 @@ export const PeerSyncModal = () => {
   };
 
   return (
-    <div className="bg-[#050508] text-foreground p-6 rounded-2xl w-full max-w-md mx-auto shadow-xl border border-border">
+    <div className="bg-card dark:bg-[#0E0E12] text-foreground p-6 rounded-3xl w-full max-w-md mx-auto shadow-xl border border-border/70">
       <div className="flex bg-muted rounded-lg p-1 mb-6">
         <button
           className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${mode === "RECEIVE" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
@@ -210,9 +222,9 @@ export const PeerSyncModal = () => {
               </div>
             )}
 
-            {showDatePicker && (
-              <div className="theme-nova-green fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-                <div className="bg-white dark:bg-neutral-950 rounded-3xl shadow-xl border border-neutral-200 dark:border-neutral-800 max-w-[95vw] overflow-hidden">
+            {showDatePicker && createPortal(
+              <div className="theme-nova-green fixed inset-0 z-[110] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+                <div className="bg-card dark:bg-[#0E0E12] rounded-3xl shadow-2xl border border-border max-w-[95vw] overflow-hidden">
                   <ScheduleDate
                     onApply={(range) => {
                       if (range.start && range.end) {
@@ -225,7 +237,8 @@ export const PeerSyncModal = () => {
                     onCancel={() => setShowDatePicker(false)}
                   />
                 </div>
-              </div>
+              </div>,
+              document.body
             )}
           </div>
 
@@ -236,20 +249,25 @@ export const PeerSyncModal = () => {
               <div className="text-5xl font-mono tracking-[0.3em] font-bold text-foreground mb-6">
                 {activeCode.substring(0, 3)} {activeCode.substring(3, 6)}
               </div>
-              <div className="w-full bg-muted-foreground/10 h-1 rounded-full overflow-hidden mb-4 relative">
+              <div className="w-full bg-muted-foreground/10 h-1.5 rounded-full overflow-hidden mb-4 relative">
                 <div 
-                  className="bg-primary h-full transition-all duration-1000 ease-linear"
+                  className="bg-primary h-full transition-all duration-1000 ease-linear rounded-full"
                   style={{ width: `${(remainingTime / 300) * 100}%` }}
                 />
               </div>
-              <p className="text-sm text-primary mb-6">Changes in {remainingTime}s</p>
+              <div className="flex items-center justify-center gap-2 mb-6">
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary/10 border border-primary/25 text-xs font-mono font-bold text-primary tabular-nums">
+                  <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+                  Code expires in {remainingTime}s
+                </span>
+              </div>
             </div>
           )}
 
           <div className="flex gap-2">
             {activeCode && (
               <button 
-                onClick={() => { clearActiveCode(); toast("Code cancelled."); }}
+                onClick={() => { clearActiveCode(); }}
                 className="bg-muted hover:bg-muted/80 text-foreground py-3 px-4 rounded-lg font-medium transition-all"
               >
                 Cancel
@@ -297,28 +315,33 @@ export const PeerSyncModal = () => {
                 )}
               </div>
 
-              <div className="flex gap-2">
+              <div className="flex gap-2 items-center w-full min-w-0">
                 <button 
                   onClick={() => setReviewData(null)}
                   disabled={loading}
-                  className="bg-muted hover:bg-muted/80 text-foreground py-3 px-4 rounded-lg font-medium transition-all"
+                  className="bg-muted hover:bg-muted/80 text-foreground h-[48px] px-4 rounded-2xl font-bold text-sm transition-all shrink-0 cursor-pointer"
                 >
                   Cancel
                 </button>
-                <div className="flex-1">
+                <div className="flex-1 min-w-0 w-full">
                   <RunActionButton 
+                    fullWidth
                     action={handleConfirmSync}
+                    onCancel={() => {
+                      setReviewData(null);
+                      setLoading(false);
+                    }}
                     disabled={loading}
                     idleLabel="Confirm & Sync"
-                    doneLabel="Mirrored Successfully"
-                    idleIcon={<RefreshCw className="h-5 w-5 fill-current text-primary-foreground opacity-90" />}
+                    doneLabel="Mirrored"
+                    subLabel="Mirroring"
+                    idleIcon={<RefreshCw className="h-4 w-4 text-primary-foreground opacity-90" />}
                     steps={[
-                      { id: 1, label: 'Securing Connection', icon: ShieldCheck },
+                      { id: 1, label: 'Securing', icon: ShieldCheck },
                       { id: 2, label: 'Fetching Data', icon: DownloadCloud },
                       { id: 3, label: 'Merging Records', icon: Database },
                       { id: 4, label: 'Finalizing', icon: CheckCircle2 }
                     ]}
-                    widths={{ idle: 220, running: 340, done: 220 }}
                   />
                 </div>
               </div>

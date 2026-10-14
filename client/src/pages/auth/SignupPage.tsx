@@ -9,6 +9,7 @@ import { api, API_BASE_URL } from "../../lib/api";
 import { useAuthStore } from "../../stores/authStore";
 import { Capacitor } from "@capacitor/core";
 import { GoogleSignIn } from "@capawesome/capacitor-google-sign-in";
+import { hapticMedium, hapticSuccess, hapticError } from "../../utils/haptics";
 
 export const SignupPage: React.FC = () => {
   const navigate = useNavigate();
@@ -22,12 +23,13 @@ export const SignupPage: React.FC = () => {
     // Initialize GoogleSignIn on native platforms
     if (Capacitor.isNativePlatform()) {
       GoogleSignIn.initialize({
-        clientId: useConfigStore.getState().googleClientId || 'YOUR_WEB_CLIENT_ID_HERE.apps.googleusercontent.com', 
+        clientId: useConfigStore.getState().googleClientId || import.meta.env.VITE_GOOGLE_CLIENT_ID || '729387616931-qlajf1dss2qi1cta5pvc3dos03fh4coi.apps.googleusercontent.com', 
       }).catch(console.error);
     }
   }, []);
 
   const handleGoogleLogin = async () => {
+    hapticMedium();
     if (Capacitor.isNativePlatform()) {
       try {
         setLoading(true);
@@ -40,9 +42,11 @@ export const SignupPage: React.FC = () => {
           headers: loc ? { 'x-attendx-lat': loc.lat, 'x-attendx-lon': loc.lon } : {}
         });
         
+        hapticSuccess();
         setAuth(res.data.user, res.data.accessToken, res.data.refreshToken);
         navigate("/today");
       } catch (err: any) {
+        hapticError();
         console.error("Native Google Login failed:", err);
         if (err.message && !err.message.toLowerCase().includes("canceled")) {
            setError("Google Sign-In failed.");

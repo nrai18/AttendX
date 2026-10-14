@@ -2,7 +2,10 @@ import { registerPlugin, Capacitor } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
 
 export interface RingerPlugin {
-  setRingerMode(options: { mode: 'silent' | 'vibrate' | 'normal' }): Promise<void>;
+  setRingerMode(options: { mode: 'silent' | 'vibrate' | 'normal'; unmuteEpochMs?: number; className?: string }): Promise<void>;
+  checkDndPermission(): Promise<{ granted: boolean }>;
+  requestDndPermission(): Promise<{ opened: boolean }>;
+  testMuteNotification(): Promise<{ success: boolean }>;
 }
 
 const RingerMode = registerPlugin<RingerPlugin>('RingerMode');
@@ -29,6 +32,36 @@ export const getScheduledUnmuteTime = (): number | null => {
     return isNaN(num) ? null : num;
   } catch (e) {
     return null;
+  }
+};
+
+export const checkDndPermission = async (): Promise<boolean> => {
+  if (!Capacitor.isNativePlatform()) return false;
+  try {
+    const res = await RingerMode.checkDndPermission();
+    return !!res?.granted;
+  } catch (e) {
+    return false;
+  }
+};
+
+export const requestDndPermission = async (): Promise<boolean> => {
+  if (!Capacitor.isNativePlatform()) return false;
+  try {
+    const res = await RingerMode.requestDndPermission();
+    return !!res?.opened;
+  } catch (e) {
+    return false;
+  }
+};
+
+export const testMuteNotification = async (): Promise<boolean> => {
+  if (!Capacitor.isNativePlatform()) return false;
+  try {
+    const res = await RingerMode.testMuteNotification();
+    return !!res?.success;
+  } catch (e) {
+    return false;
   }
 };
 
@@ -59,10 +92,10 @@ export const checkAndReconcileRinger = async (pinnedNotificationId: number = 700
   return false;
 };
 
-export const mutePhone = async (unmuteEpochMs?: number): Promise<boolean> => {
+export const mutePhone = async (unmuteEpochMs?: number, className?: string): Promise<boolean> => {
   if (!Capacitor.isNativePlatform()) return false;
   try {
-    await RingerMode.setRingerMode({ mode: 'silent' });
+    await RingerMode.setRingerMode({ mode: 'silent', unmuteEpochMs, className });
     if (unmuteEpochMs) {
       setScheduledUnmuteTime(unmuteEpochMs);
     }
@@ -76,12 +109,14 @@ export const mutePhone = async (unmuteEpochMs?: number): Promise<boolean> => {
         await LocalNotifications.schedule({
           notifications: [{
             id: PERMISSION_WARNING_NOTIF_ID,
-            title: "Action Required: Permission Missing",
-            body: "AttendX needs 'Do Not Disturb' access to mute your phone for classes. Please enable it in your phone Settings.",
+            title: "Action Required: DND Access Missing",
+            body: "Tap here to open Do Not Disturb settings and allow AttendX to mute your phone during classes.",
             summaryText: "System Warning",
-            smallIcon: "ic_stat_adobe",
+            smallIcon: "ic_stat_attendx",
+            largeIcon: "attendx_notification_icon",
             iconColor: "#F59E0B",
             channelId: 'system_alerts',
+            extra: { type: 'dnd_permission', route: '/settings' },
             schedule: { at: new Date(Date.now() + 1000), allowWhileIdle: true }
           }]
         });
@@ -104,4 +139,3 @@ export const unmutePhone = async (): Promise<boolean> => {
     return false;
   }
 };
-

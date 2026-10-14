@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "../../lib/utils";
 
-export const VolumetricRays = ({ className }: { className?: string }) => {
+export const VolumetricRays = ({ className, paused = false }: { className?: string; paused?: boolean }) => {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
   if (!mounted) return null;
@@ -21,8 +21,9 @@ export const VolumetricRays = ({ className }: { className?: string }) => {
       >
         {/* Primary bold rays */}
         <div 
-          className="absolute inset-[-150%] origin-center animate-[spin_40s_linear_infinite]"
+          className="absolute inset-[-150%] origin-center animate-[spin_40s_linear_infinite] will-change-transform"
           style={{
+            animationPlayState: paused ? "paused" : "running",
             backgroundImage: `repeating-linear-gradient(
               45deg,
               transparent 0%,
@@ -42,8 +43,9 @@ export const VolumetricRays = ({ className }: { className?: string }) => {
         
         {/* Secondary contrasting rays */}
         <div 
-          className="absolute inset-[-150%] origin-center animate-[spin_60s_linear_infinite_reverse]"
+          className="absolute inset-[-150%] origin-center animate-[spin_60s_linear_infinite_reverse] will-change-transform"
           style={{
+            animationPlayState: paused ? "paused" : "running",
             backgroundImage: `repeating-linear-gradient(
               -45deg,
               transparent 0%,

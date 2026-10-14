@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { useAuthStore } from "../../stores/authStore";
 import { Stepper } from "../ui/stepper";
 import { useScrollLock } from "../../hooks/useScrollLock";
+import { hapticMedium, hapticSuccess, hapticError, hapticSelection } from "../../utils/haptics";
 
 interface SubjectModalProps {
   isOpen: boolean;
@@ -55,11 +56,13 @@ export const SubjectModal: React.FC<SubjectModalProps> = ({ isOpen, onClose, onS
     e.preventDefault();
     
     if (!name.trim()) {
+      hapticError();
       toast.error("Subject name is required");
       return;
     }
 
     try {
+      hapticMedium();
       setIsSubmitting(true);
       const payload = {
         name: name.trim(),
@@ -72,9 +75,13 @@ export const SubjectModal: React.FC<SubjectModalProps> = ({ isOpen, onClose, onS
       if (subject?.id) {
         await api.patch(`/subjects/${subject.id}`, payload);
         toast.success("Subject updated successfully");
+        hapticSuccess();
+        hapticSuccess();
       } else {
         await api.post("/subjects", payload);
-        toast.success("Subject created successfully");
+        toast.success("Subject added successfully");
+        hapticSuccess();
+        hapticSuccess();
       }
 
       // Notify other components that attendance-related data changed
@@ -83,6 +90,7 @@ export const SubjectModal: React.FC<SubjectModalProps> = ({ isOpen, onClose, onS
       onSuccess();
       onClose();
     } catch (error: any) {
+      hapticError();
       console.error("Failed to save subject:", error);
       toast.error(error.response?.data?.error || "Failed to save subject");
     } finally {
@@ -96,10 +104,10 @@ export const SubjectModal: React.FC<SubjectModalProps> = ({ isOpen, onClose, onS
     if (isOpen) {
       document.body.style.overflow = 'hidden';
     } else {
-      document.body.style.overflow = 'unset';
+      document.body.style.overflow = '';
     }
     return () => {
-      document.body.style.overflow = 'unset';
+      document.body.style.overflow = '';
     };
   }, [isOpen]);
 
@@ -206,7 +214,10 @@ export const SubjectModal: React.FC<SubjectModalProps> = ({ isOpen, onClose, onS
                     <button
                       key={color}
                       type="button"
-                      onClick={() => setColorHex(color)}
+                      onClick={() => {
+                        hapticSelection();
+                        setColorHex(color);
+                      }}
                       className="relative w-10 h-10 rounded-full transition-transform hover:scale-110 focus:outline-none"
                       style={{ backgroundColor: color }}
                     >

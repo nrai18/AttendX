@@ -1,4 +1,11 @@
 {
+  "redirects": [
+    {
+      "source": "/download",
+      "destination": "https://github.com/nrai18/AttendX/releases/latest/download/AttendX.apk",
+      "permanent": false
+    }
+  ],
   "rewrites": [
     {
       "source": "/api/:path*",

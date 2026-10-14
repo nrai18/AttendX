@@ -43,6 +43,27 @@
             android:grantUriPermissions="true">
             <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/file_paths" />
         </provider>
+
+        <!-- Native Auto-Unmute & Pinned Class Notification Receiver -->
+        <receiver
+            android:name=".RingerAlarmReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.attendx.app.ACTION_AUTO_UNMUTE" />
+                <action android:name="com.attendx.app.ACTION_MANUAL_UNMUTE" />
+                <action android:name="com.attendx.app.ACTION_NOTIFICATION_DISMISSED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Native Boot Receiver to reconcile ringer and pinned notification on reboot -->
+        <receiver
+            android:name=".RingerBootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+            </intent-filter>
+        </receiver>
     </application>
 
     <!-- Permissions -->
@@ -56,6 +77,8 @@
     <!-- Push Notifications & Auto Silent -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
+    <!-- Required by RingerAlarmReceiver WakeLock to prevent process freeze mid-unmute -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
     
     <!-- Geolocation -->
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
@@ -64,4 +87,10 @@
     <uses-feature android:name="android.hardware.location.gps" android:required="false" />
     
     <!-- Needed to trigger silent mode (DND) automatically -->
+    <!-- Android 12+ (API 31): required to schedule exact alarms that fire on time -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <!-- Android 13+ (API 33): alternative exact alarm permission for always-exact alarms -->
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <!-- Allows re-scheduling the unmute alarm after a device reboot -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 </manifest>

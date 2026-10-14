@@ -1,7 +1,9 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, History } from "lucide-react";
 import { useHardwareBack } from "../../hooks/useHardwareBack";
+import { useScrollLock } from "../../hooks/useScrollLock";
 
 export interface ChangelogItem {
   icon: string;
@@ -30,26 +32,32 @@ export const ChangelogModal = ({
   releases?: Release[];
 }) => {
   useHardwareBack(isOpen, onClose);
+  useScrollLock(isOpen);
 
-  return (
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  if (!mounted) return null;
+
+  return createPortal(
     <AnimatePresence>
       {isOpen && (
-        <div className="fixed inset-0 z-[100] flex flex-col justify-end md:justify-center items-center bg-white/60 dark:bg-black/60 backdrop-blur-sm p-0 md:p-4">
+        <div className="theme-nova-green fixed inset-0 z-[100] flex flex-col justify-end md:justify-center items-center p-0 md:p-4 touch-none">
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="absolute inset-0 z-0"
+            transition={{ duration: 0.16, ease: "easeOut" }}
+            className="fixed inset-0 z-0 bg-white/60 dark:bg-black/60 backdrop-blur-sm will-change-[opacity]"
             onClick={onClose}
           />
           <motion.div
-            initial={{ y: "100%", opacity: 0, scale: 0.95 }}
+            initial={{ y: 28, opacity: 0, scale: 0.97 }}
             animate={{ y: 0, opacity: 1, scale: 1 }}
-            exit={{ y: "100%", opacity: 0, scale: 0.95 }}
-            transition={{ type: "spring", damping: 25, stiffness: 300 }}
-            className="bg-white/40 dark:bg-black/60 backdrop-blur-3xl w-full md:w-full max-w-lg md:rounded-2xl rounded-t-2xl shadow-xl z-10 overflow-hidden flex flex-col max-h-[90vh] border border-border"
+            exit={{ y: 24, opacity: 0, scale: 0.97 }}
+            transition={{ type: "spring", damping: 28, stiffness: 380, mass: 0.8 }}
+            className="bg-white/40 dark:bg-black/60 backdrop-blur-3xl w-full md:w-full max-w-lg md:rounded-2xl rounded-t-2xl shadow-2xl z-10 overflow-hidden flex flex-col max-h-[90vh] border border-border pointer-events-auto will-change-transform"
           >
-            <div className="p-4 md:p-6 border-b border-border flex justify-between items-center bg-muted/30 sticky top-0 z-20">
+            <div className="p-4 md:p-6 border-b border-border flex justify-between items-center bg-muted/30 shrink-0 z-20">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center border border-primary/20">
                   <History className="w-5 h-5 text-primary" />
@@ -61,13 +69,13 @@ export const ChangelogModal = ({
               </div>
               <button
                 onClick={onClose}
-                className="w-8 h-8 rounded-full bg-muted/50 hover:bg-muted flex items-center justify-center transition-colors text-muted-foreground hover:text-foreground"
+                className="w-8 h-8 rounded-full bg-muted/50 hover:bg-muted flex items-center justify-center transition-colors text-muted-foreground hover:text-foreground cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="p-4 md:p-6 overflow-y-auto space-y-8 pb-20 bg-background text-foreground">
+            <div className="p-4 md:p-6 overflow-y-auto space-y-8 pb-20 bg-background text-foreground overscroll-contain">
               {releases.length === 0 && (
                  <div className="text-center py-8 text-muted-foreground text-sm">
                    Loading changelog...
@@ -112,6 +120,7 @@ export const ChangelogModal = ({
           </motion.div>
         </div>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body
   );
 };

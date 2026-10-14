@@ -126,10 +126,15 @@ model User {
   role             UserRole  @default(student)
   department       String?
   batch            String? // e.g. "2022-2026"
-  targetAttendance Int
+  targetAttendance Int       @default(75)
   theme            Theme     @default(system)
   gender           String?   // "male" | "female" | "other"
   birthday         DateTime?
+  lastBirthdayEmailSentAt DateTime? // Tracks when birthday email was last sent
+  hasUsedVoiceMode        Boolean   @default(false)
+  hasUsedPredictive       Boolean   @default(false)
+  hasUsedPeerSync         Boolean   @default(false)
+  onboardingDismissed     Boolean   @default(false)
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
   deletedAt        DateTime?

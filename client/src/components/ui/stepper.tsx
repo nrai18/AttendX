@@ -3,6 +3,7 @@
 import * as React from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { HiMinus, HiPlus } from "react-icons/hi";
+import { hapticSelection } from "../../utils/haptics";
 
 export interface StepperProps {
   value?: number;
@@ -79,6 +80,7 @@ export function Stepper({
   const step = (dir: number) => {
     const next = Math.min(max, Math.max(min, current + dir));
     if (next === current) return;
+    hapticSelection();
     setDirection(dir);
     if (!isControlled) setInternal(next);
     onChange?.(next);

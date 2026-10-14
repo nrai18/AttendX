@@ -1,10 +1,9 @@
 import { create } from "zustand";
 import { capacitorStorage } from "./capacitorStorage";
 import { persist, createJSONStorage } from "zustand/middleware";
-import { Preferences } from "@capacitor/preferences";
 import { api } from "../lib/api";
 import { useAuthStore } from "./authStore";
-import { useCacheStore } from "./cacheStore";
+import { useCacheStore, registerCacheClearListener } from "./cacheStore";
 
 export interface SubjectStat {
   id: string;
@@ -53,201 +52,303 @@ interface AttendanceState {
   isLoading: boolean;
   simulationBounds: { startDate: string, endDate: string, missingBoundaries: boolean, hasCommencement: boolean, hasLastDay: boolean } | null;
   fetchStats: (background?: boolean) => Promise<void>;
+  invalidateInFlightStats: () => void;
+  resetAttendanceStore: () => void;
   updateSimulationBoundaries: (startDate: string, endDate: string) => Promise<void>;
 }
 
+let fetchStatsSeq = 0;
+let inFlightStatsPromise: Promise<void> | null = null;
+let lastStatsCompletedAt = 0;
 
+if (typeof window !== "undefined") {
+  window.addEventListener("attendance-updated", () => {
+    fetchStatsSeq += 1;
+    inFlightStatsPromise = null;
+    lastStatsCompletedAt = 0;
+  });
+}
 
 export const useAttendanceStore = create<AttendanceState>()(
   persist(
     (set, get) => ({
-  overallPercentage: 0,
-  targetPercentage: 75,
-  totalAttended: 0,
-  totalClasses: 0,
-  subjects: [],
-  historyLogs: [],
-  events: [],
-  hasActiveSemester: false,
-  activeSemesterId: null,
-  isLoading: false,
-  simulationBounds: null,
-  fetchStats: async (background = false) => {
-    // Only show loading if we don't have any cached subjects
-    if (!background && get().subjects.length === 0) set({ isLoading: true });
-    try {
-      const user = useAuthStore.getState().user;
-      const userTarget = user?.targetAttendance || 75;
-
-      const activeSemRes = await api.get("/semesters/active");
-      if (!activeSemRes.data) {
-        set({ 
-          overallPercentage: 0, 
-          targetPercentage: userTarget, 
+      overallPercentage: 0,
+      targetPercentage: 75,
+      totalAttended: 0,
+      totalClasses: 0,
+      subjects: [],
+      historyLogs: [],
+      events: [],
+      hasActiveSemester: false,
+      activeSemesterId: null,
+      isLoading: false,
+      simulationBounds: null,
+      invalidateInFlightStats: () => {
+        fetchStatsSeq += 1;
+        inFlightStatsPromise = null;
+        lastStatsCompletedAt = 0;
+      },
+      resetAttendanceStore: () => {
+        fetchStatsSeq += 1;
+        inFlightStatsPromise = null;
+        lastStatsCompletedAt = 0;
+        const userTarget = useAuthStore.getState().user?.targetAttendance || 75;
+        set({
+          overallPercentage: 0,
+          targetPercentage: userTarget,
           totalAttended: 0,
           totalClasses: 0,
           subjects: [],
           historyLogs: [],
           events: [],
-          hasActiveSemester: false, 
-          activeSemesterId: null, 
-          isLoading: false 
+          hasActiveSemester: false,
+          activeSemesterId: null,
+          simulationBounds: null,
+          isLoading: false,
         });
-        return;
-      }
-
-      // Run independent queries in parallel
-      const [statsRes, logsRes, eventsRes, timetableRes] = await Promise.allSettled([
-        api.get(`/attendance/stats?semesterId=${activeSemRes.data.id}`),
-        api.get("/attendance/logs"),
-        api.get(`/events?semesterId=${activeSemRes.data.id}`),
-        api.get(`/timetable/${activeSemRes.data.id}`)
-      ]);
-      
-      // Inject timetable into cacheStore silently so the Timetable page works completely offline even if unvisited
-      if (timetableRes.status === 'fulfilled') {
-        const slots = Array.isArray(timetableRes.value.data) ? timetableRes.value.data : [];
-        const normalizedSlots = slots.map((s: any) => ({
-          ...s,
-          startTime: s.startTime.slice(0, 5),
-          endTime: s.endTime.slice(0, 5)
-        }));
-        let subjectsToCache = [];
-        if (statsRes.status === 'fulfilled') {
-           const rSubs = Array.isArray(statsRes.value.data) ? statsRes.value.data : (statsRes.value.data?.subjects || []);
-           subjectsToCache = rSubs;
+      },
+      fetchStats: async (background = false) => {
+        if (inFlightStatsPromise) {
+          return inFlightStatsPromise;
         }
-        useCacheStore.getState().setCache('timetable', {
-          ...useCacheStore.getState().timetable,
-          activeSemester: activeSemRes.data,
-          subjects: subjectsToCache,
-          slots: normalizedSlots
-        });
-      }
-
-      // 1. Process Subject Stats
-      let rawSubjects = get().subjects || [];
-      let simulationBounds = get().simulationBounds || null;
-      if (statsRes.status === 'fulfilled') {
-        if (Array.isArray(statsRes.value.data)) {
-          rawSubjects = statsRes.value.data;
-        } else if (statsRes.value.data && statsRes.value.data.subjects) {
-          rawSubjects = statsRes.value.data.subjects;
-          simulationBounds = statsRes.value.data.simulationBounds;
+        if (Date.now() - lastStatsCompletedAt < 2500 && get().hasActiveSemester && get().subjects.length > 0) {
+          return;
         }
-      }
-      
-      let totalAttended = 0;
-      let totalClasses = 0;
-      
-      const subjects: SubjectStat[] = rawSubjects.map((sub: any) => {
-        const att = sub.attended || 0;
-        const tot = sub.total || 0;
-        totalAttended += att;
-        totalClasses += tot;
-        const pct = tot > 0 ? (att / tot) * 100 : (sub.percentage || 0);
-        return {
-          id: sub.id || sub.subjectId || "",
-          subjectId: sub.id || sub.subjectId || "",
-          name: sub.name || sub.subjectName || "Course",
-          code: sub.code || sub.subjectCode || "",
-          colorHex: sub.colorHex,
-          attended: att,
-          total: tot,
-          percentage: Number(pct.toFixed(1)),
-          target: sub.target,
-          remainingClasses: sub.remainingClasses,
-          maxRemainingClasses: sub.maxRemainingClasses,
-          missingBoundaries: sub.missingBoundaries,
-          futureBreakdown: sub.futureBreakdown,
-          attendance: sub.attendance,
-        };
-      });
-      const overallPercentage = totalClasses > 0 ? (totalAttended / totalClasses) * 100 : 0;
+        const mySeq = ++fetchStatsSeq;
 
-      // 2. Process Detailed Attendance History Logs
-      let historyLogs: AttendanceHistoryEntry[] = get().historyLogs || [];
-      if (logsRes.status === 'fulfilled') {
+        // Only show loading if we don't have any cached subjects
+        if (!background && get().subjects.length === 0) set({ isLoading: true });
+        let runPromise: Promise<void> | null = null;
+        runPromise = (async () => {
+        try {
+          const user = useAuthStore.getState().user;
+          const userTarget = user?.targetAttendance || 75;
 
-        // --- SILENTLY CACHE FOR OFFLINE SUBJECT DETAIL PAGE ---
-        if (logsRes.value.data && !Array.isArray(logsRes.value.data) && logsRes.value.data.logs) {
-          const existingCache = useCacheStore.getState().subject_logs || {};
-          useCacheStore.getState().setCache("subject_logs", { ...existingCache, "all": logsRes.value.data });
-        }
-        // ------------------------------------------------------
-        const rawLogs = Array.isArray(logsRes.value.data?.logs) 
-          ? logsRes.value.data.logs 
-          : (Array.isArray(logsRes.value.data) ? logsRes.value.data : []);
+          const knownSemId = get().activeSemesterId || useCacheStore.getState().semester?.activeSemester?.id || null;
 
-        historyLogs = rawLogs.map((item: any) => {
-          let time = "";
-          if (item.startTime && item.endTime && item.startTime !== "00:00") {
-            time = `${item.startTime} - ${item.endTime}`;
-          } else if (item.startTime && item.startTime !== "00:00") {
-            time = item.startTime;
+          // Fire /semesters/active and all 4 semester-scoped queries in 1 single parallel wave when semesterId is known
+          const [activeSemSettled, preStatsRes, logsRes, preEventsRes, preTimetableRes] = await Promise.allSettled([
+            api.get("/semesters/active"),
+            knownSemId ? api.get(`/attendance/stats?semesterId=${knownSemId}`) : Promise.reject("no_known_sem"),
+            api.get("/attendance/logs"),
+            knownSemId ? api.get(`/events?semesterId=${knownSemId}`) : Promise.reject("no_known_sem"),
+            knownSemId ? api.get(`/timetable/${knownSemId}`) : Promise.reject("no_known_sem"),
+          ]);
+          if (mySeq !== fetchStatsSeq) return;
+          if (activeSemSettled.status !== "fulfilled") throw activeSemSettled.reason;
+          const activeSemRes = activeSemSettled.value;
+
+          if (!activeSemRes.data) {
+            set({
+              overallPercentage: 0,
+              targetPercentage: userTarget,
+              totalAttended: 0,
+              totalClasses: 0,
+              subjects: [],
+              historyLogs: [],
+              events: [],
+              hasActiveSemester: false,
+              activeSemesterId: null,
+              simulationBounds: null,
+              isLoading: false,
+            });
+            return;
           }
-          return {
-            date: item.date || "",
-            dateFormatted: item.dateFormatted || item.date || "",
-            subject: item.subjectName || item.name || "Class",
-            status: (item.status || "not_marked").toUpperCase(),
-            time: time || undefined
-          };
-        });
-      } else {
-        console.warn("Could not fetch attendance logs for RAG context:", logsRes.reason);
-      }
 
-      // 3. Process Calendar Events & Holidays
-      let events: CalendarEventEntry[] = get().events || [];
-      if (eventsRes.status === 'fulfilled') {
-        const rawEvents = Array.isArray(eventsRes.value.data) ? eventsRes.value.data : [];
-        events = rawEvents.map((ev: any) => ({
-          title: ev.title || "Event",
-          type: ev.eventType || "academic",
-          date: ev.date ? ev.date.split('T')[0] + "T00:00:00" : "",
-          endDate: ev.endDate ? ev.endDate.split('T')[0] + "T00:00:00" : undefined
-        }));
-      } else {
-        console.warn("Could not fetch events for RAG context:", eventsRes.reason);
-      }
-      
-      set({ 
-        overallPercentage: overallPercentage, 
-        targetPercentage: userTarget, 
-        totalAttended, 
-        totalClasses, 
-        subjects, 
-        historyLogs,
-        events,
-        hasActiveSemester: true, 
-        activeSemesterId: activeSemRes.data.id,
-        simulationBounds,
-        isLoading: false 
-      });
-    } catch (error) {
-      console.error("Failed to fetch global attendance stats:", error);
-      set({ isLoading: false });
-    }
-  },
-  updateSimulationBoundaries: async (startDate: string, endDate: string) => {
-    const { activeSemesterId, fetchStats } = get();
-    if (!activeSemesterId) return;
-    
-    set({ isLoading: true });
-    try {
-      await api.post("/attendance/boundaries", {
-        semesterId: activeSemesterId,
-        startDate,
-        endDate
-      });
-      // Re-fetch all stats to get the new simulation data
-      await get().fetchStats(false);
-    } catch (error) {
-      console.error("Failed to update boundaries:", error);
-      set({ isLoading: false });
-    }
-  }
+          // Only re-fetch semester-scoped resources if activeSemesterId changed from knownSemId
+          const [statsRes, eventsRes, timetableRes] =
+            knownSemId === activeSemRes.data.id
+              ? [preStatsRes, preEventsRes, preTimetableRes]
+              : await Promise.allSettled([
+                  api.get(`/attendance/stats?semesterId=${activeSemRes.data.id}`),
+                  api.get(`/events?semesterId=${activeSemRes.data.id}`),
+                  api.get(`/timetable/${activeSemRes.data.id}`),
+                ]);
+
+          // Discard stale pre-mutation responses if a newer fetch or mutation occurred while awaiting
+          if (mySeq !== fetchStatsSeq) return;
+
+          // Inject timetable into cacheStore silently so the Timetable page works completely offline even if unvisited
+          if (timetableRes.status === 'fulfilled') {
+            const slots = Array.isArray(timetableRes.value.data) ? timetableRes.value.data : [];
+            const normalizedSlots = slots.map((s: any) => ({
+              ...s,
+              startTime: s.startTime.slice(0, 5),
+              endTime: s.endTime.slice(0, 5),
+            }));
+            const existingTt = useCacheStore.getState().timetable;
+            let subjectsToCache = existingTt?.subjects || [];
+            if ((!subjectsToCache || subjectsToCache.length === 0) && statsRes.status === 'fulfilled') {
+              const rSubs = Array.isArray(statsRes.value.data) ? statsRes.value.data : (statsRes.value.data?.subjects || []);
+              subjectsToCache = rSubs;
+            }
+            useCacheStore.getState().setCache('timetable', {
+              ...existingTt,
+              activeSemester: activeSemRes.data,
+              subjects: subjectsToCache,
+              slots: normalizedSlots,
+            });
+          }
+
+          // 1. Process Subject Stats
+          let rawSubjects = get().subjects || [];
+          let simulationBounds = get().simulationBounds || null;
+          if (statsRes.status === 'fulfilled') {
+            if (Array.isArray(statsRes.value.data)) {
+              rawSubjects = statsRes.value.data;
+            } else if (statsRes.value.data && Array.isArray(statsRes.value.data.subjects)) {
+              rawSubjects = statsRes.value.data.subjects;
+              simulationBounds = statsRes.value.data.simulationBounds || null;
+            }
+          }
+
+          let totalAttended = 0;
+          let totalClasses = 0;
+
+          const subjects: SubjectStat[] = rawSubjects.map((sub: any) => {
+            const att = sub.attended || 0;
+            const tot = sub.total || 0;
+            totalAttended += att;
+            totalClasses += tot;
+            const pct = tot > 0 ? (att / tot) * 100 : (sub.percentage || 0);
+            return {
+              id: sub.id || sub.subjectId || "",
+              subjectId: sub.id || sub.subjectId || "",
+              name: sub.name || sub.subjectName || "Course",
+              code: sub.code || sub.subjectCode || "",
+              colorHex: sub.colorHex,
+              attended: att,
+              total: tot,
+              percentage: Number(pct.toFixed(1)),
+              target: sub.target,
+              remainingClasses: sub.remainingClasses,
+              maxRemainingClasses: sub.maxRemainingClasses,
+              missingBoundaries: sub.missingBoundaries,
+              futureBreakdown: sub.futureBreakdown,
+              attendance: sub.attendance,
+            };
+          });
+          const overallPercentage = totalClasses > 0 ? (totalAttended / totalClasses) * 100 : 0;
+
+          // 2. Process Detailed Attendance History Logs
+          let historyLogs: AttendanceHistoryEntry[] = get().historyLogs || [];
+          if (logsRes.status === 'fulfilled') {
+            // --- SILENTLY CACHE FOR OFFLINE SUBJECT DETAIL PAGE ---
+            if (logsRes.value.data && !Array.isArray(logsRes.value.data) && Array.isArray(logsRes.value.data.logs)) {
+              const existingCache = useCacheStore.getState().subject_logs || {};
+              useCacheStore.getState().setCache("subject_logs", { ...existingCache, "all": logsRes.value.data });
+            }
+            // ------------------------------------------------------
+            const rawLogs = Array.isArray(logsRes.value.data?.logs)
+              ? logsRes.value.data.logs
+              : (Array.isArray(logsRes.value.data) ? logsRes.value.data : []);
+
+            historyLogs = rawLogs.map((item: any) => {
+              let time = "";
+              if (item.startTime && item.endTime && item.startTime !== "00:00") {
+                time = `${item.startTime} - ${item.endTime}`;
+              } else if (item.startTime && item.startTime !== "00:00") {
+                time = item.startTime;
+              }
+              return {
+                date: item.date || "",
+                dateFormatted: item.dateFormatted || item.date || "",
+                subject: item.subjectName || item.name || "Class",
+                status: (item.status || "not_marked").toUpperCase(),
+                time: time || undefined,
+              };
+            });
+          } else {
+            console.warn("Could not fetch attendance logs for RAG context:", logsRes.reason);
+          }
+
+          // 3. Process Calendar Events & Holidays
+          let events: CalendarEventEntry[] = get().events || [];
+          if (eventsRes.status === 'fulfilled') {
+            const rawEvents = Array.isArray(eventsRes.value.data) ? eventsRes.value.data : [];
+            events = rawEvents.map((ev: any) => ({
+              id: ev.id,
+              title: ev.title || "Event",
+              type: ev.eventType || "academic",
+              eventType: ev.eventType || "academic",
+              date: ev.date ? ev.date.split('T')[0] + "T00:00:00" : "",
+              endDate: ev.endDate ? ev.endDate.split('T')[0] + "T00:00:00" : undefined,
+              description: ev.description,
+            }));
+            const existingSemCache = useCacheStore.getState().semester;
+            useCacheStore.getState().setCache('semester', {
+              ...existingSemCache,
+              activeSemester: activeSemRes.data,
+              events: rawEvents,
+            });
+          } else {
+            const existingSemCache = useCacheStore.getState().semester;
+            if (activeSemRes.data && !existingSemCache?.activeSemester) {
+              useCacheStore.getState().setCache('semester', {
+                ...existingSemCache,
+                activeSemester: activeSemRes.data,
+                events: existingSemCache?.events || [],
+              });
+            }
+            console.warn("Could not fetch events for RAG context:", eventsRes.reason);
+          }
+
+          if (mySeq !== fetchStatsSeq) return;
+
+          set({
+            overallPercentage: overallPercentage,
+            targetPercentage: userTarget,
+            totalAttended,
+            totalClasses,
+            subjects,
+            historyLogs,
+            events,
+            hasActiveSemester: true,
+            activeSemesterId: activeSemRes.data.id,
+            simulationBounds,
+            isLoading: false,
+          });
+
+          lastStatsCompletedAt = Date.now();
+
+          // Auto-schedule timetable notifications once active semester and slots are loaded
+          import("../services/NotificationService")
+            .then(({ NotificationService }) => {
+              NotificationService.autoScheduleFromTimetable().catch(() => {});
+            })
+            .catch(() => {});
+        } catch (error) {
+          console.error("Failed to fetch global attendance stats:", error);
+          if (mySeq === fetchStatsSeq) {
+            set({ isLoading: false });
+          }
+        } finally {
+          if (inFlightStatsPromise === runPromise) {
+            inFlightStatsPromise = null;
+          }
+        }
+        })();
+        inFlightStatsPromise = runPromise;
+        return runPromise;
+      },
+      updateSimulationBoundaries: async (startDate: string, endDate: string) => {
+        const { activeSemesterId } = get();
+        if (!activeSemesterId) return;
+
+        set({ isLoading: true });
+        try {
+          await api.post("/attendance/boundaries", {
+            semesterId: activeSemesterId,
+            startDate,
+            endDate,
+          });
+          // Re-fetch all stats to get the new simulation data
+          await get().fetchStats(false);
+        } catch (error) {
+          console.error("Failed to update boundaries:", error);
+          set({ isLoading: false });
+        }
+      },
     }),
     {
       name: "attendx-attendance-cache",
@@ -267,8 +368,12 @@ export const useAttendanceStore = create<AttendanceState>()(
         events: state.events,
         hasActiveSemester: state.hasActiveSemester,
         activeSemesterId: state.activeSemesterId,
-        simulationBounds: state.simulationBounds
+        simulationBounds: state.simulationBounds,
       }),
     }
   )
 );
+
+registerCacheClearListener(() => {
+  useAttendanceStore.getState().resetAttendanceStore();
+});

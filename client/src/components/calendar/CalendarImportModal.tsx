@@ -1,12 +1,31 @@
-import React, { useState } from "react";
-import { X, Upload, Loader2, Calendar, Check } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import {
+  X,
+  Upload,
+  Loader2,
+  Calendar,
+  Check,
+  FileText,
+  Cpu,
+  CheckCircle2,
+  Tags,
+  Sparkles,
+  ScanLine,
+  Table2,
+  CalendarRange,
+  Palmtree,
+  GraduationCap,
+  Layers,
+  ShieldCheck,
+  Filter,
+} from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { api } from "../../lib/api";
 import { toast } from "sonner";
 import { useAttendanceStore } from "../../stores/attendanceStore";
+import { useCacheStore } from "../../stores/cacheStore";
 import { RunActionButton } from "../ui/run-action-button";
 import { SaveToggle } from "../ui/save-toggle";
-import { FileText, Cpu, CheckCircle2, Tags } from "lucide-react";
 import { useScrollLock } from "../../hooks/useScrollLock";
 
 interface CalendarImportModalProps {
@@ -28,11 +47,30 @@ interface ParsedEventGroup {
   events: ParsedEvent[];
 }
 
+const CALENDAR_PARSE_STEPS = [
+  { id: 1, label: "Uploading Document", detail: "Streaming PDF buffer to AI engine...", icon: Upload },
+  { id: 2, label: "Scanning PDF Pages", detail: "Inspecting document layout & page geometry...", icon: ScanLine },
+  { id: 3, label: "Extracting Raw Text (OCR)", detail: "Running optical character recognition...", icon: FileText },
+  { id: 4, label: "Detecting Academic Tables", detail: "Locating schedule rows and date columns...", icon: Table2 },
+  { id: 5, label: "Parsing Semester Headers", detail: "Separating Odd & Even semester blocks...", icon: Layers },
+  { id: 6, label: "Extracting Date Spans", detail: "Normalizing single and multi-day date ranges...", icon: CalendarRange },
+  { id: 7, label: "Identifying Holidays", detail: "Tagging gazetted holidays & vacation breaks...", icon: Palmtree },
+  { id: 8, label: "Locating Exam Windows", detail: "Detecting Class Tests, Midsem & Endsem dates...", icon: GraduationCap },
+  { id: 9, label: "Detecting Fests & Events", detail: "Classifying cultural, sports & institute days...", icon: Sparkles },
+  { id: 10, label: "Mapping Target Semesters", detail: "Grouping events by semester applicability...", icon: Cpu },
+  { id: 11, label: "Resolving Multi-Day Spans", detail: "Expanding start-to-end date intervals...", icon: Calendar },
+  { id: 12, label: "Validating ISO Dates", detail: "Checking YYYY-MM-DD chronological integrity...", icon: ShieldCheck },
+  { id: 13, label: "Deduplicating Entries", detail: "Pruning redundant & overlapping rows...", icon: Filter },
+  { id: 14, label: "Finalizing Event Schedule", detail: "Preparing interactive review checklist...", icon: CheckCircle2 },
+];
+
 export const CalendarImportModal: React.FC<CalendarImportModalProps> = ({ isOpen, onClose, onSuccess }) => {
   useScrollLock(isOpen);
   const { activeSemesterId } = useAttendanceStore();
   const [file, setFile] = useState<File | null>(null);
   const [isParsing, setIsParsing] = useState(false);
+  const [parseStepIdx, setParseStepIdx] = useState(0);
+  const [elapsedTenths, setElapsedTenths] = useState(0);
   const [isSaving, setIsSaving] = useState(false);
   const [parsedGroups, setParsedGroups] = useState<ParsedEventGroup[] | null>(null);
   const [selectedGroupIndex, setSelectedGroupIndex] = useState(0);
@@ -41,12 +79,50 @@ export const CalendarImportModal: React.FC<CalendarImportModalProps> = ({ isOpen
   React.useEffect(() => {
     if (isOpen && !parsedGroups) {
       api.get("/events/import-rag/cache").then(res => {
-        if (res.data.events) {
+        if (Array.isArray(res.data.events) && res.data.events.length > 0) {
           setParsedGroups(res.data.events);
+          setSelectedGroupIndex(0);
+          setSelectedIndices(new Set(res.data.events[0].events.map((_: any, i: number) => i)));
         }
       }).catch(console.error);
     }
   }, [isOpen]);
+
+  // Live telemetry step & timer progression while isParsing is active
+  useEffect(() => {
+    if (!isParsing) {
+      setParseStepIdx(0);
+      setElapsedTenths(0);
+      return;
+    }
+    const startMs = Date.now();
+    const timerInterval = setInterval(() => {
+      setElapsedTenths(Math.floor((Date.now() - startMs) / 100));
+    }, 100);
+
+    let stepTimeout: ReturnType<typeof setTimeout>;
+    const scheduleNextStep = (idx: number) => {
+      if (idx >= CALENDAR_PARSE_STEPS.length - 1) return;
+      const ratio = idx / (CALENDAR_PARSE_STEPS.length - 1);
+      const delay = Math.round(1800 * (1 + ratio * 1.8));
+      stepTimeout = setTimeout(() => {
+        setParseStepIdx((prev) => {
+          if (prev < CALENDAR_PARSE_STEPS.length - 1) {
+            const next = prev + 1;
+            scheduleNextStep(next);
+            return next;
+          }
+          return prev;
+        });
+      }, delay);
+    };
+    scheduleNextStep(0);
+
+    return () => {
+      clearInterval(timerInterval);
+      clearTimeout(stepTimeout);
+    };
+  }, [isParsing]);
 
   const handleClearCache = async () => {
     try {
@@ -153,7 +229,12 @@ export const CalendarImportModal: React.FC<CalendarImportModalProps> = ({ isOpen
         }))
       });
       toast.success("Calendar events imported successfully");
+      setParsedGroups(null);
+      setFile(null);
+      useCacheStore.getState().setCache("calendar", null);
+      useAttendanceStore.getState().fetchStats(true);
       window.dispatchEvent(new Event("attendance-updated"));
+      window.dispatchEvent(new Event("events-updated"));
       onSuccess();
       onClose();
     } catch (error: any) {
@@ -164,20 +245,8 @@ export const CalendarImportModal: React.FC<CalendarImportModalProps> = ({ isOpen
     }
   };
 
-
-
-  
-  // Anti-scroll lock
-  React.useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = 'unset';
-    }
-    return () => {
-      document.body.style.overflow = 'unset';
-    };
-  }, [isOpen]);
+  const formattedElapsed = `${(elapsedTenths / 10).toFixed(1)}s`;
+  const activeStepObj = CALENDAR_PARSE_STEPS[parseStepIdx] || CALENDAR_PARSE_STEPS[0];
 
   return (
     <AnimatePresence>
@@ -194,7 +263,7 @@ export const CalendarImportModal: React.FC<CalendarImportModalProps> = ({ isOpen
             initial={{ opacity: 0, scale: 0.95, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
-            className="relative w-full max-w-lg bg-card border shadow-xl rounded-3xl overflow-hidden flex flex-col max-h-[85vh]"
+            className="relative w-full max-w-lg bg-card text-foreground border shadow-xl rounded-3xl overflow-hidden flex flex-col max-h-[85vh]"
           >
             <div className="flex items-center justify-between p-6 border-b">
               <div>
@@ -204,52 +273,117 @@ export const CalendarImportModal: React.FC<CalendarImportModalProps> = ({ isOpen
               <button
                 onClick={onClose}
                 disabled={isParsing || isSaving}
-                className="p-2 hover:bg-muted rounded-full transition-colors disabled:opacity-50"
+                aria-label="Close modal"
+                className="p-2 rounded-full bg-muted/80 hover:bg-muted text-foreground border border-border transition-colors disabled:opacity-50 cursor-pointer shadow-sm"
               >
-                <X className="w-5 h-5" />
+                <X className="w-5 h-5 stroke-[2.5] text-foreground" />
               </button>
             </div>
 
             <div className="p-6 overflow-y-auto">
               {!parsedGroups ? (
-                <div className="space-y-6">
+                <div className="space-y-5">
                   <p className="text-sm text-muted-foreground">
                     Powered by Google Gemini 3.8 Flash. This tool will extract all academic events, holidays, and exams directly from your institution's PDF calendar.
                   </p>
                   
-                  <div className="relative group cursor-pointer">
+                  <div className={`relative group ${isParsing ? 'pointer-events-none' : 'cursor-pointer'}`}>
                     <input
                       type="file"
                       accept=".pdf,.txt,.csv"
+                      disabled={isParsing}
                       onChange={handleFileChange}
                       className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
                     />
-                    <div className={`flex flex-col items-center justify-center p-8 border-2 border-dashed rounded-2xl transition-colors ${file ? 'border-primary/50 bg-primary/5' : 'border-border hover:border-primary/30 bg-muted/30'}`}>
-                      <Upload className={`w-10 h-10 mb-4 ${file ? 'text-primary' : 'text-muted-foreground'}`} />
-                      <p className="text-sm font-medium text-foreground mb-1">
+                    <div className={`relative overflow-hidden flex flex-col items-center justify-center p-7 border-2 border-dashed rounded-2xl transition-colors ${file ? 'border-primary/50 bg-primary/5' : 'border-border hover:border-primary/30 bg-muted/30'}`}>
+                      {isParsing && (
+                        <motion.div
+                          className="absolute left-0 right-0 h-1 bg-gradient-to-r from-transparent via-primary to-transparent opacity-80 pointer-events-none"
+                          initial={{ top: "0%" }}
+                          animate={{ top: ["0%", "96%", "0%"] }}
+                          transition={{ duration: 2.2, repeat: Infinity, ease: "easeInOut" }}
+                        />
+                      )}
+                      <Upload className={`w-10 h-10 mb-3 ${file ? 'text-primary' : 'text-muted-foreground'} ${isParsing ? 'animate-bounce' : ''}`} />
+                      <p className="text-sm font-medium text-foreground mb-1 truncate max-w-[280px]">
                         {file ? file.name : "Click or drag to upload"}
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        Supports PDF, TXT
+                        {isParsing ? "AI layout scanner active..." : "Supports PDF, TXT"}
                       </p>
                     </div>
                   </div>
 
-                  <div className="pt-2">
+                  {/* Live Multi-Stage AI Parsing Telemetry Panel */}
+                  <AnimatePresence>
+                    {isParsing && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0, y: -6 }}
+                        animate={{ opacity: 1, height: "auto", y: 0 }}
+                        exit={{ opacity: 0, height: 0, y: -6 }}
+                        className="rounded-2xl border border-primary/30 bg-primary/5 p-4 space-y-3 overflow-hidden"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <Loader2 className="w-4 h-4 text-primary animate-spin shrink-0" />
+                            <span className="text-xs font-bold uppercase tracking-wider text-primary truncate">
+                              Stage {parseStepIdx + 1} of {CALENDAR_PARSE_STEPS.length}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-background/90 border border-border text-xs font-mono font-bold text-foreground tabular-nums">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
+                            <span>{formattedElapsed}</span>
+                          </div>
+                        </div>
+
+                        <AnimatePresence mode="wait">
+                          <motion.div
+                            key={parseStepIdx}
+                            initial={{ opacity: 0, x: 8 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            exit={{ opacity: 0, x: -8 }}
+                            transition={{ duration: 0.2 }}
+                            className="space-y-0.5"
+                          >
+                            <div className="text-sm font-bold text-foreground flex items-center gap-2">
+                              {React.createElement(activeStepObj.icon, { className: "w-4 h-4 text-primary shrink-0" })}
+                              <span>{activeStepObj.label}</span>
+                            </div>
+                            <p className="text-xs text-muted-foreground pl-6">
+                              {activeStepObj.detail}
+                            </p>
+                          </motion.div>
+                        </AnimatePresence>
+
+                        {/* Step Progress Dots */}
+                        <div className="grid grid-cols-14 gap-1 pt-1">
+                          {CALENDAR_PARSE_STEPS.map((s, idx) => (
+                            <div
+                              key={s.id}
+                              className={`h-1.5 rounded-full transition-all duration-300 ${
+                                idx < parseStepIdx
+                                  ? "bg-emerald-500"
+                                  : idx === parseStepIdx
+                                    ? "bg-primary animate-pulse"
+                                    : "bg-border"
+                              }`}
+                            />
+                          ))}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
+                  <div className="pt-1 w-full flex justify-center">
                     <RunActionButton 
-                      disabled={!file}
+                      fullWidth
+                      disabled={!file || isParsing}
                       action={handleParse}
                       idleLabel="Extract Events"
                       doneLabel="Data Finalized"
                       idleIcon={<Upload className="h-5 w-5 fill-current text-primary-foreground opacity-90" />}
-                      widths={{ idle: 220, running: 340, done: 220 }}
-                      steps={[
-                        { id: 1, label: 'Uploading Document', icon: Upload },
-                        { id: 2, label: 'Extracting Text (OCR)', icon: FileText },
-                        { id: 3, label: 'Parsing AI Dates', icon: Cpu },
-                        { id: 4, label: 'Classifying Events', icon: Tags },
-                        { id: 5, label: 'Finalizing Data', icon: CheckCircle2 },
-                      ]}
+                      stepIntervalMs={1650}
+                      steps={CALENDAR_PARSE_STEPS}
                     />
                   </div>
                 </div>

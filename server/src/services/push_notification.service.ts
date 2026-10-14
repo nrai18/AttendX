@@ -12,25 +12,71 @@ export class PushNotificationService {
     try {
       const sessions = await prisma.refreshToken.findMany({
         where: { userId: userId, fcmToken: { not: null } },
-        select: { fcmToken: true }
+        select: { id: true, fcmToken: true, os: true, lastActive: true },
+        orderBy: { lastActive: 'desc' }
       });
 
       if (sessions.length === 0) return false;
 
-      const rawTokens = sessions.map(s => s.fcmToken as string).filter(t => t.trim() !== '');
-      const tokens = Array.from(new Set(rawTokens));
+      // Group by OS/device type and keep only the most recently active session's token per device
+      // to avoid delivering duplicate pushes to multiple/stale sessions for the same physical device.
+      const tokensMap = new Map<string, string>();
+      for (const s of sessions) {
+        if (!s.fcmToken || !s.fcmToken.trim()) continue;
+        const key = s.os ? s.os.toLowerCase() : s.fcmToken.trim();
+        if (!tokensMap.has(key)) {
+          tokensMap.set(key, s.fcmToken.trim());
+        }
+      }
+      const tokens = Array.from(new Set(tokensMap.values()));
       
       if (tokens.length === 0) return false;
 
+      // Clean image URL so Android BitmapFactory can decode it (must be PNG/JPEG, not SVG)
+      let safeImageUrl: string | undefined = imageUrl ? imageUrl.trim() : undefined;
+      if (safeImageUrl) {
+        if (safeImageUrl.includes('/svg?')) {
+          safeImageUrl = safeImageUrl.replace('/svg?', '/png?');
+        } else if (safeImageUrl.endsWith('.svg')) {
+          safeImageUrl = safeImageUrl.replace(/\.svg$/, '.png');
+        }
+      }
+
+      const stringifiedData: Record<string, string> = {};
+      if (data) {
+        for (const [key, val] of Object.entries(data)) {
+          stringifiedData[key] = typeof val === 'string' ? val : JSON.stringify(val);
+        }
+      }
+      if (safeImageUrl) {
+        stringifiedData.imageUrl = safeImageUrl;
+        stringifiedData.avatarUrl = safeImageUrl;
+      }
+
       const notificationPayload: any = { title, body };
-      if (imageUrl) notificationPayload.imageUrl = imageUrl;
+      if (safeImageUrl) notificationPayload.imageUrl = safeImageUrl;
+
+      const androidPayload: any = {
+        priority: 'high',
+        collapseKey: data?.type || 'attendx_notification',
+        notification: {
+          title,
+          body,
+          icon: 'ic_stat_attendx',
+          color: '#10B981',
+          channelId: 'class_alerts',
+          tag: data?.type || 'attendx_notification',
+          ...(safeImageUrl ? { imageUrl: safeImageUrl } : {})
+        }
+      };
 
       if (tokens.length === 1) {
         try {
           await getMessaging().send({
             token: tokens[0],
             notification: notificationPayload,
-            data: data || {},
+            android: androidPayload,
+            data: stringifiedData,
           });
         } catch (err: any) {
           if (err.code === 'messaging/invalid-registration-token' || err.code === 'messaging/registration-token-not-registered') {
@@ -39,6 +85,7 @@ export class PushNotificationService {
               data: { fcmToken: null }
             });
             console.log(`[PushNotification] Purged 1 dead token from database.`);
+            return false;
           }
           throw err;
         }
@@ -46,7 +93,8 @@ export class PushNotificationService {
         const response = await getMessaging().sendEachForMulticast({
           tokens,
           notification: notificationPayload,
-          data: data || {},
+          android: androidPayload,
+          data: stringifiedData,
         });
 
         if (response.failureCount > 0) {
@@ -101,15 +149,50 @@ export class PushNotificationService {
       let successCount = 0;
       let failureCount = 0;
 
+      let safeImageUrl: string | undefined = imageUrl ? imageUrl.trim() : undefined;
+      if (safeImageUrl) {
+        if (safeImageUrl.includes('/svg?')) {
+          safeImageUrl = safeImageUrl.replace('/svg?', '/png?');
+        } else if (safeImageUrl.endsWith('.svg')) {
+          safeImageUrl = safeImageUrl.replace(/\.svg$/, '.png');
+        }
+      }
+
+      const stringifiedData: Record<string, string> = {};
+      if (data) {
+        for (const [key, val] of Object.entries(data)) {
+          stringifiedData[key] = typeof val === 'string' ? val : JSON.stringify(val);
+        }
+      }
+      if (safeImageUrl) {
+        stringifiedData.imageUrl = safeImageUrl;
+        stringifiedData.avatarUrl = safeImageUrl;
+      }
+
       const notificationPayload: any = { title, body };
-      if (imageUrl) notificationPayload.imageUrl = imageUrl;
+      if (safeImageUrl) notificationPayload.imageUrl = safeImageUrl;
+
+      const androidPayload: any = {
+        priority: 'high',
+        collapseKey: data?.type || 'attendx_notification',
+        notification: {
+          title,
+          body,
+          icon: 'ic_stat_attendx',
+          color: '#10B981',
+          channelId: 'class_alerts',
+          tag: data?.type || 'attendx_notification',
+          ...(safeImageUrl ? { imageUrl: safeImageUrl } : {})
+        }
+      };
 
       for (let i = 0; i < tokens.length; i += BATCH_SIZE) {
         const batch = tokens.slice(i, i + BATCH_SIZE);
         const response = await getMessaging().sendEachForMulticast({
           tokens: batch,
           notification: notificationPayload,
-          data: data || {},
+          android: androidPayload,
+          data: stringifiedData,
         });
         
         successCount += response.successCount;
@@ -184,15 +267,50 @@ export class PushNotificationService {
       let successCount = 0;
       let failureCount = 0;
 
+      let safeImageUrl: string | undefined = imageUrl ? imageUrl.trim() : undefined;
+      if (safeImageUrl) {
+        if (safeImageUrl.includes('/svg?')) {
+          safeImageUrl = safeImageUrl.replace('/svg?', '/png?');
+        } else if (safeImageUrl.endsWith('.svg')) {
+          safeImageUrl = safeImageUrl.replace(/\.svg$/, '.png');
+        }
+      }
+
+      const stringifiedData: Record<string, string> = {};
+      if (data) {
+        for (const [key, val] of Object.entries(data)) {
+          stringifiedData[key] = typeof val === 'string' ? val : JSON.stringify(val);
+        }
+      }
+      if (safeImageUrl) {
+        stringifiedData.imageUrl = safeImageUrl;
+        stringifiedData.avatarUrl = safeImageUrl;
+      }
+
       const notificationPayload: any = { title, body };
-      if (imageUrl) notificationPayload.imageUrl = imageUrl;
+      if (safeImageUrl) notificationPayload.imageUrl = safeImageUrl;
+
+      const androidPayload: any = {
+        priority: 'high',
+        collapseKey: data?.type || 'attendx_notification',
+        notification: {
+          title,
+          body,
+          icon: 'ic_stat_attendx',
+          color: '#10B981',
+          channelId: 'class_alerts',
+          tag: data?.type || 'attendx_notification',
+          ...(safeImageUrl ? { imageUrl: safeImageUrl } : {})
+        }
+      };
 
       for (let i = 0; i < tokens.length; i += BATCH_SIZE) {
         const batch = tokens.slice(i, i + BATCH_SIZE);
         const response = await getMessaging().sendEachForMulticast({
           tokens: batch,
           notification: notificationPayload,
-          data: data || {},
+          android: androidPayload,
+          data: stringifiedData,
         });
         
         successCount += response.successCount;

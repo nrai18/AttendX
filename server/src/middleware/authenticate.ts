@@ -10,6 +10,60 @@ export type AuthenticatedRequest = Request & {
 };
 
 const sessionPromises = new Map<string, Promise<boolean>>();
+const validSessions = new Map<string, { userId: string; expiresAt: number }>();
+const revokedSessions = new Set<string>();
+const SESSION_CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes (revocations call invalidateSessionCache immediately)
+
+export function invalidateSessionCache(sessionId?: string, userId?: string) {
+  if (sessionId) {
+    validSessions.delete(sessionId);
+    sessionPromises.delete(sessionId);
+    revokedSessions.add(sessionId);
+  }
+  if (userId) {
+    for (const [sid, entry] of validSessions.entries()) {
+      if (entry.userId === userId) {
+        validSessions.delete(sid);
+        sessionPromises.delete(sid);
+        revokedSessions.add(sid);
+      }
+    }
+  }
+}
+
+const revalidateSessionInBackground = (sid: string): Promise<boolean> => {
+  const existing = sessionPromises.get(sid);
+  if (existing) return existing;
+
+  const { prisma } = require("../lib/prisma");
+  const checkPromise = (async () => {
+    try {
+      const session = await prisma.refreshToken.findUnique({
+        where: { id: sid },
+        select: { id: true, userId: true },
+      });
+      if (!session) {
+        validSessions.delete(sid);
+        revokedSessions.add(sid);
+        return false;
+      }
+      revokedSessions.delete(sid);
+      validSessions.set(sid, {
+        userId: session.userId,
+        expiresAt: Date.now() + SESSION_CACHE_TTL_MS,
+      });
+      return true;
+    } catch (dbErr) {
+      console.warn("[authenticate] Transient DB error checking session, allowing valid JWT:", (dbErr as any)?.message);
+      return true;
+    } finally {
+      sessionPromises.delete(sid);
+    }
+  })();
+
+  sessionPromises.set(sid, checkPromise);
+  return checkPromise;
+};
 
 export const authenticate: RequestHandler = async (req, res, next) => {
   try {
@@ -27,22 +81,43 @@ export const authenticate: RequestHandler = async (req, res, next) => {
 
     const payload = verifyAccessToken(token);
 
+    // SEC-FIX: Reject tokens minted for non-session purposes (e.g. password reset) or missing userId
+    if ((payload as any).purpose || !payload.userId) {
+      return res.status(401).json({ message: "Invalid or expired access token" });
+    }
+
     if (payload.sessionId) {
-      const { prisma } = require("../lib/prisma");
-      // SEC-H05 FIX: Query DB directly for session validity instead of relying on a 60-second stale memory cache
-      // This ensures immediate revocation when a user logs out remotely
-      const session = await prisma.refreshToken.findUnique({
-        where: { id: payload.sessionId }
-      });
-      
-      if (!session) {
+      const sid = payload.sessionId;
+      if (revokedSessions.has(sid)) {
         return res.status(401).json({ message: "Session has been revoked" });
+      }
+      const cached = validSessions.get(sid);
+      if (cached) {
+        // Stale-while-revalidate: never block requests once a session has been verified
+        if (Date.now() >= cached.expiresAt) {
+          revalidateSessionInBackground(sid).catch(() => {});
+        }
+      } else {
+        // Cold session check with 650ms race cap so a slow DB handshake never stalls API calls for 30s
+        const isSessionValid = await Promise.race([
+          revalidateSessionInBackground(sid),
+          new Promise<boolean>((resolve) =>
+            setTimeout(() => {
+              // Optimistically cache for 60s while background DB check finishes
+              validSessions.set(sid, {
+                userId: payload.userId,
+                expiresAt: Date.now() + 60 * 1000,
+              });
+              resolve(true);
+            }, 650)
+          ),
+        ]);
+        if (!isSessionValid) {
+          return res.status(401).json({ message: "Session has been revoked" });
+        }
       }
     }
 
-    if ((payload as any).id && !payload.userId) {
-      payload.userId = (payload as any).id;
-    }
     req.user = payload;
     next();
   } catch (error) {
@@ -65,17 +140,26 @@ export const authenticate: RequestHandler = async (req, res, next) => {
  */
 export const cronAuth: RequestHandler = (req, res, next) => {
   const secret = process.env.CRON_SECRET;
+  const DEFAULT_SECRET = "attendx_dev_cron_secret_replace_in_prod";
 
-  if (!secret) {
-    // Misconfigured server — refuse access rather than silently open the gate
-    console.error("[cronAuth] CRON_SECRET env var is not set. Refusing cron request.");
-    return res.status(503).json({ message: "Cron endpoint not configured on this server." });
+  const provided = req.headers["x-cron-secret"] || (req.query?.secret as string) || (req.query?.cron_secret as string);
+
+  if (!provided || typeof provided !== "string") {
+    return res.status(403).json({ message: "Forbidden: Missing cron secret (provide via 'x-cron-secret' header or '?secret=' query param)" });
   }
 
-  const provided = req.headers["x-cron-secret"];
-  if (!provided || provided !== secret) {
-    return res.status(403).json({ message: "Forbidden" });
+  // In production or whenever CRON_SECRET is configured, strictly require CRON_SECRET
+  if (secret) {
+    if (provided === secret) {
+      return next();
+    }
+    return res.status(403).json({ message: "Forbidden: Invalid cron secret" });
   }
 
-  next();
+  // Only allow the dev fallback secret outside production when CRON_SECRET is unset
+  if (process.env.NODE_ENV !== "production" && provided === DEFAULT_SECRET) {
+    return next();
+  }
+
+  return res.status(403).json({ message: "Forbidden: Invalid cron secret" });
 };

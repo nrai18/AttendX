@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useLocation } from "react-router-dom";
-import { Plus, Trash2, Loader2, CalendarPlus, Upload, Image as ImageIcon, X, Download, FileSpreadsheet, Edit3, ArrowLeft, CheckSquare, Square, CheckCircle2, Zap, Archive } from "lucide-react";
+import { Plus, Trash2, Loader2, CalendarPlus, Upload, Image as ImageIcon, X, Download, FileSpreadsheet, Edit3, ArrowLeft, CheckSquare, Square, CheckCircle2, Zap, Archive, ScanLine, Table2, Clock, BookOpen, FlaskConical, MapPin, Users, Layers, ShieldCheck, Sparkles } from "lucide-react";
+import { motion, AnimatePresence } from "motion/react";
 import { PageSkeleton } from "../../components/common/PageSkeleton";
 import { toast } from "sonner";
 import { api } from "../../lib/api";
@@ -22,6 +23,7 @@ import { useAttendanceStore } from "../../stores/attendanceStore";
 import { useBackHandlerStore } from "../../stores/backHandlerStore";
 import { useCacheStore } from "../../stores/cacheStore";
 import { useScrollLock } from "../../hooks/useScrollLock";
+import { hapticLight, hapticMedium, hapticHeavy, hapticSelection, hapticSuccess } from "../../utils/haptics";
 
 interface Subject {
   id: string;
@@ -66,9 +68,20 @@ export const TimetablePage = () => {
   const setCache = useCacheStore((state) => state.setCache);
 
   const [slots, setSlots] = useState<TimetableSlot[]>(cachedData?.slots || []);
-  const [subjects, setSubjects] = useState<Subject[]>(cachedData?.subjects || []);
-  const [activeSemester, setActiveSemester] = useState<Semester | null>(cachedData?.activeSemester || null);
-  const [isLoading, setIsLoading] = useState(!cachedData);
+  const [subjects, setSubjects] = useState<Subject[]>(() =>
+    cachedData?.subjects?.length ? cachedData.subjects : (useAttendanceStore.getState().subjects as any) || []
+  );
+  const [activeSemester, setActiveSemester] = useState<Semester | null>(() => {
+    if (cachedData?.activeSemester) return cachedData.activeSemester;
+    const semCache = useCacheStore.getState().semester?.activeSemester;
+    if (semCache) return semCache;
+    const attState = useAttendanceStore.getState();
+    if (attState.hasActiveSemester && attState.activeSemesterId) {
+      return { id: attState.activeSemesterId, name: "Active Semester", isActive: true };
+    }
+    return null;
+  });
+  const [isLoading, setIsLoading] = useState(() => !cachedData && !useAttendanceStore.getState().hasActiveSemester);
   const [activeTab, setActiveTab] = useState<number>(new Date().getDay() === 0 ? 6 : new Date().getDay() - 1);
 
 
@@ -105,12 +118,64 @@ export const TimetablePage = () => {
 
   // OCR Upload State
   const [isUploading, setIsUploading] = useState(false);
+  const [ocrStepIdx, setOcrStepIdx] = useState(0);
+  const [ocrElapsedTenths, setOcrElapsedTenths] = useState(0);
   const [isOcrModalOpen, setIsOcrModalOpen] = useState(false);
   useScrollLock(isOcrModalOpen);
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const jsonImportRef = useRef<HTMLInputElement>(null);
+
+  const TIMETABLE_OCR_STEPS = [
+    { id: 1, label: "Uploading Timetable", detail: "Streaming file buffer to AI vision engine...", icon: Upload },
+    { id: 2, label: "Enhancing Contrast", detail: "De-skewing table borders & sharpening text...", icon: ImageIcon },
+    { id: 3, label: "Scanning Grid Geometry", detail: "Detecting row/column intersections...", icon: ScanLine },
+    { id: 4, label: "Detecting Day Headers", detail: "Mapping Monday–Saturday schedule rows...", icon: Table2 },
+    { id: 5, label: "Parsing Time Columns", detail: "Normalizing period start & end timestamps...", icon: Clock },
+    { id: 6, label: "Reading Subject Codes", detail: "Extracting course codes & titles via OCR...", icon: BookOpen },
+    { id: 7, label: "Resolving Lab Blocks", detail: "Detecting multi-period merged practical slots...", icon: FlaskConical },
+    { id: 8, label: "Extracting Room Numbers", detail: "Locating lecture halls & lab venues...", icon: MapPin },
+    { id: 9, label: "Mapping Faculty Initials", detail: "Associating instructors with class slots...", icon: Users },
+    { id: 10, label: "Separating Branch Batches", detail: "Grouping sections, branches & lab subgroups...", icon: Layers },
+    { id: 11, label: "Matching Subjects", detail: "Reconciling with your active semester subjects...", icon: Sparkles },
+    { id: 12, label: "Checking Slot Overlaps", detail: "Validating contiguous period boundaries...", icon: ShieldCheck },
+    { id: 13, label: "Building Weekly Matrix", detail: "Structuring interactive timetable payload...", icon: FileSpreadsheet },
+    { id: 14, label: "Preparing Setup Wizard", detail: "Finalizing branch & group selection screen...", icon: CheckCircle2 },
+  ];
+
+  useEffect(() => {
+    if (!isUploading) {
+      setOcrStepIdx(0);
+      setOcrElapsedTenths(0);
+      return;
+    }
+    const startMs = Date.now();
+    const timerInterval = setInterval(() => {
+      setOcrElapsedTenths(Math.floor((Date.now() - startMs) / 100));
+    }, 100);
+    let stepTimeout: ReturnType<typeof setTimeout>;
+    const scheduleNextStep = (idx: number) => {
+      if (idx >= TIMETABLE_OCR_STEPS.length - 1) return;
+      const ratio = idx / (TIMETABLE_OCR_STEPS.length - 1);
+      const delay = Math.round(1800 * (1 + ratio * 1.8));
+      stepTimeout = setTimeout(() => {
+        setOcrStepIdx((prev) => {
+          if (prev < TIMETABLE_OCR_STEPS.length - 1) {
+            const next = prev + 1;
+            scheduleNextStep(next);
+            return next;
+          }
+          return prev;
+        });
+      }, delay);
+    };
+    scheduleNextStep(0);
+    return () => {
+      clearInterval(timerInterval);
+      clearTimeout(stepTimeout);
+    };
+  }, [isUploading]);
 
   // Wizard & Semester State
   const [isWizardOpen, setIsWizardOpen] = useState(false);
@@ -155,9 +220,20 @@ export const TimetablePage = () => {
 
   const fetchData = async () => {
     try {
-      if (!cachedData) setIsLoading(true);
-      
-      const semRes = await api.get("/semesters/active");
+      if (!cachedData && slots.length === 0 && !activeSemester) setIsLoading(true);
+      const knownSemId =
+        activeSemester?.id ||
+        cachedData?.activeSemester?.id ||
+        useAttendanceStore.getState().activeSemesterId ||
+        useCacheStore.getState().semester?.activeSemester?.id ||
+        null;
+
+      // Fire all 3 requests in parallel when semesterId is known so total elapsed time = max(single call)
+      const [semRes, subjRes, parallelSlotsRes] = await Promise.all([
+        api.get("/semesters/active"),
+        api.get("/subjects"),
+        knownSemId ? api.get(`/timetable/${knownSemId}`) : Promise.resolve(null),
+      ]);
       const semester = semRes.data;
       
       if (!semester) {
@@ -167,10 +243,10 @@ export const TimetablePage = () => {
       
       setActiveSemester(semester);
 
-      const [subjRes, slotsRes] = await Promise.all([
-        api.get("/subjects"),
-        api.get(`/timetable/${semester.id}`)
-      ]);
+      const slotsRes =
+        parallelSlotsRes && knownSemId === semester.id
+          ? parallelSlotsRes
+          : await api.get(`/timetable/${semester.id}`);
       
       const rawSubjects = Array.isArray(subjRes.data) ? subjRes.data : (subjRes.data?.subjects || []);
       const activeSubjects = rawSubjects.filter((s: any) => s.semesterId === semester.id);
@@ -223,20 +299,12 @@ export const TimetablePage = () => {
   }, [activeTab]);
 
   useEffect(() => {
-    if (activeSemester?.id) {
-      fetchData();
-    }
-  }, [activeSemester?.id]);
-
-  useEffect(() => {
     const handleUpdate = () => {
-      if (activeSemester?.id) {
-        fetchData();
-      }
+      fetchData();
     };
     window.addEventListener("attendance-updated", handleUpdate);
     return () => window.removeEventListener("attendance-updated", handleUpdate);
-  }, [activeSemester?.id]);
+  }, []);
 
   const resetForm = () => {
     setSubjectId("");
@@ -261,13 +329,8 @@ export const TimetablePage = () => {
     // Scroll to the top where the edit form is rendered
     window.scrollTo({ top: 0, behavior: "smooth" });
     
-    // Trigger haptic feedback if available (it will silently ignore on web)
-    try {
-      const { Haptics, ImpactStyle } = await import("@capacitor/haptics");
-      await Haptics.impact({ style: ImpactStyle.Light });
-    } catch (e) {
-      // Ignore if not on a device that supports haptics
-    }
+    // Trigger medium haptic feedback on edit
+    hapticMedium();
   };
 
   const handleAddSlot = async (e?: React.FormEvent) => {
@@ -288,16 +351,34 @@ export const TimetablePage = () => {
       };
 
       if (editingSlotId) {
+        const existingSlot = slots.find((s) => s.id === editingSlotId);
+        if (
+          existingSlot &&
+          existingSlot.subjectId === payload.subjectId &&
+          existingSlot.dayOfWeek === payload.dayOfWeek &&
+          normalizeTimeString(existingSlot.startTime, "09:00") === payload.startTime &&
+          normalizeTimeString(existingSlot.endTime, "10:00") === payload.endTime &&
+          (existingSlot.room || "") === (payload.room || "") &&
+          existingSlot.slotType.toLowerCase() === payload.slotType.toLowerCase()
+        ) {
+          resetForm();
+          resetForm();
+          return;
+        }
         await api.patch(`/timetable/slots/${editingSlotId}`, payload);
+        toast.success("Class slot updated");
       } else {
         await api.post("/timetable/slots", payload);
+        toast.success("Class slot added");
       }
       
+      hapticSuccess();
       resetForm();
       fetchData();
       window.dispatchEvent(new Event("attendance-updated"));
     } catch (error) {
       console.error("Failed to save slot:", error);
+      toast.error("Failed to save class slot");
     }
   };
 
@@ -354,14 +435,53 @@ export const TimetablePage = () => {
       const activeSlotId = active.id as string;
       const overSlotId = over.id as string;
 
-      // Optimistically swap the times in local state
+      // Optimistically swap the times in local state preserving exact durations
       const activeSlot = slots.find(s => s.id === activeSlotId);
       const overSlot = slots.find(s => s.id === overSlotId);
       
       if (activeSlot && overSlot) {
+        hapticMedium();
+
+        const parseMins = (t: string) => {
+          const [h, m] = t.split(':').map(Number);
+          return h * 60 + m;
+        };
+        const formatMins = (m: number) => {
+          const h = Math.floor(m / 60);
+          const min = m % 60;
+          return `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
+        };
+
+        const startA = parseMins(activeSlot.startTime);
+        const endA = parseMins(activeSlot.endTime);
+        const durA = endA - startA;
+
+        const startB = parseMins(overSlot.startTime);
+        const endB = parseMins(overSlot.endTime);
+        const durB = endB - startB;
+
+        const sameDay = activeSlot.dayOfWeek === overSlot.dayOfWeek;
+        const isAdjacentAB = sameDay && endA === startB;
+        const isAdjacentBA = sameDay && endB === startA;
+
+        let newStartA = startB, newEndA = startB + durA;
+        let newStartB = startA, newEndB = startA + durB;
+
+        if (isAdjacentAB) {
+          newStartB = startA;
+          newEndB = startA + durB;
+          newStartA = newEndB;
+          newEndA = newEndB + durA;
+        } else if (isAdjacentBA) {
+          newStartA = startB;
+          newEndA = startB + durA;
+          newStartB = newEndA;
+          newEndB = newEndA + durB;
+        }
+
         setSlots(prev => prev.map(s => {
-          if (s.id === activeSlotId) return { ...s, startTime: overSlot.startTime, endTime: overSlot.endTime };
-          if (s.id === overSlotId) return { ...s, startTime: activeSlot.startTime, endTime: activeSlot.endTime };
+          if (s.id === activeSlotId) return { ...s, dayOfWeek: overSlot.dayOfWeek, startTime: formatMins(newStartA), endTime: formatMins(newEndA) };
+          if (s.id === overSlotId) return { ...s, dayOfWeek: activeSlot.dayOfWeek, startTime: formatMins(newStartB), endTime: formatMins(newEndB) };
           return s;
         }).sort((a, b) => {
           if (a.dayOfWeek !== b.dayOfWeek) return a.dayOfWeek - b.dayOfWeek;
@@ -373,9 +493,8 @@ export const TimetablePage = () => {
             slotAId: activeSlotId,
             slotBId: overSlotId
           });
-          // CRITICAL: Backend historical versioning generates NEW IDs for swapped slots.
-          // We MUST refetch to sync the UI with the new database UUIDs.
           fetchData();
+          window.dispatchEvent(new Event("attendance-updated"));
         } catch (error) {
           console.error("Failed to swap slots:", error);
           fetchData(); // Revert on failure
@@ -403,6 +522,7 @@ export const TimetablePage = () => {
 
   // Open delete dialog for a single slot
   const handleInitiateDeleteSingle = (slot: TimetableSlot) => {
+    hapticHeavy();
     setSlotsPendingDelete([slot]);
     setIsDeleteModalOpen(true);
   };
@@ -411,6 +531,7 @@ export const TimetablePage = () => {
   const handleInitiateDeleteSelected = () => {
     const selectedSlots = slots.filter((s) => selectedSlotIds.includes(s.id));
     if (selectedSlots.length === 0) return;
+    hapticHeavy();
     setSlotsPendingDelete(selectedSlots);
     setIsDeleteModalOpen(true);
   };
@@ -432,12 +553,16 @@ export const TimetablePage = () => {
     const [first, second] = sorted;
     
     try {
-      await api.patch(`/timetable/slots/${first.id}`, { endTime: second.endTime });
-      await api.delete(`/timetable/slots/${second.id}`);
-      toast.success("Slots merged successfully!");
+      await Promise.all([
+        api.patch(`/timetable/slots/${first.id}`, { endTime: second.endTime }),
+        api.delete(`/timetable/slots/${second.id}`),
+      ]);
+      hapticSuccess();
+      toast.success("Class slots merged");
       setSelectedSlotIds([]);
       setIsSelectMode(false);
       fetchData();
+      window.dispatchEvent(new Event("attendance-updated"));
     } catch (error) {
       toast.error("Failed to merge slots.");
     }
@@ -453,10 +578,21 @@ export const TimetablePage = () => {
   }) => {
     if (!activeSemester || slotsPendingDelete.length === 0) return;
 
+    const slotIds = slotsPendingDelete.map((s) => s.id);
+    const distinctSubjectIds = Array.from(new Set(slotsPendingDelete.map((s) => s.subjectId)));
+
+    // Optimistic slot removal for instant visual feedback
+    if (scope === "this_day_only") {
+      setSlots((prev) => prev.filter((s) => !slotIds.includes(s.id)));
+    } else {
+      setSlots((prev) => prev.filter((s) => !distinctSubjectIds.includes(s.subjectId)));
+    }
+    setSelectedSlotIds([]);
+    setIsSelectMode(false);
+
     try {
       if (scope === "this_day_only") {
         // Delete only the specific slots on this day
-        const slotIds = slotsPendingDelete.map((s) => s.id);
         if (slotIds.length === 1) {
           await api.delete(`/timetable/slots/${slotIds[0]}?preserveHistory=${preserveHistory}`);
         } else {
@@ -466,22 +602,24 @@ export const TimetablePage = () => {
           });
         }
       } else {
-        // Delete all weekly occurrences of the selected subjects
-        const distinctSubjectIds = Array.from(new Set(slotsPendingDelete.map((s) => s.subjectId)));
-        for (const subjId of distinctSubjectIds) {
-          await api.delete(
-            `/timetable/semester/${activeSemester.id}/subject/${subjId}/slots?preserveHistory=${preserveHistory}`
-          );
-        }
+        // Delete all weekly occurrences of the selected subjects in parallel
+        await Promise.all(
+          distinctSubjectIds.map((subjId) =>
+            api.delete(
+              `/timetable/semester/${activeSemester.id}/subject/${subjId}/slots?preserveHistory=${preserveHistory}`
+            )
+          )
+        );
       }
 
-      setSelectedSlotIds([]);
-      setIsSelectMode(false);
-      await fetchData();
+      hapticHeavy();
+      toast.success(slotsPendingDelete.length > 1 ? "Class slots deleted" : "Class slot deleted");
+      fetchData();
       window.dispatchEvent(new Event("attendance-updated"));
     } catch (error) {
       console.error("Failed to delete slot(s):", error);
       toast.error("Failed to delete the selected lecture(s). Please try again.");
+      fetchData();
     }
   };
 
@@ -493,6 +631,7 @@ export const TimetablePage = () => {
     try {
       const targetSemId = activeSemester?.id || "active";
       await api.delete(`/timetable/semester/${targetSemId}/safe`);
+      hapticHeavy();
       setSlots([]);
       setSelectedSlotIds([]);
       setIsSelectMode(false);
@@ -568,6 +707,7 @@ export const TimetablePage = () => {
       });
       setIsWizardOpen(false);
       setWizardPayload(null);
+      toast.success("Timetable saved successfully!");
       fetchData();
       window.dispatchEvent(new Event("attendance-updated"));
     } catch (error) {
@@ -718,18 +858,25 @@ export const TimetablePage = () => {
 {/* OCR Modal */}
       {isOcrModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-white/40 dark:bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-card border border-border rounded-2xl w-full max-w-md overflow-hidden shadow-2xl">
-            <div className="p-4 border-b border-border flex justify-between items-center">
+          <div className="bg-card border border-border rounded-2xl w-full max-w-md overflow-hidden shadow-2xl max-h-[90vh] flex flex-col">
+            <div className="p-4 border-b border-border flex justify-between items-center shrink-0">
               <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
                 <ImageIcon className="w-5 h-5 text-blue-500" />
                 Upload Timetable (PDF / Image)
               </h2>
-              <button onClick={() => { setIsOcrModalOpen(false); setSelectedImage(null); setImagePreview(null); }} className="text-muted-foreground hover:text-foreground transition-colors">
-                <X className="w-5 h-5" />
-              </button>
+              <motion.button
+                type="button"
+                whileHover={{ scale: 1.08 }}
+                whileTap={{ scale: 0.78, rotate: 90 }}
+                disabled={isUploading}
+                onClick={() => { hapticLight(); setIsOcrModalOpen(false); setSelectedImage(null); setImagePreview(null); }}
+                className="w-9 h-9 rounded-xl flex items-center justify-center bg-muted/40 hover:bg-rose-500/15 border border-border/60 hover:border-rose-500/35 text-muted-foreground hover:text-rose-500 shadow-sm transition-colors disabled:opacity-50 cursor-pointer group"
+              >
+                <X className="w-4 h-4 transition-transform duration-200 group-hover:rotate-90" />
+              </motion.button>
             </div>
             
-            <div className="p-6 space-y-6">
+            <div className="p-6 space-y-5 overflow-y-auto">
               <div className="text-sm text-muted-foreground text-center">
                 Upload your timetable PDF or Image file. We will extract all branch and semester schedules automatically!
               </div>
@@ -743,18 +890,29 @@ export const TimetablePage = () => {
                   <p className="text-xs text-muted-foreground">Select the exact date this new timetable becomes active. Your existing timetable will be archived to end the day before.</p>
                   <input
                     type="date"
+                    disabled={isUploading}
                     value={uploadStartDate}
                     onChange={(e) => setUploadStartDate(e.target.value)}
-                    className="flex h-11 w-full rounded-xl border border-input bg-background/50 px-3 py-2 text-sm ring-offset-background transition-all hover:bg-background shadow-sm"
+                    className="flex h-11 w-full rounded-xl border border-input bg-background/50 px-3 py-2 text-sm ring-offset-background transition-all hover:bg-background shadow-sm disabled:opacity-50"
                   />
                 </div>
                 
                 <div 
-                  onClick={() => fileInputRef.current?.click()}
-                className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-colors ${
+                  onClick={() => !isUploading && fileInputRef.current?.click()}
+                className={`relative overflow-hidden border-2 border-dashed rounded-xl p-6 text-center transition-colors ${
+                  isUploading ? 'pointer-events-none border-primary/50 bg-primary/5' : 'cursor-pointer'
+                } ${
                   imagePreview ? 'border-blue-500/50 bg-blue-500/5' : 'border-border hover:border-primary/50 hover:bg-muted/50'
                 }`}
               >
+                {isUploading && (
+                  <motion.div
+                    className="absolute left-0 right-0 h-1 bg-gradient-to-r from-transparent via-blue-500 to-transparent opacity-90 pointer-events-none z-10"
+                    initial={{ top: "0%" }}
+                    animate={{ top: ["0%", "96%", "0%"] }}
+                    transition={{ duration: 2.0, repeat: Infinity, ease: "easeInOut" }}
+                  />
+                )}
                 <input 
                   type="file" 
                   accept="image/*,.pdf,application/pdf" 
@@ -765,18 +923,22 @@ export const TimetablePage = () => {
                 
                 {imagePreview === "pdf_file" ? (
                   <div className="space-y-3 flex flex-col items-center">
-                    <div className="w-14 h-14 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-500 flex items-center justify-center font-bold text-xs uppercase tracking-wider">
+                    <div className={`w-14 h-14 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-500 flex items-center justify-center font-bold text-xs uppercase tracking-wider ${isUploading ? 'animate-pulse' : ''}`}>
                       PDF
                     </div>
                     <div className="text-sm font-bold text-foreground truncate max-w-[220px]">
                       {selectedImage?.name}
                     </div>
-                    <p className="text-xs font-medium text-blue-500">Click to select a different PDF or Image</p>
+                    <p className="text-xs font-medium text-blue-500">
+                      {isUploading ? "Scanning timetable PDF layout..." : "Click to select a different PDF or Image"}
+                    </p>
                   </div>
                 ) : imagePreview ? (
-                  <div className="space-y-4">
-                    <img src={imagePreview} alt="Preview" className="max-h-48 mx-auto rounded-lg object-contain" />
-                    <p className="text-sm font-medium text-blue-500">Click to change file</p>
+                  <div className="space-y-3">
+                    <img src={imagePreview} alt="Preview" className="max-h-40 mx-auto rounded-lg object-contain" />
+                    <p className="text-xs font-medium text-blue-500">
+                      {isUploading ? "Scanning timetable grid cells..." : "Click to change file"}
+                    </p>
                   </div>
                 ) : (
                   <div className="space-y-3 flex flex-col items-center">
@@ -790,22 +952,79 @@ export const TimetablePage = () => {
                   </div>
                 )}
               </div>
+
+              {/* Live Multi-Stage AI Timetable Extraction Telemetry Panel */}
+              <AnimatePresence>
+                {isUploading && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0, y: -6 }}
+                    animate={{ opacity: 1, height: "auto", y: 0 }}
+                    exit={{ opacity: 0, height: 0, y: -6 }}
+                    className="rounded-2xl border border-blue-500/30 bg-blue-500/5 p-4 space-y-3 overflow-hidden"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <Loader2 className="w-4 h-4 text-blue-500 animate-spin shrink-0" />
+                        <span className="text-xs font-bold uppercase tracking-wider text-blue-500 truncate">
+                          Stage {ocrStepIdx + 1} of {TIMETABLE_OCR_STEPS.length}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-background/90 border border-border text-xs font-mono font-bold text-foreground tabular-nums">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
+                        <span>{(ocrElapsedTenths / 10).toFixed(1)}s</span>
+                      </div>
+                    </div>
+
+                    <AnimatePresence mode="wait">
+                      <motion.div
+                        key={ocrStepIdx}
+                        initial={{ opacity: 0, x: 8 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        exit={{ opacity: 0, x: -8 }}
+                        transition={{ duration: 0.2 }}
+                        className="space-y-0.5"
+                      >
+                        <div className="text-sm font-bold text-foreground flex items-center gap-2">
+                          {React.createElement(TIMETABLE_OCR_STEPS[ocrStepIdx]?.icon || Zap, {
+                            className: "w-4 h-4 text-blue-500 shrink-0",
+                          })}
+                          <span>{TIMETABLE_OCR_STEPS[ocrStepIdx]?.label}</span>
+                        </div>
+                        <p className="text-xs text-muted-foreground pl-6">
+                          {TIMETABLE_OCR_STEPS[ocrStepIdx]?.detail}
+                        </p>
+                      </motion.div>
+                    </AnimatePresence>
+
+                    {/* Step Progress Dots */}
+                    <div className="grid grid-cols-14 gap-1 pt-1">
+                      {TIMETABLE_OCR_STEPS.map((s, idx) => (
+                        <div
+                          key={s.id}
+                          className={`h-1.5 rounded-full transition-all duration-300 ${
+                            idx < ocrStepIdx
+                              ? "bg-emerald-500"
+                              : idx === ocrStepIdx
+                                ? "bg-blue-500 animate-pulse"
+                                : "bg-border"
+                          }`}
+                        />
+                      ))}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
               
-              <div className="w-full">
+              <div className="w-full flex justify-center">
                 <RunActionButton 
+                  fullWidth
                   action={handleOcrUpload}
                   disabled={!selectedImage || isUploading}
                   idleLabel="Extract Schedule"
                   doneLabel="Wizard Ready"
                   idleIcon={<Upload className="h-5 w-5 fill-current text-primary-foreground opacity-90" />}
-                  steps={[
-                    { id: 1, label: 'Uploading Timetable', icon: Upload },
-                    { id: 2, label: 'Scanning Layout', icon: ImageIcon },
-                    { id: 3, label: 'Extracting Slots', icon: FileSpreadsheet },
-                    { id: 4, label: 'Classifying Subjects', icon: Zap },
-                    { id: 5, label: 'Preparing Wizard', icon: CheckCircle2 }
-                  ]}
-                  widths={{ idle: 220, running: 340, done: 220 }}
+                  steps={TIMETABLE_OCR_STEPS}
+                  stepIntervalMs={1650}
                 />
               </div>
             </div>
@@ -986,7 +1205,10 @@ export const TimetablePage = () => {
           {DAYS.map((day, idx) => (
             <button
               key={day}
-              onClick={() => setActiveTab(idx)}
+              onClick={() => {
+                hapticSelection();
+                setActiveTab(idx);
+              }}
               className={`whitespace-nowrap px-5 py-3 text-xs font-bold transition-all aether-mono ${
                 activeTab === idx 
                   ? "bg-card text-foreground border-t border-l border-r border-border" 

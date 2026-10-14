@@ -34,26 +34,48 @@ export const HardwareBackButtonHandler = () => {
 
       const currentPath = locationRef.current;
       
-      // If we are on the main landing/home pages, exit the app
-      if (currentPath === "/today" || currentPath === "/") {
+      // 2. ROOT & EXIT PATHS
+      // Pressing back on the landing page or main attendance dashboard minimizes the app to prevent an accidental exit loop.
+      const rootExitPaths = ["/", "/today"];
+      if (rootExitPaths.includes(currentPath)) {
         await CapacitorApp.minimizeApp();
         return;
       }
       
-      // Auth routes go back to landing
-      if (currentPath === "/login" || currentPath === "/signup") {
+      // 3. PUBLIC ENTRY & LEGAL ROUTES
+      // Pressing hardware back on login, signup, privacy, or terms must cleanly return the user to the landing page ('/').
+      const landingSubRoutes = ["/login", "/signup", "/privacy", "/terms"];
+      if (landingSubRoutes.includes(currentPath)) {
         navigate("/", { replace: true });
         return;
       }
       
-      // Legal routes go back to landing
-      if (currentPath === "/privacy" || currentPath === "/terms") {
-        navigate("/", { replace: true });
+      // Sub-routes for subjects, semester, and settings: backing from logs, tabs, or sub-pages returns to parent tab
+      if (currentPath.startsWith("/subjects/")) {
+        navigate("/subjects", { replace: true });
         return;
       }
-      
-      // Top-level tabs should ideally return to the main dashboard
-      if (currentPath === "/report" || currentPath === "/timetable" || currentPath === "/calendar" || currentPath === "/subjects" || currentPath === "/settings" || currentPath === "/predictive" || currentPath === "/semester") {
+      if (currentPath.startsWith("/semester/")) {
+        navigate("/semester", { replace: true });
+        return;
+      }
+      if (currentPath.startsWith("/settings/")) {
+        navigate("/settings", { replace: true });
+        return;
+      }
+
+      // Secondary pages opened from Subjects or Settings return to their parent page
+      if (currentPath === "/semester" || currentPath === "/predictive" || currentPath.startsWith("/predictive/")) {
+        navigate("/subjects", { replace: true });
+        return;
+      }
+      if (currentPath === "/report" || currentPath === "/reports" || currentPath.startsWith("/report/")) {
+        navigate("/settings", { replace: true });
+        return;
+      }
+
+      // Top-level tabs return to the main dashboard
+      if (currentPath === "/timetable" || currentPath === "/calendar" || currentPath === "/subjects" || currentPath === "/settings") {
         navigate("/today", { replace: true });
         return;
       }

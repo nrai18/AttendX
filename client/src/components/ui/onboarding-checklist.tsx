@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronUp, ChevronRight, Check } from 'lucide-react';
+import { ChevronUp, ChevronRight, Check, X } from 'lucide-react';
 
 interface Step {
   id: number;
@@ -14,11 +14,13 @@ interface Step {
 interface ChecklistProps {
   steps: Step[];
   title?: string;
+  onDismiss?: () => void;
 }
 
 export const OnboardingChecklist: React.FC<ChecklistProps> = ({ 
   steps, 
-  title = "Getting started" 
+  title = "Getting started",
+  onDismiss
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [theme] = useState<'light' | 'dark'>('light');
@@ -70,6 +72,20 @@ export const OnboardingChecklist: React.FC<ChecklistProps> = ({
               <span className="text-[12px] sm:text-[13px] font-bold text-[#71717A] dark:text-[#888] min-w-7 sm:min-w-7.5 text-right">
                 {completedCount}/{totalSteps}
               </span>
+
+              {onDismiss && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDismiss();
+                  }}
+                  title="Dismiss checklist"
+                  className="w-6 h-6 rounded-md flex items-center justify-center text-[#A1A1A1] hover:text-[#1A1A1A] dark:hover:text-[#EDEDED] hover:bg-black/5 dark:hover:bg-white/10 transition-colors cursor-pointer shrink-0 ml-0.5"
+                >
+                  <X size={14} />
+                </button>
+              )}
             </div>
           </div>
 
@@ -121,6 +137,21 @@ export const OnboardingChecklist: React.FC<ChecklistProps> = ({
                       )}
                     </div>
                   )})}
+
+                  {onDismiss && (
+                    <div className="pt-2 pb-1 px-2 border-t border-[#E9E8EF] dark:border-white/5 flex justify-end">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onDismiss();
+                        }}
+                        className="text-[11px] font-semibold text-muted-foreground hover:text-foreground px-2 py-1 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition-colors cursor-pointer"
+                      >
+                        Dismiss checklist
+                      </button>
+                    </div>
+                  )}
                 </div>
               </motion.div>
             )}

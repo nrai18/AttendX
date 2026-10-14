@@ -1,6 +1,10 @@
 import React, { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
+import { motion, AnimatePresence } from "framer-motion";
 import { useSearchParams, useNavigate, useLocation, useParams } from "react-router-dom";
+import { useScrollLock } from "../../hooks/useScrollLock";
 import { Capacitor } from "@capacitor/core";
+import { Preferences } from "@capacitor/preferences";
 import { Filesystem, Directory } from "@capacitor/filesystem";
 import { Share } from "@capacitor/share";
 import { useAuthStore } from "../../stores/authStore";
@@ -10,6 +14,7 @@ import { useCacheStore } from "../../stores/cacheStore";
 import { useNotificationStore } from "../../stores/notificationStore";
 import { useBackHandlerStore } from "../../stores/backHandlerStore";
 import { api } from "../../lib/api";
+import axios from "axios";
 import { toast } from "sonner";
 import { Stepper } from "../../components/ui/stepper";
 import { RunActionButton } from "../../components/ui/run-action-button";
@@ -18,6 +23,7 @@ import { TimedUndoAction } from "../../components/ui/timed-undo-action";
 import { EditProfile, ProfileData } from "../../components/ui/edit-profile";
 import { VolumetricRays } from "../../components/ui/volumetric-rays";
 import { LinkedDevicesModal } from "../../components/ui/linked-devices";
+import { SemesterTransitionModal } from "../../components/semester/SemesterTransitionModal";
 import {
   Settings,
   Target,
@@ -69,6 +75,7 @@ import { downloadBlob } from "../../lib/download";
 import { FeedbackModal } from "../../components/support/FeedbackModal";
 import { ChangelogModal } from "../../components/settings/ChangelogModal";
 import { NotificationService } from "../../services/NotificationService";
+import { hapticSelection, hapticLight } from "../../utils/haptics";
 
 export const SettingsPage: React.FC = () => {
   const currentAppVersion = (Capacitor.isNativePlatform() ? localStorage.getItem("app_version") : null) || import.meta.env.VITE_APP_VERSION || "4.2.0";
@@ -76,7 +83,8 @@ export const SettingsPage: React.FC = () => {
 
   const renderDocuments = (type: string) => {
     // For backups, only show the most recent one (index 0 because it's sorted desc by createdAt on backend)
-    let docs = storedDocuments.filter((d: any) => d.type === type);
+    const safeDocs = Array.isArray(storedDocuments) ? storedDocuments : [];
+    let docs = safeDocs.filter((d: any) => d && d.type === type);
     if (type === "BACKUP" && docs.length > 0) {
       docs = [docs[0]];
     }
@@ -97,7 +105,8 @@ export const SettingsPage: React.FC = () => {
                 onClick={async () => {
                   try {
                     const res = await api.get(`/documents/${doc.id}/download`, { responseType: 'blob' });
-                    await downloadBlob(new Blob([res.data]), doc.name);
+                    const blob = res.data instanceof Blob ? res.data : new Blob([res.data], { type: doc.mimeType });
+                    await downloadBlob(blob, doc.name);
                   } catch (e) {
                     console.error(e);
                     toast.error("Failed to download document.");
@@ -117,8 +126,8 @@ export const SettingsPage: React.FC = () => {
                         try {
                           await api.delete(`/documents/${doc.id}`);
                           const { data } = await api.get("/documents");
-                          setStoredDocuments(data);
-                          toast.success("Document deleted");
+                          setStoredDocuments(Array.isArray(data) ? data : (data?.documents || []));
+                          // Document removed from list in place
                         } catch (e) {
                           console.error(e);
                           toast.error("Failed to delete document.");
@@ -141,10 +150,22 @@ export const SettingsPage: React.FC = () => {
   const { user, setUser } = useAuthStore();
   const navigate = useNavigate();
   const { section } = useParams<{ section: string }>();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const getTargetView = (sec?: string | null): "main" | "backup" | "contact" | "sync" => {
+    if (sec === "peer-sync" || sec === "sync") return "sync";
+    if (sec === "contact" || sec === "contact-us") return "contact";
+    if (sec === "backup") return "backup";
+    return "main";
+  };
+
+  const initialPathSec = location.pathname.startsWith("/settings/")
+    ? location.pathname.slice("/settings/".length).split("/")[0]
+    : undefined;
+  const initialSec = section || initialPathSec || searchParams.get("section") || searchParams.get("feature") || searchParams.get("view");
+  const prevSecRef = useRef<string | null>(initialSec || null);
   const [activeView, setActiveView] = useState<"main" | "backup" | "contact" | "sync">(
-    (section === "peer-sync" || section === "sync") ? "sync" :
-    (section === "contact" || section === "contact-us") ? "contact" :
-    (section === "backup") ? "backup" : "main"
+    getTargetView(initialSec)
   );
 
   // Profile & Criteria
@@ -155,8 +176,8 @@ export const SettingsPage: React.FC = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
-  // App Info Modal State
-  const [showAppInfoModal, setShowAppInfoModal] = useState(false);
+  // App Info & Sub-Modal States (initialized synchronously from URL to prevent 2-render animation lag)
+  const [showAppInfoModal, setShowAppInfoModal] = useState(() => initialSec === "app-info");
   const [appInfoColored, setAppInfoColored] = useState(false);
 
   useEffect(() => {
@@ -167,25 +188,47 @@ export const SettingsPage: React.FC = () => {
     }
   }, [showAppInfoModal]);
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
-  const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
-  const [isChangelogOpen, setIsChangelogOpen] = useState(false);
-  const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
-  const [isLinkedDevicesOpen, setIsLinkedDevicesOpen] = useState(false);
+  const [isFeedbackOpen, setIsFeedbackOpen] = useState(() => initialSec === "feedback" || initialSec === "support");
+  const [isChangelogOpen, setIsChangelogOpen] = useState(() => initialSec === "changelog" || initialSec === "history" || initialSec === "update-history");
+  const [isEditProfileOpen, setIsEditProfileOpen] = useState(() => location.hash === "#edit-profile" || initialSec === "profile" || initialSec === "edit-profile" || searchParams.get("action") === "edit-profile");
+  const [isLinkedDevicesOpen, setIsLinkedDevicesOpen] = useState(() => initialSec === "devices" || initialSec === "linked-devices");
+  const [isTransitionModalOpen, setIsTransitionModalOpen] = useState(false);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
 
   useEffect(() => {
-    if (location.hash === "#edit-profile" || section === "profile" || section === "edit-profile") {
-      setIsEditProfileOpen(true);
+    const pathSec = location.pathname.startsWith("/settings/")
+      ? location.pathname.slice("/settings/".length).split("/")[0]
+      : undefined;
+    const sec = section || pathSec || searchParams.get("section") || searchParams.get("feature") || searchParams.get("view");
+    const target = getTargetView(sec);
+    setActiveView(target);
+
+    const isEditProfile = location.hash === "#edit-profile" || sec === "profile" || sec === "edit-profile" || searchParams.get("action") === "edit-profile";
+    const isDevices = sec === "devices" || sec === "linked-devices";
+    const isChangelog = sec === "changelog" || sec === "history" || sec === "update-history";
+    const isFeedback = sec === "feedback" || sec === "support";
+    const isAppInfo = sec === "app-info";
+
+    if (isEditProfile) setIsEditProfileOpen(true);
+    if (isDevices) setIsLinkedDevicesOpen(true);
+    if (isChangelog) setIsChangelogOpen(true);
+    if (isFeedback) setIsFeedbackOpen(true);
+    if (isAppInfo) setShowAppInfoModal(true);
+
+    // Only close modals via route effect if navigating back from a deep-linked URL section to /settings
+    if (!sec && prevSecRef.current) {
+      setIsEditProfileOpen(false);
+      setIsLinkedDevicesOpen(false);
+      setIsChangelogOpen(false);
+      setIsFeedbackOpen(false);
+      setShowAppInfoModal(false);
+      restoreScrollPosition();
     }
-    if (section === "devices" || section === "linked-devices") setIsLinkedDevicesOpen(true);
-    if (section === "changelog" || section === "history" || section === "update-history") setIsChangelogOpen(true);
-    if (section === "feedback" || section === "support") setIsFeedbackOpen(true);
-    if (section === "app-info") setShowAppInfoModal(true);
-  }, [location.hash, section]);
+    prevSecRef.current = sec || null;
+  }, [location.hash, location.pathname, section, searchParams]);
 
   // Stored Documents State
   const [storedDocuments, setStoredDocuments] = useState<any[]>([]);
-  const [searchParams, setSearchParams] = useSearchParams();
 
   // Dynamic Update Manifest
   const [updateManifest, setUpdateManifest] = useState<any>({
@@ -224,7 +267,7 @@ export const SettingsPage: React.FC = () => {
     const fetchDocs = async () => {
       try {
         const { data } = await api.get("/documents");
-        setStoredDocuments(data);
+        setStoredDocuments(Array.isArray(data) ? data : (data?.documents || []));
       } catch (err) {
         console.error("Failed to fetch documents", err);
       }
@@ -238,6 +281,67 @@ export const SettingsPage: React.FC = () => {
   const [notifyEvent, setNotifyEvent] = useState(true);
   const [notifyBirthday, setNotifyBirthday] = useState(true);
   const [dndEnabled, setDndEnabled] = useState(true);
+  const [dndAccessGranted, setDndAccessGranted] = useState<boolean>(false);
+
+  const refreshDndPermission = React.useCallback(async () => {
+    try {
+      const { checkDndPermission } = await import("../../lib/ringer");
+      const granted = await checkDndPermission();
+      setDndAccessGranted(granted);
+      return granted;
+    } catch {
+      setDndAccessGranted(false);
+      return false;
+    }
+  }, []);
+
+  const handleOpenDndSettings = React.useCallback(async () => {
+    const { requestDndPermission } = await import("../../lib/ringer");
+    if (!Capacitor.isNativePlatform()) {
+      toast.info("Do Not Disturb auto-mute requires the AttendX Android app.");
+      return;
+    }
+    toast.info("Opening Android Do Not Disturb settings — toggle ON access for AttendX.");
+    await requestDndPermission();
+    setTimeout(() => {
+      refreshDndPermission();
+    }, 1500);
+  }, [refreshDndPermission]);
+
+  useEffect(() => {
+    refreshDndPermission();
+
+    const onWindowFocus = () => {
+      refreshDndPermission();
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        refreshDndPermission();
+      }
+    };
+
+    window.addEventListener("focus", onWindowFocus);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
+    let appListenerPromise: Promise<{ remove: () => Promise<void> }> | null = null;
+    if (Capacitor.isNativePlatform()) {
+      appListenerPromise = import("@capacitor/app").then(({ App: CapApp }) =>
+        CapApp.addListener("appStateChange", ({ isActive }) => {
+          if (isActive) {
+            refreshDndPermission();
+          }
+        })
+      );
+    }
+
+    return () => {
+      window.removeEventListener("focus", onWindowFocus);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      if (appListenerPromise) {
+        appListenerPromise.then((h) => h.remove()).catch(() => {});
+      }
+    };
+  }, [refreshDndPermission]);
 
   const { reminderFrequency, setReminderFrequency, frequencyMemory } = useCacheStore();
   const { config: notifConfig, updateConfig } = useNotificationStore();
@@ -254,19 +358,169 @@ export const SettingsPage: React.FC = () => {
     "subject" | "attendance" | "timetable" | "events" | "entire" | null
   >(null);
 
+  useScrollLock(showAppInfoModal || resetModalType !== null);
+
+  // Scroll Position Restoration Engine
+  const settingsScrollYRef = useRef<number>(0);
+  const isRestoringScrollRef = useRef<boolean>(false);
+
+  const recordScroll = () => {
+    if (activeView === "main" && !isRestoringScrollRef.current) {
+      const y = window.scrollY || document.documentElement.scrollTop || 0;
+      if (y > 0) {
+        settingsScrollYRef.current = y;
+        try {
+          sessionStorage.setItem("attendx_settings_scroll", String(y));
+        } catch (e) {}
+      }
+    }
+  };
+
+  const restoreScrollPosition = () => {
+    const targetY = settingsScrollYRef.current || Number(sessionStorage.getItem("attendx_settings_scroll")) || 0;
+    if (targetY > 0) {
+      isRestoringScrollRef.current = true;
+      const doScroll = () => {
+        window.scrollTo({ top: targetY, behavior: "instant" });
+        if (document.documentElement) document.documentElement.scrollTop = targetY;
+        if (document.body) document.body.scrollTop = targetY;
+      };
+      doScroll();
+      requestAnimationFrame(doScroll);
+      setTimeout(doScroll, 40);
+      setTimeout(doScroll, 100);
+      setTimeout(doScroll, 200);
+      setTimeout(doScroll, 350);
+      setTimeout(() => {
+        doScroll();
+        isRestoringScrollRef.current = false;
+      }, 500);
+    }
+  };
+
+  const openSubView = (view: "sync" | "backup" | "contact") => {
+    recordScroll();
+    isRestoringScrollRef.current = true;
+    const pathMap: Record<string, string> = {
+      sync: "/settings/peer-sync",
+      backup: "/settings/backup",
+      contact: "/settings/contact"
+    };
+    navigate(pathMap[view] || "/settings");
+    setActiveView(view);
+    window.scrollTo({ top: 0, behavior: "instant" });
+    setTimeout(() => {
+      isRestoringScrollRef.current = false;
+    }, 150);
+  };
+
+  const handleBackToMain = () => {
+    setActiveView("main");
+    if (location.pathname !== "/settings") {
+      navigate("/settings", { replace: true });
+    }
+    restoreScrollPosition();
+  };
+
+  // Continuously record scroll position on the main settings view
+  useEffect(() => {
+    const handleScroll = () => {
+      if (isRestoringScrollRef.current) return;
+      if (activeView === "main") {
+        const y = window.scrollY || document.documentElement.scrollTop || 0;
+        if (y > 0) {
+          settingsScrollYRef.current = y;
+          try {
+            sessionStorage.setItem("attendx_settings_scroll", String(y));
+          } catch (e) {}
+        }
+      }
+    };
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, [activeView]);
+
+  // Restore scroll when returning to main from another view
+  const prevViewRef = useRef(activeView);
+  useEffect(() => {
+    if (prevViewRef.current !== "main" && activeView === "main") {
+      restoreScrollPosition();
+    }
+    prevViewRef.current = activeView;
+  }, [activeView]);
+
+  // Restore scroll position on initial mount (e.g. returning from /settings/faq)
+  useEffect(() => {
+    const savedY = Number(sessionStorage.getItem("attendx_settings_scroll")) || 0;
+    if (savedY > 0 && activeView === "main") {
+      settingsScrollYRef.current = savedY;
+      restoreScrollPosition();
+      const t1 = setTimeout(() => restoreScrollPosition(), 80);
+      const t2 = setTimeout(() => restoreScrollPosition(), 200);
+      return () => {
+        clearTimeout(t1);
+        clearTimeout(t2);
+      };
+    }
+  }, []);
+
+  // Also restore scroll on app focus/visibilitychange (returning from native file picker or share sheet)
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible" && activeView === "main") {
+        const savedY = settingsScrollYRef.current || Number(sessionStorage.getItem("attendx_settings_scroll")) || 0;
+        if (savedY > 0 && (window.scrollY || 0) < 50) {
+          restoreScrollPosition();
+        }
+      }
+    };
+    window.addEventListener("focus", handleVisibility);
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => {
+      window.removeEventListener("focus", handleVisibility);
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
+  }, [activeView]);
+
   useEffect(() => {
     const unregister = useBackHandlerStore.getState().register(() => {
-      if (isEditProfileOpen) { setIsEditProfileOpen(false); return true; }
-      if (isLinkedDevicesOpen) { setIsLinkedDevicesOpen(false); return true; }
-      if (showAppInfoModal) { setShowAppInfoModal(false); return true; }
-      if (isFeedbackOpen) { setIsFeedbackOpen(false); return true; }
-      if (isChangelogOpen) { setIsChangelogOpen(false); return true; }
-      if (resetModalType !== null) { setResetModalType(null); return true; }
-      if (activeView !== "main") { setActiveView("main"); return true; }
+      if (isTransitionModalOpen) { setIsTransitionModalOpen(false); restoreScrollPosition(); return true; }
+      if (isEditProfileOpen) { 
+        setIsEditProfileOpen(false); 
+        if (location.pathname !== "/settings") navigate("/settings", { replace: true });
+        restoreScrollPosition(); 
+        return true; 
+      }
+      if (isLinkedDevicesOpen) { 
+        setIsLinkedDevicesOpen(false); 
+        if (location.pathname !== "/settings") navigate("/settings", { replace: true });
+        restoreScrollPosition(); 
+        return true; 
+      }
+      if (showAppInfoModal) { 
+        setShowAppInfoModal(false); 
+        if (location.pathname !== "/settings") navigate("/settings", { replace: true });
+        restoreScrollPosition(); 
+        return true; 
+      }
+      if (isFeedbackOpen) { 
+        setIsFeedbackOpen(false); 
+        if (location.pathname !== "/settings") navigate("/settings", { replace: true });
+        restoreScrollPosition(); 
+        return true; 
+      }
+      if (isChangelogOpen) { 
+        setIsChangelogOpen(false); 
+        if (location.pathname !== "/settings") navigate("/settings", { replace: true });
+        restoreScrollPosition(); 
+        return true; 
+      }
+      if (resetModalType !== null) { setResetModalType(null); restoreScrollPosition(); return true; }
+      if (activeView !== "main") { handleBackToMain(); return true; }
       return false;
     });
     return () => unregister();
-  }, [isEditProfileOpen, isLinkedDevicesOpen, showAppInfoModal, isFeedbackOpen, isChangelogOpen, resetModalType, activeView]);
+  }, [isTransitionModalOpen, isEditProfileOpen, isLinkedDevicesOpen, showAppInfoModal, isFeedbackOpen, isChangelogOpen, resetModalType, activeView, location.pathname]);
 
   const fetchSubjectsForReset = () => {
     api
@@ -350,7 +604,7 @@ export const SettingsPage: React.FC = () => {
       // Reschedule local notifications (e.g. birthday) with the new profile data
       NotificationService.autoScheduleFromTimetable();
       
-      toast.success("Profile updated successfully!");
+      // Modal closes immediately and profile state updates in place
       setIsEditProfileOpen(false);
     } catch (err: any) {
       toast.error(err.response?.data?.error || "Failed to update profile");
@@ -464,10 +718,13 @@ export const SettingsPage: React.FC = () => {
   };
 
   // Export CSV
-  const handleExportCSV = async () => {
+  const handleExportCSV = async (signal?: AbortSignal) => {
     try {
-      const res = await api.get("/data/export", { responseType: "blob" });
-      
+      const res = await api.get("/data/export", { 
+        responseType: "blob",
+        signal 
+      });
+
       let filename = `AttendX_Backup_${new Date().toISOString().slice(0, 10)}.zip`;
       const disposition = res.headers["content-disposition"];
       if (disposition && disposition.indexOf("filename=") !== -1) {
@@ -477,14 +734,35 @@ export const SettingsPage: React.FC = () => {
 
       const blob = new Blob([res.data], { type: "application/zip" });
       await downloadBlob(blob, filename);
-} catch (err) {
+      // RunActionButton already transitions to "Saved" state
+    } catch (err: any) {
+      if (
+        signal?.aborted || 
+        err?.name === "CanceledError" || 
+        err?.name === "AbortError" || 
+        err?.code === "ERR_CANCELED" || 
+        axios.isCancel(err)
+      ) {
+        toast("Export cancelled", { icon: "🛑" });
+        return;
+      }
       console.error("CSV/ZIP export failed", err);
-      toast.error("Failed to generate ZIP export.");
+      let errorMsg = "Failed to generate ZIP export.";
+      if (err.response?.data instanceof Blob) {
+        try {
+          const text = await err.response.data.text();
+          const parsed = JSON.parse(text);
+          if (parsed.error) errorMsg = parsed.error;
+        } catch (_) {}
+      } else if (err.response?.data?.error) {
+        errorMsg = err.response.data.error;
+      }
+      toast.error(errorMsg);
     } finally {
       // Refresh documents after export
       try {
         const { data } = await api.get("/documents");
-        setStoredDocuments(data);
+        setStoredDocuments(Array.isArray(data) ? data : (data?.documents || []));
       } catch (e) {}
     }
   };
@@ -493,68 +771,72 @@ export const SettingsPage: React.FC = () => {
     const file = e.target.files?.[0];
     if (!file || !user) return;
 
-    const formData = new FormData();
-    formData.append("file", file);
+    // Reset input value so re-selecting the same file fires onChange
+    e.target.value = "";
 
-    const toastId = toast.loading("Uploading ZIP to ML Server...");
-    setIsImportingCSV(true);
+    toast("Are you sure? This will replace your active semester timetable, attendance, and events.", {
+      action: {
+        label: "Import ZIP",
+        onClick: async () => {
+          const formData = new FormData();
+          formData.append("file", file);
 
-    try {
-      const mlApiUrl = useConfigStore.getState().mlApiUrl || "https://attendx-ml-server.onrender.com";
+          const toastId = toast.loading("Importing ZIP archive...");
+          setIsImportingCSV(true);
 
-      const res = await fetch(`${mlApiUrl}/upload/zip?user_id=${user.id}`, {
-        method: "POST",
-        body: formData,
-      });
-
-      if (!res.ok) {
-        throw new Error("Failed to upload ZIP");
-      }
-
-      const data = await res.json();
-      const taskId = data.task_id;
-
-      // Connect to WebSocket for progress
-      const wsUrl = mlApiUrl.replace(/^http/, "ws");
-      const ws = new WebSocket(`${wsUrl}/ws/progress/${taskId}`);
-
-      ws.onmessage = (event) => {
-        const msg = JSON.parse(event.data);
-        toast.loading(`Importing: ${msg.status} (${msg.progress}%)`, {
-          id: toastId,
-        });
-
-        if (msg.progress === 100 || msg.status.includes("Error")) {
-          ws.close();
-          if (msg.progress === 100) {
-            toast.success("Data imported successfully! Redirecting...", {
-              id: toastId,
+          try {
+            const res = await api.post("/data/import", formData, {
+              headers: { "Content-Type": "multipart/form-data" },
             });
-            setTimeout(() => (window.location.href = "/timetable"), 1500);
-          } else {
-            toast.error(msg.status, { id: toastId });
-            setIsImportingCSV(false);
-          }
-        }
-      };
 
-      ws.onerror = () => {
-        toast.error(
-          "Lost connection to progress tracker, but import may still be running.",
-          { id: toastId },
-        );
-        setIsImportingCSV(false);
-      };
-    } catch (err: any) {
-      console.error("Failed to import ZIP", err);
-      toast.error(err.message || "Failed to import ZIP file.", { id: toastId });
-      setIsImportingCSV(false);
-    } finally {
-      if (e.target) e.target.value = "";
-    }
+            if (!res.data?.success) {
+              throw new Error(res.data?.error || "Failed to import data");
+            }
+
+            // Invalidate frontend cache and reload store
+            useCacheStore.getState().clearCache();
+            await useAttendanceStore.getState().fetchStats(true);
+            window.dispatchEvent(new CustomEvent("attendance-updated"));
+
+            toast.success("Schedule, attendance, and events imported successfully!", { id: toastId });
+
+            // Refresh stored documents list
+            try {
+              const { data } = await api.get("/documents");
+              setStoredDocuments(Array.isArray(data) ? data : (data?.documents || []));
+            } catch (e) {}
+
+            setTimeout(() => (window.location.href = "/today"), 1200);
+          } catch (err: any) {
+            console.error("Failed to import ZIP", err);
+            const msg = err.response?.data?.error || err.message || "Failed to import ZIP archive.";
+            toast.error(msg, { id: toastId });
+          } finally {
+            setIsImportingCSV(false);
+            restoreScrollPosition();
+          }
+        },
+      },
+      cancel: { label: "Cancel", onClick: () => {} },
+    });
   };
 
   // Trigger Resets
+  const clearPersistedAttendanceAndSyncCaches = () => {
+    useCacheStore.getState().clearCache();
+    import("../../stores/offlineStore").then(({ useOfflineStore }) => useOfflineStore.getState().clearQueue()).catch(() => {});
+    const partialKeys = [
+      "attendx-attendance-cache",
+      "attendx-api-cache",
+      "attendx-sync-storage",
+      "attendx-offline-queue",
+    ];
+    partialKeys.forEach((k) => {
+      Preferences.remove({ key: k }).catch(() => {});
+      localStorage.removeItem(k);
+    });
+  };
+
   const handlePerformReset = async () => {
     setIsResetting(true);
     setResetError("");
@@ -569,24 +851,72 @@ export const SettingsPage: React.FC = () => {
         await api.post("/users/reset-subject-attendance", {
           subjectIds: selectedSubjectIds,
         });
+        clearPersistedAttendanceAndSyncCaches();
         toast.success("Attendance cleared for selected subjects!");
       } else if (resetModalType === "attendance") {
         await api.post("/users/reset-all-attendance");
+        clearPersistedAttendanceAndSyncCaches();
         toast.success(
           "All attendance records and overrides deleted successfully!",
         );
       } else if (resetModalType === "timetable") {
         await api.post("/users/reset-timetable");
+        clearPersistedAttendanceAndSyncCaches();
+        window.dispatchEvent(new Event("timetable-updated"));
+        import("../../services/NotificationService")
+          .then((m) => m.NotificationService.autoScheduleFromTimetable())
+          .catch(() => {});
         toast.success("Timetable schedule slots cleared successfully!");
       } else if (resetModalType === "events") {
         await api.post("/users/reset-events");
+        clearPersistedAttendanceAndSyncCaches();
+        window.dispatchEvent(new Event("events-updated"));
+        import("../../services/NotificationService")
+          .then((m) => m.NotificationService.autoScheduleFromTimetable())
+          .catch(() => {});
         toast.success("Academic calendar events removed successfully!");
       } else if (resetModalType === "entire") {
         await api.post("/users/reset-data");
+        useCacheStore.getState().clearCache();
+
+        // Sync reset targetAttendance (75%) into persisted auth store so UI does not show stale criteria
+        if (user && setUser) {
+          setUser({ ...user, targetAttendance: 75 });
+        }
+        setTargetAttendance(75);
+        setStoredDocuments([]);
+
+        // Wipe all local storage keys for attendance, API responses, assignments, and onboarding
+        import("../../stores/offlineStore").then(({ useOfflineStore }) => useOfflineStore.getState().clearQueue()).catch(() => {});
+        const keysToRemove = [
+          "attendx-attendance-cache",
+          "attendx-api-cache",
+          "attendx-assignments",
+          "attendx-sync-storage",
+          "attendx-offline-queue",
+          "onboarding_voice_mode",
+          "onboarding_predictive",
+          "onboarding_peer_sync",
+          "onboarding_dismissed",
+        ];
+        keysToRemove.forEach((k) => {
+          Preferences.remove({ key: k }).catch(() => {});
+          localStorage.removeItem(k);
+        });
+        try {
+          sessionStorage.removeItem("attendx_settings_scroll");
+        } catch (e) {}
+
+        // Cancel all scheduled local notifications and alarms
+        try {
+          const m = await import("../../services/NotificationService");
+          await m.NotificationService.cancelAll();
+        } catch (e) {}
+
         toast.success("App data reset successfully! Reloading...");
         setTimeout(() => {
           window.location.href = "/today";
-        }, 1500);
+        }, 1200);
         return;
       }
 
@@ -594,6 +924,7 @@ export const SettingsPage: React.FC = () => {
       window.dispatchEvent(new Event("attendance-updated"));
 
       setResetModalType(null);
+      restoreScrollPosition();
       setIsResetting(false);
       setSelectedSubjectIds([]);
       setResetConfirmText("");
@@ -623,57 +954,55 @@ export const SettingsPage: React.FC = () => {
     setContactSubmitted(true);
   };
 
-  // ------------------ SUB-VIEW: BACKUP / RESTORE ------------------
-  if (activeView === "sync") {
-    return (
-      <>
+  // ------------------ SETTINGS RENDER ------------------
+  return (
+    <>
       <VolumetricRays />
-      <div className="w-full pb-36 md:pb-8 space-y-6 animate-in fade-in duration-200">
-        <div className="flex items-center gap-3 mb-6">
-          <button
-            onClick={() => setActiveView("main")}
-            className="p-2 rounded-xl bg-card border border-border text-foreground hover:bg-muted transition-colors cursor-pointer"
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </button>
-          <h1 className="text-2xl font-extrabold text-foreground tracking-tight">
-            Peer Sync
-          </h1>
+
+      {/* Global Hidden File Inputs for Backups and ZIPs */}
+      <input
+        type="file"
+        accept=".json"
+        ref={jsonInputRef}
+        onChange={handleImportBackup}
+        className="hidden"
+      />
+      <input
+        type="file"
+        accept=".zip,application/zip,application/x-zip-compressed,multipart/x-zip"
+        ref={csvInputRef}
+        onChange={handleImportCSV}
+        className="hidden"
+      />
+
+      {/* SUB-VIEW: PEER SYNC */}
+      {activeView === "sync" && (
+        <div className="w-full pb-36 md:pb-8 space-y-6 animate-in fade-in duration-200">
+          <div className="flex items-center gap-3 mb-6">
+            <button
+              onClick={() => handleBackToMain()}
+              className="p-2 rounded-xl bg-card border border-border text-foreground hover:bg-muted transition-colors cursor-pointer"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+            <h1 className="text-2xl font-extrabold text-foreground tracking-tight">
+              Peer Sync
+            </h1>
+          </div>
+          <PeerSyncModal />
         </div>
-        
-      </div>
-      <PeerSyncModal />
-      </>
-    );
-  }
+      )}
 
-  if (activeView === "backup") {
-    return (
-      <>
-      <VolumetricRays />
-      <div className="w-full pb-36 md:pb-8 space-y-6 animate-in fade-in duration-200">
-        <input
-          type="file"
-          accept=".json"
-          ref={jsonInputRef}
-          onChange={handleImportBackup}
-          className="hidden"
-        />
-        <input
-          type="file"
-          accept=".zip,application/zip,application/x-zip-compressed,multipart/x-zip"
-          ref={csvInputRef}
-          onChange={handleImportCSV}
-          className="hidden"
-        />
-
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => setActiveView("main")}
-            className="p-2 rounded-xl bg-card border border-border text-foreground hover:bg-muted transition-colors cursor-pointer"
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </button>
+      {/* SUB-VIEW: BACKUP / RESTORE */}
+      {activeView === "backup" && (
+        <div className="w-full pb-36 md:pb-8 space-y-6 animate-in fade-in duration-200">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => handleBackToMain()}
+              className="p-2 rounded-xl bg-card border border-border text-foreground hover:bg-muted transition-colors cursor-pointer"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
           <h1 className="text-2xl font-extrabold text-foreground tracking-tight">
             Backup/Restore
           </h1>
@@ -805,24 +1134,19 @@ export const SettingsPage: React.FC = () => {
             </div>
           </div>
         </div>
-      </div>
-      </>
-    );
-  }
+        </div>
+      )}
 
-  // ------------------ SUB-VIEW: CONTACT US ------------------
-  if (activeView === "contact") {
-    return (
-      <>
-      <VolumetricRays />
-      <div className="w-full pb-36 md:pb-8 space-y-6 animate-in fade-in duration-200">
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => setActiveView("main")}
-            className="p-2 rounded-xl bg-card border border-border text-foreground hover:bg-muted transition-colors cursor-pointer"
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </button>
+      {/* SUB-VIEW: CONTACT US */}
+      {activeView === "contact" && (
+        <div className="w-full pb-36 md:pb-8 space-y-6 animate-in fade-in duration-200">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => handleBackToMain()}
+              className="p-2 rounded-xl bg-card border border-border text-foreground hover:bg-muted transition-colors cursor-pointer"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
           <h1 className="text-2xl font-extrabold text-foreground tracking-tight">
             Contact us
           </h1>
@@ -947,26 +1271,17 @@ export const SettingsPage: React.FC = () => {
           </button>
         </form>
       </div>
-      </>
-    );
-  }
+      )}
 
-  // ------------------ MAIN SETTINGS VIEW ------------------
-  return (
-    <>
-      <VolumetricRays />
-      <div className="p-4 md:p-8 max-w-3xl mx-auto w-full pb-36 md:pb-8 space-y-8 animate-in fade-in duration-200">
-      <input
-        type="file"
-        accept=".zip"
-        ref={csvInputRef}
-        onChange={handleImportCSV}
-        className="hidden"
-      />
+      {/* ------------------ MAIN SETTINGS VIEW ------------------ */}
+      <div 
+        style={{ display: activeView === "main" ? "block" : "none" }}
+        className="p-4 md:p-8 max-w-3xl mx-auto w-full pb-36 md:pb-8 space-y-8 animate-in fade-in duration-200"
+      >
       {/* Header */}
       <div className="flex items-center gap-3">
         <button
-          onClick={() => window.history.back()}
+          onClick={() => navigate("/today")}
           className="p-2 rounded-xl bg-card border border-border text-foreground hover:bg-muted transition-colors cursor-pointer md:hidden"
         >
           <ArrowLeft className="w-5 h-5" />
@@ -984,8 +1299,8 @@ export const SettingsPage: React.FC = () => {
         </h2>
         <div className="bg-card border border-border/70 rounded-2xl shadow-md overflow-hidden">
           <button 
-            onClick={() => setIsEditProfileOpen(true)}
-            className="w-full p-4 flex items-center justify-between hover:bg-muted/30 transition-colors"
+            onClick={() => { recordScroll(); setIsEditProfileOpen(true); }}
+            className="w-full p-4 flex items-center justify-between hover:bg-muted/30 transition-colors cursor-pointer"
           >
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 avatar-circle rounded-full overflow-hidden bg-muted border-2 border-border/50 shadow-sm shrink-0">
@@ -1006,8 +1321,8 @@ export const SettingsPage: React.FC = () => {
           </button>
           <div className="h-px bg-border/50" />
           <button 
-            onClick={() => setIsLinkedDevicesOpen(true)}
-            className="w-full p-4 flex items-center justify-between hover:bg-muted/30 transition-colors"
+            onClick={() => { recordScroll(); setIsLinkedDevicesOpen(true); }}
+            className="w-full p-4 flex items-center justify-between hover:bg-muted/30 transition-colors cursor-pointer"
           >
             <div className="flex items-center gap-3">
               <div className="bg-emerald-500/10 p-2.5 rounded-xl text-emerald-500 shrink-0">
@@ -1029,7 +1344,11 @@ export const SettingsPage: React.FC = () => {
 
       <EditProfile 
         isOpen={isEditProfileOpen}
-        onClose={() => setIsEditProfileOpen(false)}
+        onClose={() => { 
+          setIsEditProfileOpen(false); 
+          if (location.pathname !== "/settings") navigate("/settings", { replace: true });
+          restoreScrollPosition(); 
+        }}
         isLoading={isSavingProfile}
         initialData={{
           fullName: user?.name || "",
@@ -1099,14 +1418,14 @@ export const SettingsPage: React.FC = () => {
             <div className="flex items-center gap-1 bg-muted p-1 rounded-xl">
               <button
                 type="button"
-                onClick={() => setTheme("dark")}
+                onClick={() => { hapticSelection(); setTheme("dark"); }}
                 className={`p-1.5 rounded-lg transition-all ${theme === "dark" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground"}`}
               >
                 <Moon className="w-4 h-4" />
               </button>
               <button
                 type="button"
-                onClick={() => setTheme("light")}
+                onClick={() => { hapticSelection(); setTheme("light"); }}
                 className={`p-1.5 rounded-lg transition-all ${theme === "light" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground"}`}
               >
                 <Sun className="w-4 h-4" />
@@ -1153,12 +1472,13 @@ export const SettingsPage: React.FC = () => {
                   (notifConfig.summaryTime || "18:00")
                 }
                 onChange={(e) => {
+                  hapticSelection();
                   if (reminderFrequency.type === 'Weekly') updateConfig({ weeklySummaryTime: e.target.value });
                   else if (reminderFrequency.type === 'Monthly') updateConfig({ monthlySummaryTime: e.target.value });
                   else if (reminderFrequency.type === 'Yearly') updateConfig({ yearlySummaryTime: e.target.value });
                   else updateConfig({ summaryTime: e.target.value });
                 }}
-                className="bg-white dark:bg-black text-slate-900 dark:text-white text-sm font-semibold rounded-lg px-3 py-1.5 border border-black/10 dark:border-white/10 outline-none focus:ring-2 focus:ring-slate-900 dark:focus:ring-white"
+                className="bg-white dark:bg-black text-slate-900 dark:text-white text-sm font-semibold rounded-lg px-3 py-1.5 border border-black/10 dark:border-white/10 outline-none focus:ring-2 focus:ring-slate-900 dark:focus:ring-white cursor-pointer"
               />
             </div>
           )}
@@ -1230,6 +1550,49 @@ export const SettingsPage: React.FC = () => {
                 <div className={`w-5 h-5 bg-white rounded-full absolute top-0.5 transition-transform ${notifConfig.endOfDaySummary ? 'left-[22px]' : 'left-0.5'}`} />
               </button>
             </div>
+
+            <div
+              onClick={!dndAccessGranted ? handleOpenDndSettings : undefined}
+              className={`flex items-center justify-between mt-3 pt-3 border-t border-border/40 ${!dndAccessGranted ? "cursor-pointer" : ""}`}
+            >
+              <div className="flex flex-col gap-0.5">
+                <span className="text-sm font-semibold text-foreground">Do Not Disturb (DND) Access</span>
+                <span className="text-xs text-muted-foreground">
+                  {dndAccessGranted
+                    ? "Allows muting phone automatically during classes"
+                    : "Tap Enable Access to open Android DND permission settings"}
+                </span>
+              </div>
+              {dndAccessGranted ? (
+                <button
+                  type="button"
+                  onClick={async (e) => {
+                    e.stopPropagation();
+                    const stillGranted = await refreshDndPermission();
+                    if (!stillGranted) {
+                      await handleOpenDndSettings();
+                    } else {
+                      toast.success("Do Not Disturb access is verified and active.");
+                    }
+                  }}
+                  title="Tap to re-verify DND permission"
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 transition-colors"
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5" /> Granted
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleOpenDndSettings();
+                  }}
+                  className="px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-500/20 text-amber-500 hover:bg-amber-500/30 transition-colors shrink-0"
+                >
+                  Enable Access
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -1258,15 +1621,23 @@ export const SettingsPage: React.FC = () => {
               </div>
             </div>
             <RunActionButton
-              action={handleExportCSV}
+              action={async (signal) => {
+                recordScroll();
+                await handleExportCSV(signal);
+                restoreScrollPosition();
+              }}
+              onCancel={() => {
+                toast("Export cancelled", { icon: "🛑" });
+              }}
               idleLabel="Export ZIP"
               doneLabel="Saved"
+              subLabel="Exporting"
               idleIcon={
                 <Download className="w-4 h-4 text-primary-foreground opacity-90" />
               }
-              widths={{ idle: 160, running: 280, done: 140 }}
+              widths={{ idle: 130, running: 250, done: 130 }}
               steps={[
-                { id: 1, label: "Gathering Records", icon: FileSpreadsheet },
+                { id: 1, label: "Gathering", icon: FileSpreadsheet },
                 { id: 2, label: "Compressing", icon: FileArchive },
                 { id: 3, label: "Downloading", icon: Download },
               ]}
@@ -1292,21 +1663,25 @@ export const SettingsPage: React.FC = () => {
               </div>
             </div>
             <RunActionButton
-              action={async () => csvInputRef.current?.click()}
+              action={async () => {
+                recordScroll();
+                csvInputRef.current?.click();
+              }}
               disabled={isImportingCSV}
               idleLabel="Import ZIP"
               doneLabel="Ready"
+              subLabel="Importing"
               idleIcon={
                 <Upload className="w-4 h-4 text-primary-foreground opacity-90" />
               }
-              widths={{ idle: 160, running: 280, done: 140 }}
+              widths={{ idle: 140, running: 250, done: 140 }}
               steps={[{ id: 1, label: "Awaiting File", icon: Upload }]}
             />
           </div>
 
           {/* Peer Sync */}
           <button
-            onClick={() => setActiveView("sync")}
+            onClick={() => openSubView("sync")}
             className="w-full text-left p-4 hover:bg-muted/50 transition-colors flex items-center justify-between cursor-pointer group"
           >
             <div className="flex items-center gap-3">
@@ -1348,7 +1723,7 @@ export const SettingsPage: React.FC = () => {
                   </p>
                 </div>
               </div>
-              {storedDocuments.filter((d) => d.type === "TIMETABLE").length ===
+              {(Array.isArray(storedDocuments) ? storedDocuments : []).filter((d) => d && d.type === "TIMETABLE").length ===
                 0 && (
                 <span className="text-xs font-bold bg-muted text-muted-foreground px-2 py-1 rounded-md">
                   Empty
@@ -1373,7 +1748,7 @@ export const SettingsPage: React.FC = () => {
                   </p>
                 </div>
               </div>
-              {storedDocuments.filter((d) => d.type === "CALENDAR").length ===
+              {(Array.isArray(storedDocuments) ? storedDocuments : []).filter((d) => d && d.type === "CALENDAR").length ===
                 0 && (
                 <span className="text-xs font-bold bg-muted text-muted-foreground px-2 py-1 rounded-md">
                   Empty
@@ -1398,7 +1773,7 @@ export const SettingsPage: React.FC = () => {
                   </p>
                 </div>
               </div>
-              {storedDocuments.filter((d) => d.type === "BACKUP").length ===
+              {(Array.isArray(storedDocuments) ? storedDocuments : []).filter((d) => d && d.type === "BACKUP").length ===
                 0 && (
                 <span className="text-xs font-bold bg-muted text-muted-foreground px-2 py-1 rounded-md">
                   Empty
@@ -1419,6 +1794,7 @@ export const SettingsPage: React.FC = () => {
           {/* Share App */}
           <button
             onClick={async () => {
+              recordScroll();
               const appLink = updateManifest?.appDownloadLink || "https://www.attendx.tech";
               const shareText = `Download AttendX to manage your academic attendance easily!\n\n${appLink}`;
               try {
@@ -1446,7 +1822,7 @@ export const SettingsPage: React.FC = () => {
 
           {/* Contact us */}
           <button
-            onClick={() => setActiveView("contact")}
+            onClick={() => openSubView("contact")}
             className="w-full text-left p-4 hover:bg-muted/50 transition-colors flex items-center justify-between cursor-pointer group"
           >
             <div className="flex items-center gap-3">
@@ -1467,7 +1843,10 @@ export const SettingsPage: React.FC = () => {
 
           {/* App info */}
           <button
-            onClick={() => setShowAppInfoModal(true)}
+            onClick={() => {
+              recordScroll();
+              setShowAppInfoModal(true);
+            }}
             className="w-full text-left p-4 hover:bg-muted/50 transition-colors flex items-center justify-between gap-3 cursor-pointer group"
           >
             <div className="flex items-center gap-3">
@@ -1517,7 +1896,7 @@ export const SettingsPage: React.FC = () => {
           Support
         </h2>
         <div className="bg-card border border-border/70 rounded-2xl divide-y divide-border/50 shadow-md">
-          <div onClick={() => setIsFeedbackOpen(true)} className="w-full text-left p-4 hover:bg-muted/50 transition-colors flex items-center justify-between cursor-pointer group">
+          <div onClick={() => { recordScroll(); setIsFeedbackOpen(true); }} className="w-full text-left p-4 hover:bg-muted/50 transition-colors flex items-center justify-between cursor-pointer group">
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
@@ -1533,7 +1912,7 @@ export const SettingsPage: React.FC = () => {
             </div>
             <ChevronRight className="w-5 h-5 text-muted-foreground/50 group-hover:text-primary transition-colors" />
           </div>
-          <div onClick={() => navigate("/settings/faq")} className="w-full text-left p-4 hover:bg-muted/50 transition-colors flex items-center justify-between cursor-pointer group">
+          <div onClick={() => { recordScroll(); navigate("/settings/faq"); }} className="w-full text-left p-4 hover:bg-muted/50 transition-colors flex items-center justify-between cursor-pointer group">
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center">
                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg>
@@ -1549,7 +1928,7 @@ export const SettingsPage: React.FC = () => {
             </div>
             <ChevronRight className="w-5 h-5 text-muted-foreground/50 group-hover:text-amber-500 transition-colors" />
           </div>
-          <div onClick={() => setIsChangelogOpen(true)} className="w-full text-left p-4 hover:bg-muted/50 transition-colors flex items-center justify-between cursor-pointer group">
+          <div onClick={() => { recordScroll(); setIsChangelogOpen(true); }} className="w-full text-left p-4 hover:bg-muted/50 transition-colors flex items-center justify-between cursor-pointer group">
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 rounded-xl bg-purple-500/10 text-purple-500 flex items-center justify-center">
                 <History className="w-5 h-5" />
@@ -1607,6 +1986,7 @@ export const SettingsPage: React.FC = () => {
           <button
             disabled={!enableReset}
             onClick={() => {
+              recordScroll();
               setResetConfirmText("");
               setResetError("");
               fetchSubjectsForReset();
@@ -1631,10 +2011,31 @@ export const SettingsPage: React.FC = () => {
             </div>
           </button>
 
+          {/* Option: Semester Transition & Reset */}
+          <button
+            onClick={() => {
+              recordScroll();
+              setIsTransitionModalOpen(true);
+            }}
+            className="w-full text-left p-4 flex items-start gap-3 transition-colors cursor-pointer border-b border-border/50 hover:bg-muted/50"
+          >
+            <div className="w-3 h-3 rounded-full bg-emerald-500 mt-1 shrink-0" />
+            <div className="flex flex-col gap-0.5">
+              <span className="text-sm font-bold text-foreground flex items-center gap-2">
+                <span>Transition to Next Semester</span>
+                <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-primary/20 text-primary">New</span>
+              </span>
+              <span className="text-xs text-muted-foreground leading-relaxed">
+                Advances to your upcoming semester, resets previous semester attendance & schedule logs for a clean slate, and pre-loads official calendar and holidays.
+              </span>
+            </div>
+          </button>
+
           {/* Option 2: Reset all attendance */}
           <button
             disabled={!enableReset}
             onClick={() => {
+              recordScroll();
               setResetConfirmText("");
               setResetError("");
               setResetModalType("attendance");
@@ -1661,6 +2062,7 @@ export const SettingsPage: React.FC = () => {
           <button
             disabled={!enableReset}
             onClick={() => {
+              recordScroll();
               setResetConfirmText("");
               setResetError("");
               setResetModalType("timetable");
@@ -1688,6 +2090,7 @@ export const SettingsPage: React.FC = () => {
           <button
             disabled={!enableReset}
             onClick={() => {
+              recordScroll();
               setResetConfirmText("");
               setResetError("");
               setResetModalType("events");
@@ -1715,6 +2118,7 @@ export const SettingsPage: React.FC = () => {
           <button
             disabled={!enableReset}
             onClick={() => {
+              recordScroll();
               setResetConfirmText("");
               setResetError("");
               setResetModalType("entire");
@@ -1741,304 +2145,369 @@ export const SettingsPage: React.FC = () => {
       </div>
 
       {/* RESET MODAL DIALOGS */}
-      {resetModalType && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
-          <div className="bg-card border border-border/80 rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-5">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-rose-500/20 text-rose-500 flex items-center justify-center">
-                <AlertTriangle className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="text-lg font-bold text-foreground">
-                  {resetModalType === "subject" && "Reset Subject Attendance"}
-                  {resetModalType === "attendance" && "Reset All Attendance"}
-                  {resetModalType === "timetable" && "Clear Timetable Schedule"}
-                  {resetModalType === "events" &&
-                    "Remove Academic Calendar & Events"}
-                  {resetModalType === "entire" && "Reset Entire App"}
-                </h3>
-                <p className="text-xs text-rose-500 font-semibold">
-                  Irreversible Action
-                </p>
-              </div>
-            </div>
-
-            <>
-              {/* Reset Subject Attendance Content */}
-              {resetModalType === "subject" && (
-                <div className="space-y-3">
-                  <p className="text-xs text-muted-foreground">
-                    Select subjects to reset attendance history for:
-                  </p>
-                  <div className="max-h-48 overflow-y-auto space-y-1.5 pr-1">
-                    {subjects.length === 0 ? (
-                      <p className="text-xs text-muted-foreground py-4 text-center">
-                        No subjects found.
-                      </p>
-                    ) : (
-                      subjects.map((sub) => {
-                        const isChecked = selectedSubjectIds.includes(sub.id);
-                        return (
-                          <button
-                            key={sub.id}
-                            type="button"
-                            onClick={() => {
-                              if (isChecked) {
-                                setSelectedSubjectIds(
-                                  selectedSubjectIds.filter(
-                                    (id) => id !== sub.id,
-                                  ),
-                                );
-                              } else {
-                                setSelectedSubjectIds([
-                                  ...selectedSubjectIds,
-                                  sub.id,
-                                ]);
-                              }
-                            }}
-                            className={`w-full text-left px-3.5 py-2.5 rounded-xl border text-xs font-semibold flex items-center justify-between transition-colors cursor-pointer ${
-                              isChecked
-                                ? "bg-primary/10 border-primary text-primary"
-                                : "bg-muted/40 border-border text-foreground hover:bg-muted"
-                            }`}
-                          >
-                            <span>{sub.name}</span>
-                            {isChecked && (
-                              <Check className="w-4 h-4 text-primary" />
-                            )}
-                          </button>
-                        );
-                      })
-                    )}
+      {typeof document !== "undefined" && createPortal(
+        <AnimatePresence>
+          {resetModalType && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.16, ease: "easeOut" }}
+              className="theme-nova-green fixed inset-0 z-[100] flex items-center justify-center p-4 bg-white/60 dark:bg-black/80 backdrop-blur-md"
+            >
+              <motion.div
+                initial={{ opacity: 0, scale: 0.96, y: 12 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.96, y: 8 }}
+                transition={{ type: "spring", damping: 28, stiffness: 380, mass: 0.8 }}
+                className="bg-card border border-border/80 rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-5 will-change-transform"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-rose-500/20 text-rose-500 flex items-center justify-center">
+                    <AlertTriangle className="w-5 h-5" />
                   </div>
-                </div>
-              )}
-
-              {/* Reset All Attendance Content */}
-              {resetModalType === "attendance" && (
-                <p className="text-sm text-muted-foreground leading-relaxed">
-                  This will delete all attendance logs and timetable overrides
-                  across all subjects and semesters. Your subjects and timetable
-                  slots will remain untouched.
-                </p>
-              )}
-
-              {/* Clear Timetable Schedule Content */}
-              {resetModalType === "timetable" && (
-                <p className="text-sm text-muted-foreground leading-relaxed">
-                  This will clear all weekly schedule slots and overrides from
-                  your active timetable. Your subject records and past
-                  attendance history will remain safely intact.
-                </p>
-              )}
-
-              {/* Remove Events Content */}
-              {resetModalType === "events" && (
-                <p className="text-sm text-muted-foreground leading-relaxed">
-                  This will permanently remove all academic calendar events
-                  (exams, fests, holidays). Event rings and highlight banners
-                  will be removed across all calendar views.
-                </p>
-              )}
-
-              {/* Reset Entire App Content */}
-              {resetModalType === "entire" && (
-                <div className="space-y-3">
-                  <p className="text-sm text-muted-foreground leading-relaxed">
-                    This will permanently wipe your semesters, subjects,
-                    timetable slots, attendance logs, and academic events.
-                  </p>
                   <div>
-                    <label className="block text-xs text-muted-foreground font-medium mb-1.5">
-                      Type{" "}
-                      <span className="font-bold text-foreground">RESET</span>{" "}
-                      to confirm:
-                    </label>
-                    <input
-                      type="text"
-                      
-                      value={resetConfirmText}
-                      onChange={(e) => setResetConfirmText(e.target.value)}
-                      className="w-full px-4 py-2.5 rounded-xl bg-background border border-border text-foreground font-mono text-sm focus:outline-none focus:border-rose-500"
-                    />
+                    <h3 className="text-lg font-bold text-foreground">
+                      {resetModalType === "subject" && "Reset Subject Attendance"}
+                      {resetModalType === "attendance" && "Reset All Attendance"}
+                      {resetModalType === "timetable" && "Clear Timetable Schedule"}
+                      {resetModalType === "events" &&
+                        "Remove Academic Calendar & Events"}
+                      {resetModalType === "entire" && "Reset Entire App"}
+                    </h3>
+                    <p className="text-xs text-rose-500 font-semibold">
+                      Irreversible Action
+                    </p>
                   </div>
                 </div>
-              )}
 
-              {resetError && (
-                <p className="text-xs text-rose-500 bg-rose-500/10 p-2.5 rounded-lg border border-rose-500/20 font-semibold">
-                  {resetError}
-                </p>
-              )}
+                <>
+                  {/* Reset Subject Attendance Content */}
+                  {resetModalType === "subject" && (
+                    <div className="space-y-3">
+                      <p className="text-xs text-muted-foreground">
+                        Select subjects to reset attendance history for:
+                      </p>
+                      <div className="max-h-48 overflow-y-auto space-y-1.5 pr-1">
+                        {subjects.length === 0 ? (
+                          <p className="text-xs text-muted-foreground py-4 text-center">
+                            No subjects found.
+                          </p>
+                        ) : (
+                          subjects.map((sub) => {
+                            const isChecked = selectedSubjectIds.includes(sub.id);
+                            return (
+                              <button
+                                key={sub.id}
+                                type="button"
+                                onClick={() => {
+                                  if (isChecked) {
+                                    setSelectedSubjectIds(
+                                      selectedSubjectIds.filter(
+                                        (id) => id !== sub.id,
+                                      ),
+                                    );
+                                  } else {
+                                    setSelectedSubjectIds([
+                                      ...selectedSubjectIds,
+                                      sub.id,
+                                    ]);
+                                  }
+                                }}
+                                className={`w-full text-left px-3.5 py-2.5 rounded-xl border text-xs font-semibold flex items-center justify-between transition-colors cursor-pointer ${
+                                  isChecked
+                                    ? "bg-primary/10 border-primary text-primary"
+                                    : "bg-muted/40 border-border text-foreground hover:bg-muted"
+                                }`}
+                              >
+                                <span>{sub.name}</span>
+                                {isChecked && (
+                                  <Check className="w-4 h-4 text-primary" />
+                                )}
+                              </button>
+                            );
+                          })
+                        )}
+                      </div>
+                    </div>
+                  )}
 
-              <div className="flex items-center justify-end gap-3 pt-2">
-                <button
-                  type="button"
-                  disabled={isResetting}
-                  onClick={() => setResetModalType(null)}
-                  className="px-4 py-2 rounded-xl text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
-                >
-                  Cancel
-                </button>
-                  <TimedUndoAction
-                    initialSeconds={5}
-                    deleteLabel="Confirm Reset"
-                    undoLabel="Cancel Reset"
-                    icon={<Trash2 className="w-4 h-4 mr-1 inline-block" />}
-                    onConfirm={async () => {
-                      await handlePerformReset();
-                    }}
-                    disabled={
-                      isResetting ||
-                      (resetModalType === "entire" &&
-                        resetConfirmText.trim() !== "RESET") ||
-                      (resetModalType === "subject" &&
-                        selectedSubjectIds.length === 0)
-                    }
-                  />
-              </div>
-            </>
-          </div>
-        </div>
+                  {/* Reset All Attendance Content */}
+                  {resetModalType === "attendance" && (
+                    <p className="text-sm text-muted-foreground leading-relaxed">
+                      This will delete all attendance logs and timetable overrides
+                      across all subjects and semesters. Your subjects and timetable
+                      slots will remain untouched.
+                    </p>
+                  )}
+
+                  {/* Clear Timetable Schedule Content */}
+                  {resetModalType === "timetable" && (
+                    <p className="text-sm text-muted-foreground leading-relaxed">
+                      This will clear all weekly schedule slots and overrides from
+                      your active timetable. Your subject records and past
+                      attendance history will remain safely intact.
+                    </p>
+                  )}
+
+                  {/* Remove Events Content */}
+                  {resetModalType === "events" && (
+                    <p className="text-sm text-muted-foreground leading-relaxed">
+                      This will permanently remove all academic calendar events
+                      (exams, fests, holidays). Event rings and highlight banners
+                      will be removed across all calendar views.
+                    </p>
+                  )}
+
+                  {/* Reset Entire App Content */}
+                  {resetModalType === "entire" && (
+                    <div className="space-y-3">
+                      <p className="text-sm text-muted-foreground leading-relaxed">
+                        This will permanently wipe your semesters, subjects,
+                        timetable slots, attendance logs, and academic events.
+                      </p>
+                      <div>
+                        <label className="block text-xs text-muted-foreground font-medium mb-1.5">
+                          Type{" "}
+                          <span className="font-bold text-foreground">RESET</span>{" "}
+                          to confirm:
+                        </label>
+                        <input
+                          type="text"
+                          value={resetConfirmText}
+                          onChange={(e) => setResetConfirmText(e.target.value)}
+                          className="w-full px-4 py-2.5 rounded-xl bg-background border border-border text-foreground font-mono text-sm focus:outline-none focus:border-rose-500"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {resetError && (
+                    <p className="text-xs text-rose-500 bg-rose-500/10 p-2.5 rounded-lg border border-rose-500/20 font-semibold">
+                      {resetError}
+                    </p>
+                  )}
+
+                  <div className="flex items-center justify-end gap-3 pt-2">
+                    <button
+                      type="button"
+                      disabled={isResetting}
+                      onClick={() => { setResetModalType(null); restoreScrollPosition(); }}
+                      className="px-4 py-2 rounded-xl text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                      <TimedUndoAction
+                        initialSeconds={5}
+                        deleteLabel="Confirm Reset"
+                        undoLabel="Cancel Reset"
+                        icon={<Trash2 className="w-4 h-4" />}
+                        onConfirm={async () => {
+                          await handlePerformReset();
+                        }}
+                        disabled={
+                          isResetting ||
+                          (resetModalType === "entire" &&
+                            resetConfirmText.trim() !== "RESET") ||
+                          (resetModalType === "subject" &&
+                            selectedSubjectIds.length === 0)
+                        }
+                      />
+                  </div>
+                </>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>,
+        document.body
       )}
       </div>
       
       {/* App Info Modal */}
-      {showAppInfoModal && (
-        <div className="fixed inset-0 bg-white/60 dark:bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="bg-white/40 dark:bg-black/60 backdrop-blur-3xl border-2 border-black dark:border-[#333333] rounded-none max-w-md w-full p-6 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] dark:shadow-[8px_8px_0px_0px_#222222] space-y-6 relative overflow-hidden">
-            <button
-              onClick={() => setShowAppInfoModal(false)}
-              className="absolute top-4 right-4 p-2 rounded-full hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+      {typeof document !== "undefined" && createPortal(
+        <AnimatePresence>
+          {showAppInfoModal && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.16, ease: "easeOut" }}
+              className="theme-nova-green fixed inset-0 bg-white/60 dark:bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4"
             >
-              <X className="w-5 h-5" />
-            </button>
-
-            <div className="flex items-center gap-4 border-b border-border/50 pb-5">
-              <img
-                src="/attendx_logo.png"
-                alt="AttendX Logo"
-                className="w-14 h-14 rounded-none object-cover border-2 border-black shrink-0 bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] dark:shadow-[4px_4px_0px_0px_#222222]"
-              />
-              <div>
-                <h2 className="text-xl font-extrabold text-foreground tracking-tight">
-                  AttendX
-                </h2>
-                <p className="text-xs font-semibold text-primary">
-                  Smart Attendance Manager <span className="md:hidden">• v{currentAppVersion}</span>
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Built for IIITU Ecosystem
-                </p>
-              </div>
-            </div>
-
-            {/* Creator Profile */}
-            <div className="bg-white/40 dark:bg-black/40 backdrop-blur-md border-2 border-black dark:border-[#333333] rounded-none p-4 space-y-3 shadow-[4px_4px_0px_0px_rgba(0,0,0,0.1)] dark:shadow-[4px_4px_0px_0px_#050505]">
-              <div className="flex items-center gap-3">
-                <img
-                  src="/developer-photo.jpg"
-                  alt="Naman Rai"
-                  referrerPolicy="no-referrer"
-                  className={`w-14 h-14 rounded-none object-cover border-2 border-black dark:border-[#333333] shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] dark:shadow-[4px_4px_0px_0px_#222222] shrink-0 transition-all duration-300 ${appInfoColored ? 'grayscale-0 md:grayscale md:hover:grayscale-0' : 'grayscale hover:grayscale-0'}`}
-                  onError={(e) => {
-                    e.currentTarget.style.display = "none";
-                    if (e.currentTarget.nextElementSibling) {
-                      (
-                        e.currentTarget.nextElementSibling as HTMLElement
-                      ).style.display = "flex";
-                    }
-                  }}
-                />
-                <div className="w-14 h-14 rounded-full bg-primary/20 text-primary font-bold text-xl items-center justify-center hidden shrink-0">
-                  NR
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-foreground">
-                    Naman Rai
-                  </h3>
-                  <p className="text-xs font-medium text-primary">
-                    Founder & Developer
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    Student at IIITU
-                  </p>
-                </div>
-              </div>
-              <p className="text-xs text-muted-foreground leading-relaxed pt-1">
-                AttendX was developed to eliminate manual attendance
-                calculations, criteria tracking anxiety, and timetable
-                fragmentation for college students.
-              </p>
-              <div className="flex flex-wrap gap-2 pt-2 border-t border-border/40 text-xs">
-                <a
-                  href="https://mail.google.com/mail/?view=cm&fs=1&to=support@mail.attendx.tech"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-none bg-white/40 dark:bg-black/40 backdrop-blur-md border-2 border-black dark:border-[#333333] text-foreground hover:bg-white/60 dark:hover:bg-black/60 transition-colors font-bold shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_#222222] hover:-translate-y-0.5 hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] dark:hover:shadow-[4px_4px_0px_0px_#222222]"
-                >
-                  <Mail className="w-3.5 h-3.5 text-primary" />
-                  <span>support@mail.attendx.tech</span>
-                </a>
-                <a
-                  href="tel:+918076408958"
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-none bg-white/40 dark:bg-black/40 backdrop-blur-md border-2 border-black dark:border-[#333333] text-foreground hover:bg-white/60 dark:hover:bg-black/60 transition-colors font-bold shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_#222222] hover:-translate-y-0.5 hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] dark:hover:shadow-[4px_4px_0px_0px_#222222]"
-                >
-                  <Phone className="w-3.5 h-3.5 text-emerald-500" />
-                  <span>+91 8076408958</span>
-                </a>
-              </div>
-            </div>
-
-            {/* Key Features */}
-            <div className="space-y-2 text-xs">
-              <h4 className="font-bold text-foreground text-xs uppercase tracking-wider">
-                Key Capabilities
-              </h4>
-              <ul className="grid grid-cols-2 gap-2 text-muted-foreground font-medium">
-                <li className="flex items-center gap-1.5 bg-white/40 dark:bg-black/40 backdrop-blur-md p-2 rounded-none border-2 border-black dark:border-[#333333] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_#222222]">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-                  Dynamic Criteria Target
-                </li>
-                <li className="flex items-center gap-1.5 bg-white/40 dark:bg-black/40 backdrop-blur-md p-2 rounded-none border-2 border-black dark:border-[#333333] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_#222222]">
-                  <span className="w-2 h-2 rounded-full bg-blue-500"></span>
-                  Forecast Leave Calc
-                </li>
-                <li className="flex items-center gap-1.5 bg-white/40 dark:bg-black/40 backdrop-blur-md p-2 rounded-none border-2 border-black dark:border-[#333333] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_#222222]">
-                  <span className="w-2 h-2 rounded-full bg-purple-500"></span>
-                  OCR Timetable Importer
-                </li>
-                <li className="flex items-center gap-1.5 bg-white/40 dark:bg-black/40 backdrop-blur-md p-2 rounded-none border-2 border-black dark:border-[#333333] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_#222222]">
-                  <span className="w-2 h-2 rounded-full bg-amber-500"></span>
-                  Classroom Hub Sync
-                </li>
-              </ul>
-            </div>
-
-            <div className="pt-2 text-center">
-              <button
-                onClick={() => setShowAppInfoModal(false)}
-                className="w-full py-4 rounded-none bg-[#48CAE4] text-[#050505] font-black uppercase tracking-widest text-xs border-2 border-black dark:border-none shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] dark:shadow-[4px_4px_0px_0px_#111111] hover:-translate-y-1 hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] dark:hover:shadow-[6px_6px_0px_0px_#111111] transition-all"
+              <motion.div
+                initial={{ opacity: 0, scale: 0.96, y: 12 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.96, y: 8 }}
+                transition={{ type: "spring", damping: 28, stiffness: 380, mass: 0.8 }}
+                className="bg-white/40 dark:bg-black/60 backdrop-blur-3xl border-2 border-black dark:border-[#333333] rounded-none max-w-md w-full p-6 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] dark:shadow-[8px_8px_0px_0px_#222222] space-y-6 relative overflow-hidden will-change-transform"
               >
-                Close App Info
-              </button>
-            </div>
-          </div>
-        </div>
+                <button
+                  onClick={() => {
+                    setShowAppInfoModal(false);
+                    if (location.pathname !== "/settings") navigate("/settings", { replace: true });
+                    restoreScrollPosition();
+                  }}
+                  className="absolute top-4 right-4 p-2 rounded-full hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+
+                <div className="flex items-center gap-4 border-b border-border/50 pb-5">
+                  <img
+                    src="/attendx_logo.png"
+                    alt="AttendX Logo"
+                    className="w-14 h-14 rounded-none object-cover border-2 border-black shrink-0 bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] dark:shadow-[4px_4px_0px_0px_#222222]"
+                  />
+                  <div>
+                    <h2 className="text-xl font-extrabold text-foreground tracking-tight">
+                      AttendX
+                    </h2>
+                    <p className="text-xs font-semibold text-primary">
+                      Smart Attendance Manager <span className="md:hidden">• v{currentAppVersion}</span>
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Built for IIITU Ecosystem
+                    </p>
+                  </div>
+                </div>
+
+                {/* Creator Profile */}
+                <div className="bg-white/40 dark:bg-black/40 backdrop-blur-md border-2 border-black dark:border-[#333333] rounded-none p-4 space-y-3 shadow-[4px_4px_0px_0px_rgba(0,0,0,0.1)] dark:shadow-[4px_4px_0px_0px_#050505]">
+                  <div className="flex items-center gap-3">
+                    <img
+                      src="/developer-photo.jpg"
+                      alt="Naman Rai"
+                      referrerPolicy="no-referrer"
+                      className={`w-14 h-14 rounded-none object-cover border-2 border-black dark:border-[#333333] shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] dark:shadow-[4px_4px_0px_0px_#222222] shrink-0 transition-all duration-300 ${appInfoColored ? 'grayscale-0 md:grayscale md:hover:grayscale-0' : 'grayscale hover:grayscale-0'}`}
+                      onError={(e) => {
+                        e.currentTarget.style.display = "none";
+                        if (e.currentTarget.nextElementSibling) {
+                          (
+                            e.currentTarget.nextElementSibling as HTMLElement
+                          ).style.display = "flex";
+                        }
+                      }}
+                    />
+                    <div className="w-14 h-14 rounded-full bg-primary/20 text-primary font-bold text-xl items-center justify-center hidden shrink-0">
+                      NR
+                    </div>
+                    <div>
+                      <h3 className="text-base font-bold text-foreground">
+                        Naman Rai
+                      </h3>
+                      <p className="text-xs font-medium text-primary">
+                        Founder & Developer
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Student at IIITU
+                      </p>
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted-foreground leading-relaxed pt-1">
+                    AttendX was developed to eliminate manual attendance
+                    calculations, criteria tracking anxiety, and timetable
+                    fragmentation for college students.
+                  </p>
+                  <div className="flex flex-wrap gap-2 pt-2 border-t border-border/40 text-xs">
+                    <a
+                      href="https://mail.google.com/mail/?view=cm&fs=1&to=support@mail.attendx.tech"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-none bg-white/40 dark:bg-black/40 backdrop-blur-md border-2 border-black dark:border-[#333333] text-foreground hover:bg-white/60 dark:hover:bg-black/60 transition-colors font-bold shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_#222222] hover:-translate-y-0.5 hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] dark:hover:shadow-[4px_4px_0px_0px_#222222]"
+                    >
+                      <Mail className="w-3.5 h-3.5 text-primary" />
+                      <span>support@mail.attendx.tech</span>
+                    </a>
+                    <a
+                      href="tel:+918076408958"
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-none bg-white/40 dark:bg-black/40 backdrop-blur-md border-2 border-black dark:border-[#333333] text-foreground hover:bg-white/60 dark:hover:bg-black/60 transition-colors font-bold shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_#222222] hover:-translate-y-0.5 hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] dark:hover:shadow-[4px_4px_0px_0px_#222222]"
+                    >
+                      <Phone className="w-3.5 h-3.5 text-emerald-500" />
+                      <span>+91 8076408958</span>
+                    </a>
+                  </div>
+                </div>
+
+                {/* Key Features */}
+                <div className="space-y-2 text-xs">
+                  <h4 className="font-bold text-foreground text-xs uppercase tracking-wider">
+                    Key Capabilities
+                  </h4>
+                  <ul className="grid grid-cols-2 gap-2 text-muted-foreground font-medium">
+                    <li className="flex items-center gap-1.5 bg-white/40 dark:bg-black/40 backdrop-blur-md p-2 rounded-none border-2 border-black dark:border-[#333333] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_#222222]">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                      Dynamic Criteria Target
+                    </li>
+                    <li className="flex items-center gap-1.5 bg-white/40 dark:bg-black/40 backdrop-blur-md p-2 rounded-none border-2 border-black dark:border-[#333333] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_#222222]">
+                      <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                      Forecast Leave Calc
+                    </li>
+                    <li className="flex items-center gap-1.5 bg-white/40 dark:bg-black/40 backdrop-blur-md p-2 rounded-none border-2 border-black dark:border-[#333333] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_#222222]">
+                      <span className="w-2 h-2 rounded-full bg-purple-500"></span>
+                      OCR Timetable Importer
+                    </li>
+                    <li className="flex items-center gap-1.5 bg-white/40 dark:bg-black/40 backdrop-blur-md p-2 rounded-none border-2 border-black dark:border-[#333333] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_#222222]">
+                      <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+                      Classroom Hub Sync
+                    </li>
+                  </ul>
+                </div>
+
+                <div className="pt-2 text-center">
+                  <button
+                    onClick={() => { 
+                      setShowAppInfoModal(false); 
+                      if (location.pathname !== "/settings") navigate("/settings", { replace: true });
+                      restoreScrollPosition(); 
+                    }}
+                    className="w-full py-4 rounded-none bg-[#48CAE4] text-[#050505] font-black uppercase tracking-widest text-xs border-2 border-black dark:border-none shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] dark:shadow-[4px_4px_0px_0px_#111111] hover:-translate-y-1 hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] dark:hover:shadow-[6px_6px_0px_0px_#111111] transition-all"
+                  >
+                    Close App Info
+                  </button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>,
+        document.body
       )}
 
       <FeedbackModal 
         isOpen={isFeedbackOpen} 
-        onClose={() => setIsFeedbackOpen(false)} 
+        onClose={() => { 
+          setIsFeedbackOpen(false); 
+          if (location.pathname !== "/settings" || searchParams.get("issue") || searchParams.get("description") || searchParams.get("desc")) {
+            navigate("/settings", { replace: true });
+          }
+          restoreScrollPosition(); 
+        }} 
+        defaultIssue={searchParams.get("issue") || undefined}
+        defaultDescription={searchParams.get("description") || searchParams.get("desc") || undefined}
+        defaultTab={(searchParams.get("tab") as "issue" | "improvement") || "issue"}
       />
       <ChangelogModal
         isOpen={isChangelogOpen}
-        onClose={() => setIsChangelogOpen(false)}
+        onClose={() => { 
+          setIsChangelogOpen(false); 
+          if (location.pathname !== "/settings") navigate("/settings", { replace: true });
+          restoreScrollPosition(); 
+        }}
         releases={updateManifest.changelog}
       />
       <LinkedDevicesModal 
         isOpen={isLinkedDevicesOpen} 
-        onClose={() => setIsLinkedDevicesOpen(false)} 
+        onClose={() => { 
+          setIsLinkedDevicesOpen(false); 
+          if (location.pathname !== "/settings") navigate("/settings", { replace: true });
+          restoreScrollPosition(); 
+        }} 
+      />
+      <SemesterTransitionModal
+        isOpen={isTransitionModalOpen}
+        onClose={() => { setIsTransitionModalOpen(false); restoreScrollPosition(); }}
+        onSuccess={() => {
+          useAttendanceStore.getState().fetchStats(true);
+        }}
       />
     </>
   );

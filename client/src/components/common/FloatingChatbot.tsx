@@ -174,20 +174,25 @@ export const FloatingChatbot: React.FC = () => {
   useEffect(() => {
     const handleOpenVoiceMode = () => setIsVoiceOpen(true);
     window.addEventListener('open-voice-mode', handleOpenVoiceMode);
+
+    if (isVoiceOpen) {
+      localStorage.setItem("onboarding_voice_mode", "true");
+      api.patch("/users/onboarding-status", { step: "voice_mode" }).catch(() => {});
+    }
     
     App.getInfo().then(info => setAppVersion(info.version)).catch(() => {});
     
     // Poll server health
     const checkHealth = async () => {
       try {
-        await api.get("/health", { timeout: 3000 });
+        await api.get("/health", { timeout: 8000, silent: true });
         setIsServerOnline(true);
       } catch (e) {
         setIsServerOnline(false);
       }
     };
     checkHealth();
-    const interval = setInterval(checkHealth, 15000);
+    const interval = setInterval(checkHealth, 30000);
 
     // Instantly check health when the app comes to foreground or network reconnects
     const handleOnline = () => checkHealth();
@@ -317,7 +322,7 @@ export const FloatingChatbot: React.FC = () => {
     NativeVoiceService.stopContinuousLoop();
     setIsListeningMic(false);
     if (reason) {
-      toast.info(reason);
+      console.info("Hands-free stopped:", reason);
     }
   };
 
@@ -393,9 +398,9 @@ export const FloatingChatbot: React.FC = () => {
       onError: (err: any) => {
         console.warn("Hands-free speech recognition error:", err);
         if (err && err.error && err.error !== "no-speech" && err.error !== "aborted") {
-          toast.error(`Mic Error: ${err.error}`);
+          console.warn(`Mic Error: ${err.error}`);
         } else if (err && err.message) {
-          toast.error(`Mic Error: ${err.message}`);
+          console.warn(`Mic Error: ${err.message}`);
         }
         if (isHandsFreeRef.current && !isHandsFreeProcessingRef.current) {
           setHandsFreeStatus("LISTENING");
@@ -510,9 +515,9 @@ export const FloatingChatbot: React.FC = () => {
       onError: (err: any) => {
         console.warn("Inline mic error:", err);
         if (err && err.error && err.error !== "no-speech" && err.error !== "aborted") {
-          toast.error(`Mic Error: ${err.error}`);
+          console.warn(`Mic Error: ${err.error}`);
         } else if (err && err.message) {
-          toast.error(`Mic Error: ${err.message}`);
+          console.warn(`Mic Error: ${err.message}`);
         }
         setIsListeningMic(false);
       },
@@ -585,12 +590,12 @@ export const FloatingChatbot: React.FC = () => {
        window.dispatchEvent(new Event("subject-updated"));
     }
     setMessages(prev => prev.map(m => m.id === msgId ? { ...m, isExecutingAction: false, actionsExecuted: true } : m));
-    toast.success("Action confirmed and executed successfully.");
+    setMessages(prev => prev.map(m => m.id === msgId ? { ...m, isExecutingAction: false, actionsExecuted: true } : m));
   };
 
   const cancelPendingActions = (msgId: string) => {
     setMessages(prev => prev.map(m => m.id === msgId ? { ...m, pendingActions: undefined, actionsExecuted: false } : m));
-    toast.info("Action cancelled by user.");
+    setMessages(prev => prev.map(m => m.id === msgId ? { ...m, pendingActions: undefined, actionsExecuted: false } : m));
   };
 
   useEffect(() => {
@@ -673,12 +678,442 @@ const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'vo
       const currentTotal = state.totalClasses || totalClasses;
       const currentLogs = state.historyLogs || [];
       const currentEvents = state.events || [];
+      const timetableSlots = useCacheStore.getState().timetable?.slots || [];
       const today = new Date();
-      const localTodayStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+      const pad2 = (n: number) => String(n).padStart(2, "0");
+      const localTodayStr = `${today.getFullYear()}-${pad2(today.getMonth() + 1)}-${pad2(today.getDate())}`;
+
+      // --- TIER 0 & TIER 1: CLIENT-SIDE 0ms DETERMINISTIC FAST-PATH ---
+      const tryClientFastPath = (): { reply: string; simulation?: SimulationPayload; semesterProjection?: SemesterProjectionPayload } | null => {
+        const lower = query.trim().toLowerCase().replace(/[?!.]+$/g, "").trim();
+
+        // 1. Abusive / Toxic Language Guardrail (0ms)
+        const TOXIC_PATTERN =
+          /\b(fuck|fucking|fucker|shit|bullshit|bitch|bitching|asshole|dick|dickhead|cunt|slut|whore|bastard|motherfucker|stfu|dumbass|idiot|retard|fag|nigger|nigga|madarchod|mc|behenchod|bhenchod|bc|bhosdike|bhosdiwale|bhosda|chutiya|chutiye|gaand|gandu|gandwe|lavde|laude|lodu|lode|lund|jhantu|harami|kamina|kamine|saala|saale|randi|raand|tatte|jhaat|bakchod|bakchodi|gaandmara|gandmara)\b|[\u0900-\u097F]*(?:चूतिया|मादरचोद|बहनचोद|भोसड़ीके|भोसड़ीवाले|गांडू|गांड|लौड़े|लवड़े|लंड|हरामी|कमीना|रंडी|झांट|बकचोद|चूत|गाली)[\u0900-\u097F]*/i;
+        if (TOXIC_PATTERN.test(lower)) {
+          return { reply: "I'm here to help you manage your attendance, timetable, assignments, and academic queries for AttendX. Please keep our conversation respectful so I can assist you effectively." };
+        }
+
+        // Pre-compute General Context Digest
+        const pGlobal = currentTarget / 100;
+        const overallSafeBunks = currentTotal > 0 && pGlobal > 0 ? Math.max(0, Math.floor((currentAttended - pGlobal * currentTotal) / pGlobal)) : 0;
+        const overallNeeded = currentTotal > 0 && pGlobal < 1 ? Math.max(0, Math.ceil((pGlobal * currentTotal - currentAttended) / (1 - pGlobal))) : 0;
+        const overallStatus = currentOverall >= currentTarget ? "Safe" : currentOverall >= currentTarget - 5 ? "Warning" : "Danger";
+
+        const todayDayIndex = (today.getDay() + 6) % 7;
+        const dayNames = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+        const subjectNameById: Record<string, string> = {};
+        for (const s of currentSubjects as any[]) subjectNameById[s.id] = s.name;
+
+        const todayClasses = timetableSlots
+          .filter((slot: any) => Number(slot.dayOfWeek) === todayDayIndex)
+          .sort((a: any, b: any) => String(a.startTime || "").localeCompare(String(b.startTime || "")))
+          .map((slot: any) => ({
+            startTime: slot.startTime || "09:00",
+            endTime: slot.endTime || "09:50",
+            subjectName: slot.subject?.name || subjectNameById[slot.subjectId] || "Scheduled Class",
+            room: slot.room || "TBD",
+            slotType: slot.type || slot.slotType || "Lecture",
+          }));
+
+        const currentHHMM = `${pad2(today.getHours())}:${pad2(today.getMinutes())}`;
+        let nextUpcomingClass: { subjectName: string; dayName: string; startTime: string; endTime: string; room: string } | null = null;
+        const remainingToday = todayClasses.filter((c: any) => c.startTime >= currentHHMM);
+        if (remainingToday.length > 0) {
+          nextUpcomingClass = { ...remainingToday[0], dayName: "Today" };
+        } else {
+          for (let offset = 1; offset <= 7; offset++) {
+            const checkDay = (todayDayIndex + offset) % 7;
+            const daySlots = timetableSlots
+              .filter((slot: any) => Number(slot.dayOfWeek) === checkDay)
+              .sort((a: any, b: any) => String(a.startTime || "").localeCompare(String(b.startTime || "")));
+            if (daySlots.length > 0) {
+              const first = daySlots[0];
+              nextUpcomingClass = {
+                subjectName: first.subject?.name || subjectNameById[first.subjectId] || "Scheduled Class",
+                dayName: offset === 1 ? `Tomorrow (${dayNames[checkDay]})` : dayNames[checkDay],
+                startTime: first.startTime || "09:00",
+                endTime: first.endTime || "09:50",
+                room: first.room || "TBD",
+              };
+              break;
+            }
+          }
+        }
+
+        // 2. Greetings & Identity (0ms)
+        const greetingPattern =
+          /^(hi+|he+y+|hello+|heya|howdy|sup|yo|namaste|greetings|good\s+(morning|afternoon|evening|day|night)|how\s+(are|r)\s+(you|u|ya)|how('s|\s+is)\s+it\s+going|what('s|\s+is)\s+up|whats\s+up|who\s+(are|r)\s+(you|u)|what\s+is\s+your\s+name|what('s|\s+is)\s+your\s+name|who\s+(made|created|built|developed)\s+(you|u)|what\s+can\s+you\s+do|help|thank(s|\s+you|\s+u|\s+you\s+so\s+much)?|thx|bye(\s+bye)?|goodbye|see\s+(you|ya))$/i;
+        if (greetingPattern.test(lower)) {
+          const uName = user?.name || "Student";
+          if (/\b(who (made|created|built|developed) (you|u))\b/i.test(lower)) {
+            return { reply: `I am AttendX AI Copilot, created and engineered by **Naman Rai** as your intelligent academic companion and policy advisor for IIIT Una.` };
+          }
+          if (/\b(what can you do|help)\b/i.test(lower)) {
+            return { reply: `I can instantly check your attendance & safe bunks, simulate leaves, switch light/dark themes, navigate across the app, tell you your next class or upcoming holiday, swap timetable slots, and email your weekly or monthly attendance reports!` };
+          }
+          if (/^(thank|thx)/i.test(lower)) {
+            return { reply: `You're welcome, ${uName}! Let me know anytime you need help with your attendance or schedule.` };
+          }
+          if (/^(bye|goodbye|see)/i.test(lower)) {
+            return { reply: `See you later, ${uName}! Stay on top of your ${currentTarget}% attendance goal!` };
+          }
+          let reply = `Hey ${uName}! Your overall attendance is **${Number(currentOverall).toFixed(1)}%** (${currentAttended}/${currentTotal} classes — **${overallStatus}** vs your ${currentTarget}% target).`;
+          if (nextUpcomingClass) {
+            reply += ` Your next class is **${nextUpcomingClass.subjectName}** (${nextUpcomingClass.dayName} at ${nextUpcomingClass.startTime}).`;
+          }
+          reply += ` How can I help you today?`;
+          return { reply };
+        }
+
+        // 3. Theme Switching (0ms)
+        const themeMatch =
+          lower.match(/^(?:please\s+)?(?:switch|change|set|turn|enable|toggle|go|use)?\s*(?:to\s+|on\s+)?(dark|light)\s*(?:mode|theme)?$/i) ||
+          lower.match(/\b(?:switch|change|set|turn)\s+(?:the\s+)?(?:app\s+)?(?:theme|mode)\s+to\s+(dark|light)\b/i);
+        if (themeMatch) {
+          const targetTheme = themeMatch[1].toLowerCase() as "dark" | "light";
+          useThemeStore.getState().setTheme(targetTheme);
+          return { reply: `Switched your app appearance to **${targetTheme} mode**.` };
+        }
+
+        // 3.5. Timetable Alerts & Notification Settings (0ms)
+        const alertUpdates: Partial<any> = {};
+        const alertNotes: string[] = [];
+
+        // Class reminder lead time (Off, 5, 10, 15)
+        const reminderLeadMatch =
+          lower.match(/\b(?:switch|set|change|turn|make)?\s*(?:the\s+)?(?:class\s+reminders?|lecture\s+alerts?|reminder\s+offset|time\s+before\s+class)\s*(?:to\s+|as\s+)?(5|10|15|off|never|none|disable)\s*(?:min(?:ute)?s?)?\b/i) ||
+          lower.match(/\b(?:switch|change)\s+(?:from\s+)?\d+\s*(?:min(?:ute)?s?)?\s+(?:to\s+|into\s+)(5|10|15|off|never|none)\s*(?:min(?:ute)?s?)?\b/i) ||
+          lower.match(/\b(?:remind|notify)\s+me\s+(5|10|15)\s*(?:minutes?|mins?)\s+before\b/i) ||
+          lower.match(/\b(5|10|15)\s*(?:minutes?|mins?)\s+(?:before\s+class|class\s+reminder)\b/i) ||
+          lower.match(/\b(?:turn\s+off|disable|stop|no)\s+(?:class\s+reminders?|lecture\s+alerts?)\b/i);
+
+        if (reminderLeadMatch) {
+          const rawVal = (reminderLeadMatch[1] || "off").toLowerCase();
+          if (/^(off|never|none|disable)$/.test(rawVal) || /turn\s+off|disable|stop|no/.test(reminderLeadMatch[0])) {
+            alertUpdates.classReminderOffset = -1;
+            alertNotes.push("turned **OFF** class reminders (no pre-lecture alerts)");
+          } else {
+            const mins = parseInt(rawVal, 10);
+            if ([5, 10, 15].includes(mins)) {
+              alertUpdates.classReminderOffset = mins;
+              alertNotes.push(`set class reminder lead time to **${mins} minutes before class**`);
+            }
+          }
+        }
+
+        // Show location in notifications
+        if (
+          /\b(?:don'?t|do\s+not|stop|hide|remove|disable|turn\s+off|no|without|not)\s+(?:include|including|show|showing|display|displaying)?\s*(?:the\s+)?(?:room|location|classroom)\b/i.test(lower) ||
+          /\b(?:hide|remove|disable)\s+(?:room|location)\s+(?:in\s+notifications?|in\s+alerts?)?\b/i.test(lower)
+        ) {
+          alertUpdates.showLocation = false;
+          alertNotes.push("configured notifications to **hide room location**");
+        } else if (
+          /\b(?:include|including|show|showing|display|displaying|add|adding|enable|turn\s+on|with)\s+(?:the\s+)?(?:room|location|classroom)\s+(?:in|on)\s+(?:the\s+)?(?:notifications?|alerts?)\b/i.test(lower) ||
+          /\b(?:turn\s+on\s+show\s+location|show\s+room|include\s+location)\b/i.test(lower)
+        ) {
+          alertUpdates.showLocation = true;
+          alertNotes.push("configured notifications to **include room location**");
+        }
+
+        // Next class heads-up
+        if (
+          /\b(?:don'?t|do\s+not|stop|disable|turn\s+off|no|i\s+do\s+not\s+want|without)\s+(?:want\s+)?(?:the\s+)?(?:next\s+class\s+)?heads[\s-]*up\b/i.test(lower) ||
+          /\b(?:don'?t|do\s+not|stop)\s+notify(?:ing)?\s+(?:me\s+)?when\s+(?:current\s+)?class\s+ends\b/i.test(lower)
+        ) {
+          alertUpdates.notifyNextClassOnEnd = false;
+          alertNotes.push("turned **OFF** the Next Class Heads-up alert");
+        } else if (
+          /\b(?:enable|turn\s+on|activate|start|i\s+want)\s+(?:the\s+)?(?:next\s+class\s+)?heads[\s-]*up\b/i.test(lower) ||
+          /\bnotify\s+(?:me\s+)?when\s+(?:current\s+)?class\s+ends\b/i.test(lower)
+        ) {
+          alertUpdates.notifyNextClassOnEnd = true;
+          alertNotes.push("turned **ON** the Next Class Heads-up alert");
+        }
+
+        // End of day summary
+        if (
+          /\b(?:don'?t|do\s+not|stop|disable|turn\s+off|no|i\s+do\s+not\s+want|without)\s+(?:the\s+)?(?:end\s+of\s+day\s+summary|done\s+for\s+the\s+day\s+alert|daily\s+completion\s+alert)\b/i.test(lower)
+        ) {
+          alertUpdates.endOfDaySummary = false;
+          alertNotes.push("turned **OFF** the End of Day Summary alert");
+        } else if (
+          /\b(?:enable|turn\s+on|activate|start|i\s+want)\s+(?:the\s+)?(?:end\s+of\s+day\s+summary|done\s+for\s+the\s+day\s+alert)\b/i.test(lower)
+        ) {
+          alertUpdates.endOfDaySummary = true;
+          alertNotes.push("turned **ON** the End of Day Summary alert");
+        }
+
+        if (Object.keys(alertUpdates).length > 0) {
+          useNotificationStore.getState().updateConfig(alertUpdates);
+          NotificationService.autoScheduleFromTimetable().catch(() => {});
+          return { reply: `Done! I have ${alertNotes.join(" and ")}. Your alarms and local notifications have been rescheduled immediately.` };
+        }
+
+        // 4. Direct App Navigation (0ms)
+        const navMatch = lower.match(
+          /^(?:please\s+)?(?:navigate(?:\s+to)?|open(?:\s+up)?|go\s+to|take\s+me\s+to|show(?:\s+me)?(?:\s+my)?|view(?:\s+my)?)\s+(?:the\s+)?(timetable|schedule|routine|settings|preferences|reports?|analytics|calendar|forecast|predictive|prediction|today(?:'s\s+agenda)?|agenda|dashboard|subjects?|courses?|assignments?|tasks?|semester(?:\s+overview|\s+hub)?|overview|timeline|holidays?|countdowns?|events?|profile|edit\s+profile|linked\s+devices|devices|sessions|peer\s+sync|changelog|update\s+history|feedback|contact(?:\s+us)?|faq|classrooms?)(?:\s+page|\s+screen|\s+tab|\s+view)?$/i
+        );
+        if (navMatch) {
+          const targetKey = navMatch[1].toLowerCase();
+          let path = "/today";
+          let title = "Today's Agenda";
+          if (/(timetable|schedule|routine)/.test(targetKey)) { path = "/timetable"; title = "Timetable"; }
+          else if (/(edit\s+profile|profile)/.test(targetKey)) { path = "/settings/profile"; title = "Edit Profile"; }
+          else if (/(device|devices|sessions)/.test(targetKey)) { path = "/settings/devices"; title = "Linked Devices"; }
+          else if (/(peer\s+sync)/.test(targetKey)) { path = "/settings/peer-sync"; title = "Peer Sync"; }
+          else if (/(contact)/.test(targetKey)) { path = "/settings/contact"; title = "Contact Us"; }
+          else if (/(feedback)/.test(targetKey)) { path = "/settings/feedback"; title = "Send Feedback"; }
+          else if (/(changelog|update\s+history)/.test(targetKey)) { path = "/settings/changelog"; title = "Update History"; }
+          else if (/(faq)/.test(targetKey)) { path = "/settings/faq"; title = "FAQ"; }
+          else if (/(setting|preferences)/.test(targetKey)) { path = "/settings"; title = "Settings"; }
+          else if (/(report|analytics)/.test(targetKey)) { path = "/report"; title = "Analytics Reports"; }
+          else if (/(forecast|predictive|prediction)/.test(targetKey)) { path = "/predictive"; title = "Forecast Engine"; }
+          else if (/(holiday)/.test(targetKey)) { path = "/semester/holidays"; title = "Semester Holidays"; }
+          else if (/(countdown)/.test(targetKey)) { path = "/semester/countdowns"; title = "Semester Countdowns"; }
+          else if (/^events?$/.test(targetKey)) { path = "/semester/events"; title = "Semester Events"; }
+          else if (/(semester|overview|timeline)/.test(targetKey)) { path = "/semester"; title = "Semester Overview"; }
+          else if (/(calendar)/.test(targetKey)) { path = "/calendar"; title = "Calendar"; }
+          else if (/(subject|course)/.test(targetKey)) { path = "/subjects"; title = "Subjects"; }
+          else if (/(assignment|task)/.test(targetKey)) { path = "/assignments"; title = "Assignments"; }
+          else if (/(classroom)/.test(targetKey)) { path = "/classrooms"; title = "Classrooms"; }
+          navigate(path);
+          return { reply: `Opening **${title}**.` };
+        }
+
+        // 5. Next Upcoming Event / Holiday / Exam & Next Class / Today's Schedule (0ms)
+        if (
+          /^(what('s|\s+is)\s+(my\s+)?)?(next|upcoming)\s+(event|events|holiday|vacation|break|exam|midsem|endsem|milestone|festival|fest)s?$/i.test(lower) ||
+          /\b(when\s+is\s+(the\s+)?next\s+(event|holiday|exam|break|vacation)|tell\s+me\s+(the\s+)?next\s+upcoming\s+event|upcoming\s+events?|next\s+holiday)\b/i.test(lower)
+        ) {
+          const todayMidnight = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+          const upcoming = (currentEvents || [])
+            .map((e: any) => {
+              const rawStart = e.date || e.startDate;
+              const rawEnd = e.endDate || rawStart;
+              const dStr = rawStart ? String(rawStart).split("T")[0] : "";
+              const endStr = rawEnd ? String(rawEnd).split("T")[0] : dStr;
+              const startObj = dStr ? new Date(`${dStr}T00:00:00`) : new Date(NaN);
+              const endObj = endStr ? new Date(`${endStr}T23:59:59`) : startObj;
+              const daysUntil = !isNaN(startObj.getTime())
+                ? Math.max(0, Math.round((startObj.getTime() - todayMidnight) / (1000 * 60 * 60 * 24)))
+                : 999;
+              return {
+                title: e.title || e.name || "Academic Event",
+                date: dStr,
+                endDate: endStr !== dStr ? endStr : undefined,
+                daysUntil,
+                endMs: !isNaN(endObj.getTime()) ? endObj.getTime() : 0,
+                eventType: String(e.eventType || "other").toLowerCase(),
+              };
+            })
+            .filter((e: any) => e.date && e.endMs >= todayMidnight)
+            .sort((a: any, b: any) => a.date.localeCompare(b.date));
+
+          const wantsHoliday = /\b(holiday|vacation|break)\b/i.test(lower);
+          const wantsExam = /\b(exam|midsem|endsem|ct|quiz|test)\b/i.test(lower);
+          const filtered = upcoming.filter((e: any) => {
+            if (wantsHoliday) return e.eventType.includes("holiday") || e.eventType.includes("vacation") || /holiday|vacation|jayanti|diwali|holi/i.test(e.title);
+            if (wantsExam) return e.eventType.includes("exam") || e.eventType.includes("sem") || e.eventType.includes("ct") || /exam|mid|end|test|quiz/i.test(e.title);
+            return true;
+          });
+          const list = filtered.length > 0 ? filtered : upcoming;
+          if (list.length === 0) {
+            return { reply: `You don't have any upcoming events or holidays recorded in your active semester calendar yet.` };
+          }
+          const top = list[0];
+          const countdownText = top.daysUntil === 0 ? "today" : top.daysUntil === 1 ? "tomorrow (in 1 day)" : `in **${top.daysUntil} days**`;
+          const moreList = list
+            .slice(1, 4)
+            .map((e: any) => `• **${e.title}** — ${e.date}${e.endDate ? ` to ${e.endDate}` : ""} (${e.daysUntil === 0 ? "Today" : `in ${e.daysUntil}d`})`)
+            .join("\n");
+          return {
+            reply: `Your next upcoming ${wantsHoliday ? "holiday" : wantsExam ? "exam" : "event"} is **${top.title}** on **${top.date}${top.endDate ? ` – ${top.endDate}` : ""}** (${countdownText}).${moreList ? `\n\n**Following up:**\n${moreList}` : ""}`,
+          };
+        }
+
+        if (/^(what('s|\s+is)\s+(my\s+)?)?(next\s+(class|lecture|lab)|classes\s+today|my\s+(classes|schedule|timetable)\s+today|today('s)?\s+(classes|schedule|timetable|agenda))$/i.test(lower)) {
+          const todayDayName = dayNames[todayDayIndex];
+          if (/next\s+(class|lecture|lab)/i.test(lower)) {
+            if (nextUpcomingClass) {
+              return {
+                reply: `Your next class is **${nextUpcomingClass.subjectName}** (${nextUpcomingClass.dayName}, **${nextUpcomingClass.startTime} – ${nextUpcomingClass.endTime}**${nextUpcomingClass.room && nextUpcomingClass.room !== "TBD" ? `, Room ${nextUpcomingClass.room}` : ""}).`,
+              };
+            }
+            return { reply: `You have no upcoming classes found in your weekly timetable.` };
+          }
+          if (todayClasses.length === 0) {
+            return {
+              reply: `You have **no classes scheduled today (${todayDayName})**!${nextUpcomingClass ? ` Your next class is **${nextUpcomingClass.subjectName}** on ${nextUpcomingClass.dayName} at ${nextUpcomingClass.startTime}.` : ""}`,
+            };
+          }
+          const formatted = todayClasses
+            .map((c: any) => `• **${c.startTime} – ${c.endTime}**: ${c.subjectName} (${c.slotType}${c.room && c.room !== "TBD" ? `, ${c.room}` : ""})`)
+            .join("\n");
+          return { reply: `Here is your schedule for **today (${todayDayName})** (${todayClasses.length} session${todayClasses.length !== 1 ? "s" : ""}):\n${formatted}` };
+        }
+
+        // 6. Current Attendance & Safe Bunks Query (0ms)
+        const isDirectAttendanceQuery =
+          /^(what('s|\s+is)\s+(my\s+)?)?(current\s+|overall\s+|total\s+)?attendance(\s+status|\s+percentage|\s+right\s+now|\s+summary)?$/i.test(lower) ||
+          /^(show(\s+me)?\s+(my\s+)?|check(\s+my)?\s+|tell(\s+me)?\s+(my\s+)?)?(current\s+|overall\s+)?attendance(\s+in\s+.+)?$/i.test(lower) ||
+          /^(am\s+i\s+safe|how\s+many\s+(classes|lectures|bunks)\s+(can\s+i\s+(bunk|miss|skip)|do\s+i\s+need(\s+to\s+attend)?))(\s+in\s+.+)?$/i.test(lower);
+
+        if (isDirectAttendanceQuery && !/\b(if\s+i|next\s+week|from\s+|between\s+|tomorrow|monday|tuesday|wednesday|thursday|friday)\b/i.test(lower)) {
+          const matchedSub = (currentSubjects as any[]).find(
+            (s) =>
+              (s.name && lower.includes(s.name.toLowerCase())) ||
+              (s.code && s.code.length >= 2 && new RegExp(`\\b${s.code.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(lower))
+          );
+
+          if (matchedSub) {
+            const att = Number(matchedSub.attended || 0);
+            const tot = Number(matchedSub.total || 0);
+            const tgt = Number(matchedSub.target ?? currentTarget);
+            const pct = matchedSub.percentage !== undefined ? Number(matchedSub.percentage) : tot > 0 ? (att / tot) * 100 : 100;
+            const p = tgt / 100;
+            const safeBunksLeft = tot > 0 && p > 0 ? Math.max(0, Math.floor((att - p * tot) / p)) : 0;
+            const classesNeeded = tot > 0 && p < 1 ? Math.max(0, Math.ceil((p * tot - att) / (1 - p))) : 0;
+            const bufferMsg =
+              pct >= tgt
+                ? safeBunksLeft > 0
+                  ? `You can safely miss **${safeBunksLeft}** consecutive class${safeBunksLeft !== 1 ? "es" : ""} and stay above ${tgt}%.`
+                  : `You are right on the edge of ${tgt}% — missing the next class will drop you below target.`
+                : `You need to attend the next **${classesNeeded}** consecutive class${classesNeeded !== 1 ? "es" : ""} to reach ${tgt}%.`;
+            const skipCount = pct >= tgt ? Math.max(1, safeBunksLeft) : -classesNeeded;
+            const projTot = tot + Math.abs(skipCount);
+            const projAtt = skipCount < 0 ? att + Math.abs(skipCount) : att;
+            return {
+              reply: `In **${matchedSub.name}${matchedSub.code ? ` (${matchedSub.code})` : ""}**, your current attendance is **${pct.toFixed(1)}%** (${att}/${tot} classes, Target: ${tgt}%). ${bufferMsg}`,
+              simulation: {
+                subjectId: matchedSub.id,
+                subjectName: matchedSub.name,
+                skipCount,
+                currentAttended: att,
+                currentTotal: tot,
+                projectedPercentage: projTot > 0 ? Math.round((projAtt / projTot) * 1000) / 10 : 100,
+                targetPercentage: tgt,
+              },
+            };
+          }
+
+          const overallBuffer =
+            currentOverall >= currentTarget
+              ? `You are **Safe** (+${(currentOverall - currentTarget).toFixed(1)}% above ${currentTarget}%) with an overall buffer of **${overallSafeBunks}** class${overallSafeBunks !== 1 ? "es" : ""}.`
+              : `You are below your ${currentTarget}% target and need **${overallNeeded}** consecutive classes overall.`;
+          const subjectLines = (currentSubjects as any[])
+            .map((s) => {
+              const att = Number(s.attended || 0);
+              const tot = Number(s.total || 0);
+              const tgt = Number(s.target ?? currentTarget);
+              const pct = s.percentage !== undefined ? Number(s.percentage) : tot > 0 ? (att / tot) * 100 : 100;
+              const p = tgt / 100;
+              const bunks = tot > 0 && p > 0 ? Math.max(0, Math.floor((att - p * tot) / p)) : 0;
+              const need = tot > 0 && p < 1 ? Math.max(0, Math.ceil((p * tot - att) / (1 - p))) : 0;
+              const tag = pct >= tgt ? (bunks > 0 ? `Safe: can miss ${bunks}` : `On edge (0 bunks)`) : `Attend next ${need}`;
+              return `• **${s.name}**: **${pct.toFixed(1)}%** (${att}/${tot}) — *${tag}*`;
+            })
+            .join("\n");
+          return {
+            reply: `Your overall attendance is **${Number(currentOverall).toFixed(1)}%** (${currentAttended}/${currentTotal} classes). ${overallBuffer}${subjectLines ? `\n\n**Subject Breakdown:**\n${subjectLines}` : ""}`,
+          };
+        }
+
+        // 7. Single-Subject Simulation (0ms)
+        const singleSimMatch = lower.match(
+          /^(?:what\s+if\s+i|if\s+i|simulate)\s+(miss|skip|bunk|attend|attending)\s+(?:the\s+)?(?:next\s+)?(\d+)\s+(?:classes|lectures|sessions|labs)?\s*(?:of|in|for)?\s+(.+)$/i
+        );
+        if (singleSimMatch && !/\b(week|month|semester|days|monday|tuesday|wednesday|thursday|friday)\b/i.test(singleSimMatch[3])) {
+          const isMiss = /miss|skip|bunk/.test(singleSimMatch[1].toLowerCase());
+          const count = Math.max(1, parseInt(singleSimMatch[2], 10));
+          const subQ = singleSimMatch[3].trim().toLowerCase();
+          const matchedSub = (currentSubjects as any[]).find(
+            (s) => (s.name && s.name.toLowerCase().includes(subQ)) || (s.code && s.code.toLowerCase() === subQ)
+          );
+          if (matchedSub) {
+            const att = Number(matchedSub.attended || 0);
+            const tot = Number(matchedSub.total || 0);
+            const tgt = Number(matchedSub.target ?? currentTarget);
+            const pct = tot > 0 ? (att / tot) * 100 : 100;
+            const projTot = tot + count;
+            const projAtt = isMiss ? att : att + count;
+            const projPct = projTot > 0 ? (projAtt / projTot) * 100 : 100;
+            const p = tgt / 100;
+            let reply = "";
+            if (isMiss) {
+              reply = `If you miss **${count}** class${count !== 1 ? "es" : ""} of **${matchedSub.name}**, your attendance moves from **${pct.toFixed(1)}%** to **${projPct.toFixed(1)}%** (${projAtt}/${projTot} classes). `;
+              if (projPct >= tgt) {
+                const bunksAfter = Math.max(0, Math.floor((projAtt - p * projTot) / p));
+                reply += `You remain **safe** above your ${tgt}% target with **${bunksAfter}** safe bunk${bunksAfter !== 1 ? "s" : ""} remaining.`;
+              } else {
+                const recoverNeeded = p < 1 ? Math.max(0, Math.ceil((p * projTot - projAtt) / (1 - p))) : 0;
+                reply += `Warning: This drops you **below your ${tgt}% target**! You would need to attend **${recoverNeeded}** consecutive classes to recover.`;
+              }
+            } else {
+              reply = `If you attend the next **${count}** class${count !== 1 ? "es" : ""} of **${matchedSub.name}**, your attendance rises from **${pct.toFixed(1)}%** to **${projPct.toFixed(1)}%** (${projAtt}/${projTot} classes).`;
+            }
+            return {
+              reply,
+              simulation: {
+                subjectId: matchedSub.id,
+                subjectName: matchedSub.name,
+                skipCount: isMiss ? count : -count,
+                currentAttended: att,
+                currentTotal: tot,
+                projectedPercentage: Math.round(projPct * 10) / 10,
+                targetPercentage: tgt,
+              },
+            };
+          }
+        }
+
+        return null;
+      };
+
+      const fastLocalResult = tryClientFastPath();
+      if (fastLocalResult) {
+        const textToSpeak = fastLocalResult.reply.replace(/\*\*/g, "").replace(/\*/g, "");
+        if (isHandsFreeRef.current && textToSpeak) {
+          setHandsFreeStatus("SPEAKING");
+          await NativeVoiceService.stopSpeaking();
+          NativeVoiceService.speak(textToSpeak, {
+            autoResumeListening: true,
+            listenOptions: handsFreeListenOptionsRef.current,
+            onStart: () => { if (isHandsFreeRef.current) setHandsFreeStatus("SPEAKING"); },
+            onEnd: () => {
+              if (isHandsFreeRef.current) {
+                setHandsFreeStatus("LISTENING");
+                resetHandsFreeSilenceTimer();
+              }
+            }
+          });
+        } else if (effectiveInputMethod === "voice" && textToSpeak) {
+          await NativeVoiceService.stopSpeaking();
+          NativeVoiceService.speak(textToSpeak);
+        }
+
+        const botResponse: Message = {
+          id: String(Date.now() + 1),
+          role: "assistant",
+          content: fastLocalResult.reply,
+          citations: [],
+          timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          simulation: fastLocalResult.simulation,
+          semesterProjection: fastLocalResult.semesterProjection,
+        };
+        setMessages((prev) => [...prev, botResponse]);
+        setIsLoading(false);
+        return fastLocalResult.reply;
+      }
+      // --- END CLIENT-SIDE 0ms FAST-PATH ---
+
+      const needsHistoryLogs = /\b(when was i|history|log|logs|past|last week|yesterday|marked on|absent on|present on|did i attend|did i miss|extra class)\b/i.test(query);
 
       const studentContext = {
         user_id: user?.id,
         user_name: user?.name || "Student",
+        user_email: user?.email,
         user_birthday: user?.birthday || "Not set",
         app_version: appVersion,
         app_developer: "Naman Rai",
@@ -693,8 +1128,8 @@ const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'vo
         total_attended: currentAttended,
         total_classes: currentTotal,
         subjects: currentSubjects,
-        timetable_slots: useCacheStore.getState().timetable?.slots || [],
-        history_logs: currentLogs.slice(0, 150),
+        timetable_slots: timetableSlots,
+        history_logs: needsHistoryLogs ? currentLogs.slice(0, 30) : [],
         calendar_events: currentEvents
           .filter(e => {
             const eventDate = new Date(e.endDate || e.date);
@@ -702,7 +1137,7 @@ const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'vo
             monthAgo.setDate(monthAgo.getDate() - 30);
             return eventDate >= monthAgo;
           })
-          .slice(0, 150),
+          .slice(0, 40),
         assignments: useAssignmentStore.getState().assignments || []
       };
 
@@ -763,10 +1198,16 @@ const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'vo
     
       
       executeActionRef.current = async (action: any) => {
-        const studentContext = (await api.get("/chat/context")).data;
         let refresh = false;
+        const activeSemesterId =
+          action.payload?.semesterId ||
+          useAttendanceStore.getState().activeSemesterId ||
+          useCacheStore.getState().timetable?.activeSemester?.id;
+
         if (action.type === 'NAVIGATE' && action.payload?.path) {
-          navigate(action.payload.path);
+          let targetPath = action.payload.path;
+          if (targetPath === '/reports') targetPath = '/report';
+          navigate(targetPath);
         } else if (action.type === 'MARK_ATTENDANCE') {
           await api.post("/attendance/mark", action.payload);
           navigate(`/today?date=${action.payload.date}`);
@@ -879,7 +1320,7 @@ const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'vo
           useCacheStore.getState().setReminderFrequency(freqData);
           NotificationService.scheduleAcademicUpdates(freqData);
           const subLabel = subValue ? ` (${subValue})` : '';
-          toast.success(`Reminder frequency updated to ${capFreq}${subLabel}`);
+          // Confirmed via AI chat message
         } else if (action.type === 'SWITCH_THEME') {
           const theme = action.payload.theme || 'system';
           useThemeStore.getState().setTheme(theme);
@@ -890,13 +1331,30 @@ const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'vo
           else if (bracket === 'Monthly') useNotificationStore.getState().updateConfig({ monthlySummaryTime: action.payload.time });
           else if (bracket === 'Yearly') useNotificationStore.getState().updateConfig({ yearlySummaryTime: action.payload.time });
           else useNotificationStore.getState().updateConfig({ summaryTime: action.payload.time });
-          toast.success(`${bracket} briefing time updated to ${action.payload.time}`);
+          // Confirmed via AI chat message
         } else if (action.type === 'CHANGE_CLASS_REMINDER_OFFSET') {
-          useNotificationStore.getState().updateConfig({ classReminderOffset: action.payload.offsetMinutes });
-          toast.success(`Class reminders set to ${action.payload.offsetMinutes} mins before`);
+          const mins = Number(action.payload.offsetMinutes ?? 10);
+          useNotificationStore.getState().updateConfig({ classReminderOffset: mins });
+          NotificationService.autoScheduleFromTimetable().catch(() => {});
+        } else if (action.type === 'UPDATE_TIMETABLE_ALERTS' || action.type === 'UPDATE_NOTIFICATION_CONFIG') {
+          const updates: any = {};
+          if (action.payload.classReminderOffset !== undefined) {
+            updates.classReminderOffset = Number(action.payload.classReminderOffset);
+          }
+          if (action.payload.showLocation !== undefined) {
+            updates.showLocation = Boolean(action.payload.showLocation);
+          }
+          if (action.payload.notifyNextClassOnEnd !== undefined) {
+            updates.notifyNextClassOnEnd = Boolean(action.payload.notifyNextClassOnEnd);
+          }
+          if (action.payload.endOfDaySummary !== undefined) {
+            updates.endOfDaySummary = Boolean(action.payload.endOfDaySummary);
+          }
+          useNotificationStore.getState().updateConfig(updates);
+          NotificationService.autoScheduleFromTimetable().catch(() => {});
         } else if (action.type === 'ADD_TIMETABLE_SLOT') {
           await api.post(`/timetable/slots`, {
-            semesterId: studentContext.active_semester_id,
+            semesterId: activeSemesterId,
             subjectId: action.payload.subjectId,
             dayOfWeek: action.payload.dayOfWeek,
             startTime: action.payload.startTime,
@@ -906,7 +1364,7 @@ const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'vo
           });
           refresh = true;
         } else if (action.type === 'REMOVE_TIMETABLE_SLOT') {
-          const ttRes = await api.get(`/timetable/${studentContext.active_semester_id}`);
+          const ttRes = await api.get(`/timetable/${activeSemesterId}`);
           const timetable = ttRes.data;
           let targetSlotId = null;
           const slot = timetable.find((s: any) => s.subject.id === action.payload.subjectId && s.dayOfWeek === action.payload.dayOfWeek && s.startTime === action.payload.startTime);
@@ -921,7 +1379,7 @@ const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'vo
           }
         } else if (action.type === 'SHIFT_TIMETABLE_SLOT') {
           // Fetch timetable to find the slot
-          const targetSemesterId = action.payload.semesterId || studentContext.active_semester_id;
+          const targetSemesterId = action.payload.semesterId || activeSemesterId;
           const ttRes = await api.get(`/timetable/${targetSemesterId}`);
           const timetable = ttRes.data;
           // Find the slot matching subjectId and dayOfWeek
@@ -942,14 +1400,14 @@ const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'vo
           }
         } else if (action.type === 'SWAP_TIMETABLE_DAYS') {
           await api.post(`/timetable/days/swap`, {
-            semesterId: studentContext.active_semester_id,
+            semesterId: activeSemesterId,
             dayA: action.payload.dayA,
             dayB: action.payload.dayB
           });
           refresh = true;
         } else if (action.type === 'SHIFT_TIMETABLE_DAY') {
           await api.post(`/timetable/days/shift`, {
-            semesterId: studentContext.active_semester_id,
+            semesterId: activeSemesterId,
             sourceDay: action.payload.sourceDay,
             targetDay: action.payload.targetDay
           });
@@ -974,11 +1432,11 @@ const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'vo
           refresh = true;
         } else if (action.type === 'MARK_ASSIGNMENT_COMPLETED') {
           if (action.payload.assignmentId) {
-             await api.post(`/assignments/${action.payload.assignmentId}/complete`);
+             await api.post(`/assignments/${action.payload.assignmentId}/toggle`);
           } else if (action.payload.title) {
              const assignments = useAssignmentStore.getState().assignments;
              const target = assignments.find(a => a.title.toLowerCase().includes(action.payload.title.toLowerCase()));
-             if (target) await api.post(`/assignments/${target.id}/complete`);
+             if (target) await api.post(`/assignments/${target.id}/toggle`);
           }
           await useAssignmentStore.getState().fetchAssignments();
         } else if (action.type === 'DELETE_ASSIGNMENT') {
@@ -1042,6 +1500,9 @@ const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'vo
 
       if (data.simulation) {
         simulation = data.simulation;
+      }
+      if (data.semesterProjection) {
+        semesterProjection = data.semesterProjection;
       }
 
       const botResponse: Message = {
@@ -1164,7 +1625,7 @@ const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'vo
             }`}
           >
             {/* Header with Frosted Glass Top Bar */}
-            <div className="px-5 py-3.5 border-b border-primary/10 dark:border-black dark:border-white bg-white/70 dark:bg-black/70 backdrop-blur-md flex items-center justify-between">
+            <div className="px-5 py-3.5 border-b border-primary/10 dark:border-white/10 bg-white/70 dark:bg-black/70 backdrop-blur-md flex items-center justify-between">
               <div className="flex items-center gap-3 min-w-0">
 
                 <div className="relative">

@@ -9,6 +9,8 @@ import { SubjectModal } from "../../components/subjects/SubjectModal";
 import { useAuthStore } from "../../stores/authStore";
 import { useAttendanceStore } from "../../stores/attendanceStore";
 import { useNavigate, useLocation } from "react-router-dom";
+import { useBackHandlerStore } from "../../stores/backHandlerStore";
+import { hapticMedium, hapticHeavy, hapticSelection, hapticSuccess } from "../../utils/haptics";
 
 interface Subject {
   id: string;
@@ -76,7 +78,10 @@ const SubjectCard: React.FC<{
 
   return (
     <div 
-      onClick={() => navigate(`/subjects/${stat.id}`)}
+      onClick={() => {
+        hapticSelection();
+        navigate(`/subjects/${stat.id}`);
+      }}
       className="bg-white/60 dark:bg-black/30 backdrop-blur-xl border border-white/60 dark:border-white/10 rounded-2xl p-4 hover:border-white/80 dark:hover:border-white/40 transition-all group relative overflow-hidden cursor-pointer shadow-lg"
     >
       <div className="absolute top-0 left-0 w-1.5 h-full rounded-l-2xl" style={{ backgroundColor: stat.colorHex || "#8b5cf6" }} />
@@ -84,7 +89,7 @@ const SubjectCard: React.FC<{
         {/* Top row: name + badge */}
         <div className="flex items-start justify-between gap-3">
           <div className="flex-1 min-w-0">
-            <h3 className="text-base font-bold text-foreground dark:text-white leading-tight truncate transition-colors">{stat.name}</h3>
+            <h3 className="text-base font-bold text-foreground dark:text-white leading-tight transition-colors break-words">{stat.name}</h3>
             <p className={`text-xs mt-0.5 font-medium ${statusMsg.color}`}>{statusMsg.text}</p>
           </div>
           <StatBadge stat={stat} />
@@ -120,17 +125,17 @@ const SubjectCard: React.FC<{
               Tot: <span className="text-foreground font-semibold">{stat.total}</span>
             </span>
           </div>
-          {/* Edit/Delete */}
-          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          {/* Edit/Delete — always visible on mobile (no hover on touch), revealed on hover for desktop */}
+          <div className="flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
             <button
-              onClick={(e) => { e.stopPropagation(); onEdit(); }}
+              onClick={(e) => { e.stopPropagation(); hapticMedium(); onEdit(); }}
               className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
               title="Edit Subject"
             >
               <Pencil className="w-3.5 h-3.5" />
             </button>
             <button
-              onClick={(e) => { e.stopPropagation(); onDelete(); }}
+              onClick={(e) => { e.stopPropagation(); hapticHeavy(); onDelete(); }}
               className="p-1.5 rounded-lg text-muted-foreground hover:text-rose-500 hover:bg-rose-500/10 transition-colors"
               title="Remove Subject"
             >
@@ -148,12 +153,22 @@ export const SubjectsPage = () => {
   const setCache = useCacheStore((state) => state.setCache);
   const { user } = useAuthStore();
   const navigate = useNavigate();
-  const [subjectStats, setSubjectStats] = useState<SubjectStat[]>(cachedSubjectsData?.stats || []);
-  const [subjects, setSubjects] = useState<Subject[]>(cachedSubjectsData?.subjects || []);
-  const [isLoading, setIsLoading] = useState(!cachedSubjectsData);
+  const storeSubjects = useAttendanceStore.getState().subjects;
+  const storeSemId = useAttendanceStore.getState().activeSemesterId || useCacheStore.getState().semester?.activeSemester?.id || null;
+  const [subjectStats, setSubjectStats] = useState<SubjectStat[]>(
+    () => cachedSubjectsData?.stats || (storeSubjects?.length ? (storeSubjects as any) : [])
+  );
+  const [subjects, setSubjects] = useState<Subject[]>(
+    () => cachedSubjectsData?.subjects || (storeSubjects?.length ? (storeSubjects as any) : [])
+  );
+  const [isLoading, setIsLoading] = useState(
+    () => !cachedSubjectsData && (!storeSubjects || storeSubjects.length === 0)
+  );
   const [isAdding, setIsAdding] = useState(false);
   const [editingSubject, setEditingSubject] = useState<Subject | null>(null);
-  const [activeSemesterId, setActiveSemesterId] = useState<string | null>(cachedSubjectsData?.activeSemesterId || null);
+  const [activeSemesterId, setActiveSemesterId] = useState<string | null>(
+    () => cachedSubjectsData?.activeSemesterId || storeSemId
+  );
   const [isCreateSemesterOpen, setIsCreateSemesterOpen] = useState(false);
   const location = useLocation();
 
@@ -163,12 +178,39 @@ export const SubjectsPage = () => {
     }
   }, [location.hash]);
 
+  useEffect(() => {
+    const unregister = useBackHandlerStore.getState().register(() => {
+      if (isAdding) {
+        setIsAdding(false);
+        setEditingSubject(null);
+        return true;
+      }
+      if (isCreateSemesterOpen) {
+        setIsCreateSemesterOpen(false);
+        return true;
+      }
+      return false;
+    });
+    return () => unregister();
+  }, [isAdding, isCreateSemesterOpen]);
+
   const fetchData = async () => {
     try {
-      if (!cachedSubjectsData) setIsLoading(true);
-      const [subjectsRes, semesterRes] = await Promise.all([
+      if (!cachedSubjectsData && subjects.length === 0 && (!storeSubjects || storeSubjects.length === 0)) {
+        setIsLoading(true);
+      }
+      const knownSemId =
+        activeSemesterId ||
+        cachedSubjectsData?.activeSemesterId ||
+        useAttendanceStore.getState().activeSemesterId ||
+        useCacheStore.getState().semester?.activeSemester?.id ||
+        null;
+
+      // Fire all 3 requests in parallel when semesterId is known so total elapsed time = max(single call)
+      const [subjectsRes, semesterRes, parallelStatsRes] = await Promise.all([
         api.get("/subjects"),
         api.get("/semesters/active"),
+        knownSemId ? api.get(`/attendance/stats?semesterId=${knownSemId}`) : Promise.resolve(null),
       ]);
       const newSubjects = Array.isArray(subjectsRes.data) ? subjectsRes.data : [];
       setSubjects(newSubjects);
@@ -176,11 +218,16 @@ export const SubjectsPage = () => {
       const semester = semesterRes.data;
       if (semester) {
         setActiveSemesterId(semester.id);
-        const statsRes = await api.get(`/attendance/stats?semesterId=${semester.id}`);
+        const statsRes =
+          parallelStatsRes && knownSemId === semester.id
+            ? parallelStatsRes
+            : await api.get(`/attendance/stats?semesterId=${semester.id}`);
         const newStats = Array.isArray(statsRes.data) ? statsRes.data : (statsRes.data?.subjects || []);
         setSubjectStats(newStats);
         setCache('subjects', { subjects: newSubjects, stats: newStats, activeSemesterId: semester.id });
       } else {
+        setActiveSemesterId(null);
+        setSubjectStats([]);
         setCache('subjects', { subjects: newSubjects, stats: [], activeSemesterId: null });
       }
     } catch (error) {
@@ -224,13 +271,22 @@ export const SubjectsPage = () => {
       action: {
         label: "Delete",
         onClick: async () => {
+          hapticHeavy();
+          // Optimistically remove immediately for instant UI response
+          setSubjects((prev) => prev.filter((s) => s.id !== id));
+          setSubjectStats((prev) => prev.filter((s) => s.id !== id));
           try {
             await api.delete(`/subjects/${id}?preserveHistory=true`);
-            fetchData();
-            toast.success("Subject deleted safely");
+            toast.success("Subject deleted");
+            Promise.all([
+              fetchData(),
+              useAttendanceStore.getState().fetchStats(true),
+            ]).catch(() => {});
+            window.dispatchEvent(new Event("attendance-updated"));
           } catch (error) {
             console.error("Failed to delete subject:", error);
             toast.error("Failed to delete subject");
+            fetchData();
           }
         }
       },
@@ -295,8 +351,16 @@ export const SubjectsPage = () => {
             <p className="text-sm md:text-base text-foreground dark:text-white/80 font-medium">Your semester attendance overview.</p>
           </div>
           <button
-            onClick={() => { setEditingSubject(null); setIsAdding(true); }}
-            className="flex items-center gap-2 bg-foreground hover:bg-foreground/90 text-background px-4 py-2 rounded-full text-sm font-bold transition-all shadow-md"
+            onClick={() => {
+              if (!activeSemesterId) {
+                toast.error("Please create an active semester first before adding subjects.");
+                setIsCreateSemesterOpen(true);
+                return;
+              }
+              setEditingSubject(null);
+              setIsAdding(true);
+            }}
+            className="flex items-center gap-2 bg-foreground hover:bg-foreground/90 text-background px-4 py-2 rounded-full text-sm font-bold transition-all shadow-md cursor-pointer"
           >
             <Plus className="w-4 h-4" />
             <span className="hidden sm:inline">Add Subject</span>
@@ -356,13 +420,23 @@ export const SubjectsPage = () => {
           <p className="text-foreground dark:text-white/60 max-w-sm mx-auto mb-6">
             You haven't added any subjects to track. Start by adding the subjects you are studying this semester.
           </p>
-          <button
-            onClick={() => setIsAdding(true)}
-            className="inline-flex items-center gap-2 bg-primary/20 text-primary hover:bg-primary/30 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            Add First Subject
-          </button>
+          {!activeSemesterId ? (
+            <button
+              onClick={() => setIsCreateSemesterOpen(true)}
+              className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white px-5 py-2.5 rounded-xl text-sm font-bold transition-all shadow-lg shadow-indigo-600/30 cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              Create Active Semester First
+            </button>
+          ) : (
+            <button
+              onClick={() => setIsAdding(true)}
+              className="inline-flex items-center gap-2 bg-primary/20 text-primary hover:bg-primary/30 px-4 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              Add First Subject
+            </button>
+          )}
         </div>
       ) : (
         <div className="space-y-3">

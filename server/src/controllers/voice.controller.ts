@@ -38,8 +38,15 @@ export class VoiceController {
         res.write(chunk);
       }
       res.end();
-    } catch (error) {
-      console.warn("ElevenLabs TTS Error or Quota Exceeded. Falling back to Google TTS.", error);
+    } catch (error: any) {
+      const isQuota = error?.statusCode === 401 ||
+                      error?.body?.detail?.code === 'quota_exceeded' ||
+                      String(error?.message || '').toLowerCase().includes('quota');
+      if (isQuota) {
+        console.warn(`[VoiceController] ElevenLabs quota exhausted (${error?.body?.detail?.message || 'credits depleted'}). Gracefully falling back to Google TTS.`);
+      } else {
+        console.warn(`[VoiceController] ElevenLabs TTS error (${error?.message || 'unknown'}). Falling back to Google TTS.`);
+      }
       try {
         const chunks = await googleTTS.getAllAudioBase64(text, {
           lang: 'en',

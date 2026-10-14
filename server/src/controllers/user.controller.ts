@@ -2,6 +2,7 @@ import { Response } from "express";
 import { UserService } from "../services/user.service";
 import { AuthenticatedRequest } from "../middleware/authenticate";
 import { CacheService } from "../services/cache.service";
+import { prisma } from "../lib/prisma";
 
 export class UserController { 
 
@@ -9,6 +10,7 @@ export class UserController {
     try {
       const userId = req.user!.userId;
       await UserService.deleteAccount(userId);
+      await CacheService.invalidateUser(userId);
       // Ensure the refresh token cookie is cleared if they delete themselves
       res.clearCookie("refreshToken", {
         httpOnly: true,
@@ -33,31 +35,101 @@ export class UserController {
   static async getOnboardingStatus(req: AuthenticatedRequest, res: Response) {
     try {
       const userId = req.user!.userId;
-      const { prisma } = require("../lib/prisma");
 
-      const activeSemester = await prisma.semester.findFirst({ where: { userId, isActive: true } });
-      const hasSemester = !!activeSemester;
-      
-      let hasSubjects = false;
-      let hasTimetable = false;
-      let hasCalendar = false;
-      let hasAttendance = false;
-
-      if (hasSemester) {
-        const [subCount, ttCount, evCount, attCount] = await Promise.all([
-          prisma.subject.count({ where: { semesterId: activeSemester.id } }),
-          prisma.timetableSlot.count({ where: { semesterId: activeSemester.id } }),
-          prisma.event.count({ where: { semesterId: activeSemester.id } }),
-          prisma.attendance.count({ where: { userId, subject: { semesterId: activeSemester.id } } })
+      const statusPayload = await CacheService.getOrSet(userId, "onboarding:status", async () => {
+        const [activeSemester, user] = await Promise.all([
+          CacheService.getOrSet<any>(userId, "semesters:active", () =>
+            prisma.semester.findFirst({ where: { userId, isActive: true } })
+          ),
+          CacheService.getOrSet<any>(userId, "user:record", () =>
+            prisma.user.findUnique({ where: { id: userId } })
+          ),
         ]);
-        
-        hasSubjects = subCount > 0;
-        hasTimetable = ttCount > 0;
-        hasCalendar = evCount > 0;
-        hasAttendance = attCount > 0;
+        const hasSemester = !!activeSemester;
+
+        let hasSubjects = false;
+        let hasTimetable = false;
+        let hasCalendar = false;
+        let hasAttendance = false;
+
+        if (hasSemester) {
+          const [subCount, ttCount, evCount, attCount, totalUserAttCount] = await Promise.all([
+            prisma.subject.count({ where: { semesterId: activeSemester.id } }),
+            prisma.timetableSlot.count({ where: { semesterId: activeSemester.id } }),
+            prisma.event.count({ where: { semesterId: activeSemester.id } }),
+            prisma.attendance.count({ where: { userId, subject: { semesterId: activeSemester.id } } }),
+            prisma.attendance.count({ where: { userId } }),
+          ]);
+
+          hasSubjects = subCount > 0;
+          hasTimetable = ttCount > 0;
+          hasCalendar = evCount > 0;
+          hasAttendance = attCount > 0 || totalUserAttCount > 0;
+        } else {
+          const totalUserAttCount = await prisma.attendance.count({ where: { userId } });
+          hasAttendance = totalUserAttCount > 0;
+        }
+
+        return {
+          hasSemester,
+          hasSubjects,
+          hasTimetable,
+          hasCalendar,
+          hasAttendance,
+          hasUsedVoiceMode: user?.hasUsedVoiceMode ?? false,
+          hasUsedPredictive: user?.hasUsedPredictive ?? false,
+          hasUsedPeerSync: user?.hasUsedPeerSync ?? false,
+          onboardingDismissed: user?.onboardingDismissed ?? false,
+        };
+      });
+
+      res.status(200).json(statusPayload);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  }
+
+  static async updateOnboardingStatus(req: AuthenticatedRequest, res: Response) {
+    try {
+      const userId = req.user!.userId;
+      const { hasUsedVoiceMode, hasUsedPredictive, hasUsedPeerSync, onboardingDismissed, step } = req.body;
+
+      const dataToUpdate: any = {};
+      if (hasUsedVoiceMode !== undefined) dataToUpdate.hasUsedVoiceMode = !!hasUsedVoiceMode;
+      if (hasUsedPredictive !== undefined) dataToUpdate.hasUsedPredictive = !!hasUsedPredictive;
+      if (hasUsedPeerSync !== undefined) dataToUpdate.hasUsedPeerSync = !!hasUsedPeerSync;
+      if (onboardingDismissed !== undefined) dataToUpdate.onboardingDismissed = !!onboardingDismissed;
+
+      if (step === "voice_mode" || step === "onboarding_voice_mode") dataToUpdate.hasUsedVoiceMode = true;
+      if (step === "predictive" || step === "onboarding_predictive") dataToUpdate.hasUsedPredictive = true;
+      if (step === "peer_sync" || step === "onboarding_peer_sync") dataToUpdate.hasUsedPeerSync = true;
+      if (step === "dismiss") dataToUpdate.onboardingDismissed = true;
+
+      if (Object.keys(dataToUpdate).length === 0) {
+        return res.status(200).json({ success: true });
       }
 
-      res.status(200).json({ hasSemester, hasSubjects, hasTimetable, hasCalendar, hasAttendance });
+      const updatedUser = await prisma.user.update({
+        where: { id: userId },
+        data: dataToUpdate,
+        select: {
+          hasUsedVoiceMode: true,
+          hasUsedPredictive: true,
+          hasUsedPeerSync: true,
+          onboardingDismissed: true,
+        }
+      });
+
+      // Invalidate onboarding and user record caches immediately so stale data is never served
+      await Promise.all([
+        CacheService.del(userId, "onboarding:status"),
+        CacheService.del(userId, "user:record"),
+      ]);
+
+      res.status(200).json({
+        success: true,
+        ...updatedUser
+      });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
@@ -71,8 +143,7 @@ export class UserController {
       const { fcmToken, ...userData } = req.body;
       
       if (fcmToken !== undefined && sessionId) {
-        const { prisma } = require("../lib/prisma");
-        await prisma.refreshToken.update({
+          await prisma.refreshToken.update({
           where: { id: sessionId },
           data: { fcmToken: fcmToken === null ? null : fcmToken }
         });
@@ -173,8 +244,7 @@ export class UserController {
          try {
            const { AuthService } = require("../services/auth.service");
            const hashedRefresh = await AuthService.hashToken(refreshToken);
-           const { prisma } = require("../lib/prisma");
-           const tokenRecord = await prisma.refreshToken.findUnique({ where: { token: hashedRefresh } });
+                const tokenRecord = await prisma.refreshToken.findUnique({ where: { token: hashedRefresh } });
            if (tokenRecord) {
              sessionIdToKeep = tokenRecord.id;
            }
@@ -182,6 +252,8 @@ export class UserController {
       }
 
       if (!sessionIdToKeep) throw new Error("Current session missing");
+      const { invalidateSessionCache } = require("../middleware/authenticate");
+      invalidateSessionCache(undefined, userId);
       const result = await UserService.revokeAllOtherSessions(userId, sessionIdToKeep);
       res.status(200).json(result);
     } catch (error: any) {
@@ -193,6 +265,8 @@ export class UserController {
     try {
       const userId = req.user!.userId;
       const sessionId = req.params.sessionId as string;
+      const { invalidateSessionCache } = require("../middleware/authenticate");
+      invalidateSessionCache(sessionId);
       const result = await UserService.revokeSession(userId, sessionId);
       res.status(200).json(result);
     } catch (error: any) {

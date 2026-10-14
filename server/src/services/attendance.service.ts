@@ -1,4 +1,6 @@
 import { prisma } from "../lib/prisma";
+import { isSameHoliday } from "../utils/holidayUtils";
+import { CacheService } from "./cache.service";
 
 export class AttendanceService {
   private static toLocalIso(date: Date): string {
@@ -7,13 +9,15 @@ export class AttendanceService {
   }
 
   // Parses UTC timestamps from DB that represent midnight IST dates
-  private static getDbDateUtc(d: Date): number {
-    const adj = new Date(d.getTime() + 5.5 * 3600 * 1000);
+  private static getDbDateUtc(d: Date | string): number {
+    const dt = d instanceof Date ? d : new Date(d);
+    const adj = new Date(dt.getTime() + 5.5 * 3600 * 1000);
     return Date.UTC(adj.getUTCFullYear(), adj.getUTCMonth(), adj.getUTCDate());
   }
 
-  private static toDbLocalIso(date: Date): string {
-    const adj = new Date(date.getTime() + 5.5 * 3600 * 1000);
+  private static toDbLocalIso(date: Date | string): string {
+    const dt = date instanceof Date ? date : new Date(date);
+    const adj = new Date(dt.getTime() + 5.5 * 3600 * 1000);
     const pad = (n: number) => String(n).padStart(2, '0');
     return `${adj.getUTCFullYear()}-${pad(adj.getUTCMonth() + 1)}-${pad(adj.getUTCDate())}`;
   }
@@ -25,81 +29,128 @@ export class AttendanceService {
    * 3. Fetch any existing Attendance records for these slots/overrides
    */
   static async getTodayAgenda(userId: string, dateStr: string) {
-    const targetDate = new Date(dateStr);
-    const dayOfWeek = targetDate.getDay() === 0 ? 6 : targetDate.getDay() - 1; // 0=Mon, 6=Sun in our db
+    const [year, month, day] = dateStr.split("-").map(Number);
+    const targetDate = new Date(Date.UTC(year, month - 1, day));
+    const dayOfWeek = targetDate.getUTCDay() === 0 ? 6 : targetDate.getUTCDay() - 1; // 0=Mon, 6=Sun in our db
 
-    // We need to fetch the active semester for the user first
-    const activeSemester = await prisma.semester.findFirst({
-      where: { userId, isActive: true },
-    });
+    // Resolve active semester via L1/L2 cache first (0ms hit)
+    const activeSemester = await CacheService.getOrSet(
+      userId,
+      "semesters:active",
+      () =>
+        prisma.semester.findFirst({
+          where: { userId, isActive: true },
+        })
+    );
 
     if (!activeSemester) {
       return [];
     }
 
-      // 1. Fetch regular slots
+      // 1. Fetch regular slots, Last Teaching Day event, overrides, and attendance records in parallel
       const targetDateStart = new Date(targetDate);
       targetDateStart.setHours(0, 0, 0, 0);
       const targetDateEnd = new Date(targetDate);
       targetDateEnd.setHours(23, 59, 59, 999);
 
-      // 1. Fetch regular slots that were active on THIS SPECIFIC targetDate (Time-Travel)
-    const rawRegularSlots = await prisma.timetableSlot.findMany({
-      where: {
-        semesterId: activeSemester.id,
-        dayOfWeek,
-        validFrom: { lte: targetDateEnd },
-        OR: [
-          { validUntil: null },
-          { validUntil: { gte: targetDateEnd } }
-        ]
-      },
-      include: {
-        subject: true,
-      },
-    });
+      const semEndDate = new Date(activeSemester.endDate);
+      semEndDate.setHours(23, 59, 59, 999);
+      const targetDateKey = typeof dateStr === "string" ? dateStr.slice(0, 10) : targetDate.toISOString().slice(0, 10);
 
-    // Deduplicate regular slots by subjectId to prevent showing duplicates on the transition day
+      const [lastTeachingEvent, allDaySlotsRaw, overrides, attendanceRecords] = await Promise.all([
+        prisma.event.findFirst({
+          where: {
+            userId,
+            OR: [
+              { semesterId: activeSemester.id },
+              { semesterId: null }
+            ],
+            title: {
+              contains: "Last Teaching Day",
+              mode: "insensitive"
+            }
+          },
+          orderBy: { date: "desc" }
+        }),
+        prisma.timetableSlot.findMany({
+          where: {
+            semesterId: activeSemester.id,
+            dayOfWeek,
+          },
+          include: {
+            subject: true,
+          },
+        }),
+        prisma.timetableOverride.findMany({
+          where: {
+            semesterId: activeSemester.id,
+            date: targetDate,
+          },
+          include: {
+            subject: true,
+          },
+        }),
+        prisma.attendance.findMany({
+          where: {
+            userId,
+            date: targetDate,
+          },
+        }),
+      ]);
+
+      let isPastTeachingDay = false;
+      if (lastTeachingEvent) {
+        const lastTeachingDateEnd = new Date(lastTeachingEvent.endDate || lastTeachingEvent.date);
+        lastTeachingDateEnd.setHours(23, 59, 59, 999);
+        if (targetDateEnd > lastTeachingDateEnd) {
+          isPastTeachingDay = true;
+        }
+      } else if (targetDateEnd > semEndDate) {
+        isPastTeachingDay = true;
+      }
+
+      const allDaySlots = isPastTeachingDay ? [] : allDaySlotsRaw;
+
+      const rawRegularSlots = allDaySlots.filter(s => {
+        const fromDateKey = s.validFrom.toISOString().slice(0, 10);
+        if (fromDateKey > targetDateKey) return false;
+        if (s.validUntil) {
+          const untilDateKey = s.validUntil.toISOString().slice(0, 10);
+          if (untilDateKey < targetDateKey) return false;
+        }
+        return true;
+      });
+
+    // Deduplicate regular slots by subjectId and time window to prevent showing duplicates on the transition day
+    // while strictly preserving multiple periods/labs of the same subject on the same day.
     const regularSlots = [];
-    const seenSubjects = new Set<string>();
+    const seenSlotWindows = new Set<string>();
     // Sort descending by validFrom so the newer slot is kept if they overlap
     const sortedRaw = [...rawRegularSlots].sort((a, b) => new Date(b.validFrom).getTime() - new Date(a.validFrom).getTime());
     for (const s of sortedRaw) {
-      if (!seenSubjects.has(s.subjectId)) {
-        seenSubjects.add(s.subjectId);
+      const timeKey = `${s.subjectId}_${(s.startTime || '').trim()}_${(s.endTime || '').trim()}`;
+      if (!seenSlotWindows.has(timeKey)) {
+        seenSlotWindows.add(timeKey);
         regularSlots.push(s);
       }
     }
 
-    // 2. Fetch overrides (extra classes, holidays)
-    const overridesPromise = prisma.timetableOverride.findMany({
-      where: {
-        semesterId: activeSemester.id,
-        date: targetDate,
-      },
-      include: {
-        subject: true,
-      },
-    });
-
-    // 3. Fetch existing attendance records for the date
-    const attendanceRecordsPromise = prisma.attendance.findMany({
-      where: {
-        userId,
-        date: targetDate,
-      },
-    });
-
-    const [overrides, attendanceRecords] = await Promise.all([
-      overridesPromise,
-      attendanceRecordsPromise
-    ]);
-
     // Map them together
     const agenda: any[] = [];
+    const nowTime = new Date();
+    const isTargetToday = targetDate.getUTCFullYear() === nowTime.getUTCFullYear() &&
+                          targetDate.getUTCMonth() === nowTime.getUTCMonth() &&
+                          targetDate.getUTCDate() === nowTime.getUTCDate();
 
     // Add regular slots, replacing them if they have an override (rescheduled/holiday)
     for (const slot of regularSlots) {
+      // If a slot was archived/deleted earlier today and has NO marked attendance, skip it from today's agenda
+      if (isTargetToday && slot.validUntil && new Date(slot.validUntil) <= nowTime) {
+        const hasAttendance = attendanceRecords.some(a => a.timetableSlotId === slot.id);
+        if (!hasAttendance) {
+          continue;
+        }
+      }
       const relatedOverride = overrides.find(o => o.originalSlotId === slot.id);
       
       if (relatedOverride) {
@@ -213,6 +264,27 @@ export class AttendanceService {
     overrideId?: string;
     attendanceId?: string;
   }) {
+    const ownsSubject = await prisma.subject.findFirst({
+      where: { id: data.subjectId, userId }
+    });
+
+    if (!ownsSubject) {
+      // If user is clearing or unmarking a ghost class whose subject is already deleted:
+      if (data.status === "not_marked" || data.status === "clear") {
+        await prisma.attendance.deleteMany({
+          where: {
+            userId,
+            OR: [
+              ...(data.attendanceId && !data.attendanceId.startsWith("extra-") ? [{ id: data.attendanceId }] : []),
+              { subjectId: data.subjectId }
+            ]
+          }
+        }).catch(() => null);
+        return { success: true, cleared: true, ghost: true };
+      }
+      throw new Error("Forbidden: Subject does not belong to user");
+    }
+
     const targetDate = new Date(data.date);
     
     // Check if record exists
@@ -226,12 +298,14 @@ export class AttendanceService {
           userId,
           subjectId: data.subjectId,
           date: targetDate,
-          ...(data.timetableSlotId 
-            ? { OR: [{ timetableSlotId: data.timetableSlotId }, { timetableSlotId: null }] } 
-            : {}),
-          ...(data.overrideId 
-            ? { OR: [{ overrideId: data.overrideId }, { overrideId: null }] } 
-            : {}),
+          // When a specific slot/override ID is given, match it exactly.
+          // Previously the OR also matched null-slot records, which "stole" orphan records
+          // and left a second floating row behind — causing a phantom extra class in the calendar.
+          ...(data.timetableSlotId
+            ? { timetableSlotId: data.timetableSlotId }
+            : data.overrideId
+              ? { overrideId: data.overrideId }
+              : { timetableSlotId: null, overrideId: null }),
         },
       });
     }
@@ -269,6 +343,7 @@ export class AttendanceService {
     }
 
     if (existing) {
+      CacheService.del(userId, "onboarding:status").catch(() => {});
       return prisma.attendance.update({
         where: { id: existing.id },
         data: {
@@ -280,7 +355,9 @@ export class AttendanceService {
       });
     }
 
-    return prisma.attendance.create({
+    try {
+      CacheService.del(userId, "onboarding:status").catch(() => {});
+      return await prisma.attendance.create({
       data: {
         userId,
         subjectId: data.subjectId,
@@ -291,35 +368,80 @@ export class AttendanceService {
         overrideId: data.overrideId,
       },
     });
+    } catch (err: any) {
+      if (err.code === "P2002") {
+        const concurrent = await prisma.attendance.findFirst({
+          where: {
+            userId,
+            subjectId: data.subjectId,
+            date: targetDate,
+            ...(data.timetableSlotId ? { timetableSlotId: data.timetableSlotId } : {})
+          }
+        });
+        if (concurrent) {
+          return prisma.attendance.update({
+            where: { id: concurrent.id },
+            data: { status: data.status, remarks: data.remarks || null }
+          });
+        }
+      }
+      throw err;
+    }
   }
 
   static async getAttendanceLogs(userId: string, options: { subjectId?: string; semesterId?: string }) {
-    const user = await prisma.user.findUnique({ where: { id: userId } });
+    const [user, cachedActiveSem] = await Promise.all([
+      CacheService.getOrSet(userId, "user:record", () => prisma.user.findUnique({ where: { id: userId } })),
+      CacheService.getOrSet(userId, "semesters:active", () =>
+        prisma.semester.findFirst({ where: { userId, isActive: true } })
+      ),
+    ]);
+    const activeSemester =
+      options.semesterId && cachedActiveSem?.id !== options.semesterId
+        ? await prisma.semester.findFirst({ where: { userId, id: options.semesterId } })
+        : cachedActiveSem;
     const globalTarget = user?.targetAttendance || 75;
-
-    const activeSemester = await prisma.semester.findFirst({
-      where: {
-        userId,
-        ...(options.semesterId ? { id: options.semesterId } : { isActive: true }),
-      },
-    });
 
     if (!activeSemester) {
       return { logs: [], subjects: [] };
     }
 
-    // Get subjects
-    const subjects = await prisma.subject.findMany({
-      where: {
-        userId,
-        semesterId: activeSemester.id,
-        ...(options.subjectId && options.subjectId !== "all" && options.subjectId !== "overall" ? { id: options.subjectId } : {}),
-      },
-      include: {
-        attendance: true,
-        timetableSlots: true,
-      },
-    });
+    const specificSubjectId =
+      options.subjectId && options.subjectId !== "all" && options.subjectId !== "overall"
+        ? options.subjectId
+        : undefined;
+
+    // Share singleflight L1-cached subjects:full and overrides:all with getSubjectStats so concurrent calls run 0 duplicate queries
+    const [allSubjects, allOverrides] = await Promise.all([
+      CacheService.getOrSet(userId, `subjects:full:${activeSemester.id}`, () =>
+        prisma.subject.findMany({
+          where: {
+            userId,
+            semesterId: activeSemester.id,
+          },
+          include: {
+            attendance: true,
+            semester: true,
+            timetableSlots: true,
+          },
+        })
+      ),
+      CacheService.getOrSet(userId, `overrides:all:${activeSemester.id}`, () =>
+        prisma.timetableOverride.findMany({
+          where: {
+            semesterId: activeSemester.id,
+          },
+          include: { subject: true },
+        })
+      ),
+    ]);
+
+    const subjects = specificSubjectId
+      ? allSubjects.filter((s) => s.id === specificSubjectId)
+      : allSubjects;
+    const rawOverrides = specificSubjectId
+      ? allOverrides.filter((o) => o.subjectId === specificSubjectId)
+      : allOverrides;
 
     // Compute subject stats map
     const subjectStatsMap: Record<string, any> = {};
@@ -362,29 +484,12 @@ export class AttendanceService {
       };
     }
 
-    const subjectIds = subjects.map(s => s.id);
-    const overrides = await prisma.timetableOverride.findMany({
-      where: {
-        semesterId: activeSemester.id,
-        ...(options.subjectId && options.subjectId !== "all" && options.subjectId !== "overall" ? { subjectId: options.subjectId } : { subjectId: { in: subjectIds } }),
-      },
-      include: { subject: true },
-    });
+    const subjectIdSet = new Set(subjects.map(s => s.id));
+    const overrides = rawOverrides.filter(o => !o.subjectId || subjectIdSet.has(o.subjectId));
+    // Reuse already-fetched subject.attendance records instead of making a duplicate DB round-trip
+    const attendanceRecords = subjects.flatMap(s => s.attendance);
 
-    const attendanceRecords = await prisma.attendance.findMany({
-      where: {
-        userId,
-        ...(options.subjectId && options.subjectId !== "all" && options.subjectId !== "overall" ? { subjectId: options.subjectId } : { subjectId: { in: subjectIds } }),
-      },
-      include: { subject: true },
-    });
 
-    console.log(`getAttendanceLogs options.subjectId=${options.subjectId}`);
-    console.log(`Found ${attendanceRecords.length} attendanceRecords`);
-    const dec1Records = attendanceRecords.filter(a => new Date(a.date).toISOString().includes("2026-11-30") || new Date(a.date).toISOString().includes("2026-12-01"));
-    if (dec1Records.length > 0) {
-      console.log(`Dec 1 records:`, dec1Records.map(a => ({ id: a.id, subjectId: a.subjectId, status: a.status })));
-    }
 
     const today = new Date();
     today.setHours(23, 59, 59, 999);
@@ -520,11 +625,11 @@ export class AttendanceService {
       return { remainingClasses: 0, maxRemainingClasses: 0, missingBoundaries: false };
     }
 
-    let actualStartDate = subject.semester.startDate;
+    let actualStartDate = new Date(subject.semester.startDate);
     const commencement = events.find(e => e.title && e.title.toLowerCase().includes("commencement of classes"));
     if (commencement && commencement.date) actualStartDate = new Date(commencement.date);
 
-    let actualEndDate = subject.semester.endDate;
+    let actualEndDate = new Date(subject.semester.endDate);
     const lastDay = events.find(e => e.title && (e.title.toLowerCase().includes("last teaching day") || e.title.toLowerCase().includes("last working day")));
     if (lastDay && lastDay.date) actualEndDate = new Date(lastDay.date);
 
@@ -655,33 +760,60 @@ export class AttendanceService {
   }
 
   static async getSubjectStats(userId: string, semesterId?: string) {
-    const [user, activeSemester] = await Promise.all([
-      prisma.user.findUnique({ where: { id: userId } }),
-      semesterId 
-        ? prisma.semester.findUnique({ where: { id: semesterId } }) 
-        : prisma.semester.findFirst({ where: { userId, isActive: true } })
+    const [user, cachedActiveSem] = await Promise.all([
+      CacheService.getOrSet(userId, "user:record", () => prisma.user.findUnique({ where: { id: userId } })),
+      CacheService.getOrSet(userId, "semesters:active", () =>
+        prisma.semester.findFirst({ where: { userId, isActive: true } })
+      )
     ]);
+    const activeSemester =
+      semesterId && cachedActiveSem?.id !== semesterId
+        ? await prisma.semester.findUnique({ where: { id: semesterId } })
+        : cachedActiveSem;
     
     const globalTarget = user?.targetAttendance || 75;
     const targetSemesterId = activeSemester?.id || semesterId;
 
     const [subjects, allEvents, allOverrides] = await Promise.all([
-      prisma.subject.findMany({
-        where: {
-          userId,
-          ...(targetSemesterId ? { semesterId: targetSemesterId } : {}),
-        },
-        include: {
-          attendance: true,
-          semester: true,
-          timetableSlots: true,
-        },
-      }),
+      targetSemesterId
+        ? CacheService.getOrSet(userId, `subjects:full:${targetSemesterId}`, () =>
+            prisma.subject.findMany({
+              where: {
+                userId,
+                semesterId: targetSemesterId,
+              },
+              include: {
+                attendance: true,
+                semester: true,
+                timetableSlots: true,
+              },
+            })
+          )
+        : prisma.subject.findMany({
+            where: { userId },
+            include: {
+              attendance: true,
+              semester: true,
+              timetableSlots: true,
+            },
+          }),
       activeSemester 
-        ? prisma.event.findMany({ where: { OR: [{ semesterId: activeSemester.id }, { semesterId: null }] } }) 
+        ? CacheService.getOrSet(userId, `events:all:${activeSemester.id}`, () =>
+            prisma.event.findMany({
+              where: {
+                userId,
+                OR: [{ semesterId: activeSemester.id }, { semesterId: null }],
+              },
+            })
+          )
         : Promise.resolve([]),
       activeSemester 
-        ? prisma.timetableOverride.findMany({ where: { semesterId: activeSemester.id } }) 
+        ? CacheService.getOrSet(userId, `overrides:all:${activeSemester.id}`, () =>
+            prisma.timetableOverride.findMany({
+              where: { semesterId: activeSemester.id },
+              include: { subject: true },
+            })
+          )
         : Promise.resolve([])
     ]);
 
@@ -819,9 +951,14 @@ export class AttendanceService {
     const startDate = new Date(year, m - 1, 1);
     const endDate = new Date(year, m, 0, 23, 59, 59, 999); 
 
-    const activeSemester = await prisma.semester.findFirst({
-      where: { userId, isActive: true },
-    });
+    const activeSemester = await CacheService.getOrSet(
+      userId,
+      "semesters:active",
+      () =>
+        prisma.semester.findFirst({
+          where: { userId, isActive: true },
+        })
+    );
 
     if (!activeSemester) {
       return {
@@ -834,53 +971,67 @@ export class AttendanceService {
       };
     }
 
-    const regularSlots = await prisma.timetableSlot.findMany({
-      where: { semesterId: activeSemester.id },
-      include: { subject: true },
-    });
-
-    const overrides = await prisma.timetableOverride.findMany({
-      where: {
-        semesterId: activeSemester.id,
-        date: { gte: startDate, lte: endDate },
-      },
-      include: { subject: true },
-    });
-
-    const attendances = await prisma.attendance.findMany({
-      where: {
+    // Fetch regularSlots, globalEvents (L1 cached across months), overrides, and attendances in 1 parallel round-trip
+    const [regularSlots, overrides, attendances, allUserSemesterEvents] = await Promise.all([
+      CacheService.getOrSet(
         userId,
-        date: { gte: startDate, lte: endDate },
-        subject: { semesterId: activeSemester.id }
-      },
-      include: {
-        subject: true,
-      },
-    });
-
-    const globalEvents = await prisma.event.findMany({
-      where: {
+        `timetable:all_slots:${activeSemester.id}`,
+        () =>
+          prisma.timetableSlot.findMany({
+            where: { semesterId: activeSemester.id },
+            include: { subject: true },
+          })
+      ),
+      prisma.timetableOverride.findMany({
+        where: {
+          semesterId: activeSemester.id,
+          date: { gte: startDate, lte: endDate },
+        },
+        include: { subject: true },
+      }),
+      prisma.attendance.findMany({
+        where: {
+          userId,
+          date: { gte: startDate, lte: endDate },
+          subject: { semesterId: activeSemester.id },
+        },
+        include: {
+          subject: true,
+        },
+      }),
+      CacheService.getOrSet(
         userId,
-        OR: [
-          { semesterId: activeSemester.id },
-          { semesterId: null }
-        ],
-        date: { lte: endDate }
-      }
-    });
+        `events:all:${activeSemester.id}`,
+        () =>
+          prisma.event.findMany({
+            where: {
+              userId,
+              OR: [{ semesterId: activeSemester.id }, { semesterId: null }],
+            },
+          })
+      ),
+    ]);
 
-    const totalEventsCount = await prisma.event.count({
-      where: {
-        userId,
-        semesterId: activeSemester.id
-      }
-    });
+    const globalEvents = allUserSemesterEvents.filter((e) => new Date(e.date) <= endDate);
+    const totalEventsCount = allUserSemesterEvents.filter((e) => e.semesterId === activeSemester.id).length;
 
     const daysObj: Record<string, string> = {};
     const detailsObj: Record<string, Array<{ id: string; subjectName: string; status: string; remarks: string | null }>> = {};
     const eventsObj: Record<string, Array<{ id: string; title: string; eventType: string }>> = {};
     const dayStats = { not_marked: 0, off: 0, missed: 0, attended: 0, mixed: 0 };
     const lectureStats = { off: 0, missed: 0, attended: 0, total: 0, percentage: 0 };
+
+    const lastTeachingEvent = globalEvents.find(e => 
+      /last\s*(teaching|working)\s*day/i.test(e.title)
+    );
+    const lastTeachingDateEnd = lastTeachingEvent 
+      ? new Date(lastTeachingEvent.endDate || lastTeachingEvent.date)
+      : null;
+    if (lastTeachingDateEnd) {
+      lastTeachingDateEnd.setHours(23, 59, 59, 999);
+    }
+    const semEndDate = new Date(activeSemester.endDate);
+    semEndDate.setHours(23, 59, 59, 999);
 
     const numDays = new Date(year, m, 0).getDate();
     for (let day = 1; day <= numDays; day++) {
@@ -901,7 +1052,31 @@ export class AttendanceService {
       const isGlobalOff = dayEvents.some(e => ["holiday", "vacation"].includes(e.eventType));
 
       if (dayEvents.length > 0) {
-        eventsObj[dateKey] = dayEvents.map(e => ({
+        // Smart deduplication: collapse holidays that share the same root name or are duplicates on the same date
+        const deduplicatedDayEvents: any[] = [];
+        for (const ev of dayEvents) {
+          const isHol = ev.isHoliday || ["holiday", "restricted_holiday"].includes(ev.eventType);
+          if (isHol) {
+            const existingHolIdx = deduplicatedDayEvents.findIndex(d => 
+              (d.isHoliday || ["holiday", "restricted_holiday"].includes(d.eventType)) &&
+              isSameHoliday(d.title, ev.title)
+            );
+            if (existingHolIdx !== -1) {
+              // Prefer the more descriptive title (e.g. "Dussehra (Vijay Dashmi)" over "Dussehra")
+              if (ev.title.length > deduplicatedDayEvents[existingHolIdx].title.length) {
+                deduplicatedDayEvents[existingHolIdx] = ev;
+              }
+              continue;
+            }
+          } else {
+            // Non-holiday exact duplicate title check
+            const exactDup = deduplicatedDayEvents.some(d => d.title.toLowerCase().trim() === ev.title.toLowerCase().trim());
+            if (exactDup) continue;
+          }
+          deduplicatedDayEvents.push(ev);
+        }
+
+        eventsObj[dateKey] = deduplicatedDayEvents.map(e => ({
           id: e.id,
           title: e.title,
           eventType: e.eventType,
@@ -914,24 +1089,27 @@ export class AttendanceService {
       const dEnd = new Date(d);
       dEnd.setHours(23, 59, 59, 999);
 
-      const rawDaySlots = regularSlots.filter(s => {
+      const isPastTeachingDay = (lastTeachingDateEnd && dEnd > lastTeachingDateEnd) || dEnd > semEndDate;
+
+      const rawDaySlots = isPastTeachingDay ? [] : regularSlots.filter(s => {
         if (s.dayOfWeek !== dbDayOfWeek) return false;
-        const validFromDate = new Date(s.validFrom);
-        if (validFromDate > dEnd) return false; // Not active yet
+        const fromDateKey = new Date(s.validFrom).toISOString().slice(0, 10);
+        if (fromDateKey > dateKey) return false; // Not active yet on this calendar date
         if (s.validUntil) {
-          const validUntilDate = new Date(s.validUntil);
-          if (validUntilDate < dEnd) return false; // Already archived before end of day
+          const untilDateKey = new Date(s.validUntil).toISOString().slice(0, 10);
+          if (untilDateKey < dateKey) return false; // Already archived before this calendar date began
         }
         return true;
       });
 
-      // Deduplicate overlapping daySlots (old vs new timetable on transition day) by subjectId
+      // Deduplicate overlapping daySlots (old vs new timetable on transition day) by subjectId and time window
       const daySlots = [];
-      const seenDaySubjects = new Set<string>();
+      const seenDaySlotWindows = new Set<string>();
       const sortedRawDaySlots = [...rawDaySlots].sort((a, b) => new Date(b.validFrom).getTime() - new Date(a.validFrom).getTime());
       for (const s of sortedRawDaySlots) {
-        if (!seenDaySubjects.has(s.subjectId)) {
-          seenDaySubjects.add(s.subjectId);
+        const timeKey = `${s.subjectId}_${(s.startTime || '').trim()}_${(s.endTime || '').trim()}`;
+        if (!seenDaySlotWindows.has(timeKey)) {
+          seenDaySlotWindows.add(timeKey);
           daySlots.push(s);
         }
       }
@@ -967,11 +1145,7 @@ export class AttendanceService {
       // Filter attendance records for this day
       const dayAtts = attendances.filter(a => AttendanceService.toDbLocalIso(a.date) === dateKey);
 
-      if (dateKey === '2026-09-07') {
-        console.log('Sept 7 daySlots:', daySlots.length);
-        console.log('Sept 7 dayAtts:', dayAtts.length);
-        console.log('Sept 7 expectedClasses:', expectedClasses);
-      }
+
 
       // Add manual attendances (that don't match any expected slot/override) to expectedClasses
       for (const a of dayAtts) {
@@ -1037,7 +1211,12 @@ export class AttendanceService {
         if (!isGlobalOff) {
           let att = dayAtts.find(a => a.timetableSlotId === slot.id);
           if (!att) {
-            att = dayAtts.find(a => !handledAttendanceIds.has(a.id) && a.subjectId === slot.subjectId && !a.timetableSlotId);
+            // Fallback: match any unhandled attendance for the same subject on this day.
+            // This covers the case where a slot was swapped/edited (new UUID created) but
+            // the existing attendance record still references the old slot UUID.
+            // Requiring !a.timetableSlotId here would leave those records orphaned and cause
+            // a duplicate "Not Marked" row + stale absent row in the calendar bottom sheet.
+            att = dayAtts.find(a => !handledAttendanceIds.has(a.id) && a.subjectId === slot.subjectId);
           }
           if (att) handledAttendanceIds.add(att.id);
           dayAgenda.push({

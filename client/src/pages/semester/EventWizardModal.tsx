@@ -152,10 +152,10 @@ export const EventWizardModal: React.FC<WizardProps> = ({ isOpen, onClose, onSav
     if (isOpen) {
       document.body.style.overflow = 'hidden';
     } else {
-      document.body.style.overflow = 'unset';
+      document.body.style.overflow = '';
     }
     return () => {
-      document.body.style.overflow = 'unset';
+      document.body.style.overflow = '';
     };
   }, [isOpen]);
 
@@ -185,7 +185,7 @@ export const EventWizardModal: React.FC<WizardProps> = ({ isOpen, onClose, onSav
                 Select a semester and confirm the events to import.
               </p>
             </div>
-            <button onClick={onClose} disabled={isSaving} className="p-2 text-white/50 hover:text-white hover:bg-white/10 rounded-xl transition-colors">
+            <button onClick={onClose} disabled={isSaving} className="p-2 text-foreground bg-muted/80 hover:bg-muted border border-border rounded-full transition-colors cursor-pointer shadow-sm">
               <X className="w-5 h-5" />
             </button>
           </div>

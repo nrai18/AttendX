@@ -3,16 +3,21 @@ import { EventService } from "../services/event.service";
 import { AuthenticatedRequest } from "../middleware/authenticate";
 import { CalendarRagService } from "../services/calendar_rag.service";
 import { CacheService } from "../services/cache.service";
+import { TemplateEventService } from "../services/template_event.service";
 
 export class EventController {
   static async getEvents(req: AuthenticatedRequest, res: Response) {
     const { startDate, endDate, semesterId } = req.query;
+    const userId = req.user!.userId;
+    const cacheKey = `events:${semesterId || "all"}:${startDate || ""}:${endDate || ""}`;
     try {
-      const events = await EventService.getEvents(
-        req.user!.userId,
-        startDate as string | undefined,
-        endDate as string | undefined,
-        semesterId as string | undefined
+      const events = await CacheService.getOrSet(userId, cacheKey, () =>
+        EventService.getEvents(
+          userId,
+          startDate as string | undefined,
+          endDate as string | undefined,
+          semesterId as string | undefined
+        )
       );
       res.json(events);
     } catch (error) {
@@ -37,24 +42,21 @@ export class EventController {
       );
       
       if (Array.isArray(events)) {
+        const { prisma } = require("../lib/prisma");
+        const semester = await prisma.semester.findUnique({ where: { id: semesterId } });
+        const semYear = semester ? new Date(semester.startDate).getFullYear() : new Date().getFullYear();
+        const holidayData = TemplateEventService.getHolidays(semYear);
+        const allHolidays = [...holidayData.fixedHolidays, ...holidayData.restrictedHolidays];
+
         events.forEach(group => {
           if (Array.isArray(group.events)) {
             group.events.forEach((evt: any) => {
-               const t = (evt.title || "").toLowerCase();
-               let fixDate = null;
-               if (t.includes("muharram")) fixDate = "2026-07-24";
-               else if (t.includes("independence")) fixDate = "2026-08-15";
-               else if (t.includes("janmashtami")) fixDate = "2026-09-04";
-               else if (t.includes("milad")) fixDate = "2026-08-26";
-               else if (t.includes("dussehra") || t.includes("vijay")) fixDate = "2026-10-20";
-               else if (t.includes("diwali") || t.includes("deepavali")) fixDate = "2026-11-08";
-               else if (t.includes("christmas")) fixDate = "2026-12-25";
-               else if (t.includes("guru nanak")) fixDate = "2026-11-24";
-               
-               if (fixDate) {
-                 evt.startDate = fixDate;
-                 evt.endDate = fixDate;
-               }
+              const t = (evt.title || "").toLowerCase();
+              const matched = allHolidays.find(h => t.includes(h.name.toLowerCase()));
+              if (matched && matched.isoDate) {
+                evt.startDate = matched.isoDate;
+                evt.endDate = matched.isoDate;
+              }
             });
             // Sort chronologically
             group.events.sort((a: any, b: any) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime());
@@ -79,17 +81,13 @@ export class EventController {
       return res.status(400).json({ error: "Missing required fields" });
     }
     try {
-      // SEC-M04 FIX: Verify ownership
-      const { prisma } = require('../lib/prisma');
-      const ownsSemester = await prisma.semester.findFirst({ where: { id: semesterId, userId: req.user!.userId }});
-      if (!ownsSemester) return res.status(403).json({ error: 'Unauthorized semester access' });
       const created = await EventService.saveWizardEvents(req.user!.userId, semesterId, events);
       await CacheService.invalidateUser(req.user!.userId);
       res.json({ message: "Events saved successfully", events: created });
     } catch (error: any) {
       console.error("Save wizard failed:", error);
       const msg = error.message || "Failed to save events";
-      const status = msg.includes("does not exist") ? 400 : 500;
+      const status = msg.includes("Unauthorized") ? 403 : msg.includes("does not exist") ? 400 : 500;
       res.status(status).json({ error: msg });
     }
   }
@@ -100,7 +98,12 @@ export class EventController {
       return res.status(400).json({ error: "Missing semesterId" });
     }
     try {
-      const status = await EventService.getTodayStatus(req.user!.userId, semesterId as string, date as string);
+      const userId = req.user!.userId;
+      const status = await CacheService.getOrSet(
+        userId,
+        `events:todayStatus:${semesterId}:${date || "today"}`,
+        () => EventService.getTodayStatus(userId, semesterId as string, date as string)
+      );
       res.json(status);
     } catch (error) {
       console.error("Get today status failed:", error);
@@ -119,6 +122,106 @@ export class EventController {
     } catch (error) {
       console.error("Clear events failed:", error);
       res.status(500).json({ error: "Failed to clear events" });
+    }
+  }
+
+  static async getTemplateHolidays(req: AuthenticatedRequest, res: Response) {
+    try {
+      const year = req.query.year ? parseInt(req.query.year as string) : new Date().getFullYear();
+      const data = TemplateEventService.getHolidays(year);
+      res.json(data);
+    } catch (error) {
+      console.error("Failed to get template holidays:", error);
+      res.status(500).json({ error: "Failed to get template holidays" });
+    }
+  }
+
+  static async getTemplateAcademicCalendar(req: AuthenticatedRequest, res: Response) {
+    try {
+      const semesterNumber = req.query.semesterNumber ? parseInt(req.query.semesterNumber as string) : undefined;
+      const year = req.query.year ? parseInt(req.query.year as string) : undefined;
+      const startDate = req.query.startDate as string | undefined;
+      const endDate = req.query.endDate as string | undefined;
+      const data = TemplateEventService.getAcademicCalendar({ semesterNumber, year, startDate, endDate });
+      res.json(data);
+    } catch (error) {
+      console.error("Failed to get template academic calendar:", error);
+      res.status(500).json({ error: "Failed to get template academic calendar" });
+    }
+  }
+
+  static async syncTemplates(req: AuthenticatedRequest, res: Response) {
+    const { semesterId, syncHolidayList, syncAcademicCalendar, year, semesterNumber } = req.body;
+    if (!semesterId) {
+      return res.status(400).json({ error: "Missing semesterId" });
+    }
+    try {
+      const result = await TemplateEventService.syncToSemester({
+        userId: req.user!.userId,
+        semesterId,
+        syncHolidayList: syncHolidayList !== false,
+        syncAcademicCalendar: syncAcademicCalendar === true,
+        year: year ? parseInt(year) : undefined,
+        semesterNumber: semesterNumber ? parseInt(semesterNumber) : undefined
+      });
+      await CacheService.invalidateUser(req.user!.userId);
+      res.json({ message: `Successfully synced ${result.syncedCount} events`, ...result });
+    } catch (error: any) {
+      console.error("Failed to sync templates:", error);
+      res.status(500).json({ error: error.message || "Failed to sync templates" });
+    }
+  }
+
+  static async deleteEvent(req: AuthenticatedRequest, res: Response) {
+    const eventId = String(req.params.id);
+    const userId = req.user!.userId;
+    try {
+      const { prisma } = require("../lib/prisma");
+      const { isSameHoliday } = require("../utils/holidayUtils");
+      const event = await prisma.event.findFirst({
+        where: { id: eventId, userId }
+      });
+      if (!event) {
+        return res.status(200).json({ message: "Event already deleted or does not exist", ghost: true });
+      }
+
+      // Also delete any duplicate/equivalent event on the same date for this user & semester
+      // (e.g., if both Holiday List and Academic Calendar synced the same holiday on that date)
+      const dayStart = new Date(event.date);
+      dayStart.setUTCHours(0, 0, 0, 0);
+      const dayEnd = new Date(event.date);
+      dayEnd.setUTCHours(23, 59, 59, 999);
+
+      const sameDayEvents = await prisma.event.findMany({
+        where: {
+          userId,
+          semesterId: event.semesterId,
+          date: { gte: dayStart, lte: dayEnd }
+        }
+      });
+
+      const idsToDelete = new Set<string>([event.id]);
+      const isHol = event.isHoliday || ["holiday", "restricted_holiday"].includes(event.eventType);
+      for (const other of sameDayEvents) {
+        if (other.title.toLowerCase().trim() === event.title.toLowerCase().trim()) {
+          idsToDelete.add(other.id);
+        } else if (
+          isHol &&
+          (other.isHoliday || ["holiday", "restricted_holiday"].includes(other.eventType)) &&
+          isSameHoliday(other.title, event.title)
+        ) {
+          idsToDelete.add(other.id);
+        }
+      }
+
+      await prisma.event.deleteMany({
+        where: { id: { in: Array.from(idsToDelete) }, userId }
+      });
+      await CacheService.invalidateUser(userId);
+      res.json({ message: "Event deleted successfully", deletedCount: idsToDelete.size });
+    } catch (error: any) {
+      console.error("Failed to delete event:", error);
+      res.status(500).json({ error: error.message || "Failed to delete event" });
     }
   }
 }

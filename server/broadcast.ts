@@ -1,4 +1,4 @@
-﻿import 'dotenv/config';
+import 'dotenv/config';
 import { initializeApp, cert, getApps } from 'firebase-admin/app';
 import { getMessaging } from 'firebase-admin/messaging';
 import { prisma } from './src/lib/prisma.ts';
@@ -95,6 +95,27 @@ async function main() {
     
     successCount += response.successCount;
     failureCount += response.failureCount;
+
+    if (response.failureCount > 0) {
+      const failedTokens: string[] = [];
+      response.responses.forEach((resp, idx) => {
+        if (!resp.success) {
+          const errorCode = resp.error?.code;
+          if (errorCode === 'messaging/invalid-registration-token' ||
+              errorCode === 'messaging/registration-token-not-registered') {
+            failedTokens.push(batch[idx]);
+          }
+        }
+      });
+
+      if (failedTokens.length > 0) {
+        await prisma.refreshToken.updateMany({
+          where: { fcmToken: { in: failedTokens } },
+          data: { fcmToken: null }
+        });
+        console.log(`[PushNotification] Purged ${failedTokens.length} dead tokens during broadcast.`);
+      }
+    }
   }
 
   console.log(`\n🎉 Broadcast complete! Success: ${successCount}`);

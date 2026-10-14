@@ -33,7 +33,7 @@ interface AuthState {
   setAccessToken: (token: string | null) => void;
   setRefreshToken: (token: string | null) => void;
   setAuth: (user: User, accessToken: string, refreshToken?: string) => void;
-  logout: () => void;
+  logout: (skipBackendCall?: boolean) => void;
   setLoading: (loading: boolean) => void;
   setHasHydrated: (h: boolean) => void;
 }
@@ -72,32 +72,48 @@ export const useAuthStore = create<AuthState>()(
         });
       },
 
-      logout: async () => {
+      logout: async (skipBackendCall = false) => {
         const wasAuthenticated = get().isAuthenticated;
+        const currentRefreshToken = get().refreshToken;
 
-        try {
-          // Clear the device FCM token in the backend so logged-out devices don't get push notifications
-          if (wasAuthenticated) {
-            await api.patch('/users/me', { fcmToken: null });
+        if (!skipBackendCall && wasAuthenticated) {
+          try {
+            // Clear FCM token and delete DeviceSession (RefreshToken) in Linked Devices in parallel
+            await Promise.allSettled([
+              api.patch('/users/me', { fcmToken: null }),
+              api.post('/auth/logout', { refreshToken: currentRefreshToken }),
+            ]);
+          } catch (error) {
+            console.error("Failed to clean up session on logout:", error);
           }
-        } catch (error) {
-          console.error("Failed to clear FCM token on logout:", error);
         }
 
+        import('./offlineStore').then(({ useOfflineStore }) => useOfflineStore.getState().clearQueue()).catch(() => {});
         const keysToRemove = [
           'attendx-auth',
           'attendx-attendance-cache',
           'attendx-api-cache',
           'attendx-assignments',
-          'attendx-sync-storage'
+          'attendx-sync-storage',
+          'attendx-offline-queue',
+          'onboarding_voice_mode',
+          'onboarding_predictive',
+          'onboarding_peer_sync',
+          'onboarding_dismissed'
         ];
         keysToRemove.forEach(k => {
           Preferences.remove({ key: k }).catch(() => {});
           localStorage.removeItem(k);
         });
-        import('../services/NotificationService')
-          .then(m => m.NotificationService.cancelAll())
-          .catch((err) => console.error('Failed to cancel notifications on logout:', err));
+        try {
+          sessionStorage.removeItem('attendx_settings_scroll');
+        } catch (e) {}
+        try {
+          const m = await import('../services/NotificationService');
+          await m.NotificationService.cancelAll();
+        } catch (err) {
+          console.error('Failed to cancel notifications on logout:', err);
+        }
         set({
           user: null,
           accessToken: null,

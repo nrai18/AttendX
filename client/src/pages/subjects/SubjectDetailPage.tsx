@@ -24,6 +24,7 @@ import { api } from "../../lib/api";
 import { triggerAttendancePopup } from "../../stores/animationPopupStore";
 import { useAttendanceStore } from "../../stores/attendanceStore";
 import { useAuthStore } from "../../stores/authStore";
+import { useBackHandlerStore } from "../../stores/backHandlerStore";
 
 interface AttendanceLogItem {
   id: string;
@@ -103,10 +104,22 @@ export const SubjectDetailPage = () => {
     }
   }, [headerStats, isOverall]);
 
-  const fetchLogsData = async () => {
+  useEffect(() => {
+    const unregister = useBackHandlerStore.getState().register(() => {
+      if (showStatusMenu) { setShowStatusMenu(false); return true; }
+      if (showSubjectMenu) { setShowSubjectMenu(false); return true; }
+      if (showDateMenu) { setShowDateMenu(false); return true; }
+      if (isEditMode) { setIsEditMode(false); return true; }
+      navigate("/subjects", { replace: true });
+      return true;
+    });
+    return () => unregister();
+  }, [showStatusMenu, showSubjectMenu, showDateMenu, isEditMode, navigate]);
+
+  const fetchLogsData = async (silent = false) => {
     const querySubject = isOverall ? "all" : id;
     try {
-      setIsLoading(true);
+      if (!silent && logs.length === 0) setIsLoading(true);
       const res = await api.get(`/attendance/logs?subjectId=${querySubject}`);
       const rawLogs: AttendanceLogItem[] = res.data.logs || [];
       const subjects = res.data.subjects || [];
@@ -247,7 +260,8 @@ export const SubjectDetailPage = () => {
   useEffect(() => {
     fetchLogsData();
 
-    const handleUpdate = () => {
+    const handleUpdate = (e: any) => {
+      if (e?.detail?.source === "subject-detail-page") return;
       fetchLogsData();
     };
     window.addEventListener("attendance-updated", handleUpdate);
@@ -304,7 +318,9 @@ export const SubjectDetailPage = () => {
         attendanceId: item.id || (item as any).attendanceId,
       });
 
-      window.dispatchEvent(new Event("attendance-updated"));
+      fetchLogsData(true);
+      useAttendanceStore.getState().fetchStats(true);
+      window.dispatchEvent(new CustomEvent("attendance-updated", { detail: { source: "subject-detail-page" } }));
     } catch (error) {
       console.error("Failed to update attendance:", error);
       fetchLogsData();
@@ -763,7 +779,7 @@ export const SubjectDetailPage = () => {
                                     {/* Attended / Present ✓ */}
                                     <button
                                       onClick={() => handleMarkAttendance(item, "present")}
-                                      className={`w-7 h-7 rounded-full flex items-center justify-center transition-all ${
+                                      className={`w-7 h-7 rounded-full flex items-center justify-center cursor-pointer transition-[transform,opacity] duration-75 active:scale-95 ${
                                         isAttended
                                           ? "bg-emerald-500 text-white shadow-sm"
                                           : "text-muted-foreground hover:text-emerald-500 hover:bg-emerald-500/10"
@@ -785,7 +801,7 @@ export const SubjectDetailPage = () => {
                                         : "present";
                                       handleMarkAttendance(item, nextStatus as any);
                                     }}
-                                    className={`px-3 py-1.5 rounded-2xl text-xs font-bold border flex items-center gap-1.5 transition-all shadow-sm ${
+                                    className={`px-3 py-1.5 rounded-2xl text-xs font-bold border flex items-center gap-1.5 cursor-pointer transition-[transform,opacity] duration-75 active:scale-95 shadow-sm ${
                                       isAttended
                                         ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/20"
                                         : isMissed

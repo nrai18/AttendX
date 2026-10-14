@@ -4,8 +4,10 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import './index.css'
 import App from './App.tsx'
 import { initLogger } from './lib/logger';
+import { initGlobalHaptics } from './utils/haptics';
 
 initLogger();
+initGlobalHaptics();
 
 // Prevent Desktop Zooming to preserve CSS layouts
 document.addEventListener('keydown', function(e) {

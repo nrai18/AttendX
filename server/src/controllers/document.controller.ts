@@ -1,4 +1,4 @@
-import { Request, Response } from 'express';
+import { Response } from 'express';
 import { prisma } from '../lib/prisma';
 import fs from 'fs';
 import path from 'path';
@@ -25,20 +25,25 @@ export class DocumentController {
     }
   }
 
-  static async downloadDocument(req: Request, res: Response) {
+  static async downloadDocument(req: AuthenticatedRequest, res: Response) {
     try {
+      if (!req.user) return res.status(401).json({ message: 'Unauthorized' });
+
       const id = (req.params.id as string) as string;
       const doc = await prisma.storedDocument.findUnique({ where: { id } });
       
-      if (!doc) {
+      // SEC-FIX: Verify document ownership to prevent IDOR downloads
+      if (!doc || doc.userId !== req.user.userId) {
         return res.status(404).json({ message: 'Document not found' });
       }
 
-      // We stored the URL as /uploads/filename
+      // Return database stored binary buffer with explicit Content-Length
       if (doc.fileData) {
-        res.setHeader('Content-Disposition', `attachment; filename="${doc.name}"`);
+        const binaryBuffer = Buffer.from(doc.fileData);
+        res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(doc.name)}"`);
         res.setHeader('Content-Type', doc.mimeType);
-        return res.send(doc.fileData);
+        res.setHeader('Content-Length', binaryBuffer.length);
+        return res.end(binaryBuffer);
       }
 
       // Fallback to disk storage (legacy)

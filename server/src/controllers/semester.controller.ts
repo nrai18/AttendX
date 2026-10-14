@@ -42,4 +42,23 @@ export class SemesterController {
     await CacheService.invalidateUser(req.user!.userId);
     res.json({ message: "Semester deleted successfully" });
   }
+
+  static async getTransitionStatus(req: AuthenticatedRequest, res: Response) {
+    const userId = req.user!.userId;
+    const status = await SemesterService.getTransitionStatus(userId);
+    res.json(status);
+  }
+
+  static async transition(req: AuthenticatedRequest, res: Response) {
+    const userId = req.user!.userId;
+    const result = await SemesterService.transitionToNextSemester(userId, req.body);
+    await CacheService.invalidateUser(userId);
+    res.json(result);
+  }
+
+  static async notifyTransition(req: AuthenticatedRequest, res: Response) {
+    const userId = req.user!.userId;
+    const sent = await SemesterService.sendSemesterEndNotification(userId);
+    res.json({ success: sent, message: sent ? "Semester completion notification sent" : "No notification sent" });
+  }
 }

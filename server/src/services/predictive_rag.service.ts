@@ -1,4 +1,5 @@
 import { AttendanceService } from "./attendance.service";
+import { CacheService } from "./cache.service";
 import { prisma } from "../lib/prisma";
 
 export interface PredictiveInsightsResult {
@@ -17,7 +18,7 @@ export class PredictiveRagService {
   static async generateInsights(userId: string): Promise<PredictiveInsightsResult> {
     try {
       // 1. Fetch user attendance logs and subject data for active semester
-      const { logs, subjects } = await AttendanceService.getAttendanceLogs(userId, {});
+      const { logs, subjects } = await CacheService.getOrSet(userId, "logs:all:all", () => AttendanceService.getAttendanceLogs(userId, {}));
 
       // Fetch user profile target if available
       const user = await prisma.user.findUnique({

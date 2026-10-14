@@ -2,15 +2,127 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    
+    <!-- Primary SEO Meta Tags -->
+    <title>AttendX | Smart Attendance Management System for IIIT Una</title>
+    <meta name="title" content="AttendX | Smart Attendance Management System for IIIT Una" />
+    <meta name="description" content="AttendX is the smart attendance tracker and academic schedule companion engineered for Indian Institute of Information Technology (IIIT) Una students. Monitor 75% attendance criteria, calculate safe bunks, sync timetables, and navigate college academic ordinances effortlessly." />
+    <meta name="keywords" content="attendx, attendx iiituna, attendx iiit una, attendx attendance, iiit una attendance, iiit una attendance manager, smart attendance iiit una, iiituna attendance, attendx.tech, attendx app, naman rai attendx, 75% attendance criteria, safe bunks calculator, iiit una timetable, iiit una portal, iiitu attendance" />
+    <meta name="author" content="Naman Rai" />
+    <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1" />
+    <link rel="canonical" href="https://attendx.tech/" />
+
+    <!-- PWA & Mobile Icons -->
     <link rel="icon" type="image/png" href="/attendx_app_icon.png" />
     <link rel="apple-touch-icon" href="/attendx_app_icon.png" />
     <link rel="manifest" href="/manifest.webmanifest" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-    <meta name="description" content="AttendX - Smart Attendance Manager" />
-    <title>AttendX</title>
-    <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <meta name="application-name" content="AttendX" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="AttendX" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="theme-color" content="#050505" />
+
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://attendx.tech/" />
+    <meta property="og:site_name" content="AttendX" />
+    <meta property="og:title" content="AttendX | Smart Attendance Management System for IIIT Una" />
+    <meta property="og:description" content="The dedicated attendance tracker & timetable platform for Indian Institute of Information Technology (IIIT) Una. Calculate safe bunks, track 75% compliance, and predict attendance." />
+    <meta property="og:image" content="https://attendx.tech/attendx_app_icon.png" />
+    <meta property="og:image:width" content="512" />
+    <meta property="og:image:height" content="512" />
+    <meta property="og:image:alt" content="AttendX Smart Attendance Management Platform for IIIT Una" />
+    <meta property="og:locale" content="en_IN" />
+
+    <!-- Twitter / X Cards -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:url" content="https://attendx.tech/" />
+    <meta name="twitter:title" content="AttendX | Smart Attendance Management System for IIIT Una" />
+    <meta name="twitter:description" content="Track 75% attendance criteria, safe bunks, timetable slots, and academic ordinances for IIIT Una." />
+    <meta name="twitter:image" content="https://attendx.tech/attendx_app_icon.png" />
+    <meta name="twitter:creator" content="@nrai18" />
+
+    <!-- Schema.org JSON-LD Structured Data for Google Rich Snippets & Knowledge Graph -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "WebApplication",
+          "@id": "https://attendx.tech/#webapp",
+          "name": "AttendX",
+          "alternateName": ["AttendX IIIT Una", "AttendX Attendance Manager", "AttendX Smart Attendance", "AttendX IIITU"],
+          "url": "https://attendx.tech",
+          "applicationCategory": "EducationalApplication",
+          "operatingSystem": "All (Web, Android PWA/APK)",
+          "offers": {
+            "@type": "Offer",
+            "price": "0",
+            "priceCurrency": "INR"
+          },
+          "creator": {
+            "@type": "Person",
+            "name": "Naman Rai",
+            "url": "https://github.com/nrai18",
+            "sameAs": [
+              "https://github.com/nrai18",
+              "https://www.linkedin.com/in/naman-rai-7b139b324/"
+            ]
+          },
+          "audience": {
+            "@type": "EducationalAudience",
+            "educationalRole": "student",
+            "audienceType": "Indian Institute of Information Technology (IIIT) Una Undergraduates and Faculty"
+          },
+          "description": "AttendX is the smart attendance management system and academic schedule planner engineered for the Indian Institute of Information Technology (IIIT) Una. Features 75% attendance policy tracking, safe bunk forecasting, timetable synchronization, and AI copilot schedule assistance."
+        },
+        {
+          "@type": "WebSite",
+          "@id": "https://attendx.tech/#website",
+          "name": "AttendX - IIIT Una Smart Attendance",
+          "url": "https://attendx.tech",
+          "description": "Smart Attendance Management & Academic Planner for Indian Institute of Information Technology (IIIT) Una.",
+          "inLanguage": "en-IN"
+        },
+        {
+          "@type": "FAQPage",
+          "@id": "https://attendx.tech/#faq",
+          "mainEntity": [
+            {
+              "@type": "Question",
+              "name": "What is AttendX for IIIT Una?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "AttendX is the dedicated smart attendance tracking and academic management platform built for students at the Indian Institute of Information Technology (IIIT) Una. It automates 75% attendance criteria tracking, safe bunk calculations, timetable syncing, and ordinance compliance."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "What is the mandatory attendance requirement at IIIT Una?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "Under IIIT Una Academic Regulation 6.1, a minimum 75% attendance is mandatory across all theory and laboratory courses. AttendX tracks this threshold in real time and calculates exactly how many classes you can afford to miss without facing shortage penalties."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "Where can I download the AttendX Android App?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "Students can install and download the latest AttendX Android application directly at https://attendx.tech/download or use the web application at https://attendx.tech."
+              }
+            }
+          ]
+        }
+      ]
+    }
+    </script>
+
+    <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
     <!-- Fonts for Neoclassical -->
     <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700;900&family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;0,700;1,400;1,600&display=swap" rel="stylesheet">
     <!-- Fonts for Aurora -->
@@ -24,7 +136,6 @@
     
     <style>
       html, body {
-        
         width: 100%;
         margin: 0;
         padding: 0;
@@ -62,7 +173,7 @@
       .font-mono { font-family: 'JetBrains Mono', monospace; }
     </style>
   </head>
-  <body class=" w-full m-0 p-0 text-foreground bg-background">
+  <body class="w-full m-0 p-0 text-foreground bg-background">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

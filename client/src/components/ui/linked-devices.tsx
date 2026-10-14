@@ -1,5 +1,6 @@
 import { FaWindows, FaApple, FaLinux } from "react-icons/fa";
 import React, { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { useAuthStore } from "../../stores/authStore";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -10,6 +11,7 @@ import {
 import { api } from "../../lib/api";
 import { toast } from "sonner";
 import { useHardwareBack } from "../../hooks/useHardwareBack";
+import { useScrollLock } from "../../hooks/useScrollLock";
 
 interface Session {
   id: string;
@@ -93,7 +95,14 @@ function getSessionTitle(session: Session) {
   // e.g. "AttendX 3.0.0 (Nothing Phone (3a))" -> "Nothing Phone (3a)"
   const hardwareMatch = browser.match(/\((.*)\)/);
   if (hardwareMatch) {
-    return hardwareMatch[1];
+    const raw = hardwareMatch[1];
+    if (/nothing\s+a059/i.test(raw) || /^a059$/i.test(raw)) return "Nothing Phone (3a)";
+    if (/nothing\s+a063/i.test(raw) || /^a063$/i.test(raw)) return "Nothing Phone (1)";
+    if (/nothing\s+a065/i.test(raw) || /^a065$/i.test(raw)) return "Nothing Phone (2)";
+    if (/nothing\s+a142p/i.test(raw) || /^a142p$/i.test(raw)) return "Nothing Phone (2a) Plus";
+    if (/nothing\s+a142/i.test(raw) || /^a142$/i.test(raw)) return "Nothing Phone (2a)";
+    if (/nothing\s+a015/i.test(raw) || /^a015$/i.test(raw) || /cmf\s+a015/i.test(raw)) return "CMF Phone 1";
+    return raw;
   }
 
   if (browser !== "AttendX App" && !browser.startsWith("AttendX") && browser !== "Unknown Browser" && browser !== "Browser") {
@@ -160,14 +169,31 @@ function SessionRow({ session, onRevoke }: { session: Session; onRevoke: () => v
   );
 }
 
+let cachedSessions: Session[] | null = null;
+
 export const LinkedDevicesModal: React.FC<LinkedDevicesProps> = ({ isOpen, onClose }) => {
   useHardwareBack(isOpen, onClose);
+  useScrollLock(isOpen);
   const { user, setUser } = useAuthStore();
-  const [sessions, setSessions] = useState<Session[]>([]);
+  const [sessions, setSessions] = useState<Session[]>(() => cachedSessions || []);
   const [loading, setLoading] = useState(false);
 
   const currentSession = sessions.find((s) => s.isCurrent);
   const otherSessions = sessions.filter((s) => !s.isCurrent);
+
+  // Pre-warm sessions on mount so opening Linked Devices is instant (0ms spinner)
+  useEffect(() => {
+    if (!cachedSessions) {
+      api.get("/users/sessions")
+        .then((res) => {
+          if (Array.isArray(res.data)) {
+            cachedSessions = res.data;
+            setSessions(res.data);
+          }
+        })
+        .catch(() => {});
+    }
+  }, []);
 
   useEffect(() => {
     let timeout: any;
@@ -193,9 +219,12 @@ export const LinkedDevicesModal: React.FC<LinkedDevicesProps> = ({ isOpen, onClo
 
   const fetchSessions = async () => {
     try {
-      setLoading(true);
+      if (!cachedSessions || cachedSessions.length === 0) {
+        setLoading(true);
+      }
       const res = await api.get("/users/sessions");
       if (Array.isArray(res.data)) {
+        cachedSessions = res.data;
         setSessions(res.data);
       } else {
         setSessions([]);
@@ -210,9 +239,13 @@ export const LinkedDevicesModal: React.FC<LinkedDevicesProps> = ({ isOpen, onClo
   const executeRevoke = async (sessionId: string, isCurrent: boolean) => {
     try {
       await api.delete(`/users/sessions/${sessionId}`);
-      toast.success("Device signed out successfully");
+      // Device removed from list in place
       if (isCurrent) { useAuthStore.getState().logout(); return; }
-      setSessions((s) => s.filter((x) => x.id !== sessionId));
+      setSessions((s) => {
+        const next = s.filter((x) => x.id !== sessionId);
+        cachedSessions = next;
+        return next;
+      });
     } catch (e: any) {
       toast.error(e.response?.data?.message || "Failed to sign out");
     }
@@ -231,7 +264,7 @@ export const LinkedDevicesModal: React.FC<LinkedDevicesProps> = ({ isOpen, onClo
   const executeSignOutAllOthers = async () => {
     try {
       await api.delete("/users/sessions");
-      toast.success("Signed out of all other devices");
+      // Other sessions cleared in place
       await fetchSessions();
     } catch (e: any) {
       toast.error(e.response?.data?.message || "Failed to sign out");
@@ -244,47 +277,63 @@ export const LinkedDevicesModal: React.FC<LinkedDevicesProps> = ({ isOpen, onClo
     });
   };
 
-  return (
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  if (!mounted) return null;
+
+  return createPortal(
     <AnimatePresence>
       {isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center sm:p-4 bg-background sm:bg-white/60 dark:sm:bg-black/60 sm:backdrop-blur-sm">
+        <div className="theme-nova-green fixed inset-0 z-[100] flex items-center justify-center p-0 sm:p-4 touch-none">
+          {/* Liquid glass backdrop */}
           <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 20 }}
-            className="w-full h-full sm:h-auto sm:max-h-[85vh] sm:max-w-md bg-muted/30 sm:rounded-2xl flex flex-col overflow-hidden shadow-2xl border-x-0 sm:border border-border"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.16, ease: "easeOut" }}
+            onClick={onClose}
+            className="fixed inset-0 bg-background sm:bg-white/60 dark:sm:bg-black/60 sm:backdrop-blur-sm will-change-[opacity]"
+          />
+          <motion.div
+            initial={{ opacity: 0, scale: 0.97, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.97, y: 16 }}
+            transition={{ type: "spring", damping: 28, stiffness: 380, mass: 0.8 }}
+            className="relative z-10 w-full h-[100dvh] sm:h-auto sm:max-h-[85vh] sm:max-w-md bg-muted/30 backdrop-blur-xl sm:rounded-3xl flex flex-col overflow-hidden shadow-2xl border-x-0 sm:border border-border pointer-events-auto will-change-transform"
           >
             {/* Header */}
             <div className="flex items-center gap-4 px-4 pb-3 bg-card border-b border-border shrink-0" style={{ paddingTop: "calc(env(safe-area-inset-top) + 12px)" }}>
-              <button onClick={onClose} className="w-8 h-8 flex items-center justify-center -ml-1 rounded-full hover:bg-accent transition-colors">
+              <button 
+                onClick={onClose} 
+                className="w-9 h-9 flex items-center justify-center -ml-1 rounded-full hover:bg-accent active:bg-accent/80 transition-colors"
+                aria-label="Close Devices"
+              >
                 <X className="w-5 h-5 text-foreground" />
               </button>
-              <h2 className="text-[19px] font-semibold text-foreground">Devices</h2>
+              <h2 className="text-[19px] font-semibold text-foreground tracking-tight">Devices</h2>
             </div>
 
             {/* Content */}
-            <div className="flex-1 overflow-y-auto pb-8 custom-scrollbar">
-              
-
+            <div className="flex-1 overflow-y-auto pb-[calc(2rem+env(safe-area-inset-bottom))] pr-1">
               {loading && sessions.length === 0 ? (
                 <div className="flex justify-center py-8">
                   <div className="animate-spin w-8 h-8 border-4 border-primary/30 border-t-primary rounded-full" />
                 </div>
               ) : (
-                <div className="space-y-6">
+                <div className="space-y-6 pt-2">
                   {/* This Device */}
                   {currentSession && (
-                    <div className="bg-card sm:rounded-xl border-y sm:border border-border mx-0 sm:mx-4 overflow-hidden">
+                    <div className="bg-card sm:rounded-xl border-y sm:border border-border mx-0 sm:mx-4 overflow-hidden shadow-sm">
                       <p className="text-[13px] font-semibold text-[#2AABEE] px-4 pt-3 pb-1">
                         This device
                       </p>
                       <SessionRow session={currentSession} onRevoke={() => handleRevoke(currentSession.id, true)} />
                       {otherSessions.length > 0 && (
                         <>
-                          <div className="h-px bg-border mx-4" />
+                          <div className="h-px bg-border/60 mx-4" />
                           <button
                             onClick={handleSignOutAllOthers}
-                            className="w-full flex items-center gap-4 px-4 py-3 hover:bg-accent/60 transition-colors text-left"
+                            className="w-full flex items-center gap-4 px-4 py-3 hover:bg-accent/60 active:bg-accent/80 transition-colors text-left"
                           >
                             <div className="w-11 h-11 flex items-center justify-center shrink-0">
                               <svg className="w-6 h-6 text-[#E53935]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -312,7 +361,7 @@ export const LinkedDevicesModal: React.FC<LinkedDevicesProps> = ({ isOpen, onClo
                       </p>
                       {otherSessions.map((session, idx) => (
                         <div key={session.id}>
-                          {idx > 0 && <div className="h-[0.5px] bg-border ml-[68px]" />}
+                          {idx > 0 && <div className="h-[0.5px] bg-border/60 ml-[68px]" />}
                           <SessionRow session={session} onRevoke={() => handleRevoke(session.id, false)} />
                         </div>
                       ))}
@@ -323,35 +372,35 @@ export const LinkedDevicesModal: React.FC<LinkedDevicesProps> = ({ isOpen, onClo
                     The official AttendX app is currently available for Windows, macOS, and Android.
                   </p>
 
-                  {/* Auto-terminate setting mock */}
-                  <div className="bg-card sm:rounded-xl border-y sm:border border-border mx-0 sm:mx-4 overflow-hidden mb-6">
+                  {/* Auto-terminate setting */}
+                  <div className="bg-card sm:rounded-xl border-y sm:border border-border mx-0 sm:mx-4 overflow-hidden mb-6 shadow-sm">
                     <p className="text-[13px] font-semibold text-[#2AABEE] px-4 pt-3 pb-1">
                       Automatically terminate old sessions
                     </p>
                     <div className="flex items-center justify-between px-4 py-3.5">
                       <span className="text-[15px] text-foreground">If inactive for</span>
                       <select 
-    value={user?.autoTerminateMonths || 0}
-    onChange={async (e) => {
-      const val = parseInt(e.target.value);
-      try {
-        await api.patch("/users/me", { autoTerminateMonths: val === 0 ? null : val });
-        if (setUser && user) {
-          setUser({ ...user, autoTerminateMonths: val === 0 ? undefined : val });
-        }
-        toast.success("Preference updated");
-      } catch (err: any) {
-        toast.error("Failed to update preference");
-      }
-    }}
-    className="bg-transparent text-[15px] text-[#2AABEE] font-medium outline-none cursor-pointer"
-  >
-    <option value={0} className="text-foreground">Never</option>
-    <option value={1} className="text-foreground">1 month</option>
-    <option value={3} className="text-foreground">3 months</option>
-    <option value={6} className="text-foreground">6 months</option>
-    <option value={12} className="text-foreground">1 year</option>
-  </select>
+                        value={user?.autoTerminateMonths || 0}
+                        onChange={async (e) => {
+                          const val = parseInt(e.target.value);
+                          try {
+                            await api.patch("/users/me", { autoTerminateMonths: val === 0 ? null : val });
+                            if (setUser && user) {
+                              setUser({ ...user, autoTerminateMonths: val === 0 ? undefined : val });
+                            }
+                            // Select dropdown reflects updated preference immediately
+                          } catch (err: any) {
+                            toast.error("Failed to update preference");
+                          }
+                        }}
+                        className="bg-transparent text-[15px] text-[#2AABEE] font-medium outline-none cursor-pointer"
+                      >
+                        <option value={0} className="text-foreground">Never</option>
+                        <option value={1} className="text-foreground">1 month</option>
+                        <option value={3} className="text-foreground">3 months</option>
+                        <option value={6} className="text-foreground">6 months</option>
+                        <option value={12} className="text-foreground">1 year</option>
+                      </select>
                     </div>
                   </div>
                 </div>
@@ -360,6 +409,7 @@ export const LinkedDevicesModal: React.FC<LinkedDevicesProps> = ({ isOpen, onClo
           </motion.div>
         </div>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body
   );
 };

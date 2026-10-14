@@ -1,16 +1,47 @@
 import { prisma } from "../lib/prisma";
+import { CacheService } from "./cache.service";
 
 export class SubjectService {
   static async listSubjects(userId: string, semesterId?: string) {
     let targetSemesterId = semesterId;
     
     if (!targetSemesterId) {
-      const activeSemester = await prisma.semester.findFirst({
-        where: { userId, isActive: true }
-      });
+      const activeSemester = await CacheService.getOrSet(
+        userId,
+        "semesters:active",
+        () =>
+          prisma.semester.findFirst({
+            where: { userId, isActive: true }
+          })
+      );
       if (activeSemester) {
         targetSemesterId = activeSemester.id;
       }
+    }
+
+    if (targetSemesterId) {
+      const fullSubjects = await CacheService.getOrSet(
+        userId,
+        `subjects:full:${targetSemesterId}`,
+        () =>
+          prisma.subject.findMany({
+            where: {
+              userId,
+              semesterId: targetSemesterId,
+            },
+            include: {
+              attendance: true,
+              semester: true,
+              timetableSlots: true,
+            },
+          })
+      );
+      return [...fullSubjects]
+        .sort((a: any, b: any) => (a.name || "").localeCompare(b.name || ""))
+        .map((s: any) => ({
+          ...s,
+          _count: { attendance: Array.isArray(s.attendance) ? s.attendance.length : 0 },
+        }));
     }
 
     return prisma.subject.findMany({
@@ -29,26 +60,18 @@ export class SubjectService {
   static async createSubject(userId: string, data: any) {
     let semesterId = data.semesterId;
 
-    if (!semesterId) {
+    if (semesterId) {
+      const ownsSemester = await prisma.semester.findFirst({
+        where: { id: semesterId, userId }
+      });
+      if (!ownsSemester) throw new Error("Forbidden: Semester does not belong to user");
+    } else {
       let activeSemester = await prisma.semester.findFirst({
         where: { userId, isActive: true }
       });
       
       if (!activeSemester) {
-        // Auto-create a default semester for the dev user
-        const startDate = new Date();
-        const endDate = new Date();
-        endDate.setMonth(endDate.getMonth() + 6); // 6 months from now
-        
-        activeSemester = await prisma.semester.create({
-          data: {
-            userId,
-            name: "Current Semester",
-            startDate,
-            endDate,
-            isActive: true,
-          }
-        });
+        throw new Error("No active semester found. Please create and activate a semester first.");
       }
       semesterId = activeSemester.id;
     }
@@ -96,28 +119,70 @@ export class SubjectService {
     });
 
     if (!subject) {
-      throw new Error("Subject not found");
+      // Ghost subject: Already deleted from subjects table. Clean up any dangling references.
+      await prisma.attendance.deleteMany({ where: { subjectId, userId } }).catch(() => null);
+      await prisma.timetableSlot.deleteMany({ where: { subjectId, semester: { userId } } }).catch(() => null);
+      await prisma.timetableOverride.deleteMany({ where: { subjectId, semester: { userId } } }).catch(() => null);
+      return { success: true, message: "Ghost subject cleaned up successfully", ghost: true };
     }
 
-    if (preserveHistory) {
-      // Detach slots and mark subject, retaining past attendance logs
-      await prisma.timetableSlot.deleteMany({
+    // Safely decouple or clean up references that do not cascade automatically
+    try {
+      const subjectSlots = await prisma.timetableSlot.findMany({
         where: { subjectId: subject.id },
+        select: { id: true },
       });
-      // Soft retain: disconnect slots from attendance records
-      await prisma.attendance.updateMany({
-        where: { subjectId: subject.id },
-        data: { timetableSlotId: null },
+      const slotIds = subjectSlots.map((s) => s.id);
+
+      const subjectOverrides = await prisma.timetableOverride.findMany({
+        where: {
+          OR: [
+            { subjectId: subject.id },
+            ...(slotIds.length > 0 ? [{ originalSlotId: { in: slotIds } }] : []),
+          ],
+        },
+        select: { id: true },
       });
-      return prisma.subject.delete({
-        where: { id: subject.id },
-      });
-    } else {
-      // Permanent hard delete (cascades via Prisma schema)
-      return prisma.subject.delete({
-        where: { id: subject.id },
-      });
-    }
+      const overrideIds = subjectOverrides.map((o) => o.id);
+
+      // Detach or delete attendance references BEFORE deleting overrides and slots
+      if (preserveHistory) {
+        await prisma.attendance.updateMany({
+          where: {
+            OR: [
+              { subjectId: subject.id },
+              ...(slotIds.length > 0 ? [{ timetableSlotId: { in: slotIds } }] : []),
+              ...(overrideIds.length > 0 ? [{ overrideId: { in: overrideIds } }] : []),
+            ],
+          },
+          data: { timetableSlotId: null, overrideId: null },
+        });
+      } else {
+        await prisma.attendance.deleteMany({
+          where: {
+            OR: [
+              { subjectId: subject.id },
+              ...(slotIds.length > 0 ? [{ timetableSlotId: { in: slotIds } }] : []),
+              ...(overrideIds.length > 0 ? [{ overrideId: { in: overrideIds } }] : []),
+            ],
+          },
+        });
+      }
+
+      if (overrideIds.length > 0) {
+        await prisma.timetableOverride.deleteMany({ where: { id: { in: overrideIds } } });
+      }
+      await Promise.all([
+        prisma.timetableSlot.deleteMany({ where: { subjectId: subject.id } }),
+        prisma.assignment.updateMany({ where: { subjectId: subject.id }, data: { subjectId: null } }),
+        prisma.note.updateMany({ where: { subjectId: subject.id }, data: { subjectId: null } }),
+        prisma.export.deleteMany({ where: { subjectId: subject.id } }),
+      ]);
+    } catch (e) {}
+
+    return prisma.subject.delete({
+      where: { id: subject.id },
+    });
   }
 
   static async mergeSubjects(userId: string, merges: { targetId: string, sourceId: string }[]) {
@@ -139,49 +204,96 @@ export class SubjectService {
             throw new Error(`Subject not found for merge: ${sourceId} -> ${targetId}`);
           }
           
-          // 1. Move Attendance Logs
+          // 1. Process Timetable Slots & Slot Deduplication
+          const sourceSlots = await tx.timetableSlot.findMany({ where: { subjectId: sourceId } });
+          const targetSlots = await tx.timetableSlot.findMany({ where: { subjectId: targetId } });
+          
+          const normTime = (t?: string) => (t || "").trim().padStart(5, "0");
+          const slotMapping = new Map<string, string>(); // sourceSlotId -> targetSlotId
+
+          for (const sSlot of sourceSlots) {
+            // Find duplicate slot in target (same day, same start and end time)
+            const matchingTargetSlot = targetSlots.find(tSlot => 
+              tSlot.dayOfWeek === sSlot.dayOfWeek &&
+              normTime(tSlot.startTime) === normTime(sSlot.startTime) &&
+              normTime(tSlot.endTime) === normTime(sSlot.endTime) &&
+              ((tSlot.validUntil === null && sSlot.validUntil === null) ||
+               (tSlot.validUntil !== null && sSlot.validUntil !== null))
+            );
+
+            if (matchingTargetSlot) {
+              // Re-point references from duplicate slot to matching target slot
+              slotMapping.set(sSlot.id, matchingTargetSlot.id);
+              await tx.timetableOverride.updateMany({
+                where: { originalSlotId: sSlot.id },
+                data: { originalSlotId: matchingTargetSlot.id }
+              });
+              await tx.attendance.updateMany({
+                where: { timetableSlotId: sSlot.id },
+                data: { timetableSlotId: matchingTargetSlot.id }
+              });
+              await tx.timetableSlot.delete({ where: { id: sSlot.id } });
+            } else {
+              // Unique slot that target didn't have: transfer ownership to target subject
+              await tx.timetableSlot.update({
+                where: { id: sSlot.id },
+                data: { subjectId: targetId }
+              });
+            }
+          }
+
+          // 2. Move Attendance Logs & Resolve Collisions
           const sourceLogs = await tx.attendance.findMany({ where: { subjectId: sourceId } });
           const targetLogs = await tx.attendance.findMany({ where: { subjectId: targetId } });
           
-          const sourceSlots = await tx.timetableSlot.findMany({ where: { subjectId: sourceId } });
-          const targetSlots = await tx.timetableSlot.findMany({ where: { subjectId: targetId } });
-          const combinedDaysOfWeek = new Set([...sourceSlots.map(s => s.dayOfWeek), ...targetSlots.map(s => s.dayOfWeek)]);
-          
+          const dateKeyOf = (d: Date | string) => {
+            const dt = new Date(d);
+            return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}-${String(dt.getUTCDate()).padStart(2, '0')}`;
+          };
+
           for (const log of sourceLogs) {
+            const mappedSlotId = slotMapping.get(log.timetableSlotId || "") || log.timetableSlotId;
+            const logDateKey = dateKeyOf(log.date);
+
             // Handle collision strictly against unique constraint: `[userId, subjectId, date, timetableSlotId]`
             const collision = targetLogs.find(t => 
-              t.date.getTime() === log.date.getTime() && 
-              t.timetableSlotId === log.timetableSlotId
+              dateKeyOf(t.date) === logDateKey && 
+              (t.timetableSlotId || null) === (mappedSlotId || null)
             );
             
             if (collision) {
-              if (collision.status === "cancelled" && log.status !== "cancelled") {
+              const isLogAttended = ["present", "absent", "medical", "od"].includes(log.status);
+              const isColAttended = ["present", "absent", "medical", "od"].includes(collision.status);
+
+              if (isLogAttended && !isColAttended) {
+                // Real attendance overrides cancelled/off placeholder
                 await tx.attendance.update({
                   where: { id: collision.id },
-                  data: { status: log.status, remarks: log.remarks }
+                  data: { status: log.status, remarks: log.remarks || collision.remarks }
+                });
+                collision.status = log.status;
+              } else if (log.remarks && !collision.remarks) {
+                await tx.attendance.update({
+                  where: { id: collision.id },
+                  data: { remarks: log.remarks }
                 });
               }
+              // Delete source log to avoid @@unique collision
               await tx.attendance.delete({ where: { id: log.id } });
             } else {
-              const dayOfWeek = log.date.getDay() === 0 ? 6 : log.date.getDay() - 1;
-              const hasSlot = combinedDaysOfWeek.has(dayOfWeek);
-              
               await tx.attendance.update({
                 where: { id: log.id },
                 data: { 
                   subjectId: targetId,
-                  ...(hasSlot ? {} : { remarks: "Extra class from merge" })
+                  timetableSlotId: mappedSlotId
                 }
               });
+              // Register into targetLogs so subsequent sourceLogs check against it
+              targetLogs.push({ ...log, subjectId: targetId, timetableSlotId: mappedSlotId });
             }
           }
           
-          // 2. Transfer all other relational data to targetId
-          await tx.timetableSlot.updateMany({
-            where: { subjectId: sourceId },
-            data: { subjectId: targetId }
-          });
-          
+          // 3. Transfer all other relational data to targetId
           await tx.timetableOverride.updateMany({
             where: { subjectId: sourceId },
             data: { subjectId: targetId }
@@ -202,72 +314,7 @@ export class SubjectService {
             data: { subjectId: targetId }
           });
           
-          // 3. Mark past unmarked slots as OFF for the newly combined subject
-          const semester = await tx.semester.findUnique({ where: { id: targetSub.semesterId } });
-          if (semester) {
-            const start = new Date(semester.startDate);
-            const today = new Date();
-            today.setHours(0,0,0,0);
-            
-            const allTargetSlots = await tx.timetableSlot.findMany({ where: { subjectId: targetId } });
-            const allOverrides = await tx.timetableOverride.findMany({ where: { semesterId: targetSub.semesterId } });
-            const allTargetAtt = await tx.attendance.findMany({ where: { subjectId: targetId } });
-            
-            for (let d = new Date(start); d <= today; d.setDate(d.getDate() + 1)) {
-              const targetDate = new Date(d);
-              const dayOfWeek = targetDate.getDay() === 0 ? 6 : targetDate.getDay() - 1;
-              const slotsForDay = allTargetSlots.filter(s => s.dayOfWeek === dayOfWeek);
-              const overridesForDay = allOverrides.filter(o => 
-                o.date.getTime() === targetDate.getTime() && 
-                (o.subjectId === targetId || o.subjectId === null)
-              );
-              
-              for (const slot of slotsForDay) {
-                const relatedOverride = overridesForDay.find(o => o.originalSlotId === slot.id);
-                if (relatedOverride && (relatedOverride.overrideType === "holiday" || relatedOverride.overrideType === "cancelled")) {
-                  continue;
-                }
-                const slotIdToMatch = relatedOverride ? null : slot.id;
-                const overrideIdToMatch = relatedOverride ? relatedOverride.id : null;
-                const exactMatch = allTargetAtt.find(a => a.date.getTime() === targetDate.getTime() && 
-                  ((slotIdToMatch && a.timetableSlotId === slotIdToMatch) || 
-                   (overrideIdToMatch && a.overrideId === overrideIdToMatch)));
-                const subjectMatch = allTargetAtt.find(a => a.date.getTime() === targetDate.getTime() && !a.timetableSlotId && !a.overrideId);
-                
-                if (!exactMatch && !subjectMatch) {
-                  await tx.attendance.create({
-                    data: {
-                      userId,
-                      subjectId: targetId,
-                      timetableSlotId: slotIdToMatch,
-                      overrideId: overrideIdToMatch,
-                      date: targetDate,
-                      status: "off",
-                      remarks: "Auto-marked off (merged past class)"
-                    }
-                  });
-                }
-              }
-              const extraClasses = overridesForDay.filter(o => o.overrideType === "extra_class" && o.subjectId === targetId);
-              for (const extra of extraClasses) {
-                 const exactMatch = allTargetAtt.find(a => a.date.getTime() === targetDate.getTime() && a.overrideId === extra.id);
-                 if (!exactMatch) {
-                     await tx.attendance.create({
-                        data: {
-                          userId,
-                          subjectId: targetId,
-                          overrideId: extra.id,
-                          date: targetDate,
-                          status: "off",
-                          remarks: "Auto-marked off (merged past class)"
-                        }
-                     });
-                 }
-              }
-            }
-          }
-          
-          // 4. Delete the duplicate subject
+          // 4. Delete the duplicate source subject cleanly
           await tx.subject.delete({ where: { id: sourceId } });
         });
         

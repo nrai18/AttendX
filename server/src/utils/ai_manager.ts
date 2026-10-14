@@ -5,10 +5,10 @@ export class AIManager {
   private static currentKeyIndex = 0;
   private static aiInstances: Record<string, GoogleGenAI> = {};
   
-  // Strict compliance with AGENTS.md (No 3.5, 2.0, or 1.5 models)
+  // Strict compliance with AGENTS.md (No 2.0 or 1.5 models)
   private static readonly SAFE_CASCADE = [
-    'gemini-3.8-flash',
     'gemini-3.7-flash',
+    'gemini-3.8-flash',
     'gemini-3.6-flash',
     'gemini-3.5-flash-lite',
     'gemini-3.1-pro'
@@ -31,7 +31,7 @@ export class AIManager {
     
     // Priority: Try the requested model first (if it's safe), then fallback to safe cascade
     let modelsToTry = [options.model];
-    if (!options.model || options.model.includes('3.5') || options.model.includes('1.5') || options.model.includes('2.0') || options.model.includes('-lite') || options.model.includes('preview')) {
+    if (!options.model || options.model.includes('1.5') || options.model.includes('2.0') || options.model.includes('preview')) {
        modelsToTry = [...this.SAFE_CASCADE];
     } else {
        // Append cascade for fallbacks
@@ -58,19 +58,52 @@ export class AIManager {
         }
         
         try {
-          // PER-REQUEST TIMEOUT: 25s for flash, 60s for pro models
-          const perRequestTimeout = currentModel.includes('pro') ? 60000 : 25000;
+          // Streaming Token Accumulation: Allows progressive generation for large timetable/calendar docs
+          const ttftTimeout = currentModel.includes('pro') ? 60000 : 30000;
           
-          return await Promise.race([
-             ai.models.generateContent(modelOptions),
-             new Promise((_, reject) => setTimeout(() => reject(new Error(`AI request timeout exceeded (${perRequestTimeout}ms limit)`)), perRequestTimeout))
+          const streamPromise = ai.models.generateContentStream(modelOptions);
+          const responseStream: any = await Promise.race([
+            streamPromise,
+            new Promise((_, reject) => setTimeout(() => reject(new Error(`AI TTFT timeout exceeded (${ttftTimeout}ms limit)`)), ttftTimeout))
           ]);
+
+          let fullText = "";
+          for await (const chunk of responseStream) {
+            if (chunk.text) {
+              fullText += chunk.text;
+            }
+          }
+
+          // Return normalized response object compatible with both .text property and .text() method
+          const textGetter = () => fullText;
+          return {
+            text: fullText,
+            candidates: responseStream?.candidates || [],
+            toString: () => fullText,
+            valueOf: () => fullText
+          };
         } catch (error: any) {
           attemptsOnThisModel++;
           const status = error.status || error.code || 500;
-          const msg = error.message || 'Unknown error';
+          const rawMsg = error.message || 'Unknown error';
+          const msg = rawMsg;
+          let cleanMsg = rawMsg;
+          try {
+            if (rawMsg.includes('{')) {
+              const jsonMatch = rawMsg.match(/\{[\s\S]*\}/);
+              if (jsonMatch) {
+                const parsedErr = JSON.parse(jsonMatch[0]);
+                cleanMsg = parsedErr?.error?.message || parsedErr?.message || cleanMsg;
+                if (typeof cleanMsg === 'string' && cleanMsg.includes('{')) {
+                  const nested = JSON.parse(cleanMsg.match(/\{[\s\S]*\}/)?.[0] || '{}');
+                  cleanMsg = nested?.error?.message || nested?.message || cleanMsg;
+                }
+              }
+            }
+          } catch {}
+          if (typeof cleanMsg === 'string' && cleanMsg.length > 200) cleanMsg = cleanMsg.slice(0, 200) + '...';
           
-          console.warn(`[AIManager] Model ${currentModel} on Key ${this.currentKeyIndex} failed (${status} - ${msg}).`);
+          console.warn(`[AIManager] Model ${currentModel} on Key ${this.currentKeyIndex} failed (${status} - ${cleanMsg}).`);
           
           if (status === 503 || msg.includes('503') || msg.includes('UNAVAILABLE') || msg.includes('overloaded')) {
              console.warn(`[AIManager] 503 Unavailable detected. Downgrading model immediately...`);
@@ -95,5 +128,17 @@ export class AIManager {
     }
     
     throw new Error('All provided Gemini API keys and fallback models were exhausted.');
+  }
+
+  public static async generateContentStream(options: any): Promise<any> {
+    this.init();
+    const key = this.keys[this.currentKeyIndex];
+    let ai = this.aiInstances[key];
+    if (!ai) {
+      ai = new GoogleGenAI({ apiKey: key });
+      this.aiInstances[key] = ai;
+    }
+    const model = options.model || "gemini-3.8-flash";
+    return ai.models.generateContentStream({ ...options, model });
   }
 }

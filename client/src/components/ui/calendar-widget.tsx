@@ -86,8 +86,9 @@ export const CalendarWidget: FC<CalendarWidgetProps> = ({
     };
   }, []);
 
+  const now = new Date();
   const dates: DateItem[] = Array.from({ length: 92 }, (_, i) => {
-    const date = new Date(2024, 8, 1 + i);
+    const date = new Date(now.getFullYear(), now.getMonth(), 1 + i);
     return {
       day: date.getDate(),
       fullDate: date.toISOString().split('T')[0],

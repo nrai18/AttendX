@@ -64,6 +64,7 @@ export class CalendarRagController {
       // Re-use EventService to save the events. EventService.saveWizardEvents handles it!
       const created = await EventService.saveWizardEvents(req.user!.userId, semesterId, events);
       await CacheService.invalidateUser(req.user!.userId);
+      await redisClient.del(`rag_cache:${req.user!.userId}`);
       res.json({ message: "Events saved successfully", events: created });
     } catch (error: any) {
       console.error("Save RAG Events Error:", error);

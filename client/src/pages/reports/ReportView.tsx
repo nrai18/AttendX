@@ -1,7 +1,8 @@
-﻿import { useCacheStore } from "../../stores/cacheStore";
+import { useCacheStore } from "../../stores/cacheStore";
 import React, { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAttendanceStore } from '../../stores/attendanceStore';
+import { useBackHandlerStore } from '../../stores/backHandlerStore';
 import { api } from '../../lib/api';
 import { ChevronLeft, Activity, BarChart3, PieChartIcon, CalendarIcon, Clock, CheckCircle2, AlertCircle } from 'lucide-react';
 import { AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
@@ -79,6 +80,14 @@ export const ReportView: React.FC = () => {
     const cached = useCacheStore.getState().all_logs || useAttendanceStore.getState().historyLogs;
     return !cached || cached.length === 0;
   });
+
+  useEffect(() => {
+    const unregister = useBackHandlerStore.getState().register(() => {
+      navigate('/settings', { replace: true });
+      return true;
+    });
+    return () => unregister();
+  }, [navigate]);
 
   useEffect(() => {
     const fetchLogs = async () => {
@@ -218,7 +227,7 @@ export const ReportView: React.FC = () => {
         {/* Header */}
         <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} className="flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <button onClick={() => navigate(-1)} className="w-12 h-12 rounded-[16px] bg-white/60 dark:bg-black/20 backdrop-blur-md flex items-center justify-center hover:bg-white dark:hover:bg-black/40 transition-colors border border-white/40 dark:border-white/10 shadow-sm text-[#74313A] dark:text-[#EED3CF]">
+            <button onClick={() => navigate('/settings', { replace: true })} className="w-12 h-12 rounded-[16px] bg-white/60 dark:bg-black/20 backdrop-blur-md flex items-center justify-center hover:bg-white dark:hover:bg-black/40 transition-colors border border-white/40 dark:border-white/10 shadow-sm text-[#74313A] dark:text-[#EED3CF]">
               <ChevronLeft className="w-6 h-6" />
             </button>
             <div>

@@ -3,12 +3,12 @@ import { toast } from "sonner";
 import { api } from "../../lib/api";
 import { useScrollLock } from "../../hooks/useScrollLock";
 import { useAttendanceStore } from "../../stores/attendanceStore";
+import { useCacheStore } from "../../stores/cacheStore";
 import {
   Calendar,
   Plus,
   X,
   Loader2,
-  CheckCircle2,
   Sparkles,
   Check
 } from "lucide-react";
@@ -46,6 +46,7 @@ export const CreateSemesterModal: React.FC<CreateSemesterModalProps> = ({
   
   const [startMonth, setStartMonth] = useState(currentMonth);
   const [endMonth, setEndMonth] = useState(defaultEndMonth);
+  const [autoSyncTemplates, setAutoSyncTemplates] = useState(true);
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState("");
 
@@ -73,19 +74,6 @@ export const CreateSemesterModal: React.FC<CreateSemesterModalProps> = ({
     setSemesterOption(String(y * 2 - 1)); // default to odd semester for that year
   }, [year]);
 
-  
-  // Anti-scroll lock
-  React.useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = 'unset';
-    }
-    return () => {
-      document.body.style.overflow = 'unset';
-    };
-  }, [isOpen]);
-
   if (!isOpen) return null;
 
   const handleCreate = async (e: React.FormEvent) => {
@@ -103,16 +91,40 @@ export const CreateSemesterModal: React.FC<CreateSemesterModalProps> = ({
     const endDate = `${endMonth}-${lastDay.toString().padStart(2, "0")}`;
 
     try {
-      await api.post("/semesters", {
+      const res = await api.post("/semesters", {
         name: generatedName,
         startDate,
         endDate,
         isActive: true,
       });
-      await useAttendanceStore.getState().fetchStats(true); // Sync global state
-      toast.success("Semester created and activated successfully!");
-      onSuccess();
+      const newSemester = res.data;
+
+      if (autoSyncTemplates && newSemester?.id) {
+        try {
+          const semNum = parseInt(semesterOption);
+          const startYear = parseInt(startMonth.split("-")[0]) || new Date().getFullYear();
+          await api.post("/events/templates/sync", {
+            semesterId: newSemester.id,
+            semesterNumber: semNum,
+            syncHolidayList: true,
+            syncAcademicCalendar: true,
+            year: startYear,
+          });
+        } catch (syncErr) {
+          console.warn("Failed to auto-sync templates for new semester:", syncErr);
+        }
+      }
+
+      useCacheStore.getState().clearCache();
+      toast.success(
+        autoSyncTemplates
+          ? "Semester created, activated and official calendar synced!"
+          : "Semester created and activated successfully!"
+      );
       onClose();
+      onSuccess();
+      useAttendanceStore.getState().fetchStats(true);
+      window.dispatchEvent(new Event("attendance-updated"));
     } catch (err: any) {
       console.error("Failed to create semester", err);
       setError(err?.response?.data?.message || "Failed to create semester. Please try again.");
@@ -124,34 +136,37 @@ export const CreateSemesterModal: React.FC<CreateSemesterModalProps> = ({
   const handleActivate = async (id: string) => {
     try {
       await api.patch(`/semesters/${id}/activate`);
-      await useAttendanceStore.getState().fetchStats(true); // Sync global state
+      useCacheStore.getState().clearCache();
       toast.success("Semester activated successfully!");
-      onSuccess();
       onClose();
+      onSuccess();
+      useAttendanceStore.getState().fetchStats(true);
+      window.dispatchEvent(new Event("attendance-updated"));
     } catch (err) {
       console.error("Failed to activate semester", err);
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200 font-sans">
-      <div className="bg-[#18181B] border border-[#27272A] rounded-[8px] p-6 max-w-lg w-full shadow-2xl space-y-6 relative overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 dark:bg-black/80 backdrop-blur-sm animate-in fade-in duration-200 font-sans">
+      <div className="bg-card text-card-foreground border border-border/80 rounded-3xl p-6 max-w-lg w-full shadow-2xl space-y-6 relative overflow-hidden transition-colors">
         
-        <div className="flex items-center justify-between border-b border-[#27272A] pb-4">
+        <div className="flex items-center justify-between border-b border-border/60 pb-4">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-[8px] bg-[#48CAE4]/10 border border-[#48CAE4]/20 flex items-center justify-center text-[#48CAE4]">
+            <div className="w-10 h-10 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary shadow-xs">
               <Calendar className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-xl font-medium text-white tracking-tight">Create Active Semester</h2>
-              <p className="text-sm text-[#A1A1AA] mt-1">
+              <h2 className="text-xl font-bold text-foreground tracking-tight">Create Active Semester</h2>
+              <p className="text-sm text-muted-foreground mt-0.5">
                 Define start and end dates to enable timetable & attendance tracking
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="text-[#A1A1AA] hover:text-white p-1 rounded-[8px] hover:bg-[#27272A] transition-colors"
+            className="text-foreground bg-muted/80 hover:bg-muted border border-border p-2 rounded-full transition-colors cursor-pointer shadow-sm"
+            aria-label="Close"
           >
             <X className="w-5 h-5" />
           </button>
@@ -159,8 +174,8 @@ export const CreateSemesterModal: React.FC<CreateSemesterModalProps> = ({
 
         {/* Existing inactive semesters list (if any) */}
         {semesters.filter((s) => !s.isActive).length > 0 && (
-          <div className="space-y-2 bg-black/50 p-4 rounded-[8px] border border-[#27272A]">
-            <h3 className="text-xs font-medium text-[#A1A1AA] uppercase tracking-widest font-mono">
+          <div className="space-y-2 bg-muted/30 p-4 rounded-2xl border border-border/60">
+            <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider font-mono">
               Or Activate Existing Semester
             </h3>
             <div className="space-y-1.5 max-h-32 overflow-y-auto pr-1">
@@ -169,11 +184,11 @@ export const CreateSemesterModal: React.FC<CreateSemesterModalProps> = ({
                 .map((s) => (
                   <div
                     key={s.id}
-                    className="flex items-center justify-between p-3 rounded-[8px] bg-[#18181B] border border-[#27272A] text-sm text-white"
+                    className="flex items-center justify-between p-3 rounded-xl bg-card border border-border/60 text-sm text-foreground shadow-xs"
                   >
                     <div>
-                      <span className="font-medium">{s.name}</span>
-                      <span className="text-[#A1A1AA] ml-2 text-xs font-mono">
+                      <span className="font-semibold text-foreground">{s.name}</span>
+                      <span className="text-muted-foreground ml-2 text-xs font-mono">
                         ({new Date(s.startDate).toLocaleDateString()} -{" "}
                         {new Date(s.endDate).toLocaleDateString()})
                       </span>
@@ -181,9 +196,9 @@ export const CreateSemesterModal: React.FC<CreateSemesterModalProps> = ({
                     <button
                       type="button"
                       onClick={() => handleActivate(s.id)}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-[8px] bg-[#18181B] hover:bg-[#27272A] border border-[#27272A] text-white font-medium transition-colors"
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/10 hover:bg-primary/20 border border-primary/20 text-primary font-semibold text-xs transition-colors cursor-pointer"
                     >
-                      <Check className="w-3 h-3 text-[#48CAE4]" />
+                      <Check className="w-3.5 h-3.5 text-primary" />
                       Activate
                     </button>
                   </div>
@@ -195,64 +210,89 @@ export const CreateSemesterModal: React.FC<CreateSemesterModalProps> = ({
         <form onSubmit={handleCreate} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-medium text-[#A1A1AA] uppercase tracking-widest font-mono mb-2">
+              <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider font-mono mb-2">
                 Year
               </label>
               <select
                 value={year}
                 onChange={(e) => setYear(e.target.value)}
-                className="w-full px-4 py-2.5 rounded-[8px] bg-black border border-[#27272A] text-white text-sm focus:outline-none focus:border-[#48CAE4] focus:ring-1 focus:ring-[#48CAE4] font-medium appearance-none transition-colors"
+                className="w-full px-3.5 py-2.5 rounded-xl border border-border/70 bg-background text-foreground text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all shadow-xs cursor-pointer"
               >
-                <option value="1">1st Year</option>
-                <option value="2">2nd Year</option>
-                <option value="3">3rd Year</option>
-                <option value="4">4th Year</option>
+                <option value="1" className="bg-card text-foreground">1st Year</option>
+                <option value="2" className="bg-card text-foreground">2nd Year</option>
+                <option value="3" className="bg-card text-foreground">3rd Year</option>
+                <option value="4" className="bg-card text-foreground">4th Year</option>
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-[#A1A1AA] uppercase tracking-widest font-mono mb-2">
+              <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider font-mono mb-2">
                 Semester
               </label>
               <select
                 value={semesterOption}
                 onChange={(e) => setSemesterOption(e.target.value)}
-                className="w-full px-4 py-2.5 rounded-[8px] bg-black border border-[#27272A] text-white text-sm focus:outline-none focus:border-[#48CAE4] focus:ring-1 focus:ring-[#48CAE4] font-medium appearance-none transition-colors"
+                className="w-full px-3.5 py-2.5 rounded-xl border border-border/70 bg-background text-foreground text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all shadow-xs cursor-pointer"
               >
-                <option value={String(parseInt(year) * 2 - 1)}>Semester {parseInt(year) * 2 - 1}</option>
-                <option value={String(parseInt(year) * 2)}>Semester {parseInt(year) * 2}</option>
+                <option value={String(parseInt(year) * 2 - 1)} className="bg-card text-foreground">
+                  Semester {parseInt(year) * 2 - 1}
+                </option>
+                <option value={String(parseInt(year) * 2)} className="bg-card text-foreground">
+                  Semester {parseInt(year) * 2}
+                </option>
               </select>
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-medium text-[#A1A1AA] uppercase tracking-widest font-mono mb-2">
+              <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider font-mono mb-2">
                 Start Month
               </label>
               <input
                 type="month"
                 value={startMonth}
                 onChange={(e) => setStartMonth(e.target.value)}
-                className="w-full px-3 py-2.5 rounded-[8px] bg-black border border-[#27272A] text-white text-sm focus:outline-none focus:border-[#48CAE4] focus:ring-1 focus:ring-[#48CAE4] font-medium transition-colors"
+                className="w-full px-3.5 py-2.5 rounded-xl border border-border/70 bg-background text-foreground text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all shadow-xs [color-scheme:light] dark:[color-scheme:dark]"
                 required
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-[#A1A1AA] uppercase tracking-widest font-mono mb-2">
+              <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider font-mono mb-2">
                 End Month
               </label>
               <input
                 type="month"
                 value={endMonth}
                 onChange={(e) => setEndMonth(e.target.value)}
-                className="w-full px-3 py-2.5 rounded-[8px] bg-black border border-[#27272A] text-white text-sm focus:outline-none focus:border-[#48CAE4] focus:ring-1 focus:ring-[#48CAE4] font-medium transition-colors"
+                className="w-full px-3.5 py-2.5 rounded-xl border border-border/70 bg-background text-foreground text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all shadow-xs [color-scheme:light] dark:[color-scheme:dark]"
                 required
               />
             </div>
           </div>
 
+          <div 
+            onClick={() => setAutoSyncTemplates(!autoSyncTemplates)}
+            className="flex items-start gap-3 p-3.5 rounded-2xl bg-muted/40 border border-border/60 hover:border-primary/40 cursor-pointer transition-colors select-none"
+          >
+            <input
+              type="checkbox"
+              checked={autoSyncTemplates}
+              onChange={(e) => setAutoSyncTemplates(e.target.checked)}
+              className="w-4 h-4 rounded text-primary focus:ring-primary/40 border-border bg-background cursor-pointer accent-primary mt-0.5"
+            />
+            <div className="flex-1">
+              <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-primary" />
+                Auto-sync official academic calendar & holidays
+              </span>
+              <p className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">
+                Pre-loads official exams, breaks, and holidays matching Semester {semesterOption} from backend
+              </p>
+            </div>
+          </div>
+
           {error && (
-            <p className="text-xs text-[#E63946] bg-[#E63946]/10 p-2.5 rounded-[8px] border border-[#E63946]/20 font-medium">
+            <p className="text-xs text-destructive bg-destructive/10 p-3 rounded-xl border border-destructive/20 font-medium">
               {error}
             </p>
           )}
@@ -261,14 +301,14 @@ export const CreateSemesterModal: React.FC<CreateSemesterModalProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2.5 rounded-[8px] text-sm font-medium text-[#A1A1AA] hover:text-white hover:bg-[#27272A] transition-colors"
+              className="px-4 py-2.5 rounded-xl text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={isCreating}
-              className="flex items-center gap-2 px-6 py-2.5 rounded-[8px] text-sm font-semibold bg-[#48CAE4] hover:bg-[#48CAE4]/90 text-black transition-all disabled:opacity-50 shadow-none"
+              className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-xs font-bold bg-primary hover:bg-primary/90 text-primary-foreground transition-all shadow-md shadow-primary/25 disabled:opacity-50 cursor-pointer"
             >
               {isCreating ? (
                 <Loader2 className="w-4 h-4 animate-spin" />

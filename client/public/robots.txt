@@ -1,0 +1,28 @@
+# AttendX (https://attendx.tech) - Robots.txt
+User-agent: *
+Allow: /
+Allow: /download
+Allow: /login
+Allow: /forgot-password
+Allow: /reset-password
+Allow: /signup
+Allow: /settings/faq
+Allow: /privacy
+Allow: /terms
+
+# Disallow private user dashboard and API routes
+Disallow: /today
+Disallow: /timetable
+Disallow: /semester
+Disallow: /calendar
+Disallow: /subjects
+Disallow: /classrooms
+Disallow: /assignments
+Disallow: /report
+Disallow: /reports
+Disallow: /settings/
+Disallow: /api/
+
+# Sitemaps
+Sitemap: https://attendx.tech/sitemap.xml
+Sitemap: https://www.attendx.tech/sitemap.xml

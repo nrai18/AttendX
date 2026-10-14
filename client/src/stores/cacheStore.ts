@@ -1,85 +1,180 @@
 import { create } from 'zustand';
-import { capacitorStorage } from './capacitorStorage';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import { Preferences } from '@capacitor/preferences';
+import { capacitorStorage } from './capacitorStorage';
+import type { FrequencyData } from '../components/ui/frequency-selector';
 
-interface CacheState {
-  today: any;
+const onClearListeners: Array<() => void> = [];
+export const registerCacheClearListener = (cb: () => void) => {
+  onClearListeners.push(cb);
+};
+
+export interface CacheState {
+  today: Record<string, any>; // key: dateStr
+  calendar: Record<string, any>; // key: monthStr
   timetable: any;
   archived_timetables?: any;
   semester: any;
-  calendar: any;
   subjects: any;
   subjects_overview?: any;
-  subject_logs?: any;
-  insights: any;
+  subject_logs: Record<string, any>; // key: subjectId or 'all'
   all_logs?: any;
+  insights: any;
+  reminderFrequency: FrequencyData;
+  frequencyMemory: Record<string, string | undefined>;
+  setReminderFrequency: (data: FrequencyData) => void;
+  mutationVersion: number;
   setCache: (key: string, data: any) => void;
+  invalidateForMutation: (url?: string, method?: string, responseData?: any) => void;
   clearCache: () => void;
-  reminderFrequency: { type: 'Never' | 'Daily' | 'Weekly' | 'Monthly' | 'Yearly', subValue?: string };
-  setReminderFrequency: (data: { type: 'Never' | 'Daily' | 'Weekly' | 'Monthly' | 'Yearly', subValue?: string }) => void;
-  frequencyMemory: {
-    Weekly?: string;
-    Monthly?: string;
-    Yearly?: string;
-  };
+  [key: string]: any;
 }
-
-
 
 export const useCacheStore = create<CacheState>()(
   persist(
-    (set) => ({
-      today: null,
+    (set, get) => ({
+      today: {},
+      calendar: {},
       timetable: null,
       archived_timetables: null,
       semester: null,
-      calendar: null,
       subjects: null,
       subjects_overview: null,
-      subject_logs: null,
+      subject_logs: {},
+      all_logs: null,
       insights: null,
-      reminderFrequency: { type: 'Weekly', subValue: 'Sun' },
+      reminderFrequency: { type: 'Daily' },
       frequencyMemory: { Weekly: 'Sun', Monthly: '1', Yearly: 'Jan' },
-      setReminderFrequency: (data) => set((state) => {
-        const newMemory = { ...state.frequencyMemory };
-        if (data.type === 'Weekly' && data.subValue) newMemory.Weekly = data.subValue;
-        if (data.type === 'Monthly' && data.subValue) newMemory.Monthly = data.subValue;
-        if (data.type === 'Yearly' && data.subValue) newMemory.Yearly = data.subValue;
-        return { reminderFrequency: data, frequencyMemory: newMemory };
-      }),
-      setCache: (key, data) => set((state) => {
-        // FE-H04 FIX: Prevent overwriting store actions
-        if (key === 'setCache' || key === 'clearCache' || key === 'setReminderFrequency') return state;
-        
-        let newData = data;
-        if (key === 'today' && data && typeof data === 'object') {
-          const keys = Object.keys(data);
-          if (keys.length > 14) {
-            // Sort chronologically and keep only the 14 most recent days to prevent unbounded DB growth
-            keys.sort();
-            const keysToRemove = keys.slice(0, keys.length - 14);
-            newData = { ...data };
-            keysToRemove.forEach(k => delete newData[k]);
-          }
+      setReminderFrequency: (data: FrequencyData) =>
+        set((state) => ({
+          reminderFrequency: data,
+          frequencyMemory: data.subValue
+            ? { ...state.frequencyMemory, [data.type]: data.subValue }
+            : state.frequencyMemory,
+        })),
+      mutationVersion: 0,
+      setCache: (key, data) => set((state) => ({ ...state, [key]: data })),
+      invalidateForMutation: (url, method, responseData) => {
+        const m = (method || '').toLowerCase();
+        if (!['post', 'put', 'patch', 'delete'].includes(m) || !url) return;
+
+        // Ignore non-academic or preview-only requests
+        if (
+          url.includes('/auth/') ||
+          url.includes('/ai/tts') ||
+          url.includes('/system/') ||
+          url.includes('/feedback') ||
+          url.includes('/documents') ||
+          url.includes('/users/onboarding-status') ||
+          url.includes('/transfer/') ||
+          url.includes('/semesters/notify-transition') ||
+          url.includes('/events/import-rag/cache')
+        ) {
+          return;
         }
-        return { ...state, [key]: newData };
-      }),
-      clearCache: () => set({ 
-        today: null, 
-        timetable: null,
-        archived_timetables: null, 
-        semester: null, 
-        calendar: null, 
-        subjects: null, 
-        subjects_overview: null, 
-        subject_logs: null,
-        insights: null,     // FE-H05 FIX: Wipe insights
-        all_logs: null      // FE-H05 FIX: Wipe all logs
-      })
+
+        if (
+          (url.includes('/timetable/ocr-import') ||
+            url.includes('/events/ocr-import') ||
+            url.includes('/events/upload-calendar') ||
+            url.includes('/events/import-rag')) &&
+          !url.includes('/save')
+        ) {
+          return;
+        }
+
+        if (url.includes('/ai/chat') && (!responseData?.actions || responseData.actions.length === 0)) {
+          return;
+        }
+
+        if (
+          url.includes('/users/reset-') ||
+          url.includes('/semesters') ||
+          url.includes('/data/import')
+        ) {
+          get().clearCache();
+          return;
+        }
+
+        if (url.includes('/attendance/')) {
+          set((state) => ({
+            today: {},
+            calendar: {},
+            subjects: null,
+            subject_logs: {},
+            all_logs: null,
+            insights: null,
+            semester: state.semester ? { ...state.semester, calendarData: null } : null,
+            mutationVersion: (state.mutationVersion || 0) + 1,
+          }));
+          return;
+        }
+
+        if (url.includes('/timetable/') || url.includes('/subjects')) {
+          set((state) => ({
+            today: {},
+            calendar: {},
+            timetable: null,
+            archived_timetables: null,
+            semester: null,
+            subjects: null,
+            subjects_overview: null,
+            subject_logs: {},
+            all_logs: null,
+            insights: null,
+            mutationVersion: (state.mutationVersion || 0) + 1,
+          }));
+          return;
+        }
+
+        if (url.includes('/events') || url.includes('/calendar-rag/save')) {
+          set((state) => ({
+            today: {},
+            calendar: {},
+            semester: null,
+            subjects: null,
+            subject_logs: {},
+            all_logs: null,
+            insights: null,
+            mutationVersion: (state.mutationVersion || 0) + 1,
+          }));
+          return;
+        }
+
+        if (url.includes('/users/me')) {
+          set((state) => ({
+            today: {},
+            calendar: {},
+            subjects: null,
+            subject_logs: {},
+            insights: null,
+            mutationVersion: (state.mutationVersion || 0) + 1,
+          }));
+          return;
+        }
+      },
+      clearCache: () => {
+        set((state) => ({
+          today: {},
+          calendar: {},
+          timetable: null,
+          archived_timetables: null,
+          semester: null,
+          subjects: null,
+          subjects_overview: null,
+          subject_logs: {},
+          all_logs: null,
+          insights: null,
+          mutationVersion: (state.mutationVersion || 0) + 1,
+        }));
+        onClearListeners.forEach((cb) => {
+          try {
+            cb();
+          } catch (e) {}
+        });
+      },
     }),
     {
-      name: 'attendx-api-cache',
+      name: 'attendx-global-cache',
       storage: createJSONStorage(() => capacitorStorage),
     }
   )

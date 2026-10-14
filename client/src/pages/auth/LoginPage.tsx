@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate, useLocation, Link } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { useConfigStore } from "../../stores/configStore";
 import { useBackHandlerStore } from "../../stores/backHandlerStore";
@@ -7,14 +7,21 @@ import { Mail, Lock, Loader2, ArrowRight, ArrowLeft, CheckCircle2, Eye, EyeOff, 
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
+import { OtpInput } from "../../components/ui/otp-input";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "../../components/ui/card";
 import { useAuthStore } from "../../stores/authStore";
 import { API_BASE_URL, api } from "../../lib/api";
 import { Capacitor } from "@capacitor/core";
 import { GoogleSignIn } from "@capawesome/capacitor-google-sign-in";
+import { hapticMedium, hapticSuccess, hapticError } from "../../utils/haptics";
 
-export const LoginPage: React.FC = () => {
+interface LoginPageProps {
+  initialForgotPassword?: boolean;
+}
+
+export const LoginPage: React.FC<LoginPageProps> = ({ initialForgotPassword = false }) => {
   const navigate = useNavigate();
+  const location = useLocation();
   const setAuth = useAuthStore((state) => state.setAuth);
 
   const [email, setEmail] = useState("");
@@ -25,15 +32,46 @@ export const LoginPage: React.FC = () => {
   const [geoCoords, setGeoCoords] = useState<{lat: number, lon: number} | null>(null);
 
   // Forgot Password State
-  const [forgotPasswordMode, setForgotPasswordMode] = useState(false);
+  const isForgotPath = initialForgotPassword || location.pathname === "/forgot-password" || location.pathname === "/reset-password";
+  const [forgotPasswordMode, setForgotPasswordMode] = useState(isForgotPath);
+
+  useEffect(() => {
+    if (isForgotPath) {
+      setForgotPasswordMode(true);
+    }
+  }, [isForgotPath]);
+
+  // Pre-fill email from query parameter if provided (e.g. from security email links)
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const emailParam = params.get("email");
+    if (emailParam && !email) {
+      setEmail(emailParam);
+    }
+  }, [location.search]);
 
   useEffect(() => {
     const unregister = useBackHandlerStore.getState().register(() => {
-      if (forgotPasswordMode) { setForgotPasswordMode(false); return true; }
+      if (forgotPasswordMode) {
+        if (useAuthStore.getState().isAuthenticated) {
+          navigate("/today");
+        } else if (isForgotPath) {
+          navigate("/login");
+        }
+        setForgotPasswordMode(false);
+        setResetEmailSent(false);
+        setOtpValidated(false);
+        setResetToken("");
+        setOtp("");
+        setNewPassword("");
+        setConfirmPassword("");
+        setError(null);
+        return true;
+      }
       return false;
     });
     return () => unregister();
-  }, [forgotPasswordMode]);
+  }, [forgotPasswordMode, isForgotPath, navigate]);
   const [resetEmailSent, setResetEmailSent] = useState(false);
   const [resetToken, setResetToken] = useState("");
   const [otp, setOtp] = useState("");
@@ -58,7 +96,7 @@ export const LoginPage: React.FC = () => {
     // Initialize GoogleSignIn on native platforms
     if (Capacitor.isNativePlatform()) {
       GoogleSignIn.initialize({
-        clientId: useConfigStore.getState().googleClientId || 'YOUR_WEB_CLIENT_ID_HERE.apps.googleusercontent.com', 
+        clientId: useConfigStore.getState().googleClientId || import.meta.env.VITE_GOOGLE_CLIENT_ID || '729387616931-qlajf1dss2qi1cta5pvc3dos03fh4coi.apps.googleusercontent.com', 
       }).catch(console.error);
     }
   }, []);
@@ -67,6 +105,7 @@ export const LoginPage: React.FC = () => {
     const params = new URLSearchParams(window.location.search);
     const hashParams = new URLSearchParams(window.location.hash.substring(1));
     const token = hashParams.get("oauth_token");
+    const refreshToken = hashParams.get("refresh_token") || undefined;
     const err = params.get("error");
     
     if (err) {
@@ -79,7 +118,7 @@ export const LoginPage: React.FC = () => {
         
         api.get("/users/me", { headers: { Authorization: `Bearer ${token}` } })
             .then(res => {
-              setAuth(res.data, token);
+              setAuth(res.data, token, refreshToken);
               navigate("/today");
             })
             .catch(e => {
@@ -111,15 +150,18 @@ export const LoginPage: React.FC = () => {
     }
 
     try {
+      hapticMedium();
       setLoading(true);
       setError(null);
       const loc = await fetchLocationOnDemand();
       const res = await api.post("/auth/login", { email, password }, {
         headers: loc ? { 'x-attendx-lat': loc.lat, 'x-attendx-lon': loc.lon } : {}
       });
+      hapticSuccess();
       setAuth(res.data.user, res.data.accessToken, res.data.refreshToken);
       navigate("/today");
     } catch (e: any) {
+      hapticError();
       setError(e.response?.data?.message || "Login failed");
     } finally {
       setLoading(false);
@@ -202,7 +244,20 @@ export const LoginPage: React.FC = () => {
     }
   };
 
+  const handleForgotSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (passwordChanged) return;
+    if (!resetEmailSent) {
+      handleForgotPassword(e);
+    } else if (!otpValidated) {
+      handleValidateOtp();
+    } else {
+      handleResetPassword();
+    }
+  };
+
   const handleGoogleLogin = async () => {
+    hapticMedium();
     if (Capacitor.isNativePlatform()) {
       try {
         setLoading(true);
@@ -215,9 +270,11 @@ export const LoginPage: React.FC = () => {
           headers: loc ? { 'x-attendx-lat': loc.lat, 'x-attendx-lon': loc.lon } : {}
         });
         
+        hapticSuccess();
         setAuth(res.data.user, res.data.accessToken, res.data.refreshToken);
         navigate("/today");
       } catch (err: any) {
+        hapticError();
         console.error("Native Google Login failed:", err);
         // User canceled if err.message contains 'canceled'
         if (err.message && !err.message.toLowerCase().includes("canceled")) {
@@ -255,10 +312,10 @@ export const LoginPage: React.FC = () => {
 
         <Card className="bg-white dark:bg-[#111111] rounded-none border-slate-300 dark:border-[#333333] shadow-2xl backdrop-blur-xl">
           {forgotPasswordMode ? (
-            <form onSubmit={handleForgotPassword}>
+            <form onSubmit={handleForgotSubmit}>
               <CardHeader className="space-y-1">
                 <CardTitle className="text-xl">Reset Password</CardTitle>
-                <CardDescription>Enter your email and we'll send you a reset link</CardDescription>
+                <CardDescription>Enter your email to receive a 6-digit verification code</CardDescription>
               </CardHeader>
 
               <CardContent className="space-y-4">
@@ -280,16 +337,26 @@ export const LoginPage: React.FC = () => {
                     <Button 
                       type="button" 
                       onClick={() => {
-                        setForgotPasswordMode(false);
+                        if (useAuthStore.getState().isAuthenticated) {
+                          navigate("/today");
+                        } else {
+                          if (isForgotPath) {
+                            navigate("/login");
+                          }
+                          setForgotPasswordMode(false);
+                        }
                         setPasswordChanged(false);
                         setResetEmailSent(false);
                         setOtp("");
+                        setOtpValidated(false);
+                        setResetToken("");
                         setNewPassword("");
                         setConfirmPassword("");
+                        setError(null);
                       }} 
-                      className="w-full mt-4 bg-[#E63946] hover:bg-[#E63946]/90 text-slate-900 dark:text-slate-50 rounded-none hover:bg-[#E63946] hover:bg-[#E63946]/90 text-slate-900 dark:text-slate-50 rounded-none"
+                      className="w-full mt-4 bg-[#E63946] hover:bg-[#E63946]/90 text-white font-semibold h-11 rounded-xl"
                     >
-                      Return to Login
+                      {useAuthStore.getState().isAuthenticated ? "Return to Dashboard" : "Return to Login"}
                     </Button>
                   </div>
                 ) : resetEmailSent ? (
@@ -306,22 +373,27 @@ export const LoginPage: React.FC = () => {
                       </button>
                     </div>
                     
-                    <div className="space-y-2">
-                      <Label htmlFor="otp">6-Digit OTP</Label>
-                      <div className="relative">
-                        <Key className="absolute left-3 top-3 w-4 h-4 text-slate-600 dark:text-slate-50/60" />
-                        <Input
-                          id="otp"
-                          type="text"
-                          maxLength={6}
-                          value={otp}
-                          onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
-                          required
-                          disabled={otpValidated}
-                          className="pl-9 text-center tracking-widest font-mono text-lg bg-slate-50 dark:bg-[#050505]/50 border-slate-300 dark:border-[#333333] focus:border-primary text-slate-900 dark:text-slate-50 disabled:opacity-50"
-                          placeholder="000000"
-                        />
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-sm font-semibold tracking-wide">Enter 6-Digit OTP</Label>
+                        {otpValidated && (
+                          <span className="flex items-center gap-1 text-xs font-bold text-emerald-500">
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            Verified
+                          </span>
+                        )}
                       </div>
+                      <OtpInput
+                        value={otp}
+                        onChange={(val) => {
+                          setOtp(val);
+                          if (error) setError(null);
+                        }}
+                        disabled={loading || otpValidated}
+                        isValidated={otpValidated}
+                        hasError={Boolean(error && !otpValidated)}
+                        autoFocus={true}
+                      />
                     </div>
                     {otpValidated && (
                       <>
@@ -390,26 +462,28 @@ export const LoginPage: React.FC = () => {
                   resetEmailSent ? (
                     otpValidated ? (
                       <Button 
-                        type="button" 
-                        onClick={handleResetPassword} 
+                        type="submit" 
                         disabled={loading || newPassword.length < 6 || confirmPassword.length < 6} 
-                        className="w-full bg-[#E63946] hover:bg-[#E63946]/90 text-slate-900 dark:text-slate-50 rounded-none hover:bg-[#E63946] hover:bg-[#E63946]/90 text-slate-900 dark:text-slate-50 rounded-none font-semibold h-11 rounded-xl"
+                        className="w-full bg-[#E63946] hover:bg-[#E63946]/90 text-white font-semibold h-11 rounded-xl"
                       >
                         {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Reset Password"}
                       </Button>
                     ) : (
                       <Button 
-                        type="button" 
-                        onClick={handleValidateOtp} 
+                        type="submit" 
                         disabled={loading || otp.length !== 6} 
-                        className="w-full bg-[#E63946] hover:bg-[#E63946]/90 text-slate-900 dark:text-slate-50 rounded-none hover:bg-[#E63946] hover:bg-[#E63946]/90 text-slate-900 dark:text-slate-50 rounded-none font-semibold h-11 rounded-xl"
+                        className="w-full bg-[#E63946] hover:bg-[#E63946]/90 text-white font-semibold h-11 rounded-xl"
                       >
                         {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Verify OTP"}
                       </Button>
                     )
                   ) : (
-                    <Button type="submit" disabled={loading} className="w-full bg-[#E63946] hover:bg-[#E63946]/90 text-slate-900 dark:text-slate-50 rounded-none hover:bg-[#E63946] hover:bg-[#E63946]/90 text-slate-900 dark:text-slate-50 rounded-none font-semibold h-11 rounded-xl">
-                      {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Send Reset Link"}
+                    <Button 
+                      type="submit" 
+                      disabled={loading} 
+                      className="w-full bg-[#E63946] hover:bg-[#E63946]/90 text-white font-semibold h-11 rounded-xl"
+                    >
+                      {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Send OTP Code"}
                     </Button>
                   )
                 )}
@@ -417,13 +491,25 @@ export const LoginPage: React.FC = () => {
                 <button 
                   type="button" 
                   onClick={() => {
-                    setForgotPasswordMode(false);
+                    if (useAuthStore.getState().isAuthenticated) {
+                      navigate("/today");
+                    } else {
+                      if (isForgotPath) {
+                        navigate("/login");
+                      }
+                      setForgotPasswordMode(false);
+                    }
                     setResetEmailSent(false);
+                    setOtpValidated(false);
+                    setResetToken("");
+                    setOtp("");
+                    setNewPassword("");
+                    setConfirmPassword("");
                     setError(null);
                   }}
                   className="text-sm text-slate-600 dark:text-slate-50/60 hover:text-slate-900 dark:text-slate-50 flex items-center justify-center transition-colors h-11"
                 >
-                  <ArrowLeft className="w-4 h-4 mr-2" /> Back to login
+                  <ArrowLeft className="w-4 h-4 mr-2" /> {useAuthStore.getState().isAuthenticated ? "Back to Dashboard" : "Back to login"}
                 </button>
               </CardFooter>
             </form>

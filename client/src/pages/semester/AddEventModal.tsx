@@ -2,16 +2,28 @@ import React, { useState } from "react";
 import { format } from "date-fns";
 import { Calendar as CalendarIcon, Type, X, Loader2 } from "lucide-react";
 import { api } from "../../lib/api";
+import { toast } from "sonner";
 import { useScrollLock } from "../../hooks/useScrollLock";
+import { useCacheStore } from "../../stores/cacheStore";
+import { useAttendanceStore } from "../../stores/attendanceStore";
 
 interface AddEventModalProps {
   isOpen: boolean;
   onClose: () => void;
   semesterId: string | undefined;
-  onSaved: () => void;
+  onOptimisticAdd?: (optimisticEvent: any) => void;
+  onSaved: (createdEvents?: any[], tempId?: string) => void;
+  onErrorRollback?: (tempId: string) => void;
 }
 
-export function AddEventModal({ isOpen, onClose, semesterId, onSaved }: AddEventModalProps) {
+export function AddEventModal({
+  isOpen,
+  onClose,
+  semesterId,
+  onOptimisticAdd,
+  onSaved,
+  onErrorRollback,
+}: AddEventModalProps) {
   useScrollLock(isOpen);
 
   const [title, setTitle] = useState("");
@@ -33,32 +45,51 @@ export function AddEventModal({ isOpen, onClose, semesterId, onSaved }: AddEvent
       return;
     }
 
-    setIsSubmitting(true);
+    const resolvedType = title.toLowerCase().includes("birthday") ? "other" : eventType;
+    const isoStart = `${date}T00:00:00.000Z`;
+    const isoEnd = endDate ? `${endDate}T23:59:59.999Z` : undefined;
+    const tempId = `temp-evt-${Date.now()}`;
+
+    const optimisticEvent = {
+      id: tempId,
+      title: title.trim(),
+      eventType: resolvedType,
+      date: isoStart,
+      endDate: isoEnd,
+      allDay: true,
+      isHolidayList: false,
+    };
+
     setError("");
+    // Reset form & close modal immediately for 0ms perceived latency
+    setTitle("");
+    setEventType("other");
+    setEndDate("");
+    setDate(format(new Date(), "yyyy-MM-dd"));
+    onClose();
+    onOptimisticAdd?.(optimisticEvent);
+    toast.success("Event added!");
 
     try {
-      await api.post("/events/save-wizard", {
+      const res = await api.post("/events/save-wizard", {
         semesterId,
         events: [
           {
-            title,
-            eventType: title.toLowerCase().includes("birthday") ? "other" : eventType,
-            date: new Date(date).toISOString(),
-            endDate: endDate ? new Date(endDate).toISOString() : undefined,
+            title: optimisticEvent.title,
+            eventType: resolvedType,
+            date: isoStart,
+            endDate: isoEnd,
           }
         ]
       });
-      window.dispatchEvent(new Event("attendance-updated"));
-      onSaved();
-      onClose();
-      // reset
-      setTitle("");
-      setEventType("other");
-      setEndDate("");
-      setDate(format(new Date(), "yyyy-MM-dd"));
+      useCacheStore.getState().setCache("calendar", null);
+      onSaved(res.data?.events, tempId);
+      // Refresh global stats quietly in background without duplicate event-storm refetches
+      useAttendanceStore.getState().fetchStats(true).catch(() => {});
     } catch (err: any) {
       console.error(err);
-      setError("Failed to add event. " + (err.response?.data?.error || ""));
+      onErrorRollback?.(tempId);
+      toast.error("Failed to save event: " + (err.response?.data?.error || "Network error"));
     } finally {
       setIsSubmitting(false);
     }
@@ -70,8 +101,8 @@ export function AddEventModal({ isOpen, onClose, semesterId, onSaved }: AddEvent
       <div className="relative w-full max-w-md bg-card border border-border/50 rounded-3xl shadow-xl overflow-hidden flex flex-col max-h-[90vh]">
         <div className="px-6 py-5 border-b border-border/50 flex items-center justify-between sticky top-0 bg-card z-10">
           <h2 className="text-xl font-bold text-foreground">Add Custom Event</h2>
-          <button onClick={onClose} className="p-2 hover:bg-muted rounded-full transition-colors text-muted-foreground">
-            <X size={20} />
+          <button onClick={onClose} className="p-2 rounded-full bg-muted/80 hover:bg-muted text-foreground border border-border transition-colors cursor-pointer shadow-sm">
+            <X size={20} className="stroke-[2.5] text-foreground" />
           </button>
         </div>
 
@@ -100,7 +131,9 @@ export function AddEventModal({ isOpen, onClose, semesterId, onSaved }: AddEvent
                 className="w-full bg-muted/50 border border-border rounded-xl px-4 py-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all appearance-none"
               >
                 <option value="other">Birthday</option>
-                <option value="event">Event</option>
+                <option value="institute">Institute / Academic Event</option>
+                <option value="ct">Cycle Test (CT) / Quiz</option>
+                <option value="lab_exam">Lab Exam / Practical</option>
                 <option value="holiday">Holiday</option>
                 <option value="restricted_holiday">Restricted Holiday</option>
                 <option value="fest">Fest</option>

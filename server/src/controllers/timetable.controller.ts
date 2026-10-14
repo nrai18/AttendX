@@ -1,4 +1,5 @@
 import { Request, Response } from "express";
+import { prisma } from "../lib/prisma";
 import { TimetableService } from "../services/timetable.service";
 import { DocumentService } from "../services/document.service";
 import { SemesterService } from "../services/semester.service";
@@ -22,12 +23,17 @@ export class TimetableController {
   static async getArchivedTimetables(req: Request | any, res: Response) {
     const semesterId = String(req.params.semesterId);
     const userId = req.user?.userId || "anonymous";
-    const archivedSlots = await TimetableService.getArchivedTimetables(userId, semesterId);
+    if (req.query.force === "true") {
+      const fresh = await TimetableService.getArchivedTimetables(userId, semesterId);
+      await CacheService.set(userId, `timetable:archived:${semesterId}`, fresh);
+      return res.json(fresh);
+    }
+    const archivedSlots = await CacheService.getOrSet(userId, `timetable:archived:${semesterId}`, () => TimetableService.getArchivedTimetables(userId, semesterId));
     res.json(archivedSlots);
   }
 
   static async createSlot(req: AuthenticatedRequest, res: Response) {
-    const slot = await TimetableService.createSlot(req.body);
+    const slot = await TimetableService.createSlot(req.user!.userId, req.body);
     await CacheService.invalidateUser(req.user!.userId);
     res.status(201).json(slot);
   }
@@ -159,10 +165,20 @@ export class TimetableController {
     if (!id) {
       return res.status(400).json({ error: "id is required" });
     }
-    await TimetableService.deleteExtraClass(req.user!.userId, id);
-    await CacheService.invalidateUser(req.user!.userId);
+    try {
+      await TimetableService.deleteExtraClass(req.user!.userId, id);
+      await CacheService.invalidateUser(req.user!.userId);
+    } catch (err: any) {
+      // If it's a ghost class (override no longer exists), silently succeed
+      // so the UI can remove the entry without showing a 500 error.
+      if (err?.message?.includes("not found") || err?.message?.includes("ghost")) {
+        return res.json({ message: "Extra class removed (ghost cleanup)" });
+      }
+      throw err; // re-throw real errors (auth, DB issues)
+    }
     res.json({ message: "Extra class deleted" });
   }
+
 
   static async ocrImport(req: Request | any, res: Response) {
     const file = req.file || (req.files && req.files[0]);
@@ -313,6 +329,9 @@ const mappedSchedules: any = {};
       if (!semesterId || !userId || !selections || !rawSlots) {
         return res.status(400).json({ error: "Missing required fields" });
       }
+
+      const ownsSemester = await prisma.semester.findFirst({ where: { id: semesterId, userId } });
+      if (!ownsSemester) return res.status(403).json({ error: "Forbidden: Unauthorized semester access" });
 
       const { slots, newSubjectIds, existingSubjectIds } = await TimetableService.saveWizardTimetable(userId, semesterId, selections, rawSlots, startDate);
       await CacheService.invalidateUser(userId);

@@ -270,7 +270,7 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
     if (isOpenRef.current && !isProcessingRef.current && !isSpeakingRef.current) {
       silenceTimeoutRef.current = setTimeout(() => {
         if (isOpenRef.current && !isProcessingRef.current && !NativeVoiceService.isSpeaking()) {
-          toast.info("Hands-free paused due to 20s of inactivity.");
+          // Silence timeout: transition UI to idle without noisy toast
           stopListening();
         }
       }, 20000);
@@ -350,9 +350,9 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
     onError: (err: any) => {
       console.warn("Voice overlay recognition error:", err);
       if (err && err.error && err.error !== "no-speech" && err.error !== "aborted") {
-        toast.error(`Mic Error: ${err.error}`);
+        console.warn(`Mic Error: ${err.error}`);
       } else if (err && err.message) {
-        toast.error(`Mic Error: ${err.message}`);
+        console.warn(`Mic Error: ${err.message}`);
       }
       if (isOpenRef.current) {
         setIsListening(false);
@@ -597,9 +597,6 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
     });
     return () => { listener.then(l => l.remove()); };
   }, []);
-
-  if (!isOpen) return null;
-
   const getUiState = () => {
     if (isProcessing) return "PROCESSING";
     if (isSpeaking) return "SPEAKING";

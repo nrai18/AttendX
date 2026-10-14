@@ -29,6 +29,17 @@ export default defineConfig({
         secure: false,
         timeout: 300000,
         proxyTimeout: 300000,
+        configure: (proxy) => {
+          proxy.on("error", (err, _req, res) => {
+            if ((err as any).code === "ECONNREFUSED") {
+              const serverRes = res as any;
+              if (serverRes && typeof serverRes.writeHead === "function" && !serverRes.headersSent) {
+                serverRes.writeHead(503, { "Content-Type": "application/json" });
+                serverRes.end(JSON.stringify({ error: "Backend server is offline on 127.0.0.1:3000", code: "BACKEND_OFFLINE" }));
+              }
+            }
+          });
+        },
       },
     },
   },

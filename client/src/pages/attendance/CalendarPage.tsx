@@ -10,9 +10,11 @@ import { SyncEventsModal } from "../../components/calendar/SyncEventsModal";
 import { InlineAction } from "../../components/ui/inline-action";
 import { toast } from "sonner";
 import { useCacheStore } from "../../stores/cacheStore";
+import { useOfflineStore } from "../../stores/offlineStore";
 import { useBackHandlerStore } from "../../stores/backHandlerStore";
 import { useAttendanceStore } from "../../stores/attendanceStore";
 import { useSwipeable } from "react-swipeable";
+import { hapticSelection } from "../../utils/haptics";
 
 interface DayDetail {
   id: string;
@@ -26,6 +28,7 @@ interface CalendarEvent {
   title: string;
   eventType: string;
   isHolidayList?: boolean;
+  isHoliday?: boolean;
 }
 
 interface CalendarData {
@@ -51,6 +54,35 @@ interface CalendarData {
   };
 }
 
+function deduplicateCalendarEvents(eventsList: CalendarEvent[]): CalendarEvent[] {
+  if (!eventsList || eventsList.length <= 1) return eventsList;
+  const result: CalendarEvent[] = [];
+  for (const ev of eventsList) {
+    const isHoliday = Boolean(ev.isHoliday) || ["holiday", "restricted_holiday"].includes(ev.eventType || "");
+    if (isHoliday) {
+      const matchIdx = result.findIndex(r => {
+        const rIsHoliday = Boolean(r.isHoliday) || ["holiday", "restricted_holiday"].includes(r.eventType || "");
+        if (!rIsHoliday) return false;
+        const normR = r.title.toLowerCase().replace(/\(.*?\)/g, "").trim();
+        const normE = ev.title.toLowerCase().replace(/\(.*?\)/g, "").trim();
+        return normR === normE || normR.includes(normE) || normE.includes(normR);
+      });
+      if (matchIdx !== -1) {
+        if (ev.title.length > result[matchIdx].title.length) {
+          result[matchIdx] = ev;
+        }
+        continue;
+      }
+    } else {
+      if (result.some(r => r.title.toLowerCase().trim() === ev.title.toLowerCase().trim())) {
+        continue;
+      }
+    }
+    result.push(ev);
+  }
+  return result;
+}
+
 export const CalendarPage = () => {
   const cachedData = useCacheStore((state) => state.calendar);
   const setCache = useCacheStore((state) => state.setCache);
@@ -64,12 +96,14 @@ export const CalendarPage = () => {
   const swipeHandlers = useSwipeable({
     onSwipedLeft: () => {
       if (selectedMobileDate) {
+        hapticSelection();
         const nextDay = format(addDays(new Date(selectedMobileDate + 'T00:00:00'), 1), 'yyyy-MM-dd');
         setSelectedMobileDate(nextDay);
       }
     },
     onSwipedRight: () => {
       if (selectedMobileDate) {
+        hapticSelection();
         const prevDay = format(addDays(new Date(selectedMobileDate + 'T00:00:00'), -1), 'yyyy-MM-dd');
         setSelectedMobileDate(prevDay);
       }
@@ -106,8 +140,10 @@ export const CalendarPage = () => {
     if (!touchStartX || !touchEndX) return;
     const distance = touchStartX - touchEndX;
     if (distance > 50) {
+      hapticSelection();
       setCurrentDate(prev => addMonths(prev, 1));
     } else if (distance < -50) {
+      hapticSelection();
       setCurrentDate(prev => subMonths(prev, 1));
     }
     setTouchStartX(null);
@@ -115,6 +151,160 @@ export const CalendarPage = () => {
   };
 
   const abortControllerRef = useRef<AbortController | null>(null);
+
+  const buildLocalMonthPreview = (monthStr: string): CalendarData | null => {
+    try {
+      const cacheState = useCacheStore.getState();
+      const allLogs: any[] =
+        cacheState.subject_logs?.["all"]?.logs ||
+        useAttendanceStore.getState().historyLogs ||
+        [];
+      const ttStore = cacheState.timetable;
+      const activeSlots: any[] = Array.isArray(ttStore) ? ttStore : (ttStore?.slots || []);
+      const archivedVersions: any[] = (!Array.isArray(ttStore) && ttStore?.archivedSlots) || cacheState.archived_timetables || [];
+      const archivedSlots: any[] = archivedVersions.flatMap((v: any) => v?.slots || []);
+      const allSlots = [...activeSlots, ...archivedSlots];
+      const allEvents: any[] = cacheState.semester?.events || (useAttendanceStore.getState().events as any) || [];
+
+      if (allLogs.length === 0 && allSlots.length === 0 && allEvents.length === 0) {
+        return null;
+      }
+
+      const [year, m] = monthStr.split("-").map(Number);
+      const startDate = new Date(year, m - 1, 1);
+      const endDate = new Date(year, m, 0);
+      const todayStr = format(new Date(), "yyyy-MM-dd");
+
+      const days: Record<string, string> = {};
+      const details: Record<string, DayDetail[]> = {};
+      const eventsMap: Record<string, CalendarEvent[]> = {};
+      const dayStats = { not_marked: 0, off: 0, missed: 0, attended: 0, mixed: 0 };
+      const lectureStats = { off: 0, missed: 0, attended: 0, total: 0, percentage: 0 };
+
+      for (let d = new Date(startDate); d <= endDate; d = addDays(d, 1)) {
+        const dateStr = format(d, "yyyy-MM-dd");
+        const jsDay = d.getDay();
+        const dbDay = jsDay === 0 ? 6 : jsDay - 1;
+
+        const dayEvents = allEvents.filter((ev: any) => {
+          const s = String(ev.date || "").slice(0, 10);
+          const e = String(ev.endDate || ev.date || "").slice(0, 10);
+          return s && dateStr >= s && dateStr <= e;
+        });
+
+        if (dayEvents.length > 0) {
+          eventsMap[dateStr] = deduplicateCalendarEvents(
+            dayEvents.map((ev: any) => ({
+              id: ev.id,
+              title: ev.title || "Event",
+              eventType: ev.eventType || ev.type || "other",
+              isHolidayList: ev.isHolidayList,
+              isHoliday: ev.isHoliday,
+            }))
+          );
+        }
+
+        const isGlobalOff = dayEvents.some((ev: any) =>
+          ["holiday", "vacation"].includes(String(ev.eventType || ev.type || "").toLowerCase())
+        );
+
+        const dayLogs = allLogs.filter((l: any) => String(l.date || "").slice(0, 10) === dateStr);
+        const daySlots = isGlobalOff
+          ? []
+          : allSlots.filter((s: any) => {
+              if (s.dayOfWeek !== dbDay) return false;
+              const fromKey = s.validFrom ? String(s.validFrom).slice(0, 10) : "0000-00-00";
+              if (fromKey > dateStr) return false;
+              if (s.validUntil) {
+                const untilKey = String(s.validUntil).slice(0, 10);
+                if (untilKey < dateStr) return false;
+              }
+              return true;
+            });
+
+        if (dayLogs.length > 0) {
+          details[dateStr] = dayLogs.map((l: any, idx: number) => ({
+            id: l.id || `${dateStr}-${idx}`,
+            subjectName: l.subjectName || l.subject?.name || l.subject || "Subject",
+            status: String(l.status || "not_marked").toLowerCase(),
+            remarks: l.remarks || null,
+          }));
+        }
+
+        let status = "off";
+        if (dateStr > todayStr) {
+          status = daySlots.length > 0 ? "future" : "off";
+        } else if (dayLogs.length > 0) {
+          let presentCount = 0;
+          let absentCount = 0;
+          for (const l of dayLogs) {
+            const st = String(l.status || "").toLowerCase();
+            if (["present", "attended", "medical", "od"].includes(st)) {
+              presentCount++;
+              lectureStats.attended++;
+            } else if (["absent", "missed"].includes(st)) {
+              absentCount++;
+              lectureStats.missed++;
+            } else if (["off", "cancelled"].includes(st)) {
+              lectureStats.off++;
+            }
+          }
+          if (presentCount > 0 && absentCount === 0) status = "attended";
+          else if (absentCount > 0 && presentCount === 0) status = "missed";
+          else if (presentCount > 0 && absentCount > 0) status = "mixed";
+          else status = "off";
+        } else {
+          status = daySlots.length > 0 ? "not_marked" : "off";
+        }
+
+        days[dateStr] = status;
+        if (status === "not_marked" || status === "future") dayStats.not_marked++;
+        else if (status === "off") dayStats.off++;
+        else if (status === "missed") dayStats.missed++;
+        else if (status === "attended") dayStats.attended++;
+        else if (status === "mixed") dayStats.mixed++;
+      }
+
+      lectureStats.total = lectureStats.attended + lectureStats.missed;
+      lectureStats.percentage =
+        lectureStats.total > 0 ? (lectureStats.attended / lectureStats.total) * 100 : 0;
+
+      return {
+        hasCalendar: allEvents.length > 0,
+        days,
+        details,
+        events: eventsMap,
+        stats: {
+          days: dayStats,
+          lectures: lectureStats,
+        },
+      };
+    } catch {
+      return null;
+    }
+  };
+
+  const prefetchAdjacentMonths = (baseDate: Date) => {
+    const adjacent = [
+      format(subMonths(baseDate, 1), "yyyy-MM"),
+      format(addMonths(baseDate, 1), "yyyy-MM"),
+    ];
+    const currentCalCache = useCacheStore.getState().calendar || {};
+    adjacent.forEach((mStr) => {
+      if (currentCalCache[mStr]) return;
+      api
+        .get(`/attendance/calendar?month=${mStr}`)
+        .then((res) => {
+          if (res.data && typeof res.data === "object") {
+            useCacheStore.getState().setCache("calendar", {
+              ...(useCacheStore.getState().calendar || {}),
+              [mStr]: res.data,
+            });
+          }
+        })
+        .catch(() => {});
+    });
+  };
 
   const fetchCalendar = async (force: boolean = false) => {
     if (abortControllerRef.current) {
@@ -125,10 +315,18 @@ export const CalendarPage = () => {
 
     const monthStr = format(currentDate, "yyyy-MM");
     try {
-      if (cachedData && cachedData[monthStr]) {
-        setData(cachedData[monthStr]);
+      const latestCalendarCache = useCacheStore.getState().calendar;
+      if (latestCalendarCache && latestCalendarCache[monthStr]) {
+        setData(latestCalendarCache[monthStr]);
+        setIsLoading(false);
       } else {
-        setIsLoading(true);
+        const instantPreview = buildLocalMonthPreview(monthStr);
+        if (instantPreview) {
+          setData(instantPreview);
+          setIsLoading(false);
+        } else if (!data) {
+          setIsLoading(true);
+        }
       }
       
       const res = await api.get(`/attendance/calendar?month=${monthStr}${force ? '&force=true' : ''}`, {
@@ -136,10 +334,10 @@ export const CalendarPage = () => {
       });
       let d = typeof res.data === 'string' ? { days: [], insights: [], events: [], isComplete: false, completionPercentage: 0, requiredClassesToTarget: 0, canBunk: false } : res.data;
       
-      // MERGE OFFLINE/OPTIMISTIC LOGS OVER THE API RESPONSE
-      // This ensures that if the backend cache is stale (offline queue hasn't flushed to invalidate it),
-      // the frontend still reflects the user's latest offline marks.
-      const logs = useAttendanceStore.getState().historyLogs || [];
+      // MERGE OFFLINE/OPTIMISTIC LOGS OVER THE API RESPONSE ONLY WHEN OFFLINE QUEUE IS NON-EMPTY
+      // When online with an empty offline queue, the server response is authoritative and must not be clobbered by stale historyLogs.
+      const hasPendingOfflineQueue = (useOfflineStore.getState().queue?.length || 0) > 0;
+      const logs = hasPendingOfflineQueue ? (useAttendanceStore.getState().historyLogs || []) : [];
       const filteredLogs = logs.filter((log: any) => log.date?.startsWith(monthStr));
       
       if (filteredLogs.length > 0) {
@@ -170,17 +368,29 @@ export const CalendarPage = () => {
           if (dayDetails.length > 0) {
             d.details[dateStr] = dayDetails;
             
-            const hasAttended = dayDetails.some((l: any) => ['present', 'attended'].includes(l.status.toLowerCase()));
-            const hasMissed = dayDetails.some((l: any) => ['absent', 'missed'].includes(l.status.toLowerCase()));
-            
-            if (hasAttended && hasMissed) {
-              d.days[dateStr] = "mixed";
-            } else if (hasAttended) {
-              d.days[dateStr] = "attended";
-            } else if (hasMissed) {
-              d.days[dateStr] = "missed";
+            // A day only gets a status color (attended, missed, mixed, off) when it is FULLY MARKED.
+            // If any slot is still pending/unmarked, the day remains 'not_marked' (uncoloured).
+            const isFullyMarked = dayDetails.every((l: any) => {
+              const s = (l.status || '').toLowerCase();
+              const isUnmarkedId = typeof l.id === 'string' && l.id.startsWith('unmarked-');
+              return !isUnmarkedId && s && s !== 'not_marked';
+            });
+
+            if (!isFullyMarked) {
+              d.days[dateStr] = "not_marked";
             } else {
-              d.days[dateStr] = "off";
+              const hasAttended = dayDetails.some((l: any) => ['present', 'attended', 'medical', 'od'].includes(l.status.toLowerCase()));
+              const hasMissed = dayDetails.some((l: any) => ['absent', 'missed'].includes(l.status.toLowerCase()));
+              
+              if (hasAttended && hasMissed) {
+                d.days[dateStr] = "mixed";
+              } else if (hasAttended) {
+                d.days[dateStr] = "attended";
+              } else if (hasMissed) {
+                d.days[dateStr] = "missed";
+              } else {
+                d.days[dateStr] = "off";
+              }
             }
           }
         });
@@ -189,105 +399,22 @@ export const CalendarPage = () => {
       setData(d);
       
       setCache('calendar', {
-        ...cachedData,
+        ...useCacheStore.getState().calendar,
         [monthStr]: d
       });
+      prefetchAdjacentMonths(currentDate);
       return d;
     } catch (error: any) {
       if (error?.name === 'CanceledError' || error?.name === 'AbortError' || error?.message?.includes('canceled')) return;
       console.error("Failed to fetch calendar:", error);
       
       // --- OFFLINE FALLBACK CALCULATION ---
-      try {
-        const logs = useAttendanceStore.getState().historyLogs || [];
-        const timetableStore = useCacheStore.getState().timetable;
-        const timetable = Array.isArray(timetableStore) ? timetableStore : (timetableStore?.slots || []);
-
-        const filteredLogs = logs.filter((log: any) => log.date?.startsWith(monthStr));
-
-        const days: Record<string, string> = {};
-        const details: Record<string, any[]> = {};
-        const events = cachedData?.[monthStr]?.events || {};
-
-        let attended = 0;
-        let missed = 0;
-        let mixed = 0;
-        let off = 0;
-        let not_marked = 0;
-
-        const startDate = startOfMonth(new Date(`${monthStr}-01T00:00:00`));
-        const endDate = endOfMonth(startDate);
-        const today = format(new Date(), "yyyy-MM-dd");
-
-        for (let d = startDate; d <= endDate; d = addDays(d, 1)) {
-          const dateStr = format(d, "yyyy-MM-dd");
-          const dayOfWeek = d.getDay();
-          const dbDay = dayOfWeek === 0 ? 6 : dayOfWeek - 1; // 0=Mon, 6=Sun
-          
-          const dayLogs = filteredLogs.filter((l: any) => l.date === dateStr);
-          
-          if (dateStr > today) {
-            days[dateStr] = "future";
-            continue;
-          }
-
-          if (dayLogs.length > 0) {
-            details[dateStr] = dayLogs.map((l: any) => ({
-              id: Math.random().toString(),
-              subjectName: l.subject,
-              status: l.status.toLowerCase(),
-              remarks: null,
-            }));
-
-            const hasAttended = dayLogs.some((l: any) => ['present', 'attended'].includes(l.status.toLowerCase()));
-            const hasMissed = dayLogs.some((l: any) => ['absent', 'missed'].includes(l.status.toLowerCase()));
-            
-            if (hasAttended && hasMissed) {
-              days[dateStr] = "mixed";
-              mixed++;
-            } else if (hasAttended) {
-              days[dateStr] = "attended";
-              attended++;
-            } else if (hasMissed) {
-              days[dateStr] = "missed";
-              missed++;
-            } else {
-              days[dateStr] = "off";
-              off++;
-            }
-          } else {
-            let hasClasses = false;
-            if (Array.isArray(timetable)) {
-              hasClasses = timetable.some((slot: any) => slot.dayOfWeek === dbDay);
-            }
-            
-            if (hasClasses && dateStr <= today) {
-              days[dateStr] = "not_marked";
-              not_marked++;
-            } else {
-              days[dateStr] = "off";
-              off++;
-            }
-          }
-        }
-
-        const fallbackData = {
-          hasCalendar: true,
-          days,
-          details,
-          events,
-          stats: {
-            days: { not_marked, off, missed, attended, mixed },
-            lectures: { off: 0, missed: 0, attended: 0, total: 0, percentage: 0 }
-          }
-        };
-
+      const fallbackData = buildLocalMonthPreview(monthStr);
+      if (fallbackData) {
         setData(fallbackData);
         return fallbackData;
-      } catch (fallbackError) {
-        console.error("Offline fallback also failed", fallbackError);
-        return null;
       }
+      return null;
     } finally {
       if (abortControllerRef.current === controller) {
         setIsLoading(false);
@@ -296,14 +423,14 @@ export const CalendarPage = () => {
   };
 
   useEffect(() => {
-    fetchCalendar();
+    fetchCalendar(false);
 
     // Check if we were redirected here and should prompt the user to force sync
     const params = new URLSearchParams(window.location.search);
-    if (params.get("promptSync") === "true") {
+    if (false && params.get("promptSync") === "true") {
       setTimeout(() => {
-        toast.info("Please click 'Sync Events' to ensure all your dates, lectures, and data are perfectly synchronized!", {
-          duration: 8000,
+        toast.info("Click 'Sync Events' to ensure your lectures and calendar dates are fully synchronized.", {
+          duration: 3500,
           position: "top-center"
         });
         // Remove the param so it doesn't keep prompting on refresh
@@ -312,11 +439,133 @@ export const CalendarPage = () => {
     }
 
     const handleAttendanceUpdate = () => {
-      fetchCalendar();
+      fetchCalendar(true);
     };
     window.addEventListener("attendance-updated", handleAttendanceUpdate);
-    return () => window.removeEventListener("attendance-updated", handleAttendanceUpdate);
+    window.addEventListener("events-updated", handleAttendanceUpdate);
+    return () => {
+      window.removeEventListener("attendance-updated", handleAttendanceUpdate);
+      window.removeEventListener("events-updated", handleAttendanceUpdate);
+    };
   }, [currentDate]);
+
+  const getEventOptimumStyle = (e: CalendarEvent) => {
+    const type = (e.eventType || "").toLowerCase();
+    const titleLower = (e.title || "").toLowerCase();
+
+    if (type === "restricted_holiday") {
+      return {
+        priority: 1,
+        dot: "bg-cyan-400",
+        ring: "ring-2 ring-cyan-500 bg-cyan-500/10 dark:bg-cyan-500/20",
+        text: "text-cyan-600 dark:text-cyan-400",
+        pill: "bg-cyan-500/10 border-cyan-500/25 text-cyan-600 dark:text-cyan-400",
+      };
+    }
+    if (e.isHolidayList && type !== "restricted_holiday") {
+      return {
+        priority: 0,
+        dot: "bg-blue-500",
+        ring: "ring-2 ring-blue-500 bg-blue-500/10 dark:bg-blue-500/20",
+        text: "text-blue-600 dark:text-blue-400",
+        pill: "bg-blue-500/10 border-blue-500/25 text-blue-600 dark:text-blue-400",
+      };
+    }
+    if (
+      type === "holiday" ||
+      titleLower.includes("holiday") ||
+      titleLower.includes("jayanti") ||
+      titleLower.includes("diwali") ||
+      titleLower.includes("dussehra")
+    ) {
+      return {
+        priority: 0,
+        dot: "bg-blue-500",
+        ring: "ring-2 ring-blue-500 bg-blue-500/10 dark:bg-blue-500/20",
+        text: "text-blue-600 dark:text-blue-400",
+        pill: "bg-blue-500/10 border-blue-500/25 text-blue-600 dark:text-blue-400",
+      };
+    }
+    if (type === "endsem" || titleLower.includes("end sem") || titleLower.includes("end-sem")) {
+      return {
+        priority: 2,
+        dot: "bg-red-500",
+        ring: "ring-2 ring-red-600 bg-red-600/10 dark:bg-red-600/20",
+        text: "text-red-600 dark:text-red-400",
+        pill: "bg-red-500/10 border-red-500/25 text-red-600 dark:text-red-400",
+      };
+    }
+    if (type === "midsem" || titleLower.includes("mid sem") || titleLower.includes("mid-sem") || titleLower.includes("mse")) {
+      return {
+        priority: 3,
+        dot: "bg-orange-500",
+        ring: "ring-2 ring-orange-500 bg-orange-500/10 dark:bg-orange-500/20",
+        text: "text-orange-600 dark:text-orange-400",
+        pill: "bg-orange-500/10 border-orange-500/25 text-orange-600 dark:text-orange-400",
+      };
+    }
+    if (type === "lab_exam" || titleLower.includes("lab") || titleLower.includes("practical")) {
+      return {
+        priority: 5,
+        dot: "bg-yellow-400",
+        ring: "ring-2 ring-yellow-500 bg-yellow-500/10 dark:bg-yellow-500/20",
+        text: "text-yellow-600 dark:text-yellow-400",
+        pill: "bg-yellow-500/10 border-yellow-500/25 text-yellow-600 dark:text-yellow-400",
+      };
+    }
+    if (type === "ct" || type === "exam" || titleLower.includes("exam") || titleLower.includes("cycle test") || titleLower.includes("quiz")) {
+      return {
+        priority: 4,
+        dot: "bg-amber-500",
+        ring: "ring-2 ring-amber-500 bg-amber-500/10 dark:bg-amber-500/20",
+        text: "text-amber-600 dark:text-amber-400",
+        pill: "bg-amber-500/10 border-amber-500/25 text-amber-600 dark:text-amber-400",
+      };
+    }
+    if (type === "vacation" || titleLower.includes("vacation") || titleLower.includes("break")) {
+      return {
+        priority: 6,
+        dot: "bg-cyan-400",
+        ring: "ring-2 ring-cyan-500 bg-cyan-500/10 dark:bg-cyan-500/20",
+        text: "text-cyan-600 dark:text-cyan-400",
+        pill: "bg-cyan-500/10 border-cyan-500/25 text-cyan-600 dark:text-cyan-400",
+      };
+    }
+    if (type === "sports" || titleLower.includes("sports") || titleLower.includes("yalgaar") || titleLower.includes("tournament")) {
+      return {
+        priority: 9,
+        dot: "bg-indigo-400",
+        ring: "ring-2 ring-indigo-500 bg-indigo-500/10 dark:bg-indigo-500/20",
+        text: "text-indigo-600 dark:text-indigo-400",
+        pill: "bg-indigo-500/10 border-indigo-500/25 text-indigo-600 dark:text-indigo-400",
+      };
+    }
+    if (type === "fest" || titleLower.includes("fest")) {
+      return {
+        priority: 8,
+        dot: "bg-fuchsia-500",
+        ring: "ring-2 ring-purple-500 bg-purple-500/10 dark:bg-purple-500/20",
+        text: "text-fuchsia-600 dark:text-fuchsia-400",
+        pill: "bg-fuchsia-500/10 border-fuchsia-500/25 text-fuchsia-600 dark:text-fuchsia-400",
+      };
+    }
+    if (type === "institute" || titleLower.includes("institute") || titleLower.includes("commencement")) {
+      return {
+        priority: 7,
+        dot: "bg-sky-400",
+        ring: "ring-2 ring-sky-500 bg-sky-500/10 dark:bg-sky-500/20",
+        text: "text-sky-600 dark:text-sky-400",
+        pill: "bg-sky-500/10 border-sky-500/25 text-sky-600 dark:text-sky-400",
+      };
+    }
+    return {
+      priority: 7,
+      dot: "bg-pink-500",
+      ring: "ring-2 ring-pink-500 bg-pink-500/10 dark:bg-pink-500/20",
+      text: "text-pink-600 dark:text-pink-400",
+      pill: "bg-pink-500/10 border-pink-500/25 text-pink-600 dark:text-pink-400",
+    };
+  };
 
   const monthStart = startOfMonth(currentDate);
   const monthEnd = endOfMonth(monthStart);
@@ -373,22 +622,36 @@ export const CalendarPage = () => {
               icon={<CalendarDays size={18} />} 
               actionText="Sync Events" 
               onAction={async () => {
+                hapticSelection();
                 setIsSyncModalOpen(true);
               }} 
             />
           </div>
         </div>
         <div className="flex gap-2">
-          <button onClick={() => setCurrentDate(subMonths(currentDate, 1))} className="p-2 hover:bg-muted rounded-lg text-muted-foreground transition-colors cursor-pointer">
+          <button onClick={() => { hapticSelection(); setCurrentDate(subMonths(currentDate, 1)); }} className="p-2 hover:bg-muted rounded-lg text-muted-foreground transition-colors cursor-pointer">
             <ChevronLeft className="w-5 h-5" />
           </button>
-          <button onClick={() => setCurrentDate(new Date())} className="px-3 py-1.5 hover:bg-muted rounded-lg text-sm font-medium text-foreground transition-colors cursor-pointer">
+          <button onClick={() => { hapticSelection(); setCurrentDate(new Date()); }} className="px-3 py-1.5 hover:bg-muted rounded-lg text-sm font-medium text-foreground transition-colors cursor-pointer">
             Today
           </button>
-          <button onClick={() => setCurrentDate(addMonths(currentDate, 1))} className="p-2 hover:bg-muted rounded-lg text-muted-foreground transition-colors cursor-pointer">
+          <button onClick={() => { hapticSelection(); setCurrentDate(addMonths(currentDate, 1)); }} className="p-2 hover:bg-muted rounded-lg text-muted-foreground transition-colors cursor-pointer">
             <ChevronRight className="w-5 h-5" />
           </button>
         </div>
+      </div>
+
+      {/* Mobile Sync Events Pill Banner */}
+      <div className="block sm:hidden w-full -mt-2">
+        <InlineAction 
+          label="Calendar" 
+          icon={<CalendarDays size={18} />} 
+          actionText="Sync Events" 
+          onAction={async () => {
+            hapticSelection();
+            setIsSyncModalOpen(true);
+          }} 
+        />
       </div>
 
       <div 
@@ -408,50 +671,18 @@ export const CalendarPage = () => {
           const isToday = isSameDay(d, new Date());
           const dayDetails = details[dateKey] || [];
           const dayEvents = events[dateKey] || [];
+          const dedupedDayEvents = deduplicateCalendarEvents(dayEvents).sort(
+            (a, b) => getEventOptimumStyle(a).priority - getEventOptimumStyle(b).priority
+          );
           const hasRemarks = dayDetails.some(item => !!item.remarks);
-
-          const isEndSem = dayEvents.some(e => e.eventType === "endsem" || e.title.toLowerCase().includes("end sem") || e.title.toLowerCase().includes("end-sem"));
-          const isMidSem = dayEvents.some(e => e.eventType === "midsem" || e.title.toLowerCase().includes("mid sem") || e.title.toLowerCase().includes("mid-sem"));
-          const isExam = dayEvents.some(e => e.eventType === "exam" || (e.title.toLowerCase().includes("exam") && !e.title.toLowerCase().includes("lab")));
-          const isLabExam = dayEvents.some(e => e.eventType === "lab_exam" || e.title.toLowerCase().includes("lab") || e.title.toLowerCase().includes("practical"));
-          const isFest = dayEvents.some(e => e.eventType === "fest" || e.title.toLowerCase().includes("yalgaar") || e.title.toLowerCase().includes("fest"));
-          const isSports = dayEvents.some(e => e.eventType === "sports" || e.title.toLowerCase().includes("sports") || e.title.toLowerCase().includes("tournament"));
-          const isRestrictedHoliday = dayEvents.some(e => e.eventType === "restricted_holiday");
-          const isHolidayListHoliday = dayEvents.some(e => e.isHolidayList && e.eventType !== "restricted_holiday");
-          const isAcademicHoliday = dayEvents.some(e => !e.isHolidayList && (e.eventType === "holiday" || e.title.toLowerCase().includes("holiday") || e.title.toLowerCase().includes("jayanti") || e.title.toLowerCase().includes("diwali") || e.title.toLowerCase().includes("dussehra")));
-          const isVacation = dayEvents.some(e => e.eventType === "vacation" || e.title.toLowerCase().includes("vacation") || e.title.toLowerCase().includes("break"));
-          const hasEvent = dayEvents.length > 0;
-
-          let animBorder = "";
-          if (isEndSem) {
-            animBorder = "ring-2 ring-red-600 bg-red-600/10 dark:bg-red-600/20";
-          } else if (isMidSem) {
-            animBorder = "ring-2 ring-rose-500 bg-rose-500/10 dark:bg-rose-500/20";
-          } else if (isExam) {
-            animBorder = "ring-2 ring-orange-500 bg-orange-500/10 dark:bg-orange-500/20";
-          } else if (isLabExam) {
-            animBorder = "ring-2 ring-amber-500 bg-amber-500/10 dark:bg-amber-500/20";
-          } else if (isFest) {
-            animBorder = "ring-2 ring-purple-500 bg-purple-500/10 dark:bg-purple-500/20";
-          } else if (isSports) {
-            animBorder = "ring-2 ring-lime-500 bg-lime-500/10 dark:bg-lime-500/20";
-          } else if (isRestrictedHoliday) {
-            animBorder = "ring-2 ring-cyan-500 bg-cyan-500/10 dark:bg-cyan-500/20";
-          } else if (isHolidayListHoliday) {
-            animBorder = "ring-2 ring-blue-500 bg-blue-500/10 dark:bg-blue-500/20";
-          } else if (isAcademicHoliday) {
-            animBorder = "ring-2 ring-emerald-500 bg-emerald-500/10 dark:bg-emerald-500/20";
-          } else if (isVacation) {
-            animBorder = "ring-2 ring-cyan-500 bg-cyan-500/10 dark:bg-cyan-500/20";
-          } else if (hasEvent) {
-            animBorder = "ring-2 ring-primary bg-primary/10 dark:bg-primary/20";
-          }
+          const animBorder = dedupedDayEvents.length > 0 ? getEventOptimumStyle(dedupedDayEvents[0]).ring : "";
 
           return (
             <div key={i} className="flex justify-center">
               {isCurrentMonth ? (
                 <button
                   onClick={() => {
+                    hapticSelection();
                     if (window.innerWidth < 640) {
                       setSelectedMobileDate(dateKey);
                     } else {
@@ -470,9 +701,13 @@ export const CalendarPage = () => {
                     {hasRemarks && (
                       <MessageSquare className="w-2.5 h-2.5 text-primary" />
                     )}
-                    {hasEvent && (
-                      <span className="w-1.5 h-1.5 rounded-full bg-primary animate-ping" />
-                    )}
+                    {dedupedDayEvents.slice(0, 2).map((ev, evIdx) => (
+                      <span
+                        key={ev.id || evIdx}
+                        className={`w-1.5 h-1.5 rounded-full ${getEventOptimumStyle(ev).dot}`}
+                        title={ev.title}
+                      />
+                    ))}
                   </div>
 
                   {/* Hover Agenda Tooltip (Hidden on Mobile) */}
@@ -494,14 +729,17 @@ export const CalendarPage = () => {
                     </div>
 
                     {/* Events */}
-                    {dayEvents.length > 0 && (
+                    {dedupedDayEvents.length > 0 && (
                       <div className="flex flex-col gap-1">
-                        {dayEvents.map((e, idx) => (
-                          <div key={idx} className="flex items-start gap-1.5 text-xs font-semibold text-primary">
-                            <span className="w-1.5 h-1.5 rounded-full bg-primary mt-1 shrink-0" />
-                            <span className="leading-tight">{e.title}</span>
-                          </div>
-                        ))}
+                        {dedupedDayEvents.map((e, idx) => {
+                          const evStyle = getEventOptimumStyle(e);
+                          return (
+                            <div key={idx} className={`flex items-start gap-1.5 text-xs font-semibold ${evStyle.text}`}>
+                              <span className={`w-1.5 h-1.5 rounded-full ${evStyle.dot} mt-1 shrink-0`} />
+                              <span className="leading-tight">{e.title}</span>
+                            </div>
+                          );
+                        })}
                       </div>
                     )}
 
@@ -620,7 +858,7 @@ export const CalendarPage = () => {
       <CalendarImportModal 
         isOpen={isImportModalOpen}
         onClose={() => setIsImportModalOpen(false)}
-        onSuccess={fetchCalendar}
+        onSuccess={() => fetchCalendar(true)}
       />
 
       <SyncEventsModal 
@@ -679,12 +917,15 @@ export const CalendarPage = () => {
                     {dayEvents.length > 0 && (
                       <div className="flex flex-col gap-2 mb-2">
                         <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Events</h4>
-                        {dayEvents.map((e, idx) => (
-                          <div key={idx} className="flex items-start gap-2 text-sm font-semibold text-primary bg-primary/10 p-2.5 rounded-xl border border-primary/20">
-                            <span className="w-2 h-2 rounded-full bg-primary mt-1.5 shrink-0" />
-                            <span className="leading-tight">{e.title}</span>
-                          </div>
-                        ))}
+                        {deduplicateCalendarEvents(dayEvents).map((e, idx) => {
+                          const evStyle = getEventOptimumStyle(e);
+                          return (
+                            <div key={idx} className={`flex items-start gap-2 text-sm font-semibold p-2.5 rounded-xl border ${evStyle.pill}`}>
+                              <span className={`w-2 h-2 rounded-full ${evStyle.dot} mt-1.5 shrink-0`} />
+                              <span className="leading-tight">{e.title}</span>
+                            </div>
+                          );
+                        })}
                       </div>
                     )}
 

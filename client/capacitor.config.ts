@@ -33,6 +33,13 @@ const config: CapacitorConfig = {
       autoDeleteFailed: true,
       autoDeletePrevious: true,
       resetWhenUpdate: false
+    },
+    LocalNotifications: {
+      smallIcon: 'ic_stat_attendx',
+      iconColor: '#10B981',
+    },
+    PushNotifications: {
+      presentationOptions: ['badge', 'sound', 'alert']
     }
   },
 };

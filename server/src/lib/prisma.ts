@@ -66,6 +66,10 @@ function createInMemoryModelHandler(modelName: string) {
         if ("endsWith" in filterValue && typeof itemValue === "string" && !itemValue.endsWith(filterValue.endsWith)) return false;
         if ("startsWith" in filterValue && typeof itemValue === "string" && !itemValue.startsWith(filterValue.startsWith)) return false;
         if ("in" in filterValue && Array.isArray(filterValue.in) && !filterValue.in.includes(itemValue)) return false;
+        if ("gte" in filterValue && !(itemValue >= filterValue.gte)) return false;
+        if ("gt" in filterValue && !(itemValue > filterValue.gt)) return false;
+        if ("lte" in filterValue && !(itemValue <= filterValue.lte)) return false;
+        if ("lt" in filterValue && !(itemValue < filterValue.lt)) return false;
         continue;
       }
       if ((item as any)[key] !== value) return false;
@@ -158,11 +162,58 @@ function createInMemoryModelHandler(modelName: string) {
 import { Pool } from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
 
+const isTransientConnectionError = (dbError: any): boolean => {
+  if (!dbError) return false;
+  const code = String(dbError?.code || dbError?.cause?.code || "");
+  const msg = `${dbError?.message || ""} ${dbError?.cause?.message || ""}`.toLowerCase();
+  return (
+    code.startsWith("P1") ||
+    code === "ECONNRESET" ||
+    code === "ETIMEDOUT" ||
+    code === "EPIPE" ||
+    code === "57P01" ||
+    msg.includes("connection") ||
+    msg.includes("timeout") ||
+    msg.includes("terminated unexpectedly") ||
+    msg.includes("network") ||
+    msg.includes("socket")
+  );
+};
+
 let realPrisma: any = null;
 if (process.env.DATABASE_URL && process.env.DATABASE_URL.trim().length > 0) {
   try {
-    const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-    pool.on("error", (err) => { console.warn("[pg] Idle client error:", err.message); });
+    let connStr = process.env.DATABASE_URL.trim();
+    if (!connStr.includes("uselibpqcompat=")) {
+      connStr = connStr.replace(/sslmode=(require|prefer|verify-ca)\b/g, "sslmode=verify-full");
+    }
+    // Strip channel_binding=require on Neon PgBouncer (-pooler) endpoints to avoid extra SCRAM-SHA-256-PLUS WAN round-trips
+    if (connStr.includes("-pooler")) {
+      connStr = connStr
+        .replace(/([?&])channel_binding=require(&|$)/g, (_, p1, p2) => (p2 === "&" ? p1 : ""))
+        .replace(/[?&]$/, "");
+    }
+    const pool = new Pool({
+      connectionString: connStr,
+      keepAlive: true,
+      keepAliveInitialDelayMillis: 5000,
+      min: 2,
+      max: 8,
+      idleTimeoutMillis: 60000,
+      connectionTimeoutMillis: 20000,
+      maxUses: 500,
+    });
+    pool.on("error", (err) => {
+      console.warn("[pg] Idle client error (evicted from pool):", err.message);
+    });
+    // Pre-warm 2 pooled connections on startup so the first wave of requests never waits on cold TLS handshakes
+    Promise.all([pool.connect(), pool.connect()])
+      .then((clients) => clients.forEach((c) => c.release()))
+      .catch(() => {});
+    // Keep pooled Neon connections warm with a lightweight 20s heartbeat
+    setInterval(() => {
+      pool.query("SELECT 1").catch(() => {});
+    }, 20000).unref();
     const adapter = new PrismaPg(pool);
     realPrisma = new PrismaClient({ adapter });
   } catch (err) {
@@ -178,10 +229,21 @@ export const prisma = new Proxy(
         return async () => {};
       }
       if (realPrisma && typeof realPrisma[prop] === "function") {
-        return realPrisma[prop].bind(realPrisma);
+        const boundFn = realPrisma[prop].bind(realPrisma);
+        return async (...args: any[]) => {
+          try {
+            return await boundFn(...args);
+          } catch (dbError: any) {
+            if (isTransientConnectionError(dbError)) {
+              await new Promise((r) => setTimeout(r, 200));
+              return await boundFn(...args);
+            }
+            throw dbError;
+          }
+        };
       }
       if (realPrisma && realPrisma[prop]) {
-        // Wrap model calls to catch runtime DB connection errors
+        // Wrap model calls to retry transient DB connection drops on a fresh pooled socket
         const model = realPrisma[prop];
         const fallbackModel = createInMemoryModelHandler(prop);
         return new Proxy(model, {
@@ -196,15 +258,16 @@ export const prisma = new Proxy(
                   throw new Error("CRITICAL: Database connection refused (ECONNREFUSED). Your PostgreSQL server is offline or unreachable.");
                 }
 
-                const isConnectionError = dbError?.code?.startsWith('P1') || 
-                                          dbError?.message?.toLowerCase().includes('connection') ||
-                                          dbError?.message?.toLowerCase().includes('timeout') ||
-                                          dbError?.message?.toLowerCase().includes('network');
-                                          
-                if (isConnectionError) {
-                  console.warn(`[AI Studio] DB connection error on prisma.${prop}.${method}, using in-memory fallback:`, dbError?.message || dbError);
-                  if ((fallbackModel as any)[method]) {
-                    return await (fallbackModel as any)[method](...args);
+                if (isTransientConnectionError(dbError)) {
+                  // Retry up to 2 times on a fresh pooled connection
+                  for (const delayMs of [200, 500]) {
+                    try {
+                      await new Promise((r) => setTimeout(r, delayMs));
+                      return await originalFn.apply(targetModel, args);
+                    } catch (retryError: any) {
+                      dbError = retryError;
+                      if (!isTransientConnectionError(dbError)) break;
+                    }
                   }
                 }
                 throw dbError;

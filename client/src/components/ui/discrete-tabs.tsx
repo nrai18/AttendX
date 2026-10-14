@@ -2,6 +2,7 @@
 
 import { useState, useEffect, type FC, type ReactNode } from "react";
 import { motion, AnimatePresence } from "motion/react";
+import { hapticSelection } from "../../utils/haptics";
 
  interface TabItem {
   id: string;
@@ -20,7 +21,14 @@ export const DiscreteTabs: FC<DiscreteTabsProps> = ({ tabs, onTabChange, default
   const [activeTab, setActiveTab] = useState<string>(defaultTab || tabs[0]?.id);
   const [shine, setShine] = useState<boolean>(false);
 
+  useEffect(() => {
+    if (defaultTab && defaultTab !== activeTab) {
+      setActiveTab(defaultTab);
+    }
+  }, [defaultTab]);
+
   const handleTabClick = (tabId: string) => {
+    hapticSelection();
     setActiveTab(tabId);
     if (onTabChange) onTabChange(tabId);
   };

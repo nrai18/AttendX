@@ -28,7 +28,7 @@ export class AttendanceController {
     }
 
     // SEC-M02 FIX: Input validation to prevent arbitrary string injection
-    const validStatuses = ["PRESENT", "ABSENT", "CANCELLED", "OFF", "CLEAR", "NOT_MARKED"];
+    const validStatuses = ["PRESENT", "ABSENT", "CANCELLED", "OFF", "CLEAR", "NOT_MARKED", "MEDICAL", "OD"];
     if (!validStatuses.includes(status.toUpperCase())) {
       return res.status(400).json({ message: "Invalid attendance status" });
     }
@@ -89,14 +89,17 @@ export class AttendanceController {
     }
 
     try {
+      const userId = req.user!.userId;
       if (force === "true") {
-        await CacheService.invalidateUser(req.user!.userId);
+        const freshCalendar = await AttendanceService.getMonthlyCalendar(userId, month);
+        CacheService.set(userId, `calendar:${month}`, freshCalendar).catch(() => {});
+        return res.json(freshCalendar);
       }
 
       const calendar = await CacheService.getOrSet(
-        req.user!.userId,
+        userId,
         `calendar:${month}`,
-        () => AttendanceService.getMonthlyCalendar(req.user!.userId, month)
+        () => AttendanceService.getMonthlyCalendar(userId, month)
       );
       res.json(calendar);
     } catch (error: any) {
@@ -142,8 +145,10 @@ export class AttendanceController {
             if (data.keyReasons?.[0] === "Could not connect to Gemini API") {
               throw new Error("Gemini AI API Unavailable");
             }
-            // Save a long-lived backup that survives cache invalidations
-            await redisClient.set(`backup:predictive_insights:${req.user!.userId}`, JSON.stringify(data));
+            // Save a long-lived backup that survives cache invalidations (non-blocking so Redis WAN timeouts never stall response)
+            if (redisClient.status === "ready") {
+              redisClient.set(`backup:predictive_insights:${req.user!.userId}`, JSON.stringify(data)).catch(() => {});
+            }
             return data;
           }
         );

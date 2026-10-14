@@ -1,4 +1,6 @@
 import { prisma } from "../lib/prisma";
+import { CacheService } from "./cache.service";
+import { isSameHoliday } from "../utils/holidayUtils";
 
 export class EventService {
   static async getEvents(userId: string, startDate?: string, endDate?: string, semesterId?: string) {
@@ -14,6 +16,19 @@ export class EventService {
       dateFilter = {
         date: { gte: new Date(startDate) }
       };
+    } else if (semesterId) {
+      const sem = (await CacheService.getOrSet(userId, "semesters:active", () => prisma.semester.findFirst({ where: { userId, isActive: true } }))) || await prisma.semester.findUnique({
+        where: { id: semesterId },
+        select: { startDate: true, endDate: true }
+      });
+      if (sem) {
+        dateFilter = {
+          date: {
+            gte: new Date(sem.startDate),
+            lte: new Date(sem.endDate)
+          }
+        };
+      }
     }
 
     const whereClause: any = {
@@ -51,47 +66,65 @@ export class EventService {
       }
     }
     
-    return Array.from(uniqueEvents.values());
+    const dedupedList: any[] = [];
+    for (const evt of uniqueEvents.values()) {
+      const dateStr = evt.date.toISOString().split('T')[0];
+      const isHol = evt.isHoliday || ["holiday", "restricted_holiday"].includes(evt.eventType);
+      if (isHol) {
+        const existingIdx = dedupedList.findIndex(d =>
+          d.date.toISOString().split('T')[0] === dateStr &&
+          (d.isHoliday || ["holiday", "restricted_holiday"].includes(d.eventType)) &&
+          isSameHoliday(d.title, evt.title)
+        );
+        if (existingIdx !== -1) {
+          if (evt.title.length > dedupedList[existingIdx].title.length) {
+            dedupedList[existingIdx] = evt;
+          }
+          continue;
+        }
+      }
+      dedupedList.push(evt);
+    }
+    return dedupedList;
   }
 
 
 
   static async saveWizardEvents(userId: string, semesterId: string, events: any[]) {
-    // Validate semesterId to prevent foreign key constraint violations
-    if (semesterId) {
-      const semesterExists = await prisma.semester.findUnique({
-        where: { id: semesterId }
-      });
-      if (!semesterExists) {
-        throw new Error("The specified semester does not exist or was deleted. Please refresh the page.");
-      }
+    // Validate semesterId ownership and fetch all existing events in a single parallel round-trip
+    const [semesterExists, allExistingEvents] = await Promise.all([
+      prisma.semester.findFirst({
+        where: { id: semesterId, userId },
+        select: { id: true },
+      }),
+      prisma.event.findMany({
+        where: { semesterId, userId },
+      }),
+    ]);
+
+    if (!semesterExists) {
+      throw new Error("Unauthorized semester access or the specified semester does not exist.");
     }
+
+    const eventsByDay = new Map<string, any[]>();
+    for (const existing of allExistingEvents) {
+      const dateKey = new Date(existing.date).toISOString().split("T")[0];
+      const list = eventsByDay.get(dateKey) || [];
+      list.push(existing);
+      eventsByDay.set(dateKey, list);
+    }
+
     // Save the user confirmed events, avoiding duplicates by title and date
     const createdEvents = [];
     for (const evt of events) {
       // Normalize field aliases — older exports used description/type, newer use title/eventType
-      const evtTitle: string = evt.title || evt.description || "Event";
+      const evtTitle: string = (evt.title || evt.description || "Event").trim();
       const evtEventType: string = evt.eventType || evt.type || "";
-      const evtDate = new Date(evt.date || evt.startDate);
-      
-      // Check for duplicate
-      const existing = await prisma.event.findFirst({
-        where: {
-          semesterId,
-          userId,
-          title: evtTitle,
-          date: evtDate,
-        }
-      });
-      if (existing) {
-        if (evt.endDate && (!existing.endDate || new Date(evt.endDate).getTime() !== existing.endDate.getTime())) {
-          await prisma.event.update({ where: { id: existing.id }, data: { endDate: new Date(evt.endDate) } });
-        }
-        continue;
-      }
+      const rawDate = evt.date || evt.startDate;
+      const evtDate = new Date(rawDate);
+      const dateKey = evtDate.toISOString().split("T")[0];
 
       let mappedType: any = "other";
-      
       const rawType = evtEventType.toLowerCase();
       const titleLower = evtTitle.toLowerCase();
 
@@ -103,7 +136,7 @@ export class EventService {
         mappedType = "vacation";
       } else if (rawType === "fest") {
         mappedType = "fest";
-      } else if (rawType === "commencement" || rawType === "institute") {
+      } else if (rawType === "commencement" || rawType === "institute" || rawType === "event") {
         mappedType = "institute";
       } else if (rawType === "lab_exam" || titleLower.includes("lab") || titleLower.includes("practical")) {
         mappedType = "lab_exam";
@@ -112,7 +145,7 @@ export class EventService {
           mappedType = "midsem";
         } else if (rawType === "endsem" || titleLower.includes("end") || titleLower.includes("theory")) {
           mappedType = "endsem";
-        } else if (titleLower.includes("cycle") || titleLower.includes("ct")) {
+        } else if (rawType === "ct" || titleLower.includes("cycle") || titleLower.includes("ct")) {
           mappedType = "ct";
         } else {
           mappedType = "exam";
@@ -130,21 +163,48 @@ export class EventService {
 
       const isHolidayList = evt.isHolidayList === true;
       const isHoliday = evt.isHoliday === true || mappedType === "holiday" || mappedType === "restricted_holiday";
-      
-      // Conflict Resolution: If this is an Academic Calendar event (not Holiday List)
-      // Check if a Holiday List event already exists on this date.
-      if (!isHolidayList) {
-        const conflictingHoliday = await prisma.event.findFirst({
-          where: {
-            semesterId,
-            userId,
-            date: evtDate,
-            isHolidayList: true
+
+      const sameDayEvents = eventsByDay.get(dateKey) || [];
+
+      // 1. Exact title duplicate check
+      const exactMatch = sameDayEvents.find(e => e.title.toLowerCase().trim() === evtTitle.toLowerCase().trim());
+      if (exactMatch) {
+        if (evt.endDate && (!exactMatch.endDate || new Date(evt.endDate).getTime() !== new Date(exactMatch.endDate).getTime())) {
+          const updated = await prisma.event.update({ where: { id: exactMatch.id }, data: { endDate: new Date(evt.endDate) } });
+          createdEvents.push(updated);
+        } else {
+          createdEvents.push(exactMatch);
+        }
+        continue;
+      }
+
+      // 2. Bidirectional Holiday Deduplication
+      if (isHoliday) {
+        const matchingHoliday = sameDayEvents.find(e =>
+          (e.isHoliday || e.eventType === "holiday" || e.eventType === "restricted_holiday") &&
+          isSameHoliday(e.title, evtTitle)
+        );
+
+        if (matchingHoliday) {
+          // If the incoming event is from the Academic Calendar (e.g. "Dussehra (Vijay Dashmi)")
+          // and existing is a central holiday (e.g. "Dussehra"), upgrade the existing entry with the official academic title
+          if (!isHolidayList && matchingHoliday.isHolidayList) {
+            const updated = await prisma.event.update({
+              where: { id: matchingHoliday.id },
+              data: {
+                title: evtTitle,
+                eventType: mappedType,
+                endDate: evt.endDate ? new Date(evt.endDate) : matchingHoliday.endDate,
+                isHolidayList: false,
+                isHoliday: true
+              }
+            });
+            createdEvents.push(updated);
+            continue;
+          } else {
+            createdEvents.push(matchingHoliday);
+            continue;
           }
-        });
-        
-        if (conflictingHoliday) {
-          await prisma.event.delete({ where: { id: conflictingHoliday.id } });
         }
       }
 
@@ -161,6 +221,8 @@ export class EventService {
           isHolidayList
         }
       });
+      sameDayEvents.push(created);
+      eventsByDay.set(dateKey, sameDayEvents);
       createdEvents.push(created);
     }
     return createdEvents;
@@ -207,9 +269,48 @@ export class EventService {
       take: 1
     });
 
+    // Priority sort: official holidays and restricted holidays rank above all other event types
+    // so that a custom/academic event never displaces a national holiday animation/greeting.
+    const EVENT_PRIORITY: Record<string, number> = {
+      holiday: 0,
+      restricted_holiday: 1,
+      vacation: 2,
+      exam: 3,
+      fest: 4,
+      institute: 5,
+    };
+    const sortedEvents = [...activeEvents].sort((a, b) => {
+      const pa = EVENT_PRIORITY[a.eventType] ?? 99;
+      const pb = EVENT_PRIORITY[b.eventType] ?? 99;
+      return pa - pb;
+    });
+
+    // Deduplicate activeEvents so multiple representations of the same holiday don't appear
+    const deduplicatedEvents: any[] = [];
+    for (const ev of sortedEvents) {
+      const isHol = ev.isHoliday || ["holiday", "restricted_holiday"].includes(ev.eventType);
+      if (isHol) {
+        const existingIdx = deduplicatedEvents.findIndex(d =>
+          (d.isHoliday || ["holiday", "restricted_holiday"].includes(d.eventType)) &&
+          isSameHoliday(d.title, ev.title)
+        );
+        if (existingIdx !== -1) {
+          if (ev.title.length > deduplicatedEvents[existingIdx].title.length) {
+            deduplicatedEvents[existingIdx] = ev;
+          }
+          continue;
+        }
+      } else {
+        if (deduplicatedEvents.some(d => d.title.toLowerCase().trim() === ev.title.toLowerCase().trim())) {
+          continue;
+        }
+      }
+      deduplicatedEvents.push(ev);
+    }
+
     return {
-      activeEvent: activeEvents.length > 0 ? activeEvents[0] : null,
-      activeEvents: activeEvents,
+      activeEvent: deduplicatedEvents.length > 0 ? deduplicatedEvents[0] : null,
+      activeEvents: deduplicatedEvents,
       nextEvent: nextEvents.length > 0 ? nextEvents[0] : null
     };
   }

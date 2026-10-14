@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Pencil, Clock, ChevronDown, CheckCircle2, Lock, ShieldAlert, Eye, EyeOff } from 'lucide-react';
 import { useAuthStore } from '../../stores/authStore';
@@ -6,6 +7,7 @@ import { api } from '../../lib/api';
 import { toast } from 'sonner';
 import { Player } from '@lottiefiles/react-lottie-player';
 import { useScrollLock } from "../../hooks/useScrollLock";
+import { useHardwareBack } from "../../hooks/useHardwareBack";
 
 export interface ProfileData {
   fullName: string;
@@ -26,6 +28,7 @@ interface EditProfileProps {
 
 export const EditProfile: React.FC<EditProfileProps> = ({ isOpen, onClose, initialData, onSave, isLoading }) => {
   useScrollLock(isOpen);
+  useHardwareBack(isOpen, onClose);
   const [formData, setFormData] = useState<ProfileData>(initialData);
   const [passwords, setPasswords] = useState({ oldPassword: '', newPassword: '' });
   const [showPasswordSection, setShowPasswordSection] = useState(false);
@@ -53,15 +56,23 @@ export const EditProfile: React.FC<EditProfileProps> = ({ isOpen, onClose, initi
   ].filter(Boolean)));
 
 
+  const prevIsOpenRef = useRef(false);
   useEffect(() => {
-    if (isOpen) {
+    const justOpened = isOpen && !prevIsOpenRef.current;
+    prevIsOpenRef.current = isOpen;
+
+    if (justOpened) {
       setFormData(initialData);
       setPasswords({ oldPassword: '', newPassword: '' });
       setShowPasswordSection(false);
       setShowPasswords(false);
       setShowAvatarPicker(false);
     }
-  }, [isOpen, initialData]);
+    // intentionally omit initialData from deps: we only want to reset when the
+    // modal transitions closed→open, not on every re-render of the parent that
+    // creates a new initialData object reference (e.g. during save loading state).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -123,39 +134,47 @@ export const EditProfile: React.FC<EditProfileProps> = ({ isOpen, onClose, initi
     await onSave(formData, undefined);
   };
 
-  return (
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  if (!mounted) return null;
+
+  return createPortal(
     <AnimatePresence>
       {isOpen && (
-        <div className="theme-nova-green fixed inset-0 z-[100] flex items-center justify-center p-4 overflow-y-auto">
+        <div className="theme-nova-green fixed inset-0 z-[100] flex items-center justify-center p-0 sm:p-4 touch-none">
           {/* Backdrop */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
+            transition={{ duration: 0.16, ease: "easeOut" }}
             onClick={!isLoading ? onClose : undefined}
-            className="fixed inset-0 bg-[#0F0A09]/80 dark:bg-[#0F0A09]/90"
+            className="fixed inset-0 bg-[#0F0A09]/80 dark:bg-[#0F0A09]/90 will-change-[opacity]"
           />
 
           {/* Modal Container */}
-          <div className="relative w-full max-w-4xl z-[101] my-auto pointer-events-none">
+          <div className="relative w-full h-[100dvh] sm:h-auto max-w-4xl z-[101] flex items-center justify-center pointer-events-none p-0 sm:p-2">
             <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              initial={{ opacity: 0, scale: 0.97, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              transition={{ type: "spring", damping: 25, stiffness: 300, mass: 0.8 }}
-              className="pointer-events-auto w-full rounded-[32px] shadow-2xl border border-[#5A4A46]/30 dark:border-[#5A4A46]/50 overflow-hidden bg-[#E6E1D6] dark:bg-[#0F0A09] text-[#4A1711] dark:text-[#E6E1D6] flex flex-col md:flex-row"
+              exit={{ opacity: 0, scale: 0.97, y: 16 }}
+              transition={{ type: "spring", damping: 28, stiffness: 380, mass: 0.8 }}
+              className="pointer-events-auto w-full h-full sm:h-auto sm:max-h-[90vh] rounded-none sm:rounded-[32px] shadow-2xl border-0 sm:border border-[#5A4A46]/30 dark:border-[#5A4A46]/50 overflow-hidden bg-[#E6E1D6] dark:bg-[#0F0A09] text-[#4A1711] dark:text-[#E6E1D6] flex flex-col md:flex-row will-change-transform"
             >
               
               {/* Left Side: Form */}
-              <div className="flex-1 flex flex-col">
-                <div className="flex items-center justify-between px-8 py-6 border-b border-[#5A4A46]/20 dark:border-[#5A4A46]/50">
-                  <h2 className="text-2xl font-bold font-sans tracking-tight">Edit Profile</h2>
+              <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+                <div 
+                  className="flex items-center justify-between px-6 sm:px-8 py-4 sm:py-5 border-b border-[#5A4A46]/20 dark:border-[#5A4A46]/50 shrink-0 bg-[#E6E1D6] dark:bg-[#0F0A09]"
+                  style={{ paddingTop: "calc(env(safe-area-inset-top) + 12px)" }}
+                >
+                  <h2 className="text-xl sm:text-2xl font-bold font-sans tracking-tight">Edit Profile</h2>
                   <button onClick={onClose} disabled={isLoading} className="text-muted-foreground hover:text-foreground transition-colors p-2 rounded-full hover:bg-muted">
                     <X size={20} />
                   </button>
                 </div>
 
-                <div className="p-6 space-y-5 overflow-y-auto max-h-[60vh] md:max-h-[70vh]">
+                <div className="flex-1 p-6 space-y-5 overflow-y-auto min-h-0">
                   
                   {/* Mobile Avatar & Picker (Hidden on Desktop) */}
                   <div className="flex md:hidden flex-col items-center pb-4 space-y-4">
@@ -322,8 +341,25 @@ export const EditProfile: React.FC<EditProfileProps> = ({ isOpen, onClose, initi
                               </div>
                             </div>
                             <div className="pt-2">
-                                <button type="button" onClick={async () => { if (passwords.newPassword) { await onSave(formData, passwords); setPasswords({oldPassword: '', newPassword: ''}); setShowPasswordSection(false); toast.success('Password updated successfully'); } }} className="px-6 py-2.5 rounded-2xl text-sm font-bold font-mono bg-[#4A1711] text-[#E6E1D6] hover:bg-[#4A1711]/90 dark:bg-[#E6E1D6] dark:text-[#0F0A09] dark:hover:bg-[#E6E1D6]/90 transition-colors">
-                                  Save New Password
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    if (!passwords.newPassword || passwords.newPassword.length < 6) {
+                                      toast.error("Password must be at least 6 characters");
+                                      return;
+                                    }
+                                    if (initialData.hasPassword && !passwords.oldPassword) {
+                                      toast.error("Current password is required");
+                                      return;
+                                    }
+                                    await onSave(formData, passwords);
+                                    setPasswords({ oldPassword: '', newPassword: '' });
+                                    setShowPasswordSection(false);
+                                    toast.success(initialData.hasPassword ? 'Password updated successfully' : 'Password created successfully');
+                                  }}
+                                  className="px-6 py-2.5 rounded-2xl text-sm font-bold font-mono bg-[#4A1711] text-[#E6E1D6] hover:bg-[#4A1711]/90 dark:bg-[#E6E1D6] dark:text-[#0F0A09] dark:hover:bg-[#E6E1D6]/90 transition-colors"
+                                >
+                                  {initialData.hasPassword ? "Save New Password" : "Set Account Password"}
                                 </button>
                               </div>
                             </div>
@@ -343,7 +379,7 @@ export const EditProfile: React.FC<EditProfileProps> = ({ isOpen, onClose, initi
                             onClick: async () => {
                               try {
                                 await api.delete("/users/me");
-                                useAuthStore.getState().logout();
+                                useAuthStore.getState().logout(true);
                                 toast.success("Account deleted permanently.");
                               } catch (e: any) {
                                 toast.error(e.response?.data?.message || "Failed to delete account");
@@ -371,18 +407,21 @@ export const EditProfile: React.FC<EditProfileProps> = ({ isOpen, onClose, initi
                   </div>
 
                 {/* Footer Action */}
-                <div className="px-8 py-6 border-t border-[#5A4A46]/20 dark:border-[#5A4A46]/50 flex flex-col-reverse sm:flex-row items-center justify-between gap-4 mt-auto">
+                <div 
+                  className="px-6 sm:px-8 py-4 sm:py-5 border-t border-[#5A4A46]/20 dark:border-[#5A4A46]/50 flex flex-col-reverse sm:flex-row items-center justify-between gap-3 mt-auto shrink-0 bg-[#E6E1D6] dark:bg-[#0F0A09]"
+                  style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 12px)" }}
+                >
                   <button
                     onClick={onClose}
                     disabled={isLoading}
-                    className="w-full sm:w-auto px-6 py-3 rounded-2xl text-sm font-bold font-mono transition-colors hover:bg-black/5 dark:hover:bg-white/5 disabled:opacity-50"
+                    className="w-full sm:w-auto px-6 py-2.5 rounded-2xl text-sm font-bold font-mono transition-colors hover:bg-black/5 dark:hover:bg-white/5 disabled:opacity-50"
                   >
                     Cancel
                   </button>
                   <button
                     onClick={handleSave}
                     disabled={isLoading}
-                    className="w-full sm:w-auto px-8 py-3 rounded-2xl text-sm font-bold font-mono transition-all bg-[#4A1711] text-[#E6E1D6] hover:bg-[#4A1711]/90 dark:bg-[#E6E1D6] dark:text-[#0F0A09] dark:hover:bg-[#E6E1D6]/90 disabled:opacity-50"
+                    className="w-full sm:w-auto px-8 py-2.5 rounded-2xl text-sm font-bold font-mono transition-all bg-[#4A1711] text-[#E6E1D6] hover:bg-[#4A1711]/90 dark:bg-[#E6E1D6] dark:text-[#0F0A09] dark:hover:bg-[#E6E1D6]/90 disabled:opacity-50 shadow-md"
                   >
                     {isLoading ? "Saving..." : "Save Changes"}
                   </button>
@@ -486,7 +525,8 @@ export const EditProfile: React.FC<EditProfileProps> = ({ isOpen, onClose, initi
           </div>
         </div>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body
   );
 };
 
