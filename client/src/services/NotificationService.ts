@@ -330,7 +330,6 @@ export class NotificationService {
 
       if (permStatus.receive !== 'granted') {
         console.warn('User denied push notification permissions.');
-        import('sonner').then(({ toast }) => toast.error('Notification permission denied by OS.'));
         return;
       }
 
@@ -339,8 +338,10 @@ export class NotificationService {
         console.log('[FCM] Push registration success, token: ' + token.value);
         localStorage.setItem('fcm_token', token.value);
         try {
-          // Send FCM token to the backend (might fail if not logged in yet)
-          await api.patch('/users/me', { fcmToken: token.value });
+          // Only send FCM token to backend if already authenticated
+          if (useAuthStore.getState().isAuthenticated) {
+            await api.patch('/users/me', { fcmToken: token.value });
+          }
         } catch (error) {
           console.error('[FCM] Failed to sync FCM token to backend (will retry on login):', error);
         }
@@ -348,7 +349,6 @@ export class NotificationService {
 
       PushNotifications.addListener('registrationError', (error: any) => {
         console.error('[FCM] Error on registration: ' + JSON.stringify(error));
-        import('sonner').then(({ toast }) => toast.error('FCM Registration Error: ' + JSON.stringify(error)));
       });
 
       await PushNotifications.register();

@@ -58,6 +58,8 @@ interface AttendanceState {
 
 
 
+let inFlightFetchStatsPromise: Promise<void> | null = null;
+
 export const useAttendanceStore = create<AttendanceState>()(
   persist(
     (set, get) => ({
@@ -73,16 +75,21 @@ export const useAttendanceStore = create<AttendanceState>()(
   isLoading: false,
   simulationBounds: null,
   fetchStats: async (background = false) => {
-    // Only show loading if we don't have any cached subjects
-    if (!background && get().subjects.length === 0) set({ isLoading: true });
-    try {
-      const user = useAuthStore.getState().user;
-      const userTarget = user?.targetAttendance || 75;
+    if (inFlightFetchStatsPromise) {
+      return inFlightFetchStatsPromise;
+    }
 
-      const activeSemRes = await api.get("/semesters/active");
-      if (!activeSemRes.data) {
-        set({ 
-          overallPercentage: 0, 
+    inFlightFetchStatsPromise = (async () => {
+      // Only show loading if we don't have any cached subjects
+      if (!background && get().subjects.length === 0) set({ isLoading: true });
+      try {
+        const user = useAuthStore.getState().user;
+        const userTarget = user?.targetAttendance || 75;
+
+        const activeSemRes = await api.get("/semesters/active");
+        if (!activeSemRes.data) {
+          set({ 
+            overallPercentage: 0, 
           targetPercentage: userTarget, 
           totalAttended: 0,
           totalClasses: 0,
@@ -228,8 +235,13 @@ export const useAttendanceStore = create<AttendanceState>()(
     } catch (error) {
       console.error("Failed to fetch global attendance stats:", error);
       set({ isLoading: false });
+    } finally {
+      inFlightFetchStatsPromise = null;
     }
-  },
+  })();
+
+  return inFlightFetchStatsPromise;
+},
   updateSimulationBoundaries: async (startDate: string, endDate: string) => {
     const { activeSemesterId, fetchStats } = get();
     if (!activeSemesterId) return;

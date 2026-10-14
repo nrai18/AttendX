@@ -6,6 +6,7 @@ import { Plus, LogOut, Sun, Moon, Loader2 } from "lucide-react";
 import { Button } from "../ui/button";
 import { useAttendanceStore } from "../../stores/attendanceStore";
 import { useThemeStore } from "../../stores/themeStore";
+import { hapticLight, hapticWarning } from "../../utils/haptics";
 
 interface TopBarProps {
   title?: string;
@@ -29,6 +30,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   
   const [isLoggingOut, setIsLoggingOut] = React.useState(false);
   const handleLogout = async () => {
+    hapticWarning();
     setIsLoggingOut(true);
     try {
       await api.post("/auth/logout");

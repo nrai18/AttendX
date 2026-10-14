@@ -166,7 +166,6 @@ const processQueue = (error: any, token: string | null = null) => {
 
 api.interceptors.response.use(
   (response) => {
-    import("sonner").then(({ toast }) => toast.dismiss("server-wakeup"));
     return response;
   },
   async (error) => {
@@ -247,13 +246,6 @@ api.interceptors.response.use(
           
           return Promise.resolve({ data: { id: 'temp-' + Date.now(), _queued: true } });
       }
-
-      import("sonner").then(({ toast }) => {
-        toast.info("Waking up the cloud server... Please wait a moment.", {
-          id: "server-wakeup",
-          duration: 5000,
-        });
-      });
     } else if (error.response?.status !== 401 && error.response?.status !== 429 && !originalRequest?.url?.includes("/health") && !originalRequest?.url?.includes("/ai/tts")) {
       import("sonner").then(({ toast }) => {
         let errorMsg = error.response?.data?.message || error.message;

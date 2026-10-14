@@ -418,7 +418,7 @@ export const SemesterHubPage = () => {
                 deleteLabel="Clear Calendar" 
                 undoLabel="Cancel"
                 onConfirm={handleClearEvents} 
-                icon={<Trash2 className="w-4 h-4 mr-2 inline-block" />}
+                icon={<Trash2 className="w-4 h-4" />}
               />
             </div>
           )}

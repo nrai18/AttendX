@@ -8,7 +8,7 @@ interface Props {
 
 const WAKE_MESSAGES = [
   "Connecting...",
-  "Waking up the cloud server...",
+  "Loading timetable...",
   "Running database checks...",
   "Fetching your data...",
   "Almost there...",

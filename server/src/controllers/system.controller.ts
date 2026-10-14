@@ -1,11 +1,12 @@
 import { Request, Response } from "express";
 import path from "path";
 import fs from "fs";
+import { BirthdayService } from "../services/birthday.service";
 
 export class SystemController {
   static async getConfig(req: Request, res: Response) {
     return res.status(200).json({
-      appDownloadLink: process.env.APP_DOWNLOAD_LINK || "https://www.attendx.tech",
+      appDownloadLink: process.env.APP_DOWNLOAD_LINK || "https://github.com/nrai18/AttendX/releases/download/v4.1.1/AttendX.apk",
       wsUrl: process.env.WS_URL || "wss://attendx-backend-fh6k.onrender.com/ws",
       mlApiUrl: process.env.ML_API_URL || "https://attendx-ml-server.onrender.com",
       googleClientId: process.env.GOOGLE_CLIENT_ID || "729387616931-qlajf1dss2qi1cta5pvc3dos03fh4coi.apps.googleusercontent.com"
@@ -14,58 +15,143 @@ export class SystemController {
 
   static async getUpdateManifest(req: Request, res: Response) {
     const manifest = {
-      appDownloadLink: process.env.APP_DOWNLOAD_LINK || "https://www.attendx.tech",
+      appDownloadLink: process.env.APP_DOWNLOAD_LINK || "https://github.com/nrai18/AttendX/releases/download/v4.1.1/AttendX.apk",
       latestVersion: "4.3.0",
-      title: "Voice Mode & Navigation Fluidity",
+      title: "Tactile Haptics, Timetable Sync & Performance Fluidity",
       changelog: [
         {
-          "version": "4.3.0",
-          "date": "Oct 9, 2026",
-          "title": "Voice Mode Polish & Core Stability",
-          "sections": [
-            {
-              "title": "Voice Assistant & UI Polish",
-              "items": [
-                { "icon": "\ud83c\udfa4", "text": "Fixed Voice Mode bug causing the assistant to continuously answer the original question in hands-free loop." },
-                { "icon": "\ud83d\udd07", "text": "Added strict hardware ghost-echo filtering to ignore identical transcript overlaps." },
-                { "icon": "\ud83c\udfa4", "text": "Implemented seamless hands-free loop handling\u2014natural pauses won't abruptly kill the continuous conversation anymore." },
-                { "icon": "\u2728", "text": "Added cinematic visionOS-style scale-and-blur entrance and exit animations to the Voice Mode overlay." },
-                { "icon": "\u23f1\ufe0f", "text": "Fixed a visual jump in the Cinematic Text cursor when transitioning between speech rate estimates and exact native metadata." },
-                { "icon": "\ud83d\udca1", "text": "Voice settings modal now instantly selects and auto-scrolls to your active voice avatar when opened." },
-                { "icon": "\ud83d\udd04", "text": "Added an interactive rotating close button in the Voice Mode overlay." }
-              ]
-            },
-            {
-              "title": "Core Stability & Backend",
-              "items": [
-                { "icon": "\ud83d\udcc5", "text": "Fixed Timetable Duplication Bug: Editing slots will no longer duplicate them." },
-                { "icon": "\ud83d\udd10", "text": "Enforced strictly atomic backend locking to prevent data race conditions on concurrent saves." },
-                { "icon": "\ud83d\udcf1", "text": "Fully integrated Android hardware back button support across the Auth Flow, Semester Hub, Modals, and Dashboard." },
-                { "icon": "\ud83d\udee1\ufe0f", "text": "Hardened FCM token eviction to completely drop dead or unauthorized push notification tokens from the database." },
-                { "icon": "\ud83d\udd12", "text": "Hardened the authentication refresh bypass to guarantee native mobile cookies route successfully." }
-              ]
-            },
-            {
-              "title": "New Features",
-              "items": [
-                { "icon": "🔔", "text": "Introduced rich push notifications with large image banners." },
-                { "icon": "🔗", "text": "Added support for deep linking to jump straight into modals from push notifications." },
-                { "icon": "🌐", "text": "App download links are now dynamically loaded from the environment." }
-              ]
-            },
-            {
-              "title": "Bug Fixes & Improvements",
-              "items": [
-                { "icon": "🔧", "text": "Fixed a regex bug where device names with nested parentheses (like Nothing Phone (3a)) were missing their closing bracket." },
-                { "icon": "📅", "text": "Fixed a fractional timing bug in the Events calendar causing incorrect 'Today' tags." },
-                { "icon": "⏰", "text": "Local notifications now immediately reschedule when updating your birthday." },
-                { "icon": "🎉", "text": "Corrected text encoding to properly display emojis in automated birthday emails." },
-                { "icon": "🎙️", "text": "Resolved a timetable slot removal bug and improved the chatbot's voice confirmation handling." }
-              ]
-            }
-          ]
+                  "version": "4.3.0",
+                  "date": "Oct 14, 2026",
+                  "title": "Tactile Haptics, Timetable Sync & Performance Fluidity",
+                  "sections": [
+                            {
+                                      "title": "Tactile Experience & Haptics",
+                                      "items": [
+                                                {
+                                                          "icon": "📳",
+                                                          "text": "Universal Haptic Engine: Ultra-low latency pointer-level physical tactile response across all buttons, tabs, links, and actionable controls."
+                                                },
+                                                {
+                                                          "icon": "👆",
+                                                          "text": "Gesture Haptics: Tactile physical feedback on swipe gestures across calendar months, attendance agenda days, and bottom sheets."
+                                                },
+                                                {
+                                                          "icon": "📅",
+                                                          "text": "Calendar & Time Tactile Response: Crisp selection vibration when picking calendar dates, changing summary times, and updating notification frequencies."
+                                                },
+                                                {
+                                                          "icon": "📊",
+                                                          "text": "Timetable & Criteria Haptics: Physical clicks when stepping attendance criteria percentages, swapping schedule slots via drag-and-drop, and deleting subjects or slots."
+                                                }
+                                      ]
+                            },
+                            {
+                                      "title": "Timetable & Schedule Engine",
+                                      "items": [
+                                                {
+                                                          "icon": "📅",
+                                                          "text": "Dual Timetable Display: Surfaced active timetable with 'Active' pill badge above historical archives, displaying exact start dates with pristine version resolution."
+                                                },
+                                                {
+                                                          "icon": "📚",
+                                                          "text": "Archived Version Retrofitting: Restored missing Fiber Optic Communication lecture slots to Version 1 with exact room and time normalization."
+                                                },
+                                                {
+                                                          "icon": "🧹",
+                                                          "text": "Micro-Version Elimination: Clustered archive creation to prevent single non-structural tweaks from spawning redundant timetable snapshots."
+                                                },
+                                                {
+                                                          "icon": "🎯",
+                                                          "text": "Calendar Slot Synchronization: Eliminated duplicate 'Not Marked' entries by atomically re-linking attendance records during timetable modifications."
+                                                },
+                                                {
+                                                          "icon": "🛡️",
+                                                          "text": "Ghost & Extra Class Deletion: Fortified manual extra class deletions to purge orphaned attendance records without 500 errors."
+                                                }
+                                      ]
+                            },
+                            {
+                                      "title": "Voice Assistant & UI Polish",
+                                      "items": [
+                                                {
+                                                          "icon": "🎙️",
+                                                          "text": "Hands-Free Voice Loop: Assistant seamlessly listens and responds in a continuous natural conversation without repetitive query repeats."
+                                                },
+                                                {
+                                                          "icon": "🔇",
+                                                          "text": "Acoustic Echo Filtering: Hardware ghost-echo cancellation prevents the microphone from capturing device speaker output."
+                                                },
+                                                {
+                                                          "icon": "✨",
+                                                          "text": "Cinematic Entrance Animations: visionOS-inspired scale-and-blur transitions on Voice Mode and fluid 60fps attendance mark popups."
+                                                },
+                                                {
+                                                          "icon": "🔄",
+                                                          "text": "Timed Undo & Cancel Overhaul: Redesigned timed action buttons with dedicated undo icons, wine-red backgrounds, and zero number ghosting."
+                                                },
+                                                {
+                                                          "icon": "💡",
+                                                          "text": "Voice Avatar Auto-Scroll: Voice settings modal auto-scrolls to your active voice avatar when opened."
+                                                },
+                                                {
+                                                          "icon": "🔄",
+                                                          "text": "Interactive Dismissal: Added an interactive rotating close button in the Voice Mode overlay."
+                                                }
+                                      ]
+                            },
+                            {
+                                      "title": "Navigation & Mobile Architecture",
+                                      "items": [
+                                                {
+                                                          "icon": "📍",
+                                                          "text": "Hardware Back Scroll Retention: Backing out of Settings subviews precisely restores your exact scroll depth without jumping to top."
+                                                },
+                                                {
+                                                          "icon": "📱",
+                                                          "text": "Hardware Back Button Flow: Deterministic back-press routing across auth, timetable, modals, and semester views, minimizing on root."
+                                                },
+                                                {
+                                                          "icon": "📱",
+                                                          "text": "Mobile Subject Management: Full multi-line subject title wrapping with always-visible delete triggers on touchscreens."
+                                                },
+                                                {
+                                                          "icon": "🔗",
+                                                          "text": "Onboarding Deep-Linking: Directly navigates into Peer Sync inside Settings and into Semester Hub from getting started checklist steps."
+                                                },
+                                                {
+                                                          "icon": "🌐",
+                                                          "text": "Cross-Device Onboarding State: Onboarding completion progress is saved to user accounts in PostgreSQL and preserved across all new logins."
+                                                }
+                                      ]
+                            },
+                            {
+                                      "title": "Core Stability, Database & Notifications",
+                                      "items": [
+                                                {
+                                                          "icon": "🎂",
+                                                          "text": "Automated Birthday Engine: Fixed PostgreSQL timezone date extraction so automated birthday greetings and native push alerts dispatch reliably at 8:00 AM."
+                                                },
+                                                {
+                                                          "icon": "🌐",
+                                                          "text": "External Cron Webhook: Introduced protected /api/system/cron/birthdays endpoint for external schedulers to ensure zero missed runs."
+                                                },
+                                                {
+                                                          "icon": "⚡",
+                                                          "text": "Zero-Overhead Memory Architecture: Replaced large in-memory maps with bounded LRU caches, slashing startup heap allocations by 80MB."
+                                                },
+                                                {
+                                                          "icon": "🔔",
+                                                          "text": "Push Notification Hardening: Clean token eviction drops invalid FCM tokens and prevents dead-token loops."
+                                                },
+                                                {
+                                                          "icon": "🔒",
+                                                          "text": "Session Refresh Resilience: Hardened the authentication refresh bypass to route native mobile tokens seamlessly without false revocations."
+                                                }
+                                      ]
+                            }
+                  ]
         },
-        {
+{
           "version": "4.2.0",
           "date": "Oct 2, 2026",
           "title": "Continuous Voice & Performance Overhaul",
@@ -681,6 +767,20 @@ export class SystemController {
       res.download(updatePath);
     } else {
       res.status(404).json({ message: "Update package not found" });
+    }
+  }
+
+  static async triggerBirthdayCron(req: Request, res: Response) {
+    try {
+      const result = await BirthdayService.ensureBirthdaySentForAll();
+      return res.status(200).json({
+        success: true,
+        message: `Birthday cron executed successfully. ${result.sentCount} greeting(s) sent.`,
+        data: result
+      });
+    } catch (error: any) {
+      console.error('[SystemController] Birthday cron error:', error);
+      return res.status(500).json({ success: false, error: error.message || 'Failed to execute birthday cron' });
     }
   }
 }

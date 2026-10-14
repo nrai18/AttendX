@@ -3,6 +3,7 @@ import { motion, AnimatePresence, MotionConfig } from 'motion/react';
 import { BsCheckCircleFill } from 'react-icons/bs';
 import { cn } from '../../lib/utils';
 import { useThemeStore } from '../../stores/themeStore';
+import { hapticMedium, hapticSuccess } from '../../utils/haptics';
 
 type ButtonStatus = 'idle' | 'loading' | 'success' | 'saved';
 type Size = 'sm' | 'md' | 'lg';
@@ -72,12 +73,14 @@ export const SaveToggle: React.FC<SaveToggleProps> = ({
 
   const handleClick = async () => {
     if (status === 'idle') {
+      hapticMedium();
       setStatus('loading');
       
       try {
         if (onClick) {
           await onClick();
         }
+        hapticSuccess();
         setStatus('success');
         setTimeout(() => {
           setStatus('saved');

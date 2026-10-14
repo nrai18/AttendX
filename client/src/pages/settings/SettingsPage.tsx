@@ -69,6 +69,7 @@ import { downloadBlob } from "../../lib/download";
 import { FeedbackModal } from "../../components/support/FeedbackModal";
 import { ChangelogModal } from "../../components/settings/ChangelogModal";
 import { NotificationService } from "../../services/NotificationService";
+import { hapticSelection, hapticLight } from "../../utils/haptics";
 
 export const SettingsPage: React.FC = () => {
   const currentAppVersion = (Capacitor.isNativePlatform() ? localStorage.getItem("app_version") : null) || import.meta.env.VITE_APP_VERSION || "4.2.0";
@@ -141,10 +142,18 @@ export const SettingsPage: React.FC = () => {
   const { user, setUser } = useAuthStore();
   const navigate = useNavigate();
   const { section } = useParams<{ section: string }>();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const getTargetView = (sec?: string | null): "main" | "backup" | "contact" | "sync" => {
+    if (sec === "peer-sync" || sec === "sync") return "sync";
+    if (sec === "contact" || sec === "contact-us") return "contact";
+    if (sec === "backup") return "backup";
+    return "main";
+  };
+
+  const initialSec = section || searchParams.get("section") || searchParams.get("feature") || searchParams.get("view");
   const [activeView, setActiveView] = useState<"main" | "backup" | "contact" | "sync">(
-    (section === "peer-sync" || section === "sync") ? "sync" :
-    (section === "contact" || section === "contact-us") ? "contact" :
-    (section === "backup") ? "backup" : "main"
+    getTargetView(initialSec)
   );
 
   // Profile & Criteria
@@ -174,18 +183,23 @@ export const SettingsPage: React.FC = () => {
   const [isSavingProfile, setIsSavingProfile] = useState(false);
 
   useEffect(() => {
-    if (location.hash === "#edit-profile" || section === "profile" || section === "edit-profile") {
+    const sec = section || searchParams.get("section") || searchParams.get("feature") || searchParams.get("view");
+    const target = getTargetView(sec);
+    if (target !== "main") {
+      setActiveView(target);
+    }
+
+    if (location.hash === "#edit-profile" || sec === "profile" || sec === "edit-profile" || searchParams.get("action") === "edit-profile") {
       setIsEditProfileOpen(true);
     }
-    if (section === "devices" || section === "linked-devices") setIsLinkedDevicesOpen(true);
-    if (section === "changelog" || section === "history" || section === "update-history") setIsChangelogOpen(true);
-    if (section === "feedback" || section === "support") setIsFeedbackOpen(true);
-    if (section === "app-info") setShowAppInfoModal(true);
-  }, [location.hash, section]);
+    if (sec === "devices" || sec === "linked-devices") setIsLinkedDevicesOpen(true);
+    if (sec === "changelog" || sec === "history" || sec === "update-history") setIsChangelogOpen(true);
+    if (sec === "feedback" || sec === "support") setIsFeedbackOpen(true);
+    if (sec === "app-info") setShowAppInfoModal(true);
+  }, [location.hash, section, searchParams]);
 
   // Stored Documents State
   const [storedDocuments, setStoredDocuments] = useState<any[]>([]);
-  const [searchParams, setSearchParams] = useSearchParams();
 
   // Dynamic Update Manifest
   const [updateManifest, setUpdateManifest] = useState<any>({
@@ -254,15 +268,128 @@ export const SettingsPage: React.FC = () => {
     "subject" | "attendance" | "timetable" | "events" | "entire" | null
   >(null);
 
+  // Scroll Position Restoration Engine
+  const settingsScrollYRef = useRef<number>(0);
+  const isRestoringScrollRef = useRef<boolean>(false);
+
+  const recordScroll = () => {
+    if (activeView === "main" && !isRestoringScrollRef.current) {
+      const y = window.scrollY || document.documentElement.scrollTop || 0;
+      if (y > 0) {
+        settingsScrollYRef.current = y;
+        try {
+          sessionStorage.setItem("attendx_settings_scroll", String(y));
+        } catch (e) {}
+      }
+    }
+  };
+
+  const restoreScrollPosition = () => {
+    const targetY = settingsScrollYRef.current || Number(sessionStorage.getItem("attendx_settings_scroll")) || 0;
+    if (targetY > 0) {
+      isRestoringScrollRef.current = true;
+      const doScroll = () => {
+        window.scrollTo({ top: targetY, behavior: "instant" });
+        if (document.documentElement) document.documentElement.scrollTop = targetY;
+        if (document.body) document.body.scrollTop = targetY;
+      };
+      doScroll();
+      requestAnimationFrame(doScroll);
+      setTimeout(doScroll, 40);
+      setTimeout(doScroll, 100);
+      setTimeout(doScroll, 200);
+      setTimeout(doScroll, 350);
+      setTimeout(() => {
+        doScroll();
+        isRestoringScrollRef.current = false;
+      }, 500);
+    }
+  };
+
+  const openSubView = (view: "sync" | "backup" | "contact") => {
+    recordScroll();
+    isRestoringScrollRef.current = true;
+    setActiveView(view);
+    window.scrollTo({ top: 0, behavior: "instant" });
+    setTimeout(() => {
+      isRestoringScrollRef.current = false;
+    }, 150);
+  };
+
+  const handleBackToMain = () => {
+    setActiveView("main");
+    restoreScrollPosition();
+  };
+
+  // Continuously record scroll position on the main settings view
+  useEffect(() => {
+    const handleScroll = () => {
+      if (isRestoringScrollRef.current) return;
+      if (activeView === "main") {
+        const y = window.scrollY || document.documentElement.scrollTop || 0;
+        if (y > 0) {
+          settingsScrollYRef.current = y;
+          try {
+            sessionStorage.setItem("attendx_settings_scroll", String(y));
+          } catch (e) {}
+        }
+      }
+    };
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, [activeView]);
+
+  // Restore scroll when returning to main from another view
+  const prevViewRef = useRef(activeView);
+  useEffect(() => {
+    if (prevViewRef.current !== "main" && activeView === "main") {
+      restoreScrollPosition();
+    }
+    prevViewRef.current = activeView;
+  }, [activeView]);
+
+  // Restore scroll position on initial mount (e.g. returning from /settings/faq)
+  useEffect(() => {
+    const savedY = Number(sessionStorage.getItem("attendx_settings_scroll")) || 0;
+    if (savedY > 0 && activeView === "main") {
+      settingsScrollYRef.current = savedY;
+      restoreScrollPosition();
+      const t1 = setTimeout(() => restoreScrollPosition(), 80);
+      const t2 = setTimeout(() => restoreScrollPosition(), 200);
+      return () => {
+        clearTimeout(t1);
+        clearTimeout(t2);
+      };
+    }
+  }, []);
+
+  // Also restore scroll on app focus/visibilitychange (returning from native file picker or share sheet)
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible" && activeView === "main") {
+        const savedY = settingsScrollYRef.current || Number(sessionStorage.getItem("attendx_settings_scroll")) || 0;
+        if (savedY > 0 && (window.scrollY || 0) < 50) {
+          restoreScrollPosition();
+        }
+      }
+    };
+    window.addEventListener("focus", handleVisibility);
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => {
+      window.removeEventListener("focus", handleVisibility);
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
+  }, [activeView]);
+
   useEffect(() => {
     const unregister = useBackHandlerStore.getState().register(() => {
-      if (isEditProfileOpen) { setIsEditProfileOpen(false); return true; }
-      if (isLinkedDevicesOpen) { setIsLinkedDevicesOpen(false); return true; }
-      if (showAppInfoModal) { setShowAppInfoModal(false); return true; }
-      if (isFeedbackOpen) { setIsFeedbackOpen(false); return true; }
-      if (isChangelogOpen) { setIsChangelogOpen(false); return true; }
-      if (resetModalType !== null) { setResetModalType(null); return true; }
-      if (activeView !== "main") { setActiveView("main"); return true; }
+      if (isEditProfileOpen) { setIsEditProfileOpen(false); restoreScrollPosition(); return true; }
+      if (isLinkedDevicesOpen) { setIsLinkedDevicesOpen(false); restoreScrollPosition(); return true; }
+      if (showAppInfoModal) { setShowAppInfoModal(false); restoreScrollPosition(); return true; }
+      if (isFeedbackOpen) { setIsFeedbackOpen(false); restoreScrollPosition(); return true; }
+      if (isChangelogOpen) { setIsChangelogOpen(false); restoreScrollPosition(); return true; }
+      if (resetModalType !== null) { setResetModalType(null); restoreScrollPosition(); return true; }
+      if (activeView !== "main") { handleBackToMain(); return true; }
       return false;
     });
     return () => unregister();
@@ -551,6 +678,7 @@ export const SettingsPage: React.FC = () => {
       setIsImportingCSV(false);
     } finally {
       if (e.target) e.target.value = "";
+      restoreScrollPosition();
     }
   };
 
@@ -594,6 +722,7 @@ export const SettingsPage: React.FC = () => {
       window.dispatchEvent(new Event("attendance-updated"));
 
       setResetModalType(null);
+      restoreScrollPosition();
       setIsResetting(false);
       setSelectedSubjectIds([]);
       setResetConfirmText("");
@@ -623,57 +752,54 @@ export const SettingsPage: React.FC = () => {
     setContactSubmitted(true);
   };
 
-  // ------------------ SUB-VIEW: BACKUP / RESTORE ------------------
-  if (activeView === "sync") {
-    return (
-      <>
+  // ------------------ SETTINGS RENDER ------------------
+  return (
+    <>
       <VolumetricRays />
-      <div className="w-full pb-36 md:pb-8 space-y-6 animate-in fade-in duration-200">
-        <div className="flex items-center gap-3 mb-6">
-          <button
-            onClick={() => setActiveView("main")}
-            className="p-2 rounded-xl bg-card border border-border text-foreground hover:bg-muted transition-colors cursor-pointer"
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </button>
-          <h1 className="text-2xl font-extrabold text-foreground tracking-tight">
-            Peer Sync
-          </h1>
+
+      {/* SUB-VIEW: PEER SYNC */}
+      {activeView === "sync" && (
+        <div className="w-full pb-36 md:pb-8 space-y-6 animate-in fade-in duration-200">
+          <div className="flex items-center gap-3 mb-6">
+            <button
+              onClick={() => handleBackToMain()}
+              className="p-2 rounded-xl bg-card border border-border text-foreground hover:bg-muted transition-colors cursor-pointer"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+            <h1 className="text-2xl font-extrabold text-foreground tracking-tight">
+              Peer Sync
+            </h1>
+          </div>
+          <PeerSyncModal />
         </div>
-        
-      </div>
-      <PeerSyncModal />
-      </>
-    );
-  }
+      )}
 
-  if (activeView === "backup") {
-    return (
-      <>
-      <VolumetricRays />
-      <div className="w-full pb-36 md:pb-8 space-y-6 animate-in fade-in duration-200">
-        <input
-          type="file"
-          accept=".json"
-          ref={jsonInputRef}
-          onChange={handleImportBackup}
-          className="hidden"
-        />
-        <input
-          type="file"
-          accept=".zip,application/zip,application/x-zip-compressed,multipart/x-zip"
-          ref={csvInputRef}
-          onChange={handleImportCSV}
-          className="hidden"
-        />
+      {/* SUB-VIEW: BACKUP / RESTORE */}
+      {activeView === "backup" && (
+        <div className="w-full pb-36 md:pb-8 space-y-6 animate-in fade-in duration-200">
+          <input
+            type="file"
+            accept=".json"
+            ref={jsonInputRef}
+            onChange={handleImportBackup}
+            className="hidden"
+          />
+          <input
+            type="file"
+            accept=".zip,application/zip,application/x-zip-compressed,multipart/x-zip"
+            ref={csvInputRef}
+            onChange={handleImportCSV}
+            className="hidden"
+          />
 
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => setActiveView("main")}
-            className="p-2 rounded-xl bg-card border border-border text-foreground hover:bg-muted transition-colors cursor-pointer"
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => handleBackToMain()}
+              className="p-2 rounded-xl bg-card border border-border text-foreground hover:bg-muted transition-colors cursor-pointer"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
           <h1 className="text-2xl font-extrabold text-foreground tracking-tight">
             Backup/Restore
           </h1>
@@ -805,24 +931,19 @@ export const SettingsPage: React.FC = () => {
             </div>
           </div>
         </div>
-      </div>
-      </>
-    );
-  }
+        </div>
+      )}
 
-  // ------------------ SUB-VIEW: CONTACT US ------------------
-  if (activeView === "contact") {
-    return (
-      <>
-      <VolumetricRays />
-      <div className="w-full pb-36 md:pb-8 space-y-6 animate-in fade-in duration-200">
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => setActiveView("main")}
-            className="p-2 rounded-xl bg-card border border-border text-foreground hover:bg-muted transition-colors cursor-pointer"
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </button>
+      {/* SUB-VIEW: CONTACT US */}
+      {activeView === "contact" && (
+        <div className="w-full pb-36 md:pb-8 space-y-6 animate-in fade-in duration-200">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => handleBackToMain()}
+              className="p-2 rounded-xl bg-card border border-border text-foreground hover:bg-muted transition-colors cursor-pointer"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
           <h1 className="text-2xl font-extrabold text-foreground tracking-tight">
             Contact us
           </h1>
@@ -947,15 +1068,13 @@ export const SettingsPage: React.FC = () => {
           </button>
         </form>
       </div>
-      </>
-    );
-  }
+      )}
 
-  // ------------------ MAIN SETTINGS VIEW ------------------
-  return (
-    <>
-      <VolumetricRays />
-      <div className="p-4 md:p-8 max-w-3xl mx-auto w-full pb-36 md:pb-8 space-y-8 animate-in fade-in duration-200">
+      {/* ------------------ MAIN SETTINGS VIEW ------------------ */}
+      <div 
+        style={{ display: activeView === "main" ? "block" : "none" }}
+        className="p-4 md:p-8 max-w-3xl mx-auto w-full pb-36 md:pb-8 space-y-8 animate-in fade-in duration-200"
+      >
       <input
         type="file"
         accept=".zip"
@@ -984,7 +1103,7 @@ export const SettingsPage: React.FC = () => {
         </h2>
         <div className="bg-card border border-border/70 rounded-2xl shadow-md overflow-hidden">
           <button 
-            onClick={() => setIsEditProfileOpen(true)}
+            onClick={() => { recordScroll(); setIsEditProfileOpen(true); }}
             className="w-full p-4 flex items-center justify-between hover:bg-muted/30 transition-colors"
           >
             <div className="flex items-center gap-4">
@@ -1006,7 +1125,7 @@ export const SettingsPage: React.FC = () => {
           </button>
           <div className="h-px bg-border/50" />
           <button 
-            onClick={() => setIsLinkedDevicesOpen(true)}
+            onClick={() => { recordScroll(); setIsLinkedDevicesOpen(true); }}
             className="w-full p-4 flex items-center justify-between hover:bg-muted/30 transition-colors"
           >
             <div className="flex items-center gap-3">
@@ -1029,7 +1148,7 @@ export const SettingsPage: React.FC = () => {
 
       <EditProfile 
         isOpen={isEditProfileOpen}
-        onClose={() => setIsEditProfileOpen(false)}
+        onClose={() => { setIsEditProfileOpen(false); restoreScrollPosition(); }}
         isLoading={isSavingProfile}
         initialData={{
           fullName: user?.name || "",
@@ -1099,14 +1218,14 @@ export const SettingsPage: React.FC = () => {
             <div className="flex items-center gap-1 bg-muted p-1 rounded-xl">
               <button
                 type="button"
-                onClick={() => setTheme("dark")}
+                onClick={() => { hapticSelection(); setTheme("dark"); }}
                 className={`p-1.5 rounded-lg transition-all ${theme === "dark" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground"}`}
               >
                 <Moon className="w-4 h-4" />
               </button>
               <button
                 type="button"
-                onClick={() => setTheme("light")}
+                onClick={() => { hapticSelection(); setTheme("light"); }}
                 className={`p-1.5 rounded-lg transition-all ${theme === "light" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground"}`}
               >
                 <Sun className="w-4 h-4" />
@@ -1153,12 +1272,13 @@ export const SettingsPage: React.FC = () => {
                   (notifConfig.summaryTime || "18:00")
                 }
                 onChange={(e) => {
+                  hapticSelection();
                   if (reminderFrequency.type === 'Weekly') updateConfig({ weeklySummaryTime: e.target.value });
                   else if (reminderFrequency.type === 'Monthly') updateConfig({ monthlySummaryTime: e.target.value });
                   else if (reminderFrequency.type === 'Yearly') updateConfig({ yearlySummaryTime: e.target.value });
                   else updateConfig({ summaryTime: e.target.value });
                 }}
-                className="bg-white dark:bg-black text-slate-900 dark:text-white text-sm font-semibold rounded-lg px-3 py-1.5 border border-black/10 dark:border-white/10 outline-none focus:ring-2 focus:ring-slate-900 dark:focus:ring-white"
+                className="bg-white dark:bg-black text-slate-900 dark:text-white text-sm font-semibold rounded-lg px-3 py-1.5 border border-black/10 dark:border-white/10 outline-none focus:ring-2 focus:ring-slate-900 dark:focus:ring-white cursor-pointer"
               />
             </div>
           )}
@@ -1258,7 +1378,11 @@ export const SettingsPage: React.FC = () => {
               </div>
             </div>
             <RunActionButton
-              action={handleExportCSV}
+              action={async () => {
+                recordScroll();
+                await handleExportCSV();
+                restoreScrollPosition();
+              }}
               idleLabel="Export ZIP"
               doneLabel="Saved"
               idleIcon={
@@ -1292,7 +1416,10 @@ export const SettingsPage: React.FC = () => {
               </div>
             </div>
             <RunActionButton
-              action={async () => csvInputRef.current?.click()}
+              action={async () => {
+                recordScroll();
+                csvInputRef.current?.click();
+              }}
               disabled={isImportingCSV}
               idleLabel="Import ZIP"
               doneLabel="Ready"
@@ -1306,7 +1433,7 @@ export const SettingsPage: React.FC = () => {
 
           {/* Peer Sync */}
           <button
-            onClick={() => setActiveView("sync")}
+            onClick={() => openSubView("sync")}
             className="w-full text-left p-4 hover:bg-muted/50 transition-colors flex items-center justify-between cursor-pointer group"
           >
             <div className="flex items-center gap-3">
@@ -1419,6 +1546,7 @@ export const SettingsPage: React.FC = () => {
           {/* Share App */}
           <button
             onClick={async () => {
+              recordScroll();
               const appLink = updateManifest?.appDownloadLink || "https://www.attendx.tech";
               const shareText = `Download AttendX to manage your academic attendance easily!\n\n${appLink}`;
               try {
@@ -1446,7 +1574,7 @@ export const SettingsPage: React.FC = () => {
 
           {/* Contact us */}
           <button
-            onClick={() => setActiveView("contact")}
+            onClick={() => openSubView("contact")}
             className="w-full text-left p-4 hover:bg-muted/50 transition-colors flex items-center justify-between cursor-pointer group"
           >
             <div className="flex items-center gap-3">
@@ -1467,7 +1595,10 @@ export const SettingsPage: React.FC = () => {
 
           {/* App info */}
           <button
-            onClick={() => setShowAppInfoModal(true)}
+            onClick={() => {
+              recordScroll();
+              setShowAppInfoModal(true);
+            }}
             className="w-full text-left p-4 hover:bg-muted/50 transition-colors flex items-center justify-between gap-3 cursor-pointer group"
           >
             <div className="flex items-center gap-3">
@@ -1517,7 +1648,7 @@ export const SettingsPage: React.FC = () => {
           Support
         </h2>
         <div className="bg-card border border-border/70 rounded-2xl divide-y divide-border/50 shadow-md">
-          <div onClick={() => setIsFeedbackOpen(true)} className="w-full text-left p-4 hover:bg-muted/50 transition-colors flex items-center justify-between cursor-pointer group">
+          <div onClick={() => { recordScroll(); setIsFeedbackOpen(true); }} className="w-full text-left p-4 hover:bg-muted/50 transition-colors flex items-center justify-between cursor-pointer group">
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
@@ -1533,7 +1664,7 @@ export const SettingsPage: React.FC = () => {
             </div>
             <ChevronRight className="w-5 h-5 text-muted-foreground/50 group-hover:text-primary transition-colors" />
           </div>
-          <div onClick={() => navigate("/settings/faq")} className="w-full text-left p-4 hover:bg-muted/50 transition-colors flex items-center justify-between cursor-pointer group">
+          <div onClick={() => { recordScroll(); navigate("/settings/faq"); }} className="w-full text-left p-4 hover:bg-muted/50 transition-colors flex items-center justify-between cursor-pointer group">
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center">
                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg>
@@ -1549,7 +1680,7 @@ export const SettingsPage: React.FC = () => {
             </div>
             <ChevronRight className="w-5 h-5 text-muted-foreground/50 group-hover:text-amber-500 transition-colors" />
           </div>
-          <div onClick={() => setIsChangelogOpen(true)} className="w-full text-left p-4 hover:bg-muted/50 transition-colors flex items-center justify-between cursor-pointer group">
+          <div onClick={() => { recordScroll(); setIsChangelogOpen(true); }} className="w-full text-left p-4 hover:bg-muted/50 transition-colors flex items-center justify-between cursor-pointer group">
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 rounded-xl bg-purple-500/10 text-purple-500 flex items-center justify-center">
                 <History className="w-5 h-5" />
@@ -1607,6 +1738,7 @@ export const SettingsPage: React.FC = () => {
           <button
             disabled={!enableReset}
             onClick={() => {
+              recordScroll();
               setResetConfirmText("");
               setResetError("");
               fetchSubjectsForReset();
@@ -1635,6 +1767,7 @@ export const SettingsPage: React.FC = () => {
           <button
             disabled={!enableReset}
             onClick={() => {
+              recordScroll();
               setResetConfirmText("");
               setResetError("");
               setResetModalType("attendance");
@@ -1661,6 +1794,7 @@ export const SettingsPage: React.FC = () => {
           <button
             disabled={!enableReset}
             onClick={() => {
+              recordScroll();
               setResetConfirmText("");
               setResetError("");
               setResetModalType("timetable");
@@ -1688,6 +1822,7 @@ export const SettingsPage: React.FC = () => {
           <button
             disabled={!enableReset}
             onClick={() => {
+              recordScroll();
               setResetConfirmText("");
               setResetError("");
               setResetModalType("events");
@@ -1715,6 +1850,7 @@ export const SettingsPage: React.FC = () => {
           <button
             disabled={!enableReset}
             onClick={() => {
+              recordScroll();
               setResetConfirmText("");
               setResetError("");
               setResetModalType("entire");
@@ -1875,7 +2011,7 @@ export const SettingsPage: React.FC = () => {
                 <button
                   type="button"
                   disabled={isResetting}
-                  onClick={() => setResetModalType(null)}
+                  onClick={() => { setResetModalType(null); restoreScrollPosition(); }}
                   className="px-4 py-2 rounded-xl text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
                 >
                   Cancel
@@ -1884,7 +2020,7 @@ export const SettingsPage: React.FC = () => {
                     initialSeconds={5}
                     deleteLabel="Confirm Reset"
                     undoLabel="Cancel Reset"
-                    icon={<Trash2 className="w-4 h-4 mr-1 inline-block" />}
+                    icon={<Trash2 className="w-4 h-4" />}
                     onConfirm={async () => {
                       await handlePerformReset();
                     }}
@@ -1908,7 +2044,7 @@ export const SettingsPage: React.FC = () => {
         <div className="fixed inset-0 bg-white/60 dark:bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
           <div className="bg-white/40 dark:bg-black/60 backdrop-blur-3xl border-2 border-black dark:border-[#333333] rounded-none max-w-md w-full p-6 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] dark:shadow-[8px_8px_0px_0px_#222222] space-y-6 relative overflow-hidden">
             <button
-              onClick={() => setShowAppInfoModal(false)}
+              onClick={() => { setShowAppInfoModal(false); restoreScrollPosition(); }}
               className="absolute top-4 right-4 p-2 rounded-full hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
             >
               <X className="w-5 h-5" />
@@ -2017,7 +2153,7 @@ export const SettingsPage: React.FC = () => {
 
             <div className="pt-2 text-center">
               <button
-                onClick={() => setShowAppInfoModal(false)}
+                onClick={() => { setShowAppInfoModal(false); restoreScrollPosition(); }}
                 className="w-full py-4 rounded-none bg-[#48CAE4] text-[#050505] font-black uppercase tracking-widest text-xs border-2 border-black dark:border-none shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] dark:shadow-[4px_4px_0px_0px_#111111] hover:-translate-y-1 hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] dark:hover:shadow-[6px_6px_0px_0px_#111111] transition-all"
               >
                 Close App Info
@@ -2029,16 +2165,16 @@ export const SettingsPage: React.FC = () => {
 
       <FeedbackModal 
         isOpen={isFeedbackOpen} 
-        onClose={() => setIsFeedbackOpen(false)} 
+        onClose={() => { setIsFeedbackOpen(false); restoreScrollPosition(); }} 
       />
       <ChangelogModal
         isOpen={isChangelogOpen}
-        onClose={() => setIsChangelogOpen(false)}
+        onClose={() => { setIsChangelogOpen(false); restoreScrollPosition(); }}
         releases={updateManifest.changelog}
       />
       <LinkedDevicesModal 
         isOpen={isLinkedDevicesOpen} 
-        onClose={() => setIsLinkedDevicesOpen(false)} 
+        onClose={() => { setIsLinkedDevicesOpen(false); restoreScrollPosition(); }} 
       />
     </>
   );

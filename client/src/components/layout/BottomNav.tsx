@@ -2,6 +2,7 @@ import React from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { CalendarDays, Table, BookOpen, Settings, BarChart3, Calendar } from "lucide-react";
 import { cn } from "../../lib/utils";
+import { hapticSelection } from "../../utils/haptics";
 
 const navItems = [
   { label: "Today", path: "/today", icon: CalendarDays },
@@ -29,6 +30,7 @@ export const BottomNav: React.FC = () => {
             <NavLink
               key={item.path}
               to={item.path}
+              onClick={() => hapticSelection()}
               className={({ isActive }) => {
                 if (isActive && isReports) {
                   return "flex flex-col items-center justify-center flex-1 py-1 text-[11px] font-medium transition-colors text-[#74313A] dark:text-[#EED3CF]";

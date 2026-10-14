@@ -9,6 +9,8 @@ import { SubjectModal } from "../../components/subjects/SubjectModal";
 import { useAuthStore } from "../../stores/authStore";
 import { useAttendanceStore } from "../../stores/attendanceStore";
 import { useNavigate, useLocation } from "react-router-dom";
+import { useBackHandlerStore } from "../../stores/backHandlerStore";
+import { hapticMedium, hapticHeavy, hapticSelection, hapticSuccess } from "../../utils/haptics";
 
 interface Subject {
   id: string;
@@ -76,7 +78,10 @@ const SubjectCard: React.FC<{
 
   return (
     <div 
-      onClick={() => navigate(`/subjects/${stat.id}`)}
+      onClick={() => {
+        hapticSelection();
+        navigate(`/subjects/${stat.id}`);
+      }}
       className="bg-white/60 dark:bg-black/30 backdrop-blur-xl border border-white/60 dark:border-white/10 rounded-2xl p-4 hover:border-white/80 dark:hover:border-white/40 transition-all group relative overflow-hidden cursor-pointer shadow-lg"
     >
       <div className="absolute top-0 left-0 w-1.5 h-full rounded-l-2xl" style={{ backgroundColor: stat.colorHex || "#8b5cf6" }} />
@@ -84,7 +89,7 @@ const SubjectCard: React.FC<{
         {/* Top row: name + badge */}
         <div className="flex items-start justify-between gap-3">
           <div className="flex-1 min-w-0">
-            <h3 className="text-base font-bold text-foreground dark:text-white leading-tight truncate transition-colors">{stat.name}</h3>
+            <h3 className="text-base font-bold text-foreground dark:text-white leading-tight transition-colors break-words">{stat.name}</h3>
             <p className={`text-xs mt-0.5 font-medium ${statusMsg.color}`}>{statusMsg.text}</p>
           </div>
           <StatBadge stat={stat} />
@@ -120,17 +125,17 @@ const SubjectCard: React.FC<{
               Tot: <span className="text-foreground font-semibold">{stat.total}</span>
             </span>
           </div>
-          {/* Edit/Delete */}
-          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          {/* Edit/Delete — always visible on mobile (no hover on touch), revealed on hover for desktop */}
+          <div className="flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
             <button
-              onClick={(e) => { e.stopPropagation(); onEdit(); }}
+              onClick={(e) => { e.stopPropagation(); hapticMedium(); onEdit(); }}
               className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
               title="Edit Subject"
             >
               <Pencil className="w-3.5 h-3.5" />
             </button>
             <button
-              onClick={(e) => { e.stopPropagation(); onDelete(); }}
+              onClick={(e) => { e.stopPropagation(); hapticHeavy(); onDelete(); }}
               className="p-1.5 rounded-lg text-muted-foreground hover:text-rose-500 hover:bg-rose-500/10 transition-colors"
               title="Remove Subject"
             >
@@ -162,6 +167,22 @@ export const SubjectsPage = () => {
       setIsAdding(true);
     }
   }, [location.hash]);
+
+  useEffect(() => {
+    const unregister = useBackHandlerStore.getState().register(() => {
+      if (isAdding) {
+        setIsAdding(false);
+        setEditingSubject(null);
+        return true;
+      }
+      if (isCreateSemesterOpen) {
+        setIsCreateSemesterOpen(false);
+        return true;
+      }
+      return false;
+    });
+    return () => unregister();
+  }, [isAdding, isCreateSemesterOpen]);
 
   const fetchData = async () => {
     try {
@@ -224,6 +245,7 @@ export const SubjectsPage = () => {
       action: {
         label: "Delete",
         onClick: async () => {
+          hapticHeavy();
           try {
             await api.delete(`/subjects/${id}?preserveHistory=true`);
             fetchData();

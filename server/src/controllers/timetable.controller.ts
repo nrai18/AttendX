@@ -159,10 +159,20 @@ export class TimetableController {
     if (!id) {
       return res.status(400).json({ error: "id is required" });
     }
-    await TimetableService.deleteExtraClass(req.user!.userId, id);
-    await CacheService.invalidateUser(req.user!.userId);
+    try {
+      await TimetableService.deleteExtraClass(req.user!.userId, id);
+      await CacheService.invalidateUser(req.user!.userId);
+    } catch (err: any) {
+      // If it's a ghost class (override no longer exists), silently succeed
+      // so the UI can remove the entry without showing a 500 error.
+      if (err?.message?.includes("not found") || err?.message?.includes("ghost")) {
+        return res.json({ message: "Extra class removed (ghost cleanup)" });
+      }
+      throw err; // re-throw real errors (auth, DB issues)
+    }
     res.json({ message: "Extra class deleted" });
   }
+
 
   static async ocrImport(req: Request | any, res: Response) {
     const file = req.file || (req.files && req.files[0]);

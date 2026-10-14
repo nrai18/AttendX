@@ -34,14 +34,21 @@ export class TimetableService {
     for (const time of rawMutationTimes) {
       if (currentClusterStart === -1 || time - currentClusterStart > CLUSTER_WINDOW_MS) {
         currentClusterStart = time;
-        mutationTimes.push(time);
+        // Require that the cluster retired a meaningful set of slots (e.g. >= 4 slots)
+        // to avoid single-slot edits or deletes creating false archived timetables.
+        const retiredInCluster = allSlots.filter(s => 
+          s.validUntil && Math.abs(s.validUntil.getTime() - time) <= CLUSTER_WINDOW_MS
+        ).length;
+        if (retiredInCluster >= 4) {
+          mutationTimes.push(time);
+        }
       }
     }
     
     // Sort descending for UI (newest archives first)
     mutationTimes.sort((a, b) => b - a);
     
-    const versions = mutationTimes.map(time => {
+    const versions = mutationTimes.map((time, idx) => {
       // Reconstruct timetable exactly as it existed right before this mutation
       const activeSlotsAtTime = allSlots.filter(s => {
         const from = s.validFrom.getTime();
@@ -57,14 +64,51 @@ export class TimetableService {
         return a.startTime.localeCompare(b.startTime);
       });
 
+      // Calculate the true earliest validFrom among active slots in this version
+      const earliestFrom = activeSlotsAtTime.reduce((min, s) => {
+        const t = s.validFrom.getTime();
+        return t < min ? t : min;
+      }, Infinity);
+      const validFrom = earliestFrom !== Infinity ? new Date(earliestFrom) : new Date(time);
+
       return {
         id: `version_${time}`,
+        versionNumber: mutationTimes.length - idx,
         archivedAt: new Date(time),
-        validFrom: new Date(time), // Kept for backwards compatibility with UI
-        validUntil: new Date(time), // Kept for backwards compatibility with UI
+        validFrom,
+        validUntil: new Date(time),
+        isCurrent: false,
         slots: activeSlotsAtTime
       };
     });
+
+    // Reconstruct current active timetable version (validUntil is null)
+    const currentSlots = allSlots.filter(s => s.validUntil === null);
+    if (currentSlots.length > 0) {
+      currentSlots.sort((a, b) => {
+        if (a.dayOfWeek !== b.dayOfWeek) return a.dayOfWeek - b.dayOfWeek;
+        return a.startTime.localeCompare(b.startTime);
+      });
+
+      // Earliest validFrom among currently active slots (starts from semester start/phase start, e.g. 2026-09-07)
+      const earliestCurrentFrom = currentSlots.reduce((min, s) => {
+        const t = s.validFrom.getTime();
+        return t < min ? t : min;
+      }, Infinity);
+
+      const currentVersion = {
+        id: "current_version",
+        versionNumber: versions.length + 1,
+        archivedAt: new Date(),
+        validFrom: earliestCurrentFrom !== Infinity ? new Date(earliestCurrentFrom) : new Date(),
+        validUntil: null,
+        isCurrent: true,
+        slots: currentSlots
+      };
+
+      // Place the current timetable above Version 1
+      versions.unshift(currentVersion);
+    }
     
     return versions;
   }
@@ -150,6 +194,44 @@ export class TimetableService {
 
   static async updateSlot(userId: string, slotId: string, data: any) {
     const oldSlot = await this.verifySlotOwnership(userId, slotId);
+    
+    const targetSubjId = data.subjectId !== undefined ? data.subjectId : oldSlot.subjectId;
+    const targetDay = data.dayOfWeek !== undefined ? Number(data.dayOfWeek) : oldSlot.dayOfWeek;
+    const normStartTime = data.startTime !== undefined ? normalizeTimeString(data.startTime, oldSlot.startTime) : oldSlot.startTime;
+    const normEndTime = data.endTime !== undefined ? normalizeTimeString(data.endTime, oldSlot.endTime) : oldSlot.endTime;
+    const targetRoom = data.room !== undefined ? data.room : oldSlot.room;
+    const targetSlotType = data.slotType !== undefined ? data.slotType.toLowerCase() : oldSlot.slotType.toLowerCase();
+
+    const isIdentical =
+      targetSubjId === oldSlot.subjectId &&
+      targetDay === oldSlot.dayOfWeek &&
+      normStartTime === oldSlot.startTime &&
+      normEndTime === oldSlot.endTime &&
+      (targetRoom || "") === (oldSlot.room || "") &&
+      targetSlotType === oldSlot.slotType.toLowerCase();
+
+    if (isIdentical) {
+      return oldSlot;
+    }
+
+    const scheduleChanged =
+      targetSubjId !== oldSlot.subjectId ||
+      targetDay !== oldSlot.dayOfWeek ||
+      normStartTime !== oldSlot.startTime ||
+      normEndTime !== oldSlot.endTime;
+
+    if (!scheduleChanged) {
+      // Non-structural change (room or slotType only): in-place update without creating ghost archive slots
+      return prisma.timetableSlot.update({
+        where: { id: slotId },
+        data: {
+          room: targetRoom,
+          slotType: targetSlotType
+        },
+        include: { subject: true }
+      });
+    }
+
     const now = new Date();
     
     return prisma.$transaction(async (tx) => {
@@ -162,21 +244,34 @@ export class TimetableService {
         throw new Error("Conflict: Slot has already been modified or deleted.");
       }
       
-      return tx.timetableSlot.create({
+      const newSlot = await tx.timetableSlot.create({
         data: {
           semesterId: oldSlot.semesterId,
-          subjectId: data.subjectId !== undefined ? data.subjectId : oldSlot.subjectId,
-          dayOfWeek: data.dayOfWeek !== undefined ? Number(data.dayOfWeek) : oldSlot.dayOfWeek,
-          startTime: data.startTime !== undefined ? normalizeTimeString(data.startTime, oldSlot.startTime) : oldSlot.startTime,
-          endTime: data.endTime !== undefined ? normalizeTimeString(data.endTime, oldSlot.endTime) : oldSlot.endTime,
-          room: data.room !== undefined ? data.room : oldSlot.room,
-          slotType: data.slotType !== undefined ? data.slotType : oldSlot.slotType,
+          subjectId: targetSubjId,
+          dayOfWeek: targetDay,
+          startTime: normStartTime,
+          endTime: normEndTime,
+          room: targetRoom,
+          slotType: targetSlotType,
           validFrom: now
         },
         include: { subject: true }
       });
+
+      // Re-link any attendance records from today that still reference the old slot UUID.
+      // Without this, the calendar view shows a blank "Not Marked" row for the new slot
+      // and a duplicate orphan row for the old attendance record.
+      const todayStart = new Date(now); todayStart.setHours(0, 0, 0, 0);
+      const todayEnd   = new Date(now); todayEnd.setHours(23, 59, 59, 999);
+      await tx.attendance.updateMany({
+        where: { timetableSlotId: slotId, date: { gte: todayStart, lte: todayEnd } },
+        data:  { timetableSlotId: newSlot.id }
+      });
+
+      return newSlot;
     });
   }
+
 
 
   static async swapDays(userId: string, semesterId: string, dayA: number, dayB: number) {
@@ -255,13 +350,12 @@ export class TimetableService {
     const slotB = await this.verifySlotOwnership(userId, slotBId);
 
     const now = new Date();
+    const todayStart = new Date(now); todayStart.setHours(0, 0, 0, 0);
+    const todayEnd   = new Date(now); todayEnd.setHours(23, 59, 59, 999);
 
     return prisma.$transaction(async (tx) => {
-      await tx.timetableSlot.update({
-        where: { id: slotAId },
-        data: { validUntil: now }
-      });
-      await tx.timetableSlot.create({
+      await tx.timetableSlot.update({ where: { id: slotAId }, data: { validUntil: now } });
+      const newSlotA = await tx.timetableSlot.create({
         data: {
           semesterId: slotA.semesterId,
           subjectId: slotA.subjectId,
@@ -273,11 +367,9 @@ export class TimetableService {
           validFrom: now
         }
       });
-      await tx.timetableSlot.update({
-        where: { id: slotBId },
-        data: { validUntil: now }
-      });
-      await tx.timetableSlot.create({
+
+      await tx.timetableSlot.update({ where: { id: slotBId }, data: { validUntil: now } });
+      const newSlotB = await tx.timetableSlot.create({
         data: {
           semesterId: slotB.semesterId,
           subjectId: slotB.subjectId,
@@ -289,8 +381,20 @@ export class TimetableService {
           validFrom: now
         }
       });
+
+      // Re-link today's attendance records that referenced the old slot UUIDs
+      // so the calendar doesn't show orphaned duplicate rows.
+      await tx.attendance.updateMany({
+        where: { timetableSlotId: slotAId, date: { gte: todayStart, lte: todayEnd } },
+        data:  { timetableSlotId: newSlotA.id }
+      });
+      await tx.attendance.updateMany({
+        where: { timetableSlotId: slotBId, date: { gte: todayStart, lte: todayEnd } },
+        data:  { timetableSlotId: newSlotB.id }
+      });
     });
   }
+
 
   static async deleteSlot(userId: string, slotId: string, preserveHistory = true) {
     await this.verifySlotOwnership(userId, slotId);
@@ -441,7 +545,23 @@ export class TimetableService {
       where: { id },
       include: { semester: true }
     });
-    if (!override) throw new Error("Extra class override not found");
+
+    // Ghost class: the override no longer exists (orphaned attendance record).
+    // Gracefully clean up any dangling attendance row by its ID or overrideId and return success
+    // instead of throwing — the UI can silently remove ghost entries without 500 error.
+    if (!override) {
+      const deletedAtt = await prisma.attendance.deleteMany({
+        where: {
+          userId,
+          OR: [
+            { id },
+            { overrideId: id }
+          ]
+        }
+      }).catch(() => null);
+      return { deleted: deletedAtt?.count || 0, ghost: true };
+    }
+
     if (override.semester.userId !== userId) throw new Error("Forbidden: Override does not belong to user");
 
     await prisma.attendance.deleteMany({
@@ -451,6 +571,7 @@ export class TimetableService {
       where: { id }
     });
   }
+
 
   static async processOcrImage(fileBuffer: Buffer, mimeType: string, fileName: string, semesterId: string, userId: string) {
     let validMimeType = mimeType;

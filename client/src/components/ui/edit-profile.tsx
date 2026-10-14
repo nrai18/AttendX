@@ -6,6 +6,7 @@ import { api } from '../../lib/api';
 import { toast } from 'sonner';
 import { Player } from '@lottiefiles/react-lottie-player';
 import { useScrollLock } from "../../hooks/useScrollLock";
+import { useHardwareBack } from "../../hooks/useHardwareBack";
 
 export interface ProfileData {
   fullName: string;
@@ -26,6 +27,7 @@ interface EditProfileProps {
 
 export const EditProfile: React.FC<EditProfileProps> = ({ isOpen, onClose, initialData, onSave, isLoading }) => {
   useScrollLock(isOpen);
+  useHardwareBack(isOpen, onClose);
   const [formData, setFormData] = useState<ProfileData>(initialData);
   const [passwords, setPasswords] = useState({ oldPassword: '', newPassword: '' });
   const [showPasswordSection, setShowPasswordSection] = useState(false);
@@ -53,15 +55,23 @@ export const EditProfile: React.FC<EditProfileProps> = ({ isOpen, onClose, initi
   ].filter(Boolean)));
 
 
+  const prevIsOpenRef = useRef(false);
   useEffect(() => {
-    if (isOpen) {
+    const justOpened = isOpen && !prevIsOpenRef.current;
+    prevIsOpenRef.current = isOpen;
+
+    if (justOpened) {
       setFormData(initialData);
       setPasswords({ oldPassword: '', newPassword: '' });
       setShowPasswordSection(false);
       setShowPasswords(false);
       setShowAvatarPicker(false);
     }
-  }, [isOpen, initialData]);
+    // intentionally omit initialData from deps: we only want to reset when the
+    // modal transitions closed→open, not on every re-render of the parent that
+    // creates a new initialData object reference (e.g. during save loading state).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 

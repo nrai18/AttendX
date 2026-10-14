@@ -439,7 +439,7 @@ Supported Intents:
 
 Action Types & Payloads:
 - Safe Actions (executed immediately):
-  * NAVIGATE: { "path": string } (e.g. "/timetable", "/settings/profile", "/settings/devices", "/settings/peer-sync", "/settings/contact", "/settings/app-info", "/settings/feedback", "/settings/changelog", "/settings/backup", "/semester/timeline", "/semester/events", "/semester/holidays", "/predictive", "/today")
+  * NAVIGATE: { "path": string } (e.g. "/report", "/timetable", "/settings/profile", "/settings/devices", "/settings/peer-sync", "/settings/contact", "/settings/app-info", "/settings/feedback", "/settings/changelog", "/settings/backup", "/semester/timeline", "/semester/events", "/semester/holidays", "/predictive", "/today")
   * READ_STATS: {}
   * FILTER_VIEW: { "filter": string }
   * SET_SIMULATION_PREVIEW: { "subjectId": string, "skipCount": number }
@@ -616,8 +616,10 @@ ${masterPrompt ? `Master Context:\n${masterPrompt}` : ""}`;
       
       // Strict Path Validation for NAVIGATE actions to prevent external redirects / XSS
       if (raw.type === "NAVIGATE" && raw.payload?.path) {
-        const allowedPaths = ["/today", "/calendar", "/timetable", "/subjects", "/semester", "/predictive", "/report", "/settings", "/assignments", "/peer-sync"];
-        if (!allowedPaths.includes(raw.payload.path)) {
+        const allowedPaths = ["/today", "/calendar", "/timetable", "/subjects", "/semester", "/predictive", "/report", "/reports", "/settings", "/assignments", "/peer-sync", "/classrooms"];
+        if (raw.payload.path === "/reports") raw.payload.path = "/report";
+        const isAllowed = allowedPaths.some(p => raw.payload.path === p || raw.payload.path.startsWith(`${p}/`));
+        if (!isAllowed) {
            console.warn(`[CustomMlCopilotService] Blocked unauthorized NAVIGATE path: ${raw.payload.path}`);
            continue; // Drop the action
         }

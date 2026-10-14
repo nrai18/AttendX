@@ -174,6 +174,11 @@ export const FloatingChatbot: React.FC = () => {
   useEffect(() => {
     const handleOpenVoiceMode = () => setIsVoiceOpen(true);
     window.addEventListener('open-voice-mode', handleOpenVoiceMode);
+
+    if (isVoiceOpen) {
+      localStorage.setItem("onboarding_voice_mode", "true");
+      api.patch("/users/onboarding-status", { step: "voice_mode" }).catch(() => {});
+    }
     
     App.getInfo().then(info => setAppVersion(info.version)).catch(() => {});
     
@@ -763,10 +768,16 @@ const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'vo
     
       
       executeActionRef.current = async (action: any) => {
-        const studentContext = (await api.get("/chat/context")).data;
         let refresh = false;
+        const activeSemesterId =
+          action.payload?.semesterId ||
+          useAttendanceStore.getState().activeSemesterId ||
+          useCacheStore.getState().timetable?.activeSemester?.id;
+
         if (action.type === 'NAVIGATE' && action.payload?.path) {
-          navigate(action.payload.path);
+          let targetPath = action.payload.path;
+          if (targetPath === '/reports') targetPath = '/report';
+          navigate(targetPath);
         } else if (action.type === 'MARK_ATTENDANCE') {
           await api.post("/attendance/mark", action.payload);
           navigate(`/today?date=${action.payload.date}`);
@@ -896,7 +907,7 @@ const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'vo
           toast.success(`Class reminders set to ${action.payload.offsetMinutes} mins before`);
         } else if (action.type === 'ADD_TIMETABLE_SLOT') {
           await api.post(`/timetable/slots`, {
-            semesterId: studentContext.active_semester_id,
+            semesterId: activeSemesterId,
             subjectId: action.payload.subjectId,
             dayOfWeek: action.payload.dayOfWeek,
             startTime: action.payload.startTime,
@@ -906,7 +917,7 @@ const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'vo
           });
           refresh = true;
         } else if (action.type === 'REMOVE_TIMETABLE_SLOT') {
-          const ttRes = await api.get(`/timetable/${studentContext.active_semester_id}`);
+          const ttRes = await api.get(`/timetable/${activeSemesterId}`);
           const timetable = ttRes.data;
           let targetSlotId = null;
           const slot = timetable.find((s: any) => s.subject.id === action.payload.subjectId && s.dayOfWeek === action.payload.dayOfWeek && s.startTime === action.payload.startTime);
@@ -921,7 +932,7 @@ const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'vo
           }
         } else if (action.type === 'SHIFT_TIMETABLE_SLOT') {
           // Fetch timetable to find the slot
-          const targetSemesterId = action.payload.semesterId || studentContext.active_semester_id;
+          const targetSemesterId = action.payload.semesterId || activeSemesterId;
           const ttRes = await api.get(`/timetable/${targetSemesterId}`);
           const timetable = ttRes.data;
           // Find the slot matching subjectId and dayOfWeek
@@ -942,14 +953,14 @@ const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'vo
           }
         } else if (action.type === 'SWAP_TIMETABLE_DAYS') {
           await api.post(`/timetable/days/swap`, {
-            semesterId: studentContext.active_semester_id,
+            semesterId: activeSemesterId,
             dayA: action.payload.dayA,
             dayB: action.payload.dayB
           });
           refresh = true;
         } else if (action.type === 'SHIFT_TIMETABLE_DAY') {
           await api.post(`/timetable/days/shift`, {
-            semesterId: studentContext.active_semester_id,
+            semesterId: activeSemesterId,
             sourceDay: action.payload.sourceDay,
             targetDay: action.payload.targetDay
           });

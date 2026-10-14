@@ -138,16 +138,25 @@ export const ArchiveTimetableModal: React.FC<ArchiveTimetableModalProps> = ({ is
                         : "bg-card border-border hover:border-primary/30 text-muted-foreground hover:text-foreground"
                     }`}
                   >
-                    <div className="font-bold text-sm mb-1 text-foreground">Version {versions.length - i}</div>
+                    <div className="font-bold text-sm mb-1 text-foreground flex items-center justify-between gap-1.5">
+                      <span>{v.isCurrent ? "Current Timetable" : `Version ${v.versionNumber || (versions.length - i)}`}</span>
+                      {v.isCurrent && (
+                        <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-500 border border-emerald-500/30">
+                          Active
+                        </span>
+                      )}
+                    </div>
                     <div className="text-xs space-y-1">
                       <div className="flex items-center gap-1.5">
-                        <CalendarIcon className="w-3 h-3" />
+                        <CalendarIcon className="w-3 h-3 flex-shrink-0" />
                         <span>
-                          {format(new Date(v.validFrom.split("T")[0] + "T00:00:00"), "MMM d, yyyy")} - 
-                          {v.validUntil ? format(new Date(v.validUntil.split("T")[0] + "T00:00:00"), "MMM d, yyyy") : "Present"}
+                          {format(new Date(String(v.validFrom).split("T")[0] + "T00:00:00"), "MMM d, yyyy")} - 
+                          {v.validUntil ? format(new Date(String(v.validUntil).split("T")[0] + "T00:00:00"), "MMM d, yyyy") : "Present"}
                         </span>
                       </div>
-                      
+                      <div className="text-[11px] text-muted-foreground pl-4.5">
+                        {v.slots?.length || 0} classes
+                      </div>
                     </div>
                   </button>
                 ))}

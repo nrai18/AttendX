@@ -1,4 +1,5 @@
 import { prisma } from "../lib/prisma";
+import { BirthdayService } from "./birthday.service";
 
 export class AttendanceService {
   private static toLocalIso(date: Date): string {
@@ -32,6 +33,7 @@ export class AttendanceService {
     const activeSemester = await prisma.semester.findFirst({
       where: { userId, isActive: true },
     });
+    await BirthdayService.ensureBirthdaySent(userId);
 
     if (!activeSemester) {
       return [];
@@ -226,12 +228,14 @@ export class AttendanceService {
           userId,
           subjectId: data.subjectId,
           date: targetDate,
-          ...(data.timetableSlotId 
-            ? { OR: [{ timetableSlotId: data.timetableSlotId }, { timetableSlotId: null }] } 
-            : {}),
-          ...(data.overrideId 
-            ? { OR: [{ overrideId: data.overrideId }, { overrideId: null }] } 
-            : {}),
+          // When a specific slot/override ID is given, match it exactly.
+          // Previously the OR also matched null-slot records, which "stole" orphan records
+          // and left a second floating row behind — causing a phantom extra class in the calendar.
+          ...(data.timetableSlotId
+            ? { timetableSlotId: data.timetableSlotId }
+            : data.overrideId
+              ? { overrideId: data.overrideId }
+              : { timetableSlotId: null, overrideId: null }),
         },
       });
     }
@@ -1037,7 +1041,12 @@ export class AttendanceService {
         if (!isGlobalOff) {
           let att = dayAtts.find(a => a.timetableSlotId === slot.id);
           if (!att) {
-            att = dayAtts.find(a => !handledAttendanceIds.has(a.id) && a.subjectId === slot.subjectId && !a.timetableSlotId);
+            // Fallback: match any unhandled attendance for the same subject on this day.
+            // This covers the case where a slot was swapped/edited (new UUID created) but
+            // the existing attendance record still references the old slot UUID.
+            // Requiring !a.timetableSlotId here would leave those records orphaned and cause
+            // a duplicate "Not Marked" row + stale absent row in the calendar bottom sheet.
+            att = dayAtts.find(a => !handledAttendanceIds.has(a.id) && a.subjectId === slot.subjectId);
           }
           if (att) handledAttendanceIds.add(att.id);
           dayAgenda.push({

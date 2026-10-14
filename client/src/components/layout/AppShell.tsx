@@ -1,4 +1,4 @@
-import React, { useEffect, useLayoutEffect } from "react";
+import React, { useEffect, useLayoutEffect, useRef } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { BottomNav } from "./BottomNav";
 import { Sidebar } from "./Sidebar";
@@ -17,8 +17,27 @@ export const AppShell: React.FC<AppShellProps> = ({ title, onAddClick }) => {
   const { fetchStats } = useAttendanceStore();
   const location = useLocation();
   const navigate = useNavigate();
+  const prevPathRef = useRef(location.pathname);
 
   useEffect(() => {
+    // If returning back to /settings from a settings sub-route (e.g. /settings/faq)
+    const isReturningToSettings = location.pathname === "/settings" && prevPathRef.current.startsWith("/settings");
+    prevPathRef.current = location.pathname;
+
+    if (isReturningToSettings) {
+      const savedSettingsScroll = Number(sessionStorage.getItem("attendx_settings_scroll")) || 0;
+      if (savedSettingsScroll > 0) {
+        window.scrollTo({ top: savedSettingsScroll, behavior: "instant" });
+        requestAnimationFrame(() => {
+          window.scrollTo({ top: savedSettingsScroll, behavior: "instant" });
+        });
+        return;
+      }
+    }
+
+    // Scroll to top on distinct route changes
+    window.scrollTo({ top: 0, behavior: "instant" });
+
     // Force the correct favicon on route change
     let link: HTMLLinkElement | null = document.querySelector("link[rel~='icon']");
     if (!link) {
