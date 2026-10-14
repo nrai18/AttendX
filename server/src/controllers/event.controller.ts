@@ -3,6 +3,7 @@ import { EventService } from "../services/event.service";
 import { AuthenticatedRequest } from "../middleware/authenticate";
 import { CalendarRagService } from "../services/calendar_rag.service";
 import { CacheService } from "../services/cache.service";
+import { TemplateEventService } from "../services/template_event.service";
 
 export class EventController {
   static async getEvents(req: AuthenticatedRequest, res: Response) {
@@ -37,24 +38,21 @@ export class EventController {
       );
       
       if (Array.isArray(events)) {
+        const { prisma } = require("../lib/prisma");
+        const semester = await prisma.semester.findUnique({ where: { id: semesterId } });
+        const semYear = semester ? new Date(semester.startDate).getFullYear() : new Date().getFullYear();
+        const holidayData = TemplateEventService.getHolidays(semYear);
+        const allHolidays = [...holidayData.fixedHolidays, ...holidayData.restrictedHolidays];
+
         events.forEach(group => {
           if (Array.isArray(group.events)) {
             group.events.forEach((evt: any) => {
-               const t = (evt.title || "").toLowerCase();
-               let fixDate = null;
-               if (t.includes("muharram")) fixDate = "2026-07-24";
-               else if (t.includes("independence")) fixDate = "2026-08-15";
-               else if (t.includes("janmashtami")) fixDate = "2026-09-04";
-               else if (t.includes("milad")) fixDate = "2026-08-26";
-               else if (t.includes("dussehra") || t.includes("vijay")) fixDate = "2026-10-20";
-               else if (t.includes("diwali") || t.includes("deepavali")) fixDate = "2026-11-08";
-               else if (t.includes("christmas")) fixDate = "2026-12-25";
-               else if (t.includes("guru nanak")) fixDate = "2026-11-24";
-               
-               if (fixDate) {
-                 evt.startDate = fixDate;
-                 evt.endDate = fixDate;
-               }
+              const t = (evt.title || "").toLowerCase();
+              const matched = allHolidays.find(h => t.includes(h.name.toLowerCase()));
+              if (matched && matched.isoDate) {
+                evt.startDate = matched.isoDate;
+                evt.endDate = matched.isoDate;
+              }
             });
             // Sort chronologically
             group.events.sort((a: any, b: any) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime());
@@ -119,6 +117,53 @@ export class EventController {
     } catch (error) {
       console.error("Clear events failed:", error);
       res.status(500).json({ error: "Failed to clear events" });
+    }
+  }
+
+  static async getTemplateHolidays(req: AuthenticatedRequest, res: Response) {
+    try {
+      const year = req.query.year ? parseInt(req.query.year as string) : new Date().getFullYear();
+      const data = TemplateEventService.getHolidays(year);
+      res.json(data);
+    } catch (error) {
+      console.error("Failed to get template holidays:", error);
+      res.status(500).json({ error: "Failed to get template holidays" });
+    }
+  }
+
+  static async getTemplateAcademicCalendar(req: AuthenticatedRequest, res: Response) {
+    try {
+      const semesterNumber = req.query.semesterNumber ? parseInt(req.query.semesterNumber as string) : undefined;
+      const year = req.query.year ? parseInt(req.query.year as string) : undefined;
+      const startDate = req.query.startDate as string | undefined;
+      const endDate = req.query.endDate as string | undefined;
+      const data = TemplateEventService.getAcademicCalendar({ semesterNumber, year, startDate, endDate });
+      res.json(data);
+    } catch (error) {
+      console.error("Failed to get template academic calendar:", error);
+      res.status(500).json({ error: "Failed to get template academic calendar" });
+    }
+  }
+
+  static async syncTemplates(req: AuthenticatedRequest, res: Response) {
+    const { semesterId, syncHolidayList, syncAcademicCalendar, year, semesterNumber } = req.body;
+    if (!semesterId) {
+      return res.status(400).json({ error: "Missing semesterId" });
+    }
+    try {
+      const result = await TemplateEventService.syncToSemester({
+        userId: req.user!.userId,
+        semesterId,
+        syncHolidayList: syncHolidayList !== false,
+        syncAcademicCalendar: syncAcademicCalendar === true,
+        year: year ? parseInt(year) : undefined,
+        semesterNumber: semesterNumber ? parseInt(semesterNumber) : undefined
+      });
+      await CacheService.invalidateUser(req.user!.userId);
+      res.json({ message: `Successfully synced ${result.syncedCount} events`, ...result });
+    } catch (error: any) {
+      console.error("Failed to sync templates:", error);
+      res.status(500).json({ error: error.message || "Failed to sync templates" });
     }
   }
 }

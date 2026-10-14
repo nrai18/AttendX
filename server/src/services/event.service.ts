@@ -14,6 +14,19 @@ export class EventService {
       dateFilter = {
         date: { gte: new Date(startDate) }
       };
+    } else if (semesterId) {
+      const sem = await prisma.semester.findUnique({
+        where: { id: semesterId },
+        select: { startDate: true, endDate: true }
+      });
+      if (sem) {
+        dateFilter = {
+          date: {
+            gte: sem.startDate,
+            lte: sem.endDate
+          }
+        };
+      }
     }
 
     const whereClause: any = {

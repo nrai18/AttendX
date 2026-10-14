@@ -157,8 +157,8 @@ export function App() {
           console.error("Failed to schedule academic updates", e);
         }
 
-        // Instant Copilot Warmup ping to ensure 0-latency chat on start
-        api.post("/ai/chat", { text: "ping", warmup: true }).catch(() => {
+        // Instant Copilot Warmup ping to ensure 0-latency chat on start (silent)
+        api.post("/ai/chat", { text: "ping", warmup: true }, { silent: true, skipToast: true }).catch(() => {
           // Silent catch if offline or server waking up
         });
 
@@ -232,16 +232,20 @@ export function App() {
                 element={<PredictiveAttendancePage />}
               />
               <Route path="/timetable" element={<TimetablePage />} />
-              <Route path="/semester" element={<SemesterHubPage />} />`n              <Route path="/semester/:tab" element={<SemesterHubPage />} />
+              <Route path="/semester" element={<SemesterHubPage />} />
+              <Route path="/semester/:tab" element={<SemesterHubPage />} />
               <Route path="/calendar" element={<CalendarPage />} />
               <Route path="/subjects" element={<SubjectsPage />} />
               <Route path="/subjects/manage" element={<SubjectsPage />} />
               <Route path="/subjects/:id" element={<SubjectDetailPage />} />
               <Route path="/classrooms" element={<ClassroomsPage />} />
               <Route path="/classrooms/:id" element={<ClassroomFeedPage />} />
-              <Route path="/settings" element={<SettingsPage />} />`n              <Route path="/settings/faq" element={<FaqPage />} />`n              <Route path="/settings/:section" element={<SettingsPage />} />
+              <Route path="/settings" element={<SettingsPage />} />
+              <Route path="/settings/faq" element={<FaqPage />} />
+              <Route path="/settings/:section" element={<SettingsPage />} />
               <Route path="/assignments" element={<AssignmentsPage />} />
               <Route path="/report" element={<ReportView />} />
+              <Route path="/reports" element={<ReportView />} />
               <Route path="*" element={<NotFoundPage />} />
             </Route>
 

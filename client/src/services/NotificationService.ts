@@ -330,7 +330,6 @@ export class NotificationService {
 
       if (permStatus.receive !== 'granted') {
         console.warn('User denied push notification permissions.');
-        import('sonner').then(({ toast }) => toast.error('Notification permission denied by OS.'));
         return;
       }
 
@@ -339,8 +338,10 @@ export class NotificationService {
         console.log('[FCM] Push registration success, token: ' + token.value);
         localStorage.setItem('fcm_token', token.value);
         try {
-          // Send FCM token to the backend (might fail if not logged in yet)
-          await api.patch('/users/me', { fcmToken: token.value });
+          // Only send FCM token to backend if already authenticated
+          if (useAuthStore.getState().isAuthenticated) {
+            await api.patch('/users/me', { fcmToken: token.value });
+          }
         } catch (error) {
           console.error('[FCM] Failed to sync FCM token to backend (will retry on login):', error);
         }
@@ -348,7 +349,6 @@ export class NotificationService {
 
       PushNotifications.addListener('registrationError', (error: any) => {
         console.error('[FCM] Error on registration: ' + JSON.stringify(error));
-        import('sonner').then(({ toast }) => toast.error('FCM Registration Error: ' + JSON.stringify(error)));
       });
 
       await PushNotifications.register();
@@ -377,8 +377,8 @@ export class NotificationService {
         if (data && data.type === 'ota_update') {
           // Tell the OTAUpdateModal to fetch the manifest and show itself
           window.dispatchEvent(new Event('check_ota_update'));
-        } else if (data && data.route) {
-          window.dispatchEvent(new CustomEvent('push_route', { detail: data.route }));
+        } else if (data && (data.route || data.url)) {
+          window.dispatchEvent(new CustomEvent('push_route', { detail: data.route || data.url }));
         }
       });
     } catch (e) {
@@ -896,28 +896,8 @@ export class NotificationService {
       for (let i = 0; i < 7; i++) {
         const currentDay = addDays(today, i);
         
-        // Handle User's own birthday
-        if (user?.birthday) {
-          const userDob = new Date(user.birthday);
-          if (userDob.getUTCDate() === currentDay.getDate() && userDob.getUTCMonth() === currentDay.getMonth()) {
-            const notifyTime = setHours(currentDay, 8); // 8 AM greeting
-            if (notifyTime.getTime() > Date.now()) {
-              const firstName = (user.name || "there").split(' ')[0];
-              notificationsToSchedule.push({
-                id: getBirthdayNotificationId("Self", formatLocalDate(currentDay)),
-                title: "\ud83c\udf82 Happy Birthday!",
-                body: `Happy Birthday ${firstName}! Have a wonderful day!`,
-                largeBody: `\uD83C\uDF82 Happy Birthday ${firstName}!\n\nWe hope you have an incredible day filled with joy and celebration. Take a break and treat yourself today!`,
-                summaryText: "Your Birthday",
-                smallIcon: "ic_stat_adobe",
-                iconColor: "#F59E0B", 
-                channelId: "system_alerts",
-                schedule: { at: notifyTime, allowWhileIdle: true }
-              });
-              scheduledCount++;
-            }
-          }
-        }
+        // Note: Self Birthday notifications are dispatched as official FCM Push Notifications from the backend at 8:00 AM IST.
+        // Local notification scheduling for Self Birthday is disabled to eliminate duplicate alerts.
 
         // Multi-day event support: check if currentDay falls anywhere within event date range
         const dayEvents = allEvents.filter(e => isEventActiveOnDate(e, currentDay));
@@ -1035,7 +1015,8 @@ export class NotificationService {
           if (config?.notifyNextClassOnEnd && prevSlot && prevSlot.endTime) {
             const prevEndObj = parseTimeOnDate(currentDay, prevSlot.endTime);
             if (prevEndObj) {
-              if (prevEndObj.getTime() >= (classStartObj.getTime() - 60 * 60 * 1000) && prevEndObj.getTime() <= (standardNotifyTime.getTime() - 5 * 60 * 1000)) {
+              // Fire heads-up when the previous class ends, provided it ends before the standard notification time
+              if (prevEndObj.getTime() <= (standardNotifyTime.getTime() - 5 * 60 * 1000)) {
                 headsUpTime = prevEndObj;
               }
             }

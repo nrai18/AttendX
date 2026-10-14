@@ -597,9 +597,6 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
     });
     return () => { listener.then(l => l.remove()); };
   }, []);
-
-  if (!isOpen) return null;
-
   const getUiState = () => {
     if (isProcessing) return "PROCESSING";
     if (isSpeaking) return "SPEAKING";

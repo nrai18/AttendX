@@ -202,6 +202,11 @@ export const prisma = new Proxy(
                                           dbError?.message?.toLowerCase().includes('network');
                                           
                 if (isConnectionError) {
+                  // SEC-FIX: Never mock refreshToken or user authentication queries during DB connection spikes.
+                  // Mocking returns null, which falsely triggers 'Session has been revoked' and logs the user out!
+                  if (prop === "refreshToken" || prop === "user") {
+                    throw dbError;
+                  }
                   console.warn(`[AI Studio] DB connection error on prisma.${prop}.${method}, using in-memory fallback:`, dbError?.message || dbError);
                   if ((fallbackModel as any)[method]) {
                     return await (fallbackModel as any)[method](...args);

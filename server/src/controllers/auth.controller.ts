@@ -61,7 +61,8 @@ export class AuthController {
 
   static async refresh(req: Request, res: Response) {
     try {
-      const oldRefreshToken = req.cookies.refreshToken || req.body.refreshToken;
+      // Prioritize explicit body token from client store over potentially stale/mismatched cookie
+      const oldRefreshToken = req.body.refreshToken || req.cookies.refreshToken;
       if (!oldRefreshToken) {
         return res.status(401).json({ message: "No refresh token provided" });
       }

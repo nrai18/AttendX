@@ -43,21 +43,51 @@ export class AttendanceService {
       const targetDateEnd = new Date(targetDate);
       targetDateEnd.setHours(23, 59, 59, 999);
 
+      // Check if targetDate is past the semester's Last Teaching Day or endDate
+      const semEndDate = new Date(activeSemester.endDate);
+      semEndDate.setHours(23, 59, 59, 999);
+
+      const lastTeachingEvent = await prisma.event.findFirst({
+        where: {
+          userId,
+          OR: [
+            { semesterId: activeSemester.id },
+            { semesterId: null }
+          ],
+          title: {
+            contains: "Last Teaching Day",
+            mode: "insensitive"
+          }
+        },
+        orderBy: { date: "desc" }
+      });
+
+      let isPastTeachingDay = false;
+      if (lastTeachingEvent) {
+        const lastTeachingDateEnd = new Date(lastTeachingEvent.endDate || lastTeachingEvent.date);
+        lastTeachingDateEnd.setHours(23, 59, 59, 999);
+        if (targetDateEnd > lastTeachingDateEnd) {
+          isPastTeachingDay = true;
+        }
+      } else if (targetDateEnd > semEndDate) {
+        isPastTeachingDay = true;
+      }
+
       // 1. Fetch regular slots that were active on THIS SPECIFIC targetDate (Time-Travel)
-    const rawRegularSlots = await prisma.timetableSlot.findMany({
-      where: {
-        semesterId: activeSemester.id,
-        dayOfWeek,
-        validFrom: { lte: targetDateEnd },
-        OR: [
-          { validUntil: null },
-          { validUntil: { gte: targetDateEnd } }
-        ]
-      },
-      include: {
-        subject: true,
-      },
-    });
+      const rawRegularSlots = isPastTeachingDay ? [] : await prisma.timetableSlot.findMany({
+        where: {
+          semesterId: activeSemester.id,
+          dayOfWeek,
+          validFrom: { lte: targetDateEnd },
+          OR: [
+            { validUntil: null },
+            { validUntil: { gte: targetDateEnd } }
+          ]
+        },
+        include: {
+          subject: true,
+        },
+      });
 
     // Deduplicate regular slots by subjectId to prevent showing duplicates on the transition day
     const regularSlots = [];
@@ -226,12 +256,14 @@ export class AttendanceService {
           userId,
           subjectId: data.subjectId,
           date: targetDate,
-          ...(data.timetableSlotId 
-            ? { OR: [{ timetableSlotId: data.timetableSlotId }, { timetableSlotId: null }] } 
-            : {}),
-          ...(data.overrideId 
-            ? { OR: [{ overrideId: data.overrideId }, { overrideId: null }] } 
-            : {}),
+          // When a specific slot/override ID is given, match it exactly.
+          // Previously the OR also matched null-slot records, which "stole" orphan records
+          // and left a second floating row behind — causing a phantom extra class in the calendar.
+          ...(data.timetableSlotId
+            ? { timetableSlotId: data.timetableSlotId }
+            : data.overrideId
+              ? { overrideId: data.overrideId }
+              : { timetableSlotId: null, overrideId: null }),
         },
       });
     }
@@ -882,6 +914,18 @@ export class AttendanceService {
     const dayStats = { not_marked: 0, off: 0, missed: 0, attended: 0, mixed: 0 };
     const lectureStats = { off: 0, missed: 0, attended: 0, total: 0, percentage: 0 };
 
+    const lastTeachingEvent = globalEvents.find(e => 
+      /last\s*(teaching|working)\s*day/i.test(e.title)
+    );
+    const lastTeachingDateEnd = lastTeachingEvent 
+      ? new Date(lastTeachingEvent.endDate || lastTeachingEvent.date)
+      : null;
+    if (lastTeachingDateEnd) {
+      lastTeachingDateEnd.setHours(23, 59, 59, 999);
+    }
+    const semEndDate = new Date(activeSemester.endDate);
+    semEndDate.setHours(23, 59, 59, 999);
+
     const numDays = new Date(year, m, 0).getDate();
     for (let day = 1; day <= numDays; day++) {
       const d = new Date(year, m - 1, day);
@@ -914,7 +958,9 @@ export class AttendanceService {
       const dEnd = new Date(d);
       dEnd.setHours(23, 59, 59, 999);
 
-      const rawDaySlots = regularSlots.filter(s => {
+      const isPastTeachingDay = (lastTeachingDateEnd && dEnd > lastTeachingDateEnd) || dEnd > semEndDate;
+
+      const rawDaySlots = isPastTeachingDay ? [] : regularSlots.filter(s => {
         if (s.dayOfWeek !== dbDayOfWeek) return false;
         const validFromDate = new Date(s.validFrom);
         if (validFromDate > dEnd) return false; // Not active yet
@@ -1037,7 +1083,12 @@ export class AttendanceService {
         if (!isGlobalOff) {
           let att = dayAtts.find(a => a.timetableSlotId === slot.id);
           if (!att) {
-            att = dayAtts.find(a => !handledAttendanceIds.has(a.id) && a.subjectId === slot.subjectId && !a.timetableSlotId);
+            // Fallback: match any unhandled attendance for the same subject on this day.
+            // This covers the case where a slot was swapped/edited (new UUID created) but
+            // the existing attendance record still references the old slot UUID.
+            // Requiring !a.timetableSlotId here would leave those records orphaned and cause
+            // a duplicate "Not Marked" row + stale absent row in the calendar bottom sheet.
+            att = dayAtts.find(a => !handledAttendanceIds.has(a.id) && a.subjectId === slot.subjectId);
           }
           if (att) handledAttendanceIds.add(att.id);
           dayAgenda.push({

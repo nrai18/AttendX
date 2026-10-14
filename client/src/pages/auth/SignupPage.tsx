@@ -9,6 +9,7 @@ import { api, API_BASE_URL } from "../../lib/api";
 import { useAuthStore } from "../../stores/authStore";
 import { Capacitor } from "@capacitor/core";
 import { GoogleSignIn } from "@capawesome/capacitor-google-sign-in";
+import { hapticMedium, hapticSuccess, hapticError } from "../../utils/haptics";
 
 export const SignupPage: React.FC = () => {
   const navigate = useNavigate();
@@ -28,6 +29,7 @@ export const SignupPage: React.FC = () => {
   }, []);
 
   const handleGoogleLogin = async () => {
+    hapticMedium();
     if (Capacitor.isNativePlatform()) {
       try {
         setLoading(true);
@@ -40,9 +42,11 @@ export const SignupPage: React.FC = () => {
           headers: loc ? { 'x-attendx-lat': loc.lat, 'x-attendx-lon': loc.lon } : {}
         });
         
+        hapticSuccess();
         setAuth(res.data.user, res.data.accessToken, res.data.refreshToken);
         navigate("/today");
       } catch (err: any) {
+        hapticError();
         console.error("Native Google Login failed:", err);
         if (err.message && !err.message.toLowerCase().includes("canceled")) {
            setError("Google Sign-In failed.");

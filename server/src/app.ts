@@ -29,6 +29,7 @@ import { CURRICULUM_META } from "./utils/subjectDictionary";
 
 import passport from "./config/passport";
 import { sanitizeErrorsMiddleware } from "./middleware/sanitizeErrors";
+import { MemoryMonitor } from "./utils/memoryMonitor";
 
 const app = express();
 app.set("trust proxy", 1); // Trust Render's reverse proxy for correct https redirects
@@ -46,8 +47,9 @@ app.use(
     credentials: true,
   })
 );
-app.use(express.json({ limit: "50mb" }));
-app.use(express.urlencoded({ extended: true, limit: "50mb" }));
+app.use(MemoryMonitor.middleware());
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 app.use(cookieParser());
 if (process.env.NODE_ENV !== "production") {
   app.use(
@@ -103,8 +105,20 @@ app.get("/api/health", async (_req, res) => {
   try {
     // Keep the Neon database awake!
     await prisma.$queryRaw`SELECT 1`;
-    console.log("Health check ping received. Backend and DB are active.");
-    res.status(200).json({ status: "ok", message: "AttendX API and DB are running" });
+    const mem = MemoryMonitor.getSnapshot();
+    res.status(200).json({
+      status: "ok",
+      message: "AttendX API and DB are running",
+      timestamp: new Date().toISOString(),
+      memory: {
+        rssMB: mem.rssMB,
+        heapUsedMB: mem.heapUsedMB,
+        heapTotalMB: mem.heapTotalMB,
+        heapLimitMB: mem.heapLimitMB,
+        uptimeSeconds: mem.uptimeSeconds,
+        activeRequests: mem.activeRequests,
+      }
+    });
   } catch (err) {
     console.error("Health check DB error:", err);
     res.status(500).json({ status: "error", message: "Database connection failed" });
@@ -151,6 +165,7 @@ export async function startServer() {
     console.log(`Server ready at: http://0.0.0.0:${PORT}`);
   });
   server.timeout = 300000; // 5 minutes
+  return server;
 }
 
 export default app;

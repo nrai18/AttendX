@@ -46,6 +46,7 @@ export const CreateSemesterModal: React.FC<CreateSemesterModalProps> = ({
   
   const [startMonth, setStartMonth] = useState(currentMonth);
   const [endMonth, setEndMonth] = useState(defaultEndMonth);
+  const [autoSyncTemplates, setAutoSyncTemplates] = useState(true);
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState("");
 
@@ -73,19 +74,6 @@ export const CreateSemesterModal: React.FC<CreateSemesterModalProps> = ({
     setSemesterOption(String(y * 2 - 1)); // default to odd semester for that year
   }, [year]);
 
-  
-  // Anti-scroll lock
-  React.useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = 'unset';
-    }
-    return () => {
-      document.body.style.overflow = 'unset';
-    };
-  }, [isOpen]);
-
   if (!isOpen) return null;
 
   const handleCreate = async (e: React.FormEvent) => {
@@ -103,14 +91,36 @@ export const CreateSemesterModal: React.FC<CreateSemesterModalProps> = ({
     const endDate = `${endMonth}-${lastDay.toString().padStart(2, "0")}`;
 
     try {
-      await api.post("/semesters", {
+      const res = await api.post("/semesters", {
         name: generatedName,
         startDate,
         endDate,
         isActive: true,
       });
+      const newSemester = res.data;
+
+      if (autoSyncTemplates && newSemester?.id) {
+        try {
+          const semNum = parseInt(semesterOption);
+          const startYear = parseInt(startMonth.split("-")[0]) || new Date().getFullYear();
+          await api.post("/events/templates/sync", {
+            semesterId: newSemester.id,
+            semesterNumber: semNum,
+            syncHolidayList: true,
+            syncAcademicCalendar: true,
+            year: startYear,
+          });
+        } catch (syncErr) {
+          console.warn("Failed to auto-sync templates for new semester:", syncErr);
+        }
+      }
+
       await useAttendanceStore.getState().fetchStats(true); // Sync global state
-      toast.success("Semester created and activated successfully!");
+      toast.success(
+        autoSyncTemplates
+          ? "Semester created, activated and official calendar synced!"
+          : "Semester created and activated successfully!"
+      );
       onSuccess();
       onClose();
     } catch (err: any) {
@@ -248,6 +258,27 @@ export const CreateSemesterModal: React.FC<CreateSemesterModalProps> = ({
                 className="w-full px-3 py-2.5 rounded-[8px] bg-black border border-[#27272A] text-white text-sm focus:outline-none focus:border-[#48CAE4] focus:ring-1 focus:ring-[#48CAE4] font-medium transition-colors"
                 required
               />
+            </div>
+          </div>
+
+          <div 
+            onClick={() => setAutoSyncTemplates(!autoSyncTemplates)}
+            className="flex items-center gap-3 p-3.5 rounded-[8px] bg-black/40 border border-[#27272A] hover:border-[#48CAE4]/40 cursor-pointer transition-colors select-none"
+          >
+            <input
+              type="checkbox"
+              checked={autoSyncTemplates}
+              onChange={(e) => setAutoSyncTemplates(e.target.checked)}
+              className="w-4 h-4 rounded text-[#48CAE4] focus:ring-[#48CAE4] bg-black border-[#27272A] cursor-pointer"
+            />
+            <div className="flex-1">
+              <span className="text-xs font-semibold text-white flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-[#48CAE4]" />
+                Auto-sync official academic calendar & holidays
+              </span>
+              <p className="text-[11px] text-[#A1A1AA] mt-0.5">
+                Pre-loads official exams, breaks, and holidays matching Semester {semesterOption} from backend
+              </p>
             </div>
           </div>
 

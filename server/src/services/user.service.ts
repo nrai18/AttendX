@@ -78,6 +78,10 @@ export class UserService {
       });
     }
 
+    if (updateData.birthday !== undefined) {
+      updateData.lastBirthdayEmailSentAt = null;
+    }
+
     const updatedUser = await prisma.user.update({
       where: { id: userId },
       data: updateData,

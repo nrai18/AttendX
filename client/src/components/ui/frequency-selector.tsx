@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence, LayoutGroup } from 'motion/react';
 import { Check, ChevronRight } from 'lucide-react';
+import { hapticSelection, hapticSuccess, hapticLight } from '../../utils/haptics';
 
 /* ---------- Types ---------- */
 export type FrequencyType = 'Never' | 'Daily' | 'Weekly' | 'Monthly' | 'Yearly';
@@ -19,12 +20,8 @@ interface FrequencySelectorProps {
   memory?: Record<string, string | undefined>;
 }
 
-/* ---------- Motion Config ---------- */
-const smoothSpring = {
-  type: 'spring',
-  bounce: 0.3,
-  duration: 0.7,
-} as const;
+/* ---------- Motion Config — tightened for Android WebView perf ---------- */
+const tabSpring = { type: 'spring', bounce: 0.15, duration: 0.3 } as const;
 
 /* ---------- Data ---------- */
 const FREQUENCIES: FrequencyType[] = ['Never', 'Daily', 'Weekly', 'Monthly', 'Yearly'];
@@ -63,12 +60,14 @@ export const FrequencySelector: React.FC<FrequencySelectorProps> = ({
   );
 
   const handleOpen = () => {
+    hapticLight();
     setTempType(value.type);
     setTempSubValue(value.subValue || memory[value.type] || SUB_OPTIONS[value.type][0]);
     setIsOpen(true);
   };
 
   const handleConfirm = () => {
+    hapticSuccess();
     onChange({
       type: tempType,
       subValue: tempType === 'Daily' ? undefined : tempSubValue,
@@ -86,12 +85,12 @@ export const FrequencySelector: React.FC<FrequencySelectorProps> = ({
             /* ---------- CLOSED STATE ---------- */
             <motion.div
               layoutId="container"
-              initial={{ filter: 'blur(4px)', opacity: 0 }}
-              animate={{ filter: 'blur(0px)', opacity: 1 }}
-              exit={{ filter: 'blur(4px)', opacity: 0 }}
+              initial={{ opacity: 0, scale: 0.97 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.97 }}
               onClick={handleOpen}
-              transition={smoothSpring}
-              className="flex min-h-14 w-full max-w-md cursor-pointer items-center justify-between rounded-full bg-white/60 dark:bg-black/60 backdrop-blur-2xl border border-black/10 dark:border-white/10 p-1 pl-4 sm:pl-6 gap-4 hover:bg-white/80 dark:hover:bg-black/80 transition-colors shadow-sm"
+              transition={tabSpring}
+              className="flex min-h-14 w-full max-w-md cursor-pointer items-center justify-between rounded-full bg-white/60 dark:bg-black/60 border border-black/10 dark:border-white/10 p-1 pl-4 sm:pl-6 gap-4 hover:bg-white/80 dark:hover:bg-black/80 transition-colors shadow-sm"
             >
               <motion.span
                 layout
@@ -102,7 +101,7 @@ export const FrequencySelector: React.FC<FrequencySelectorProps> = ({
 
               <motion.div
                 layoutId="trigger-pill"
-                transition={smoothSpring}
+                transition={tabSpring}
                 className="flex min-h-12 flex-1 items-center justify-between gap-2 rounded-full border border-black/10 dark:border-white/10 bg-white/80 dark:bg-white/10 px-3 py-1.5 shadow-sm sm:flex-initial sm:gap-3 sm:px-4"
               >
                 <span className="text-base font-bold sm:text-lg text-slate-900 dark:text-white">
@@ -117,23 +116,24 @@ export const FrequencySelector: React.FC<FrequencySelectorProps> = ({
             /* ---------- OPEN STATE ---------- */
             <motion.div
               layoutId="container"
-              initial={{ filter: 'blur(4px)', opacity: 0 }}
-              animate={{ filter: 'blur(0px)', opacity: 1 }}
-              exit={{ filter: 'blur(4px)', opacity: 0 }}
-              transition={smoothSpring}
-              className="flex w-full max-w-lg flex-col gap-3 rounded-[32px] border border-black/10 dark:border-white/10 bg-white/70 dark:bg-black/70 p-2 shadow-2xl backdrop-blur-2xl"
+              initial={{ opacity: 0, scale: 0.97 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.97 }}
+              transition={tabSpring}
+              className="flex w-full max-w-lg flex-col gap-3 rounded-[32px] border border-black/10 dark:border-white/10 bg-white/70 dark:bg-black/70 p-2 shadow-2xl"
             >
               {/* Top Row */}
               <div className="flex items-center gap-2">
                 <motion.div
                   layoutId="trigger-pill"
-                  transition={smoothSpring}
+                  transition={tabSpring}
                   className="custom-scrollbar relative flex h-11 flex-1 items-center gap-2 overflow-x-auto rounded-full bg-black/5 dark:bg-white/5 border border-black/5 dark:border-white/5 p-1 shadow-inner sm:h-13 sm:gap-2"
                 >
                   {FREQUENCIES.map((type) => (
                     <button
                       key={type}
                       onClick={() => {
+                        hapticSelection();
                         setTempType(type);
                         setTempSubValue(memory[type] || SUB_OPTIONS[type][0]);
                       }}
@@ -144,7 +144,7 @@ export const FrequencySelector: React.FC<FrequencySelectorProps> = ({
                       {tempType === type && (
                         <motion.div
                           layoutId="active-tab"
-                          transition={smoothSpring}
+                          transition={tabSpring}
                           className="absolute inset-0 z-0 rounded-full bg-white dark:bg-black shadow-sm border border-black/10 dark:border-white/10"
                         />
                       )}
@@ -163,48 +163,47 @@ export const FrequencySelector: React.FC<FrequencySelectorProps> = ({
                 </motion.button>
               </div>
 
-              {/* Sub Options */}
+              {/* Sub Options — layout/layout props removed from outer wrapper to prevent
+                  continuous DOM measurement during height changes (layout thrashing on WebView).
+                  Simple opacity fade on key change is enough. The active pill still slides via layoutId. */}
               <AnimatePresence mode="wait">
                 {SUB_OPTIONS[tempType].length > 0 && (
                   <motion.div
-                    layout
-                    transition={smoothSpring}
-                    className="overflow-hidden"
+                    key={tempType}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.12 }}
+                    className={`grid gap-2 rounded-2xl bg-black/5 dark:bg-white/5 border border-black/5 dark:border-white/5 p-3 shadow-inner ${
+                      tempType === 'Monthly'
+                        ? 'grid-cols-7'
+                        : tempType === 'Yearly'
+                          ? 'grid-cols-4'
+                          : 'grid-cols-7'
+                    }`}
                   >
-                    {SUB_OPTIONS[tempType].length > 0 && (
-                      <motion.div
-                        key={tempType}
-                        layout
-                        transition={smoothSpring}
-                        className={`grid gap-2 rounded-2xl bg-black/5 dark:bg-white/5 border border-black/5 dark:border-white/5 p-3 shadow-inner ${
-                          tempType === 'Monthly'
-                            ? 'grid-cols-7'
-                            : tempType === 'Yearly'
-                              ? 'grid-cols-4'
-                              : 'grid-cols-7'
+                    {SUB_OPTIONS[tempType].map((option) => (
+                      <button
+                        key={option}
+                        onClick={() => {
+                          hapticSelection();
+                          setTempSubValue(option);
+                        }}
+                        className={`relative flex h-8 items-center justify-center rounded-full text-[10px] font-bold transition-colors sm:h-9 sm:text-sm ${
+                          tempSubValue === option ? 'text-slate-900 dark:text-white' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
                         }`}
                       >
-                        {SUB_OPTIONS[tempType].map((option) => (
-                          <button
-                            key={option}
-                            onClick={() => setTempSubValue(option)}
-                            className={`relative flex h-8 items-center justify-center rounded-full text-[10px] font-bold transition-colors sm:h-9 sm:text-sm ${
-                              tempSubValue === option ? 'text-slate-900 dark:text-white' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
-                            }`}
-                          >
-                            {tempSubValue === option && (
-                              <motion.div
-                                layoutId="active-sub"
-                                transition={smoothSpring}
-                                className="absolute inset-0 z-0 rounded-full bg-white dark:bg-black shadow-sm border border-black/10 dark:border-white/10"
-                              />
-                            )}
+                        {tempSubValue === option && (
+                          <motion.div
+                            layoutId="active-sub"
+                            transition={{ type: 'spring', bounce: 0.2, duration: 0.25 }}
+                            className="absolute inset-0 z-0 rounded-full bg-white dark:bg-black shadow-sm border border-black/10 dark:border-white/10"
+                          />
+                        )}
 
-                            <span className="relative z-10">{option}</span>
-                          </button>
-                        ))}
-                      </motion.div>
-                    )}
+                        <span className="relative z-10">{option}</span>
+                      </button>
+                    ))}
                   </motion.div>
                 )}
               </AnimatePresence>

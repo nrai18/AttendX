@@ -1,12 +1,13 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Capacitor } from '@capacitor/core';
-import { Loader2, CheckCircle2, XCircle, AlertCircle, PartyPopper, BookOpen, Palmtree, Timer, TrendingUp, TrendingDown, Plus, MessageSquare, Sparkles, ChevronRight, ChevronLeft, X, Trash2 } from "lucide-react";
+import { Loader2, CheckCircle2, XCircle, AlertCircle, PartyPopper, BookOpen, Palmtree, Timer, TrendingUp, TrendingDown, Plus, MessageSquare, Sparkles, ChevronRight, ChevronLeft, X, Trash2, GraduationCap } from "lucide-react";
 import { PageSkeleton } from "../../components/common/PageSkeleton";
 import { api } from "../../lib/api";
 import { toast } from "sonner";
 import { useAuthStore } from "../../stores/authStore";
 import { useCacheStore } from "../../stores/cacheStore";
 import { CreateSemesterModal } from "../../components/semester/CreateSemesterModal";
+import { SemesterTransitionModal } from "../../components/semester/SemesterTransitionModal";
 import { OnboardingChecklist } from "../../components/ui/onboarding-checklist";
 
 import { useSearchParams, useNavigate } from "react-router-dom";
@@ -18,6 +19,7 @@ import { HolidayGreetingOverlay } from "../../components/common/HolidayGreetingO
 import { NeurosyncWaves } from "../../components/ui/neurosync-waves";
 import { format } from "date-fns";
 import { FIXED_HOLIDAYS, RESTRICTED_HOLIDAYS } from "../semester/HolidayListTab";
+import { hapticLight, hapticMedium, hapticSuccess, hapticWarning, hapticSelection } from "../../utils/haptics";
 
 
 interface AgendaItem {
@@ -50,6 +52,8 @@ export const TodayPage = () => {
   const getHolidayFromList = (dateStr: string) => {
     try {
       const dateObj = new Date(dateStr);
+      // Only apply 2026 fallback for 2026 dates when offline/un-synced
+      if (dateObj.getFullYear() !== 2026) return null;
       const formattedForMatch = format(dateObj, "dd MMMM");
       const altFormatted = format(dateObj, "d MMMM");
       
@@ -71,15 +75,39 @@ export const TodayPage = () => {
   const dayCache = cachedData?.[targetDateStr];
 
   const [agenda, setAgenda] = useState<AgendaItem[]>(dayCache?.agenda || []);
+  const agendaRef = useRef<AgendaItem[]>(dayCache?.agenda || []);
+  const lastStatusClickRef = useRef<{ [itemId: string]: { status: string; time: number } }>({});
+  const inFlightMarksCountRef = useRef<number>(0);
+
+  useEffect(() => {
+    agendaRef.current = agenda;
+  }, [agenda]);
   const [todayStatus, setTodayStatus] = useState<any>(dayCache?.todayStatus || null);
-  const activeEvent = syntheticHoliday || todayStatus?.activeEvent;
+  const activeEvent = todayStatus?.activeEvent || syntheticHoliday;
   const [activeSemester, setActiveSemester] = useState<any>(dayCache?.activeSemester || null);
   const [onboardingStatus, setOnboardingStatus] = useState<any>(dayCache?.onboarding || null);
   const [isLoading, setIsLoading] = useState(!dayCache);
   const [isCreateSemesterOpen, setIsCreateSemesterOpen] = useState(false);
-  const [hasUsedVoiceMode, setHasUsedVoiceMode] = useState(localStorage.getItem("onboarding_voice_mode") === "true");
-  const [hasUsedPredictive, setHasUsedPredictive] = useState(localStorage.getItem("onboarding_predictive") === "true");
-  const [hasUsedPeerSync, setHasUsedPeerSync] = useState(localStorage.getItem("onboarding_peer_sync") === "true");
+  const [isTransitionModalOpen, setIsTransitionModalOpen] = useState(false);
+  const [transitionStatus, setTransitionStatus] = useState<any>(null);
+  const [hasUsedVoiceMode, setHasUsedVoiceMode] = useState<boolean>(() => {
+    if (dayCache?.onboarding?.hasUsedVoiceMode !== undefined) {
+      return Boolean(dayCache.onboarding.hasUsedVoiceMode);
+    }
+    return localStorage.getItem("onboarding_voice_mode") === "true";
+  });
+  const [hasUsedPredictive, setHasUsedPredictive] = useState<boolean>(() => {
+    if (dayCache?.onboarding?.hasUsedPredictive !== undefined) {
+      return Boolean(dayCache.onboarding.hasUsedPredictive);
+    }
+    return localStorage.getItem("onboarding_predictive") === "true";
+  });
+  const [hasUsedPeerSync, setHasUsedPeerSync] = useState<boolean>(() => {
+    if (dayCache?.onboarding?.hasUsedPeerSync !== undefined) {
+      return Boolean(dayCache.onboarding.hasUsedPeerSync);
+    }
+    return localStorage.getItem("onboarding_peer_sync") === "true";
+  });
 
   // Extra Lecture Modal State
   const [isAddExtraModalOpen, setIsAddExtraModalOpen] = useState(false);
@@ -95,6 +123,29 @@ export const TodayPage = () => {
   // Overlay state
   const [lastGreetedDate, setLastGreetedDate] = useState<string | null>(null);
   const [showGreetingOverlay, setShowGreetingOverlay] = useState(false);
+
+  const markOnboardingStep = async (stepKey: "voice_mode" | "predictive" | "peer_sync" | "dismiss") => {
+    hapticSelection();
+    if (stepKey === "voice_mode") {
+      setHasUsedVoiceMode(true);
+      localStorage.setItem("onboarding_voice_mode", "true");
+      setOnboardingStatus((prev: any) => prev ? { ...prev, hasUsedVoiceMode: true } : prev);
+      api.patch("/users/onboarding-status", { step: "voice_mode" }).catch(() => {});
+    } else if (stepKey === "predictive") {
+      setHasUsedPredictive(true);
+      localStorage.setItem("onboarding_predictive", "true");
+      setOnboardingStatus((prev: any) => prev ? { ...prev, hasUsedPredictive: true } : prev);
+      api.patch("/users/onboarding-status", { step: "predictive" }).catch(() => {});
+    } else if (stepKey === "peer_sync") {
+      setHasUsedPeerSync(true);
+      localStorage.setItem("onboarding_peer_sync", "true");
+      setOnboardingStatus((prev: any) => prev ? { ...prev, hasUsedPeerSync: true } : prev);
+      api.patch("/users/onboarding-status", { step: "peer_sync" }).catch(() => {});
+    } else if (stepKey === "dismiss") {
+      setOnboardingStatus((prev: any) => prev ? { ...prev, onboardingDismissed: true } : { onboardingDismissed: true });
+      api.patch("/users/onboarding-status", { step: "dismiss" }).catch(() => {});
+    }
+  };
 
 
   const getHolidayAnimation = (activeEvent: any) => {
@@ -220,6 +271,7 @@ export const TodayPage = () => {
 
       // Optimistically mark all agenda items as "off"
       setAgenda(prev => prev.map(a => ({ ...a, status: "off" as any })));
+      hapticSuccess();
 
       // Trigger full day off celebration popup animation!
       const { animType, animMsg } = getHolidayAnimation(activeEvent);
@@ -315,6 +367,16 @@ export const TodayPage = () => {
         setActiveSemester(semRes.data);
         const semesterId = semRes.data.id;
         statusPromise = api.get(`/events/today-status?semesterId=${semesterId}&date=${targetDateStr}`);
+
+        const semEndDate = new Date(semRes.data.endDate);
+        const now = new Date();
+        const shouldPrompt = searchParams.get("promptSemesterTransition") === "true" || now >= semEndDate;
+        if (shouldPrompt) {
+          const dismissed = sessionStorage.getItem(`attendx_dismissed_transition_${semRes.data.id}`);
+          if (!dismissed) {
+            setIsTransitionModalOpen(true);
+          }
+        }
       } else {
         setActiveSemester(null);
       }
@@ -339,14 +401,54 @@ export const TodayPage = () => {
       
       if (res.status === 'fulfilled') {
         nextAgenda = Array.isArray(res.value.data) ? res.value.data : [];
-        setAgenda(nextAgenda);
+        if (inFlightMarksCountRef.current > 0) {
+          setAgenda(prev => {
+            const merged = nextAgenda.map(serverItem => {
+              const localItem = prev.find(p => p.id === serverItem.id);
+              if (localItem && localItem.status !== undefined && localItem.status !== null) {
+                return { ...serverItem, status: localItem.status, remarks: localItem.remarks };
+              }
+              return serverItem;
+            });
+            agendaRef.current = merged;
+            return merged;
+          });
+        } else {
+          setAgenda(nextAgenda);
+          agendaRef.current = nextAgenda;
+        }
       } else {
         setAgenda([]);
+        agendaRef.current = [];
       }
 
       if (onboardRes.status === 'fulfilled') {
         nextOnboarding = onboardRes.value.data;
         setOnboardingStatus(nextOnboarding);
+
+        const serverVoice = Boolean(nextOnboarding.hasUsedVoiceMode);
+        const serverPred = Boolean(nextOnboarding.hasUsedPredictive);
+        const serverSync = Boolean(nextOnboarding.hasUsedPeerSync);
+
+        const localVoice = localStorage.getItem("onboarding_voice_mode") === "true";
+        const localPred = localStorage.getItem("onboarding_predictive") === "true";
+        const localSync = localStorage.getItem("onboarding_peer_sync") === "true";
+
+        const effectiveVoice = serverVoice || localVoice;
+        const effectivePred = serverPred || localPred;
+        const effectiveSync = serverSync || localSync;
+
+        setHasUsedVoiceMode(effectiveVoice);
+        setHasUsedPredictive(effectivePred);
+        setHasUsedPeerSync(effectiveSync);
+
+        if ((localVoice && !serverVoice) || (localPred && !serverPred) || (localSync && !serverSync)) {
+          api.patch("/users/onboarding-status", {
+            hasUsedVoiceMode: effectiveVoice,
+            hasUsedPredictive: effectivePred,
+            hasUsedPeerSync: effectiveSync,
+          }).catch(() => {});
+        }
       }
 
       setCache('today', { 
@@ -391,8 +493,15 @@ export const TodayPage = () => {
           const archivedSlotsArray = archivedVersions.flatMap((v: any) => v.slots || []);
           const allSlots = [...timetableCache.slots, ...archivedSlotsArray];
 
+          const cachedSem = activeSemester || useCacheStore.getState().semester?.activeSemester;
+          const cachedEvts = useCacheStore.getState().semester?.events || (useAttendanceStore.getState().events as any) || [];
+          const lastTeachingEvt = cachedEvts.find((e: any) => /last\s*(teaching|working)\s*day/i.test(e.title || ""));
+          const lastTeachingStr = lastTeachingEvt ? (lastTeachingEvt.endDate || lastTeachingEvt.date || "").split('T')[0] : null;
+          const semEndStr = cachedSem?.endDate ? String(cachedSem.endDate).split('T')[0] : null;
+          const isPastTeaching = (lastTeachingStr && targetDateStr > lastTeachingStr) || (semEndStr && targetDateStr > semEndStr);
+
           // Filter slots active on this historical date
-          const slotsForDay = allSlots.filter((s: any) => {
+          const slotsForDay = isPastTeaching ? [] : allSlots.filter((s: any) => {
             if (s.dayOfWeek !== ttDay) return false;
             if (!s.validFrom) return true;
             const validFrom = new Date(s.validFrom);
@@ -416,8 +525,8 @@ export const TodayPage = () => {
             const subjectsOverview = useCacheStore.getState().subjects_overview || [];
             const subject = subjectsOverview.find((sub: any) => sub.id === slot.subjectId) || { id: slot.subjectId, name: "Unknown" };
             
-            // Find if there is a log for this specific timetable slot
-            const logMatch = logsForDay.find((l: any) => l.timetableSlotId === slot.id || (l.subjectId === slot.subjectId && l.startTime === slot.startTime));
+            // Find if there is a log for this specific timetable slot or orphan log for the same subject
+            const logMatch = logsForDay.find((l: any) => l.timetableSlotId === slot.id || (l.subjectId === slot.subjectId && (l.startTime === slot.startTime || l.startTime === "00:00")));
             
             return {
               id: slot.id,
@@ -436,7 +545,7 @@ export const TodayPage = () => {
 
         // Add any logs that didn't match a timetable slot (Extra classes, overrides)
         logsForDay.forEach((l: any) => {
-          const exists = pseudoAgenda.some(item => item.id === l.timetableSlotId || (item.subject.id === l.subjectId && item.startTime === l.startTime));
+          const exists = pseudoAgenda.some(item => item.id === l.timetableSlotId || (item.subject.id === l.subjectId && (item.startTime === l.startTime || l.startTime === "00:00")));
           if (!exists) {
             pseudoAgenda.push({
                id: l.overrideId || l.id,
@@ -492,7 +601,12 @@ export const TodayPage = () => {
     }
     fetchData();
 
-    const handleUpdate = () => {
+    const handleUpdate = (e: any) => {
+      // If TodayPage itself marked attendance, only fetch stats; do not refetch and clobber local optimistic agenda!
+      if (e?.detail?.source === "today-page") {
+        fetchStats();
+        return;
+      }
       fetchData();
       fetchStats();
     };
@@ -500,14 +614,17 @@ export const TodayPage = () => {
     return () => window.removeEventListener("attendance-updated", handleUpdate);
   }, [targetDateStr]);
 
-  // Greeting overlay effect
+  // Greeting overlay effect (persisted per session to avoid re-triggering on tab switches)
   useEffect(() => {
     if (!isLoading) {
       const shouldShowOverlay = activeEvent && ["holiday", "restricted_holiday", "vacation", "fest", "institute", "lab_exam", "midsem", "endsem", "ct", "exam"].includes(activeEvent.eventType || "");
       if (isBirthday || shouldShowOverlay) {
-        if (lastGreetedDate !== targetDateStr) {
+        const storageKey = `attendx_greeted_${targetDateStr}`;
+        const alreadyGreeted = sessionStorage.getItem(storageKey) === "true";
+        if (!alreadyGreeted && lastGreetedDate !== targetDateStr) {
           setShowGreetingOverlay(true);
           setLastGreetedDate(targetDateStr);
+          sessionStorage.setItem(storageKey, "true");
         }
       } else {
         setShowGreetingOverlay(false);
@@ -519,10 +636,16 @@ export const TodayPage = () => {
   }, [isLoading, activeEvent, targetDateStr, lastGreetedDate, isBirthday]);
 
   const markAttendance = async (item: AgendaItem, status: string, remarks?: string) => {
-    const updatedAgenda = agenda.map(a => 
-      a.id === item.id ? { ...a, status: status as any, remarks: remarks || a.remarks } : a
-    );
-    setAgenda(updatedAgenda);
+    inFlightMarksCountRef.current += 1;
+
+    let updatedAgenda: AgendaItem[] = [];
+    setAgenda(prev => {
+      updatedAgenda = prev.map(a => 
+        a.id === item.id ? { ...a, status: status as any, remarks: remarks || a.remarks } : a
+      );
+      agendaRef.current = updatedAgenda;
+      return updatedAgenda;
+    });
 
     // --- OFFLINE OPTIMISTIC UPDATE ---
     const store = useAttendanceStore.getState();
@@ -556,10 +679,12 @@ export const TodayPage = () => {
     // ---------------------------------
 
 
-    // Trigger Popup Animation
+    // Trigger Popup Animation & Haptics
     if (status === "absent") {
+      hapticWarning();
       triggerAttendancePopup("crying", "Attendance Dropped! 😭");
     } else if (status === "present" || status === "medical" || status === "od") {
+      hapticSuccess();
       const { overallPercentage, totalAttended, totalClasses } = useAttendanceStore.getState();
       const targetPct = useAuthStore.getState().user?.targetAttendance ?? 75;
       
@@ -590,6 +715,7 @@ export const TodayPage = () => {
         }
       }
     } else if (status === "off" || status === "cancelled") {
+      hapticMedium();
       const allOthersOff = updatedAgenda.every(a => a.status === "off" || a.status === "cancelled");
       if (allOthersOff && updatedAgenda.length > 0) {
         const { animType, animMsg } = getHolidayAnimation(activeEvent);
@@ -597,6 +723,8 @@ export const TodayPage = () => {
       } else {
         triggerAttendancePopup("off_class", "Yay! Off class today! 🎈🛌");
       }
+    } else if (status === "clear") {
+      hapticLight();
     }
 
     try {
@@ -613,11 +741,15 @@ export const TodayPage = () => {
         attendanceId: item.attendanceId,
       });
 
-      setAgenda(prev => prev.map(a => 
-        a.id === item.id 
-          ? { ...a, attendanceId: status === "clear" ? null : res.data.id } 
-          : a
-      ));
+      setAgenda(prev => {
+        const next = prev.map(a => 
+          a.id === item.id 
+            ? { ...a, attendanceId: status === "clear" ? null : res.data.id } 
+            : a
+        );
+        agendaRef.current = next;
+        return next;
+      });
 
       // Update global offline caches optimistically
       const state = useCacheStore.getState();
@@ -699,26 +831,39 @@ export const TodayPage = () => {
       if (item.subject?.id) updateSubjectLog(item.subject.id);
 
       fetchStats();
-      window.dispatchEvent(new Event("attendance-updated"));
+      window.dispatchEvent(new CustomEvent("attendance-updated", { detail: { source: "today-page" } }));
     } catch (error) {
       console.error("Failed to mark attendance offline or error:", error);
       // Offline fallback relies on the global optimistic update we just fired above);
-      window.dispatchEvent(new Event("attendance-updated"));
+      window.dispatchEvent(new CustomEvent("attendance-updated", { detail: { source: "today-page" } }));
+    } finally {
+      inFlightMarksCountRef.current = Math.max(0, inFlightMarksCountRef.current - 1);
     }
   };
 
   const handleStatusClick = (item: AgendaItem, status: string) => {
-    // If clicking the currently active status, unmark it (void)
-    if (item.status === status) {
-      markAttendance(item, "clear");
+    const currentItem = agendaRef.current.find(a => a.id === item.id) || item;
+    const now = Date.now();
+    const lastClick = lastStatusClickRef.current[item.id];
+
+    // Debounce rapid repeat taps on the same status (prevents accidental toggling to clear on fast multi-click)
+    if (lastClick && lastClick.status === status && (now - lastClick.time) < 450) {
+      return;
+    }
+
+    lastStatusClickRef.current[item.id] = { status, time: now };
+
+    // If clicking the currently active status after deliberate delay, unmark it (void)
+    if (currentItem.status === status) {
+      markAttendance(currentItem, "clear");
       return;
     }
 
     if (status === "absent") {
-      setSelectedRemarkItem({ item, status });
-      setRemarkInput(item.remarks || "");
+      setSelectedRemarkItem({ item: currentItem, status });
+      setRemarkInput(currentItem.remarks || "");
     } else {
-      markAttendance(item, status);
+      markAttendance(currentItem, status);
     }
   };
 
@@ -800,7 +945,10 @@ export const TodayPage = () => {
         holidayAssetSrc={isBirthday ? "/lottie/happy-birthday.json" : (activeEvent ? HOLIDAY_ASSETS[getHolidayAnimation(activeEvent).animType as AnimationType] : undefined)}
         hasClasses={agenda.some(item => !item.status)}
         onMarkOff={handleMarkFullDayOff}
-        onClose={() => setShowGreetingOverlay(false)}
+        onClose={() => {
+          setShowGreetingOverlay(false);
+          sessionStorage.setItem(`attendx_greeted_${targetDateStr}`, "true");
+        }}
       />
       
       {todayStatus?.nextEvent && !activeEvent && (
@@ -907,6 +1055,7 @@ export const TodayPage = () => {
             <div className="flex items-center justify-center gap-4 mt-3">
               <button 
                 onClick={() => {
+                  hapticSelection();
                   const prev = new Date(targetDateStr);
                   prev.setDate(prev.getDate() - 1);
                   const dateStr = `${prev.getFullYear()}-${String(prev.getMonth()+1).padStart(2,'0')}-${String(prev.getDate()).padStart(2,'0')}`;
@@ -923,6 +1072,7 @@ export const TodayPage = () => {
               
               <button 
                 onClick={() => {
+                  hapticSelection();
                   const next = new Date(targetDateStr);
                   next.setDate(next.getDate() + 1);
                   const dateStr = `${next.getFullYear()}-${String(next.getMonth()+1).padStart(2,'0')}-${String(next.getDate()).padStart(2,'0')}`;
@@ -1004,30 +1154,53 @@ export const TodayPage = () => {
         </div>
       )}
 
-      {onboardingStatus && (!onboardingStatus.hasSemester || !onboardingStatus.hasSubjects || !onboardingStatus.hasTimetable || !onboardingStatus.hasCalendar || !onboardingStatus.hasAttendance || !hasUsedVoiceMode || !hasUsedPredictive || !hasUsedPeerSync) && (
+      {/* Semester Completed Banner */}
+      {activeSemester && new Date() >= new Date(activeSemester.endDate) && (
+        <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-500 flex items-center justify-center shrink-0">
+              <GraduationCap className="w-5 h-5" />
+            </div>
+            <div>
+              <h4 className="text-sm font-bold text-foreground">
+                {activeSemester.name} has concluded!
+              </h4>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Ready for the new semester? Tap to reset app data and transition smoothly.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => setIsTransitionModalOpen(true)}
+            className="px-4 py-2 rounded-xl bg-primary text-primary-foreground text-xs font-bold transition-all hover:bg-primary/90 shadow-sm shrink-0 cursor-pointer"
+          >
+            Start Next Semester
+          </button>
+        </div>
+      )}
+
+      {onboardingStatus && !onboardingStatus.onboardingDismissed && (!onboardingStatus.hasSemester || !onboardingStatus.hasSubjects || !onboardingStatus.hasTimetable || !onboardingStatus.hasCalendar || !onboardingStatus.hasAttendance || !hasUsedVoiceMode || !hasUsedPredictive || !hasUsedPeerSync) && (
         <div className="flex flex-col items-center justify-center py-6">
           <OnboardingChecklist 
             title="Getting Started"
+            onDismiss={() => markOnboardingStep("dismiss")}
             steps={[
-              { id: 1, title: "Create an active semester", isCompleted: onboardingStatus.hasSemester, onClick: () => !onboardingStatus.hasSemester ? setIsCreateSemesterOpen(true) : navigate("/settings") },
+              { id: 1, title: "Create an active semester", isCompleted: onboardingStatus.hasSemester, onClick: () => !onboardingStatus.hasSemester ? setIsCreateSemesterOpen(true) : navigate("/semester") },
               { id: 2, title: "Add subjects and set targets", isCompleted: onboardingStatus.hasSubjects, onClick: () => navigate("/subjects") },
               { id: 3, title: "Set up weekly timetable", isCompleted: onboardingStatus.hasTimetable, onClick: () => navigate("/timetable") },
               { id: 4, title: "Sync your academic calendar", isCompleted: onboardingStatus.hasCalendar, onClick: () => navigate("/calendar") },
               { id: 5, title: "Log your first attendance", isCompleted: onboardingStatus.hasAttendance, onClick: () => navigate("/today") },
               { id: 6, title: "Explore Hands-Free Voice Mode", isCompleted: hasUsedVoiceMode, onClick: () => {
-                  localStorage.setItem("onboarding_voice_mode", "true");
-                  setHasUsedVoiceMode(true);
+                  markOnboardingStep("voice_mode");
                   window.dispatchEvent(new Event("open-voice-mode"));
               } },
               { id: 7, title: "Unlock Predictive Analytics", isCompleted: hasUsedPredictive, onClick: () => {
-                  localStorage.setItem("onboarding_predictive", "true");
-                  setHasUsedPredictive(true);
+                  markOnboardingStep("predictive");
                   navigate("/predictive");
               } },
               { id: 8, title: "Mirror Timetable with Peer Sync", isCompleted: hasUsedPeerSync, onClick: () => {
-                  localStorage.setItem("onboarding_peer_sync", "true");
-                  setHasUsedPeerSync(true);
-                  navigate("/settings");
+                  markOnboardingStep("peer_sync");
+                  navigate("/settings/peer-sync");
               } }
             ]} 
           />
@@ -1097,7 +1270,7 @@ export const TodayPage = () => {
               <div className="flex flex-nowrap items-center gap-2 self-end md:self-auto shrink-0">
                 <button
                   onClick={() => handleStatusClick(item, "present")}
-                  className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                  className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold cursor-pointer transition-[transform,opacity] duration-75 active:scale-95 ${
                     (item.status === "present" || item.status === "medical" || item.status === "od")
                       ? "bg-emerald-500 text-white font-bold shadow-md shadow-emerald-500/20"
                       : "bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 hover:text-emerald-600"
@@ -1108,7 +1281,7 @@ export const TodayPage = () => {
                 </button>
                 <button
                   onClick={() => handleStatusClick(item, "absent")}
-                  className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                  className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold cursor-pointer transition-[transform,opacity] duration-75 active:scale-95 ${
                     item.status === "absent"
                       ? "bg-rose-500 text-white font-bold shadow-md shadow-rose-500/20"
                       : "bg-rose-500/10 text-rose-500 hover:bg-rose-500/20 hover:text-rose-600"
@@ -1119,7 +1292,7 @@ export const TodayPage = () => {
                 </button>
                 <button
                   onClick={() => handleStatusClick(item, "off")}
-                  className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                  className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold cursor-pointer transition-[transform,opacity] duration-75 active:scale-95 ${
                     item.status === "off"
                       ? "bg-amber-500 text-white font-bold shadow-md shadow-amber-500/20"
                       : "bg-amber-500/10 text-amber-500 hover:bg-amber-500/20 hover:text-amber-600"
@@ -1245,6 +1418,21 @@ export const TodayPage = () => {
         isOpen={isCreateSemesterOpen}
         onClose={() => setIsCreateSemesterOpen(false)}
         onSuccess={fetchData}
+      />
+
+      <SemesterTransitionModal
+        isOpen={isTransitionModalOpen}
+        onClose={() => {
+          setIsTransitionModalOpen(false);
+          if (activeSemester?.id) {
+            sessionStorage.setItem(`attendx_dismissed_transition_${activeSemester.id}`, "true");
+          }
+        }}
+        onSuccess={() => {
+          fetchData();
+          fetchStats();
+        }}
+        initialStatus={transitionStatus}
       />
     </div>
     </div>

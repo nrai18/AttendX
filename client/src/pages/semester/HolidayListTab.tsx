@@ -65,6 +65,42 @@ export const RESTRICTED_HOLIDAYS = [
 export const HolidayListTab = ({ semesterId, semesterStartDate, semesterEndDate }: { semesterId?: string, semesterStartDate?: string, semesterEndDate?: string }) => {
   const [activeSubTab, setActiveSubTab] = useState<"fixed" | "restricted">("fixed");
   const [isSyncing, setIsSyncing] = useState(false);
+  
+  const defaultYear = semesterStartDate ? new Date(semesterStartDate).getFullYear() : 2026;
+  const currentYear = new Date().getFullYear();
+  const [selectedYear, setSelectedYear] = useState<number>(defaultYear);
+  const [fixedList, setFixedList] = useState<any[]>(FIXED_HOLIDAYS);
+  const [restrictedList, setRestrictedList] = useState<any[]>(RESTRICTED_HOLIDAYS);
+  const [isLoadingHolidays, setIsLoadingHolidays] = useState(false);
+
+  const availableYears = React.useMemo(() => {
+    const years = new Set([currentYear, currentYear + 1, currentYear + 2, defaultYear]);
+    return Array.from(years).sort((a, b) => a - b);
+  }, [currentYear, defaultYear]);
+
+  React.useEffect(() => {
+    let isMounted = true;
+    const loadHolidays = async () => {
+      try {
+        setIsLoadingHolidays(true);
+        const res = await api.get(`/events/templates/holidays?year=${selectedYear}`);
+        if (isMounted && res.data) {
+          if (Array.isArray(res.data.fixedHolidays) && res.data.fixedHolidays.length > 0) {
+            setFixedList(res.data.fixedHolidays);
+          }
+          if (Array.isArray(res.data.restrictedHolidays) && res.data.restrictedHolidays.length > 0) {
+            setRestrictedList(res.data.restrictedHolidays);
+          }
+        }
+      } catch (e) {
+        console.warn("Could not load backend holidays, using cached/offline fallback:", e);
+      } finally {
+        if (isMounted) setIsLoadingHolidays(false);
+      }
+    };
+    loadHolidays();
+    return () => { isMounted = false; };
+  }, [selectedYear]);
 
   const handleSyncHolidays = async () => {
     if (!semesterId) {
@@ -74,52 +110,14 @@ export const HolidayListTab = ({ semesterId, semesterStartDate, semesterEndDate 
     
     setIsSyncing(true);
     try {
-      const restrictedPayload = RESTRICTED_HOLIDAYS.map(h => {
-        const parsedDate = parse(`${h.date} 2026`, "dd MMMM yyyy", new Date());
-        const yyyyMmDd = format(parsedDate, "yyyy-MM-dd");
-        return {
-          title: `${h.name}`,
-          eventType: "restricted_holiday",
-          date: `${yyyyMmDd}T00:00:00Z`,
-          allDay: true,
-          isHolidayList: true,
-        };
-      });
-
-      const fixedPayload = FIXED_HOLIDAYS.map(h => {
-        const parsedDate = parse(`${h.date} 2026`, "dd MMMM yyyy", new Date());
-        const yyyyMmDd = format(parsedDate, "yyyy-MM-dd");
-        return {
-          title: h.name,
-          eventType: "holiday",
-          date: `${yyyyMmDd}T00:00:00Z`,
-          allDay: true,
-          isHolidayList: true,
-        };
-      });
-
-      let payloadEvents = [...fixedPayload, ...restrictedPayload];
-
-      // Fetch existing events to resolve conflicts
-      const res = await api.get(`/events?semesterId=${semesterId}`);
-      const existingEvents: any[] = res.data || [];
-
-      // Filter out any holidays from the payload that conflict with existing events (same date)
-      payloadEvents = payloadEvents.filter(ev => {
-        const hasConflict = existingEvents.some(existing => {
-          const existingDate = new Date(existing.date).toISOString().split('T')[0];
-          const payloadDate = ev.date.split('T')[0];
-          return existingDate === payloadDate;
-        });
-        return !hasConflict;
-      });
-
-      await api.post("/events/save-wizard", {
+      const res = await api.post("/events/templates/sync", {
         semesterId,
-        events: payloadEvents,
+        syncHolidayList: true,
+        syncAcademicCalendar: false,
+        year: selectedYear
       });
 
-      toast.success(`Successfully synced ${payloadEvents.length} holidays for this semester!`);
+      toast.success(`Successfully synced ${res.data?.syncedCount ?? 'all'} holidays for this semester!`);
       // Reload page to reflect changes in UI
       setTimeout(() => window.location.reload(), 1500);
     } catch (err) {
@@ -154,8 +152,26 @@ export const HolidayListTab = ({ semesterId, semesterStartDate, semesterEndDate 
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row items-center justify-between gap-4">
         <div>
-          <h2 className="text-xl font-bold text-foreground">Holiday List 2026</h2>
-          <p className="text-sm text-muted-foreground mt-1">Official list of holidays for the calendar year 2026.</p>
+          <div className="flex items-center gap-3">
+            <h2 className="text-xl font-bold text-foreground">Holiday List {selectedYear}</h2>
+            <div className="flex bg-muted/60 p-1 rounded-xl items-center border border-border/40">
+              {availableYears.map((y) => (
+                <button
+                  key={y}
+                  type="button"
+                  onClick={() => setSelectedYear(y)}
+                  className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition-all ${
+                    selectedYear === y
+                      ? "bg-background text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {y}
+                </button>
+              ))}
+            </div>
+          </div>
+          <p className="text-sm text-muted-foreground mt-1">Official list of holidays for the calendar year {selectedYear}.</p>
         </div>
         
         <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto items-center">
@@ -208,9 +224,18 @@ export const HolidayListTab = ({ semesterId, semesterStartDate, semesterEndDate 
               </tr>
             </thead>
             <tbody className="divide-y divide-border/30">
-              {(activeSubTab === "fixed" ? FIXED_HOLIDAYS : RESTRICTED_HOLIDAYS).map((holiday) => (
-                <tr key={holiday.sr} className="hover:bg-muted/20 transition-colors">
-                  <td className="px-6 py-4 text-muted-foreground">{holiday.sr}</td>
+              {isLoadingHolidays ? (
+                <tr>
+                  <td colSpan={4} className="px-6 py-8 text-center text-muted-foreground">
+                    <div className="flex items-center justify-center gap-2">
+                      <RefreshCw className="w-4 h-4 animate-spin text-primary" />
+                      <span>Loading {selectedYear} holidays...</span>
+                    </div>
+                  </td>
+                </tr>
+              ) : (activeSubTab === "fixed" ? fixedList : restrictedList).map((holiday: any, idx: number) => (
+                <tr key={holiday.sr || holiday.isoDate || idx} className="hover:bg-muted/20 transition-colors">
+                  <td className="px-6 py-4 text-muted-foreground">{holiday.sr || idx + 1}</td>
                   <td className="px-6 py-4 font-medium text-foreground">{holiday.name}</td>
                   <td className="px-6 py-4 text-muted-foreground">{holiday.date}</td>
                   <td className="px-6 py-4 text-muted-foreground">{holiday.day}</td>
@@ -228,7 +253,7 @@ export const HolidayListTab = ({ semesterId, semesterStartDate, semesterEndDate 
           {activeSubTab === "fixed" ? (
             <p>* Holidays may change depending upon shifting of the moon. Holidays announced by Central Government Welfare coordination committee will be followed for these holidays.</p>
           ) : (
-            <p>Restricted Holidays (02 Nos.) to be observed for the year 2026. Students and staff may choose any two holidays from this list.</p>
+            <p>Restricted Holidays (02 Nos.) to be observed for the year {selectedYear}. Students and staff may choose any two holidays from this list.</p>
           )}
         </div>
       </div>

@@ -1,6 +1,5 @@
 import { getMarketingName } from './deviceMapper';
 import { UAParser } from 'ua-parser-js';
-import geoip from 'geoip-lite';
 
 export async function getDeviceDetails(req: any) {
   if (!req) return { userAgent: 'Unknown OS', ipAddress: null, location: null };
@@ -61,11 +60,25 @@ export async function getDeviceDetails(req: any) {
     location = timezone.split('/').reverse().join(', ').replace(/_/g, ' ');
   }
 
-  // Priority 3: geoip as absolute last resort (only if timezone also absent)
+  // Priority 3: IP lookup as absolute last resort (only if timezone also absent)
   if (location === 'Unknown Location' && ipAddress) {
-    const geo = geoip.lookup(ipAddress);
-    if (geo && geo.city) location = [geo.city, geo.country].filter(Boolean).join(', ');
-    else if (ipAddress === '127.0.0.1' || ipAddress === '::1' || ipAddress.startsWith('192.168.')) location = 'Local Network';
+    if (ipAddress === '127.0.0.1' || ipAddress === '::1' || ipAddress.startsWith('192.168.') || ipAddress.startsWith('10.') || ipAddress.startsWith('172.16.')) {
+      location = 'Local Network';
+    } else {
+      try {
+        const geoRes = await fetch(`http://ip-api.com/json/${ipAddress}?fields=city,country`, {
+          signal: AbortSignal.timeout(1200)
+        });
+        if (geoRes.ok) {
+          const geoData = await geoRes.json() as any;
+          if (geoData && (geoData.city || geoData.country)) {
+            location = [geoData.city, geoData.country].filter(Boolean).join(', ');
+          }
+        }
+      } catch {
+        // Silently preserve Unknown Location without throwing or blocking
+      }
+    }
   }
 
 

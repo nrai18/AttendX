@@ -209,10 +209,7 @@ export class AuthService {
     });
 
     if (!tokenRecord) {
-      // SEC-H06 FIX: Security measure: if token was already used, revoke all tokens for this user
-      // A legitimate client would have the latest refresh token. If we see an old valid one, it's stolen.
-      await prisma.refreshToken.deleteMany({ where: { userId: payload.userId } });
-      throw new Error("Security alert: Token reuse detected. All sessions revoked. Please login again.");
+      throw new Error("Invalid or expired refresh token. Please login again.");
     }
 
     const sessionId = tokenRecord.id;

@@ -2,7 +2,7 @@ import { registerPlugin, Capacitor } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
 
 export interface RingerPlugin {
-  setRingerMode(options: { mode: 'silent' | 'vibrate' | 'normal' }): Promise<void>;
+  setRingerMode(options: { mode: 'silent' | 'vibrate' | 'normal'; unmuteEpochMs?: number }): Promise<void>;
 }
 
 const RingerMode = registerPlugin<RingerPlugin>('RingerMode');
@@ -62,7 +62,7 @@ export const checkAndReconcileRinger = async (pinnedNotificationId: number = 700
 export const mutePhone = async (unmuteEpochMs?: number): Promise<boolean> => {
   if (!Capacitor.isNativePlatform()) return false;
   try {
-    await RingerMode.setRingerMode({ mode: 'silent' });
+    await RingerMode.setRingerMode({ mode: 'silent', unmuteEpochMs });
     if (unmuteEpochMs) {
       setScheduledUnmuteTime(unmuteEpochMs);
     }

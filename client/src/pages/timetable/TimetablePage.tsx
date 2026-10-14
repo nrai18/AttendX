@@ -22,6 +22,7 @@ import { useAttendanceStore } from "../../stores/attendanceStore";
 import { useBackHandlerStore } from "../../stores/backHandlerStore";
 import { useCacheStore } from "../../stores/cacheStore";
 import { useScrollLock } from "../../hooks/useScrollLock";
+import { hapticLight, hapticMedium, hapticHeavy, hapticSelection, hapticSuccess } from "../../utils/haptics";
 
 interface Subject {
   id: string;
@@ -261,13 +262,8 @@ export const TimetablePage = () => {
     // Scroll to the top where the edit form is rendered
     window.scrollTo({ top: 0, behavior: "smooth" });
     
-    // Trigger haptic feedback if available (it will silently ignore on web)
-    try {
-      const { Haptics, ImpactStyle } = await import("@capacitor/haptics");
-      await Haptics.impact({ style: ImpactStyle.Light });
-    } catch (e) {
-      // Ignore if not on a device that supports haptics
-    }
+    // Trigger medium haptic feedback on edit
+    hapticMedium();
   };
 
   const handleAddSlot = async (e?: React.FormEvent) => {
@@ -288,11 +284,26 @@ export const TimetablePage = () => {
       };
 
       if (editingSlotId) {
+        const existingSlot = slots.find((s) => s.id === editingSlotId);
+        if (
+          existingSlot &&
+          existingSlot.subjectId === payload.subjectId &&
+          existingSlot.dayOfWeek === payload.dayOfWeek &&
+          normalizeTimeString(existingSlot.startTime, "09:00") === payload.startTime &&
+          normalizeTimeString(existingSlot.endTime, "10:00") === payload.endTime &&
+          (existingSlot.room || "") === (payload.room || "") &&
+          existingSlot.slotType.toLowerCase() === payload.slotType.toLowerCase()
+        ) {
+          toast.info("No changes made.");
+          resetForm();
+          return;
+        }
         await api.patch(`/timetable/slots/${editingSlotId}`, payload);
       } else {
         await api.post("/timetable/slots", payload);
       }
       
+      hapticSuccess();
       resetForm();
       fetchData();
       window.dispatchEvent(new Event("attendance-updated"));
@@ -359,6 +370,7 @@ export const TimetablePage = () => {
       const overSlot = slots.find(s => s.id === overSlotId);
       
       if (activeSlot && overSlot) {
+        hapticMedium();
         setSlots(prev => prev.map(s => {
           if (s.id === activeSlotId) return { ...s, startTime: overSlot.startTime, endTime: overSlot.endTime };
           if (s.id === overSlotId) return { ...s, startTime: activeSlot.startTime, endTime: activeSlot.endTime };
@@ -403,6 +415,7 @@ export const TimetablePage = () => {
 
   // Open delete dialog for a single slot
   const handleInitiateDeleteSingle = (slot: TimetableSlot) => {
+    hapticHeavy();
     setSlotsPendingDelete([slot]);
     setIsDeleteModalOpen(true);
   };
@@ -411,6 +424,7 @@ export const TimetablePage = () => {
   const handleInitiateDeleteSelected = () => {
     const selectedSlots = slots.filter((s) => selectedSlotIds.includes(s.id));
     if (selectedSlots.length === 0) return;
+    hapticHeavy();
     setSlotsPendingDelete(selectedSlots);
     setIsDeleteModalOpen(true);
   };
@@ -434,6 +448,7 @@ export const TimetablePage = () => {
     try {
       await api.patch(`/timetable/slots/${first.id}`, { endTime: second.endTime });
       await api.delete(`/timetable/slots/${second.id}`);
+      hapticSuccess();
       toast.success("Slots merged successfully!");
       setSelectedSlotIds([]);
       setIsSelectMode(false);
@@ -475,6 +490,7 @@ export const TimetablePage = () => {
         }
       }
 
+      hapticHeavy();
       setSelectedSlotIds([]);
       setIsSelectMode(false);
       await fetchData();
@@ -493,6 +509,7 @@ export const TimetablePage = () => {
     try {
       const targetSemId = activeSemester?.id || "active";
       await api.delete(`/timetable/semester/${targetSemId}/safe`);
+      hapticHeavy();
       setSlots([]);
       setSelectedSlotIds([]);
       setIsSelectMode(false);
@@ -986,7 +1003,10 @@ export const TimetablePage = () => {
           {DAYS.map((day, idx) => (
             <button
               key={day}
-              onClick={() => setActiveTab(idx)}
+              onClick={() => {
+                hapticSelection();
+                setActiveTab(idx);
+              }}
               className={`whitespace-nowrap px-5 py-3 text-xs font-bold transition-all aether-mono ${
                 activeTab === idx 
                   ? "bg-card text-foreground border-t border-l border-r border-border" 

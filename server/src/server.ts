@@ -1,4 +1,9 @@
 import "dotenv/config";
+import { MemoryMonitor } from "./utils/memoryMonitor";
+
+// Checkpoint 1: Base server boot
+MemoryMonitor.log("Base Server Startup");
+
 import { startServer } from "./app";
 import { CustomMlCopilotService } from "./services/custom_ml_copilot.service";
 import { CronService } from "./services/cron.service";
@@ -7,33 +12,63 @@ import { redisClient } from "./lib/redis";
 import { PushNotificationService } from "./services/push_notification.service";
 import { loadDeviceMapping } from "./utils/deviceMapper";
 
-// Dynamically cache Google Play device marketing names
-loadDeviceMapping();
+async function bootstrap() {
+  // Checkpoint 2: Post-Firebase Init
+  MemoryMonitor.log("Post-Firebase Init");
 
-// Warm up the zero-token local ML Copilot engine on boot
-CustomMlCopilotService.warmup();
+  // Checkpoint 3: Post-DeviceMapper Init (bounded, <0.01MB)
+  await loadDeviceMapping();
+  MemoryMonitor.log("Post-DeviceMapper Init");
 
-// Initialize background workers (e.g. daily birthday emails)
-CronService.init();
+  // Checkpoint 4: Post-Gemini Warmup
+  CustomMlCopilotService.warmup();
+  MemoryMonitor.log("Post-Gemini Warmup");
 
-startServer();
+  // Checkpoint 5: Post-Cron Init
+  CronService.init();
+  MemoryMonitor.log("Post-Cron Init");
 
-// Automatically broadcast push notifications when a new version is deployed
-setTimeout(async () => {
-  try {
-    const currentVersion = "4.2.0";
-    
-    // Use Redis SETNX to guarantee only ONE server instance sends the notification
-    const acquired = await redisClient.setnx(`notified_update_${currentVersion}`, "1");
-    if (acquired === 1) {
-      console.log(`[Version Watcher] New version ${currentVersion} detected! Broadcasting update notification...`);
-      await PushNotificationService.broadcastMessage(
-        `AttendX Update ${currentVersion} is Live! 🚀`,
-        "Tap to download the update and see what's new!",
-        { type: "ota_update", version: currentVersion }
-      );
-    }
-  } catch (error) {
-    console.error("[Version Watcher] Failed to check or send update notification:", error);
+  // Start Express HTTP server & setup graceful shutdown
+  const server = await startServer();
+  MemoryMonitor.log("Server Listening");
+
+  // Attach graceful shutdown hooks
+  MemoryMonitor.setupGracefulShutdown(server);
+
+  // Start periodic 5-minute memory monitoring
+  MemoryMonitor.startPeriodicLogging();
+
+  // Checkpoint 6: Redis connection logging
+  if (redisClient.status === "ready" || redisClient.status === "connect") {
+    MemoryMonitor.log("Post-Redis Connect");
+  } else {
+    redisClient.once("connect", () => {
+      MemoryMonitor.log("Post-Redis Connect");
+    });
   }
-}, 10000); // Wait 10 seconds after boot to ensure Firebase is fully initialized
+
+  // Automatically broadcast push notifications when a new version is deployed
+  setTimeout(async () => {
+    try {
+      const currentVersion = "4.2.0";
+      
+      // Use Redis SETNX to guarantee only ONE server instance sends the notification
+      const acquired = await redisClient.setnx(`notified_update_${currentVersion}`, "1");
+      if (acquired === 1) {
+        console.log(`[Version Watcher] New version ${currentVersion} detected! Broadcasting update notification...`);
+        await PushNotificationService.broadcastMessage(
+          `AttendX Update ${currentVersion} is Live! 🚀`,
+          "Tap to download the update and see what's new!",
+          { type: "ota_update", version: currentVersion }
+        );
+      }
+    } catch (error) {
+      console.error("[Version Watcher] Failed to check or send update notification:", error);
+    }
+  }, 10000);
+}
+
+bootstrap().catch((err) => {
+  console.error("[Server Bootstrap Fatal Error]:", err);
+  process.exit(1);
+});
