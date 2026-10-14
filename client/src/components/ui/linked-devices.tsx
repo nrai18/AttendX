@@ -93,7 +93,14 @@ function getSessionTitle(session: Session) {
   // e.g. "AttendX 3.0.0 (Nothing Phone (3a))" -> "Nothing Phone (3a)"
   const hardwareMatch = browser.match(/\((.*)\)/);
   if (hardwareMatch) {
-    return hardwareMatch[1];
+    const raw = hardwareMatch[1];
+    if (/nothing\s+a059/i.test(raw) || /^a059$/i.test(raw)) return "Nothing Phone (3a)";
+    if (/nothing\s+a063/i.test(raw) || /^a063$/i.test(raw)) return "Nothing Phone (1)";
+    if (/nothing\s+a065/i.test(raw) || /^a065$/i.test(raw)) return "Nothing Phone (2)";
+    if (/nothing\s+a142p/i.test(raw) || /^a142p$/i.test(raw)) return "Nothing Phone (2a) Plus";
+    if (/nothing\s+a142/i.test(raw) || /^a142$/i.test(raw)) return "Nothing Phone (2a)";
+    if (/nothing\s+a015/i.test(raw) || /^a015$/i.test(raw) || /cmf\s+a015/i.test(raw)) return "CMF Phone 1";
+    return raw;
   }
 
   if (browser !== "AttendX App" && !browser.startsWith("AttendX") && browser !== "Unknown Browser" && browser !== "Browser") {

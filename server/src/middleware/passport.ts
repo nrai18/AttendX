@@ -5,6 +5,8 @@ import { EmailService } from "../services/email.service";
 
 dotenv.config();
 
+import { FailureLogRecorder } from "../utils/failureLogRecorder";
+
 passport.use(
   new GoogleStrategy(
     {
@@ -17,9 +19,13 @@ passport.use(
     },
     async (accessToken, refreshToken, profile, done) => {
       try {
-        const email = profile.emails?.[0].value;
-        if (!email || (!email.endsWith("@iiitu.ac.in") && !email.endsWith("@gmail.com"))) {
-          return done(new Error("Only @iiitu.ac.in or @gmail.com emails are allowed."), false);
+        const rawEmail = profile.emails?.[0]?.value;
+        const email = rawEmail ? rawEmail.toLowerCase().trim() : undefined;
+        const allowedDomainsStr = process.env.ALLOWED_DOMAINS || "iiitu.ac.in,gmail.com";
+        const allowedDomains = allowedDomainsStr.split(",").map(d => d.trim().toLowerCase());
+        const emailDomain = email?.split("@")[1];
+        if (!email || !emailDomain || (!allowedDomains.includes("*") && !allowedDomains.includes(emailDomain))) {
+          return done(new Error(`Only ${allowedDomainsStr.replace(",", " or ")} emails are allowed.`), false);
         }
         
         // Import Prisma directly from our lib to ensure driver adapter is used
@@ -39,6 +45,7 @@ passport.use(
               name,
               avatarUrl,
               role: "student",
+              targetAttendance: parseInt(process.env.DEFAULT_TARGET_ATTENDANCE || "75"),
             }
           });
           
@@ -58,6 +65,11 @@ passport.use(
 
         return done(null, user);
       } catch (error) {
+        FailureLogRecorder.recordError(error, null, {
+          context: "Google OAuth Verification",
+          email: profile?.emails?.[0]?.value,
+          googleId: profile?.id
+        });
         return done(error as Error, false);
       }
     }

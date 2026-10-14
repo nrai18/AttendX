@@ -37,6 +37,11 @@ export const PeerSyncModal = () => {
   const [remainingTime, setRemainingTime] = useState<number>(0);
 
   useEffect(() => {
+    localStorage.setItem("onboarding_peer_sync", "true");
+    api.patch("/users/onboarding-status", { step: "peer_sync" }).catch(() => {});
+  }, []);
+
+  useEffect(() => {
     if (!expiresAt || !activeCode) {
       setRemainingTime(0);
       return;

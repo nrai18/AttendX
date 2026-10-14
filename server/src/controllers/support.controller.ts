@@ -3,6 +3,7 @@ import { AuthenticatedRequest } from "../middleware/authenticate";
 import { DataService } from "../services/data.service";
 import { prisma } from "../lib/prisma";
 import crypto from "crypto";
+import { FailureLogRecorder } from "../utils/failureLogRecorder";
 
 export class SupportController {
   static async submitFeedback(req: AuthenticatedRequest, res: Response) {
@@ -10,11 +11,23 @@ export class SupportController {
       const { type, issue, frequency, description, email, attachLogs, screenshot, deviceLogs } = req.body;
       const userId = req.user!.userId;
 
+      // Extract recent server errors for diagnostics
+      const recentServerLogs = FailureLogRecorder.getRecentLogs({ userId, email, limit: 30 });
+      const enrichedDeviceLogs = {
+        ...(deviceLogs || {}),
+        recentServerErrors: recentServerLogs.slice(0, 10),
+        submittedAt: new Date().toISOString()
+      };
+
       let encryptedDbDump = null;
 
       if (attachLogs) {
         try {
-          const zipBuffer = await DataService.exportData(userId);
+          const zipBuffer = await DataService.exportData(userId, {
+            deviceLogs: enrichedDeviceLogs,
+            userEmail: email,
+            forTicket: true
+          });
           const algorithm = "aes-256-cbc";
           const key = process.env.LOG_ENCRYPTION_KEY;
           if (!key || key.length !== 32) {
@@ -39,7 +52,7 @@ export class SupportController {
           description,
           email,
           screenshotUrl: screenshot, // In a real app, upload base64 to Cloudinary and store URL
-          deviceLogs: deviceLogs ? deviceLogs : null,
+          deviceLogs: enrichedDeviceLogs,
           encryptedDbDump
         }
       });

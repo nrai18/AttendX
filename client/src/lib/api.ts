@@ -2,7 +2,29 @@ import axios from "axios";
 import { useAuthStore } from "../stores/authStore";
 import { useOfflineStore } from "../stores/offlineStore";
 
+declare module 'axios' {
+  export interface AxiosRequestConfig {
+    silent?: boolean;
+    skipToast?: boolean;
+    skipErrorToast?: boolean;
+  }
+}
+
 export const API_BASE_URL = import.meta.env.VITE_API_URL || "/api";
+
+export interface ApiErrorLogEntry {
+  timestamp: string;
+  url?: string;
+  method?: string;
+  status?: number;
+  message: string;
+  responseData?: any;
+}
+
+export const recentApiErrors: ApiErrorLogEntry[] = [];
+export function getRecentApiErrors(): ApiErrorLogEntry[] {
+  return [...recentApiErrors];
+}
 
 export const api = axios.create({
   baseURL: API_BASE_URL,
@@ -166,13 +188,25 @@ const processQueue = (error: any, token: string | null = null) => {
 
 api.interceptors.response.use(
   (response) => {
-    import("sonner").then(({ toast }) => toast.dismiss("server-wakeup"));
     return response;
   },
   async (error) => {
     if (axios.isCancel(error) || error.name === 'CanceledError' || error.code === 'ERR_CANCELED' || error.message === 'canceled') {
       return Promise.reject(error);
     }
+
+    try {
+      recentApiErrors.push({
+        timestamp: new Date().toISOString(),
+        url: error.config?.url,
+        method: error.config?.method?.toUpperCase(),
+        status: error.response?.status,
+        message: error.response?.data?.message || error.message || "Unknown API Error",
+        responseData: error.response?.data
+      });
+      if (recentApiErrors.length > 30) recentApiErrors.shift();
+    } catch (e) {}
+
     const originalRequest = error.config;
 
     // Avoid infinite loop on auth endpoints
@@ -247,14 +281,25 @@ api.interceptors.response.use(
           
           return Promise.resolve({ data: { id: 'temp-' + Date.now(), _queued: true } });
       }
-
-      import("sonner").then(({ toast }) => {
-        toast.info("Waking up the cloud server... Please wait a moment.", {
-          id: "server-wakeup",
-          duration: 5000,
-        });
-      });
-    } else if (error.response?.status !== 401 && error.response?.status !== 429 && !originalRequest?.url?.includes("/health") && !originalRequest?.url?.includes("/ai/tts")) {
+    } else if (
+      !axios.isCancel(error) &&
+      error.code !== "ERR_CANCELED" &&
+      error.name !== "CanceledError" &&
+      !originalRequest?.silent &&
+      !originalRequest?.skipToast &&
+      !originalRequest?.skipErrorToast &&
+      error.response?.status !== 401 && 
+      error.response?.status !== 404 &&
+      error.response?.status !== 429 && 
+      !originalRequest?.url?.includes("/health") && 
+      !originalRequest?.url?.includes("/ai/tts") &&
+      !originalRequest?.url?.includes("/system/config") &&
+      !originalRequest?.url?.includes("/users/onboarding-status") &&
+      !originalRequest?.url?.includes("/events/today-status") &&
+      !originalRequest?.url?.includes("/events/templates/") &&
+      !(originalRequest?.url?.includes("/ai/chat") && originalRequest?.data && String(originalRequest.data).includes('"warmup":true')) &&
+      !(originalRequest?.method?.toLowerCase() === "get" && (error.message === "Network Error" || error.code === "ECONNABORTED" || !navigator.onLine))
+    ) {
       import("sonner").then(({ toast }) => {
         let errorMsg = error.response?.data?.message || error.message;
         

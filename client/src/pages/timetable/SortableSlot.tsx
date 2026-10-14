@@ -106,7 +106,11 @@ export const SortableSlot: React.FC<SortableSlotProps> = ({
               <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity -mt-1 -mr-1">
                 <button
                   type="button"
-                  onPointerDown={(e) => { e.stopPropagation(); onEdit(slot); }}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onEdit(slot);
+                  }}
                   className="text-muted-foreground hover:text-blue-500 p-1 cursor-pointer"
                   title="Edit slot"
                 >
@@ -114,7 +118,11 @@ export const SortableSlot: React.FC<SortableSlotProps> = ({
                 </button>
                 <button
                   type="button"
-                  onPointerDown={(e) => { e.stopPropagation(); onDelete(slot); }}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDelete(slot);
+                  }}
                   className="text-muted-foreground hover:text-rose-500 p-1 cursor-pointer"
                   title="Delete slot"
                 >
@@ -211,6 +219,7 @@ export const SortableSlot: React.FC<SortableSlotProps> = ({
         <div className="flex items-center gap-1.5 ml-2 flex-shrink-0">
           <button
             type="button"
+            onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => {
               e.stopPropagation();
               onEdit(slot);
@@ -222,6 +231,7 @@ export const SortableSlot: React.FC<SortableSlotProps> = ({
           </button>
           <button
             type="button"
+            onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => {
               e.stopPropagation();
               onDelete(slot);

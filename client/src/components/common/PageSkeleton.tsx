@@ -7,13 +7,12 @@ interface Props {
 }
 
 const WAKE_MESSAGES = [
-  "Connecting...",
-  "Waking up the cloud server...",
-  "Running database checks...",
-  "Fetching your data...",
-  "Almost there...",
-  "Server is having its morning coffee...",
-  "Still loading... Render is taking its time."
+  "Connecting to server...",
+  "Loading timetable...",
+  "Verifying attendance records...",
+  "Fetching schedule data...",
+  "Synchronizing updates...",
+  "Preparing your agenda..."
 ];
 
 export const PageSkeleton: React.FC<Props> = ({ type = "today" }) => {
@@ -63,7 +62,7 @@ export const PageSkeleton: React.FC<Props> = ({ type = "today" }) => {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 20 }}
-            className="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 pointer-events-none"
+            className="fixed bottom-[calc(5.5rem+env(safe-area-inset-bottom))] md:bottom-8 left-1/2 -translate-x-1/2 z-40 pointer-events-none"
           >
             <div className="flex items-center gap-3 px-4 py-2.5 bg-background/80 backdrop-blur-xl border border-border/50 shadow-2xl rounded-full text-sm font-medium text-foreground">
               <Loader2 className="w-4 h-4 animate-spin text-primary" />

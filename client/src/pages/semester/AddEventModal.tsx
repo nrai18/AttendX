@@ -43,8 +43,8 @@ export function AddEventModal({ isOpen, onClose, semesterId, onSaved }: AddEvent
           {
             title,
             eventType: title.toLowerCase().includes("birthday") ? "other" : eventType,
-            date: new Date(date).toISOString(),
-            endDate: endDate ? new Date(endDate).toISOString() : undefined,
+            date: `${date}T00:00:00.000Z`,
+            endDate: endDate ? `${endDate}T23:59:59.999Z` : undefined,
           }
         ]
       });

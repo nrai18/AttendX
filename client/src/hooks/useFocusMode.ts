@@ -10,9 +10,9 @@ export function useFocusMode(userId: string | null) {
   useEffect(() => {
     if (!userId) return;
 
-    const baseWsUrl = useConfigStore.getState().wsUrl || 'wss://attendx-backend-fh6k.onrender.com/ws';
-    const wsUrl = `?userId=`;
-    const ws = new WebSocket(wsUrl.includes('?') ? wsUrl : `${wsUrl}?userId=${userId}`);
+    const baseWsUrl = useConfigStore.getState().wsUrl || import.meta.env.VITE_WS_URL || 'wss://attendx-backend-fh6k.onrender.com/ws';
+    const wsUrl = baseWsUrl.includes('?') ? `${baseWsUrl}&userId=${userId}` : `${baseWsUrl}?userId=${userId}`;
+    const ws = new WebSocket(wsUrl);
 
     ws.onmessage = async (event) => {
       const data = JSON.parse(event.data);

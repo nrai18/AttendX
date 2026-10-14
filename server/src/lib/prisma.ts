@@ -66,6 +66,10 @@ function createInMemoryModelHandler(modelName: string) {
         if ("endsWith" in filterValue && typeof itemValue === "string" && !itemValue.endsWith(filterValue.endsWith)) return false;
         if ("startsWith" in filterValue && typeof itemValue === "string" && !itemValue.startsWith(filterValue.startsWith)) return false;
         if ("in" in filterValue && Array.isArray(filterValue.in) && !filterValue.in.includes(itemValue)) return false;
+        if ("gte" in filterValue && !(itemValue >= filterValue.gte)) return false;
+        if ("gt" in filterValue && !(itemValue > filterValue.gt)) return false;
+        if ("lte" in filterValue && !(itemValue <= filterValue.lte)) return false;
+        if ("lt" in filterValue && !(itemValue < filterValue.lt)) return false;
         continue;
       }
       if ((item as any)[key] !== value) return false;
@@ -202,6 +206,11 @@ export const prisma = new Proxy(
                                           dbError?.message?.toLowerCase().includes('network');
                                           
                 if (isConnectionError) {
+                  // SEC-FIX: Never mock refreshToken or user authentication queries during DB connection spikes.
+                  // Mocking returns null, which falsely triggers 'Session has been revoked' and logs the user out!
+                  if (prop === "refreshToken" || prop === "user") {
+                    throw dbError;
+                  }
                   console.warn(`[AI Studio] DB connection error on prisma.${prop}.${method}, using in-memory fallback:`, dbError?.message || dbError);
                   if ((fallbackModel as any)[method]) {
                     return await (fallbackModel as any)[method](...args);

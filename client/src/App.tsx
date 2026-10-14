@@ -157,13 +157,13 @@ export function App() {
           console.error("Failed to schedule academic updates", e);
         }
 
-        // Instant Copilot Warmup ping to ensure 0-latency chat on start
-        api.post("/ai/chat", { text: "ping", warmup: true }).catch(() => {
+        // Instant Copilot Warmup ping to ensure 0-latency chat on start (silent)
+        api.post("/ai/chat", { text: "ping", warmup: true }, { silent: true, skipToast: true }).catch(() => {
           // Silent catch if offline or server waking up
         });
 
         // Silent ping to ML server to wake it up on boot (Render Free Tier)
-        const mlUrl = useConfigStore.getState().mlApiUrl || 'https://attendx-ml-server.onrender.com';
+        const mlUrl = useConfigStore.getState().mlApiUrl || import.meta.env.VITE_ML_API_URL || 'https://attendx-ml-server.onrender.com';
         if (mlUrl) {
           fetch(`${mlUrl}/health`).catch(() => {
             // We expect this to fail or timeout if it's asleep, 
@@ -183,6 +183,10 @@ export function App() {
   useEffect(() => {
     if (isAuthenticated && hydrated) {
       NotificationService.syncFcmToken();
+      NotificationService.autoScheduleFromTimetable().catch(console.error);
+      NotificationService.scheduleAssignmentReminders().catch(console.error);
+      const reminderFreq = useCacheStore.getState().reminderFrequency || { type: 'Daily' };
+      NotificationService.scheduleAcademicUpdates(reminderFreq).catch(console.error);
     }
   }, [isAuthenticated, hydrated]);
 
@@ -217,6 +221,7 @@ export function App() {
             <Route path="/signup" element={<SignupPage />} />
             <Route path="/privacy" element={<PrivacyPage />} />
             <Route path="/terms" element={<TermsPage />} />
+            <Route path="/404" element={<NotFoundPage />} />
 
             {/* Protected App Routes */}
             <Route
@@ -232,16 +237,20 @@ export function App() {
                 element={<PredictiveAttendancePage />}
               />
               <Route path="/timetable" element={<TimetablePage />} />
-              <Route path="/semester" element={<SemesterHubPage />} />`n              <Route path="/semester/:tab" element={<SemesterHubPage />} />
+              <Route path="/semester" element={<SemesterHubPage />} />
+              <Route path="/semester/:tab" element={<SemesterHubPage />} />
               <Route path="/calendar" element={<CalendarPage />} />
               <Route path="/subjects" element={<SubjectsPage />} />
               <Route path="/subjects/manage" element={<SubjectsPage />} />
               <Route path="/subjects/:id" element={<SubjectDetailPage />} />
               <Route path="/classrooms" element={<ClassroomsPage />} />
               <Route path="/classrooms/:id" element={<ClassroomFeedPage />} />
-              <Route path="/settings" element={<SettingsPage />} />`n              <Route path="/settings/faq" element={<FaqPage />} />`n              <Route path="/settings/:section" element={<SettingsPage />} />
+              <Route path="/settings" element={<SettingsPage />} />
+              <Route path="/settings/faq" element={<FaqPage />} />
+              <Route path="/settings/:section" element={<SettingsPage />} />
               <Route path="/assignments" element={<AssignmentsPage />} />
               <Route path="/report" element={<ReportView />} />
+              <Route path="/reports" element={<ReportView />} />
               <Route path="*" element={<NotFoundPage />} />
             </Route>
 

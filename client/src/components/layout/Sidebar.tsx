@@ -17,6 +17,7 @@ import {
 import { api } from "../../lib/api";
 import { useAuthStore } from "../../stores/authStore";
 import { cn } from "../../lib/utils";
+import { hapticSelection, hapticWarning } from "../../utils/haptics";
 
 const navItems = [
   { label: "Today", path: "/today", icon: CalendarDays },
@@ -42,6 +43,7 @@ export const Sidebar: React.FC = () => {
   
   const [isLoggingOut, setIsLoggingOut] = React.useState(false);
   const handleLogout = async () => {
+    hapticWarning();
     setIsLoggingOut(true);
     try {
       await api.post("/auth/logout");
@@ -74,6 +76,7 @@ export const Sidebar: React.FC = () => {
             <NavLink
               key={item.path}
               to={item.path}
+              onClick={() => hapticSelection()}
               className={({ isActive }) => {
                 if (isActive && isReports) {
                   return "flex items-center gap-3 px-3 py-2.5 rounded-xl font-medium text-sm transition-all duration-200 bg-[#74313A] text-[#FDF8F5] shadow-md shadow-[#74313A]/20";

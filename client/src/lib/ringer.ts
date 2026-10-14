@@ -2,7 +2,7 @@ import { registerPlugin, Capacitor } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
 
 export interface RingerPlugin {
-  setRingerMode(options: { mode: 'silent' | 'vibrate' | 'normal' }): Promise<void>;
+  setRingerMode(options: { mode: 'silent' | 'vibrate' | 'normal'; unmuteEpochMs?: number; className?: string }): Promise<void>;
 }
 
 const RingerMode = registerPlugin<RingerPlugin>('RingerMode');
@@ -59,10 +59,10 @@ export const checkAndReconcileRinger = async (pinnedNotificationId: number = 700
   return false;
 };
 
-export const mutePhone = async (unmuteEpochMs?: number): Promise<boolean> => {
+export const mutePhone = async (unmuteEpochMs?: number, className?: string): Promise<boolean> => {
   if (!Capacitor.isNativePlatform()) return false;
   try {
-    await RingerMode.setRingerMode({ mode: 'silent' });
+    await RingerMode.setRingerMode({ mode: 'silent', unmuteEpochMs, className });
     if (unmuteEpochMs) {
       setScheduledUnmuteTime(unmuteEpochMs);
     }
@@ -79,7 +79,8 @@ export const mutePhone = async (unmuteEpochMs?: number): Promise<boolean> => {
             title: "Action Required: Permission Missing",
             body: "AttendX needs 'Do Not Disturb' access to mute your phone for classes. Please enable it in your phone Settings.",
             summaryText: "System Warning",
-            smallIcon: "ic_stat_adobe",
+            smallIcon: "ic_stat_attendx",
+            largeIcon: "attendx_notification_icon",
             iconColor: "#F59E0B",
             channelId: 'system_alerts',
             schedule: { at: new Date(Date.now() + 1000), allowWhileIdle: true }

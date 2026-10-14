@@ -1,10 +1,12 @@
 import { useState, useEffect, useRef } from "react";
 import { motion, useScroll, useTransform, useMotionValueEvent } from "framer-motion";
 import { Link, useNavigate } from "react-router-dom";
-import { Menu, X, ArrowLeft, ArrowRight, CalendarDays, Brain, Users, Moon, Sun, Phone, Mail } from "lucide-react";
+import { Menu, X, ArrowLeft, ArrowRight, CalendarDays, Brain, Users, Moon, Sun, Phone, Mail, Download, Smartphone, Copy, Check } from "lucide-react";
 import { useAuthStore } from "../../stores/authStore";
 import { useThemeStore } from "../../stores/themeStore";
 import { useBackHandlerStore } from "../../stores/backHandlerStore";
+import { useConfigStore } from "../../stores/configStore";
+import { AppDownloadBanner } from "../../components/marketing/AppDownloadBanner";
 
 export const LandingPage: React.FC = () => {
   const navigate = useNavigate();
@@ -27,14 +29,45 @@ export const LandingPage: React.FC = () => {
   });
 
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isDownloadModalOpen, setIsDownloadModalOpen] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
+
+  const dynamicDownloadLink = useConfigStore((state) => state.appDownloadLink);
+  const appDownloadUrl = dynamicDownloadLink || import.meta.env.VITE_APP_DOWNLOAD_LINK || "https://github.com/nrai18/AttendX/releases/latest/download/AttendX.apk";
+
+  const getDynamicVersion = (url: string | null): string => {
+    if (!url) return "Latest";
+    const match = url.match(/\/download\/(v?[0-9.]+)\//i) || url.match(/\/(v[0-9.]+)\//i) || url.match(/(v[0-9.]+)/i);
+    if (match && match[1]) {
+      return match[1].startsWith("v") ? match[1] : `v${match[1]}`;
+    }
+    return "Latest";
+  };
+  const dynamicVersion = getDynamicVersion(appDownloadUrl);
+
+  useEffect(() => {
+    useConfigStore.getState().fetchConfig();
+  }, []);
+
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && isDownloadModalOpen) {
+        setIsDownloadModalOpen(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isDownloadModalOpen]);
 
   useEffect(() => {
     const unregister = useBackHandlerStore.getState().register(() => {
+      if (isDownloadModalOpen) { setIsDownloadModalOpen(false); return true; }
       if (isMobileMenuOpen) { setIsMobileMenuOpen(false); return true; }
       return false;
     });
     return () => unregister();
-  }, [isMobileMenuOpen]);
+  }, [isDownloadModalOpen, isMobileMenuOpen]);
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -111,7 +144,17 @@ export const LandingPage: React.FC = () => {
           <a href="#features" onClick={() => setIsMobileMenuOpen(false)} className="hover:text-[#48CAE4] transition-colors">Platform</a>
           <a href="#about" onClick={() => setIsMobileMenuOpen(false)} className="hover:text-[#48CAE4] transition-colors">Creator</a>
           <a href="#support" onClick={() => setIsMobileMenuOpen(false)} className="hover:text-[#48CAE4] transition-colors">Connect</a>
-          <Link to="/login" className="text-[#48CAE4] mt-8 px-8 py-4 border border-[#48CAE4]/30 rounded-full hover:bg-[#48CAE4]/10 transition-colors">Get Started</Link>
+          <button 
+            onClick={() => {
+              setIsMobileMenuOpen(false);
+              setIsDownloadModalOpen(true);
+            }} 
+            className="w-full max-w-xs px-6 py-3.5 border-2 border-black bg-[#80ED99] text-black font-black uppercase tracking-widest text-sm shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] flex items-center justify-center gap-2.5 cursor-pointer mt-4"
+          >
+            <Download className="w-4 h-4" />
+            <span>Download App</span>
+          </button>
+          <Link to="/login" className="text-[#48CAE4] mt-2 px-8 py-3.5 border border-[#48CAE4]/30 rounded-full hover:bg-[#48CAE4]/10 transition-colors">Get Started</Link>
         </div>
       </div>
 
@@ -142,6 +185,15 @@ export const LandingPage: React.FC = () => {
               <Link to="/login" className="hover:text-[#48CAE4] transition-colors">Get Started</Link>
             </div>
             <div className="flex items-center gap-2 md:gap-4 z-20">
+              {/* MOBILE APP DOWNLOAD BUTTON (Moved away from Get Started) */}
+              <button
+                onClick={() => setIsDownloadModalOpen(true)}
+                className="sm:hidden px-3 py-1.5 border-2 border-black bg-[#80ED99] hover:bg-[#6ee7b7] text-black font-black uppercase text-[10px] tracking-wider shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-y-0.5 active:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] flex items-center gap-1.5 focus:outline-none cursor-pointer"
+                title="Download AttendX App"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>App</span>
+              </button>
               <button 
                 onClick={toggleTheme} 
                 className="p-2 text-slate-50/80 hover:text-slate-50 hover:bg-slate-50/10 rounded-full transition-colors"
@@ -149,7 +201,7 @@ export const LandingPage: React.FC = () => {
               >
                 {theme === "dark" ? <Moon className="w-5 h-5" /> : <Sun className="w-5 h-5" />}
               </button>
-              <Link to="/login" className="text-xs sm:text-sm font-bold tracking-widest uppercase text-slate-50 md:hidden hover:text-[#48CAE4] transition-colors ml-2 mr-2">
+              <Link to="/login" className="text-xs sm:text-sm font-bold tracking-widest uppercase text-slate-50 md:hidden hover:text-[#48CAE4] transition-colors ml-1 mr-1">
                 Log In
               </Link>
               <button onClick={() => setIsMobileMenuOpen(true)} className="p-2 text-slate-50/80 hover:text-slate-50 transition-colors md:hidden">
@@ -188,11 +240,21 @@ export const LandingPage: React.FC = () => {
           </main>
 
           {/* BOTTOM CONTROLS (Step 4) */}
-          <footer className={`w-full px-6 md:px-16 py-8 md:py-12 flex flex-col md:flex-row items-center justify-end z-20 transition-all duration-1000 ${animStep >= 4 ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
-            <div className="hidden md:block flex-1" />
+          <footer className={`w-full px-6 md:px-16 py-8 md:py-12 flex flex-col sm:flex-row items-center justify-between gap-4 z-20 transition-all duration-1000 ${animStep >= 4 ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'}`}>
+            {/* FLOATING DOWNLOAD BUTTON (LEFT SIDE - DESKTOP ONLY, LIGHT GREEN) */}
+            <button
+              onClick={() => setIsDownloadModalOpen(true)}
+              className="hidden sm:flex px-8 h-14 rounded-none border-2 border-black bg-[#80ED99] hover:bg-[#6ee7b7] text-black items-center justify-center gap-3.5 font-black uppercase tracking-widest text-sm shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] dark:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 hover:shadow-[10px_10px_0px_0px_rgba(0,0,0,1)] active:translate-y-0 active:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all cursor-pointer group focus:outline-none focus:ring-0"
+              title="Download AttendX App"
+            >
+              <div className="w-7 h-7 bg-black text-[#80ED99] flex items-center justify-center border-2 border-black group-hover:scale-105 transition-transform">
+                <Download className="w-4 h-4" />
+              </div>
+              <span>Download App</span>
+            </button>
             <Link 
               to="/login"
-              className="w-full md:w-auto px-8 h-14 rounded-none border-2 border-black dark:border-[#222222] bg-[#48CAE4] flex items-center justify-center gap-4 text-[#050505] font-black uppercase tracking-widest text-sm shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] dark:shadow-[8px_8px_0px_0px_#111111] hover:-translate-y-1 hover:shadow-[10px_10px_0px_0px_rgba(0,0,0,1)] dark:hover:shadow-[10px_10px_0px_0px_#111111] transition-all cursor-pointer group"
+              className="w-full sm:w-auto px-8 h-14 rounded-none border-2 border-black dark:border-[#222222] bg-[#48CAE4] flex items-center justify-center gap-4 text-[#050505] font-black uppercase tracking-widest text-sm shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] dark:shadow-[8px_8px_0px_0px_#111111] hover:-translate-y-1 hover:shadow-[10px_10px_0px_0px_rgba(0,0,0,1)] dark:hover:shadow-[10px_10px_0px_0px_#111111] transition-all cursor-pointer group"
             >
               <span>Get Started</span>
               <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
@@ -390,6 +452,105 @@ export const LandingPage: React.FC = () => {
           </footer>
         </div>
 
+      {/* --- APP DOWNLOAD & QR MODAL --- */}
+      {isDownloadModalOpen && (
+        <div 
+          className="fixed inset-0 z-[200] flex items-center justify-center p-4 sm:p-6 bg-black/80 backdrop-blur-md animate-in fade-in duration-200"
+          onClick={() => setIsDownloadModalOpen(false)}
+        >
+          <div 
+            className="w-full max-w-4xl bg-white dark:bg-[#0c0d12] border border-black/10 dark:border-neutral-800 text-black dark:text-white shadow-2xl p-4 sm:p-6 relative flex flex-col gap-5 max-h-[95vh] overflow-y-auto rounded-none sm:rounded-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* MODAL HEADER */}
+            <div className="flex items-center justify-between gap-4 border-b border-black/10 dark:border-neutral-800 pb-3">
+              <div className="flex items-center gap-3">
+                <div className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-[#80ED99] text-black text-[10px] font-mono font-black tracking-widest uppercase rounded-sm">
+                  <Smartphone className="w-3.5 h-3.5" />
+                  <span>ANDROID 11+ • {dynamicVersion}</span>
+                </div>
+                <h3 className="text-xl sm:text-2xl font-black uppercase tracking-tight leading-none text-black dark:text-white hidden sm:block">
+                  Get AttendX App
+                </h3>
+              </div>
+
+              <button
+                onClick={() => setIsDownloadModalOpen(false)}
+                className="w-8 h-8 rounded-lg bg-neutral-100 dark:bg-neutral-800/80 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-600 dark:text-neutral-300 flex items-center justify-center transition-colors cursor-pointer shrink-0"
+                title="Close modal"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* HERO PROMOTIONAL BANNER (ZERO QR OVERLAP & CRISP VECTOR RENDERING) */}
+            <AppDownloadBanner
+              downloadUrl={appDownloadUrl}
+              version={dynamicVersion}
+              onWebClick={() => setIsDownloadModalOpen(false)}
+            />
+
+            {/* ACTION & SPECS CONTROLS */}
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-1">
+              {/* DIRECT DOWNLOAD BUTTON */}
+              <a
+                href={appDownloadUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                download="AttendX.apk"
+                className="flex-1 h-12 bg-[#80ED99] hover:bg-[#6ee7b7] text-black font-black uppercase tracking-wider text-xs sm:text-sm flex items-center justify-center gap-2.5 rounded-lg transition-colors cursor-pointer shadow-sm"
+              >
+                <Download className="w-4 h-4" />
+                <span>DOWNLOAD APK ({dynamicVersion})</span>
+              </a>
+
+              {/* COPY LINK BAR */}
+              <div className="flex items-center gap-2 shrink-0">
+                <input 
+                  type="text" 
+                  readOnly 
+                  value={appDownloadUrl}
+                  className="bg-neutral-100 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 px-3 py-2 text-[11px] font-mono text-neutral-700 dark:text-neutral-300 rounded-lg truncate w-44 sm:w-56 select-all focus:outline-none"
+                />
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(appDownloadUrl);
+                    setCopiedLink(true);
+                    setTimeout(() => setCopiedLink(false), 2000);
+                  }}
+                  className="px-3.5 py-2 rounded-lg bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-900 dark:text-white text-xs font-mono font-bold flex items-center gap-1.5 transition-colors cursor-pointer shrink-0"
+                  title="Copy direct APK link"
+                >
+                  {copiedLink ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                  <span>{copiedLink ? "COPIED" : "COPY"}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* METADATA PILLS & COMPATIBILITY */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-black/10 dark:border-neutral-800 text-[11px] font-mono">
+              <div className="border border-neutral-200 dark:border-neutral-800/60 p-2.5 bg-neutral-50 dark:bg-neutral-900/40 rounded-lg">
+                <div className="text-slate-500 text-[10px]">COMPATIBILITY</div>
+                <div className="font-bold text-slate-900 dark:text-slate-100">Android 11+</div>
+              </div>
+              <div className="border border-neutral-200 dark:border-neutral-800/60 p-2.5 bg-neutral-50 dark:bg-neutral-900/40 rounded-lg">
+                <div className="text-slate-500 text-[10px]">PACKAGE VERSION</div>
+                <div className="font-bold text-[#80ED99]">{dynamicVersion} (Dynamic)</div>
+              </div>
+              <div className="border border-neutral-200 dark:border-neutral-800/60 p-2.5 bg-neutral-50 dark:bg-neutral-900/40 rounded-lg">
+                <div className="text-slate-500 text-[10px]">INSTALL METHOD</div>
+                <div className="font-bold text-slate-900 dark:text-slate-100">Direct Sideload APK</div>
+              </div>
+              <div className="border border-neutral-200 dark:border-neutral-800/60 p-2.5 bg-neutral-50 dark:bg-neutral-900/40 rounded-lg">
+                <div className="text-slate-500 text-[10px]">UPDATES</div>
+                <div className="font-bold text-emerald-500">In-App OTA Auto-Sync</div>
+              </div>
+            </div>
+
+
+          </div>
+        </div>
+      )}
       </div>
     </div>
   );

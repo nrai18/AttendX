@@ -2,34 +2,47 @@ import { Response } from "express";
 import { AuthenticatedRequest } from "../middleware/authenticate";
 import { DataService } from "../services/data.service";
 import { DocumentService } from "../services/document.service";
-import fs from "fs";
+import { prisma } from "../lib/prisma";
 
 export class DataController {
   static async exportData(req: AuthenticatedRequest, res: Response) {
     try {
       const zipBuffer = await DataService.exportData(req.user!.userId);
-      
-      const { prisma } = require("../lib/prisma");
+
       const activeSem = await prisma.semester.findFirst({
-        where: { userId: req.user!.userId, isActive: true }
+        where: { userId: req.user!.userId, isActive: true },
       });
-      
-      const semName = activeSem ? activeSem.name.replace(/[^a-zA-Z0-9]/g, '_') : "Semester";
-      const dateStr = new Date().toISOString().split('T')[0];
+
+      const semName = activeSem
+        ? activeSem.name.replace(/[^a-zA-Z0-9]/g, "_")
+        : "Semester";
+      const dateStr = new Date().toISOString().split("T")[0];
       const filename = `AttendX_${semName}_Export_${dateStr}.zip`;
-      
+
       try {
-        await DocumentService.storeDocument(req.user!.userId, zipBuffer, filename, "application/zip", "BACKUP");
+        await DocumentService.storeDocument(
+          req.user!.userId,
+          zipBuffer,
+          filename,
+          "application/zip",
+          "BACKUP"
+        );
       } catch (e) {
         console.error("Failed to store backup document", e);
       }
 
-      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="${filename}"`
+      );
       res.setHeader("Content-Type", "application/zip");
       res.send(zipBuffer);
     } catch (error: any) {
       console.error("Export Error:", error);
-      res.status(500).json({ error: error.message || "Failed to export data" });
+      const isClientError = error.message?.includes("No active semester");
+      res
+        .status(isClientError ? 400 : 500)
+        .json({ error: error.message || "Failed to export data" });
     }
   }
 
@@ -40,17 +53,29 @@ export class DataController {
       }
 
       await DataService.importData(req.user!.userId, req.file.buffer);
-      
+
       try {
-        await DocumentService.storeDocument(req.user!.userId, req.file.buffer, req.file.originalname, req.file.mimetype, "BACKUP");
+        await DocumentService.storeDocument(
+          req.user!.userId,
+          req.file.buffer,
+          req.file.originalname,
+          req.file.mimetype,
+          "BACKUP"
+        );
       } catch (e) {
         console.error("Failed to store imported backup document", e);
       }
-      
+
       res.json({ success: true, message: "Data imported successfully" });
     } catch (error: any) {
       console.error("Import Error:", error);
-      res.status(500).json({ error: error.message || "Failed to import data" });
+      const isClientError =
+        error.message?.includes("No active semester") ||
+        error.message?.includes("Invalid ZIP format");
+      res
+        .status(isClientError ? 400 : 500)
+        .json({ error: error.message || "Failed to import data" });
     }
   }
 }
+

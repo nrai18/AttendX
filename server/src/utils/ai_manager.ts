@@ -58,13 +58,30 @@ export class AIManager {
         }
         
         try {
-          // PER-REQUEST TIMEOUT: 25s for flash, 60s for pro models
-          const perRequestTimeout = currentModel.includes('pro') ? 60000 : 25000;
+          // Streaming Token Accumulation: Allows progressive generation for large timetable/calendar docs
+          const ttftTimeout = currentModel.includes('pro') ? 60000 : 30000;
           
-          return await Promise.race([
-             ai.models.generateContent(modelOptions),
-             new Promise((_, reject) => setTimeout(() => reject(new Error(`AI request timeout exceeded (${perRequestTimeout}ms limit)`)), perRequestTimeout))
+          const streamPromise = ai.models.generateContentStream(modelOptions);
+          const responseStream: any = await Promise.race([
+            streamPromise,
+            new Promise((_, reject) => setTimeout(() => reject(new Error(`AI TTFT timeout exceeded (${ttftTimeout}ms limit)`)), ttftTimeout))
           ]);
+
+          let fullText = "";
+          for await (const chunk of responseStream) {
+            if (chunk.text) {
+              fullText += chunk.text;
+            }
+          }
+
+          // Return normalized response object compatible with both .text property and .text() method
+          const textGetter = () => fullText;
+          return {
+            text: fullText,
+            candidates: responseStream?.candidates || [],
+            toString: () => fullText,
+            valueOf: () => fullText
+          };
         } catch (error: any) {
           attemptsOnThisModel++;
           const status = error.status || error.code || 500;
@@ -95,5 +112,17 @@ export class AIManager {
     }
     
     throw new Error('All provided Gemini API keys and fallback models were exhausted.');
+  }
+
+  public static async generateContentStream(options: any): Promise<any> {
+    this.init();
+    const key = this.keys[this.currentKeyIndex];
+    let ai = this.aiInstances[key];
+    if (!ai) {
+      ai = new GoogleGenAI({ apiKey: key });
+      this.aiInstances[key] = ai;
+    }
+    const model = options.model || "gemini-3.8-flash";
+    return ai.models.generateContentStream({ ...options, model });
   }
 }

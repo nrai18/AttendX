@@ -46,7 +46,7 @@ export const AttendanceAnimationPopup: React.FC = () => {
   return (
     <AnimatePresence>
       {isOpen && type && (
-        <div 
+        <div
           className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 cursor-pointer select-none"
           onClick={closeAnimation}
         >
@@ -58,15 +58,16 @@ export const AttendanceAnimationPopup: React.FC = () => {
             transition={{ type: "spring", damping: 15, stiffness: 300 }}
             className="relative bg-card/95 border border-border/80 shadow-2xl rounded-3xl p-6 sm:p-8 max-w-sm w-full text-center flex flex-col items-center gap-4 overflow-hidden"
           >
-            <button 
-              onClick={closeAnimation} 
+            <button
+              onClick={closeAnimation}
               className="absolute top-4 right-4 p-1.5 text-muted-foreground hover:text-foreground rounded-full hover:bg-muted transition-colors z-10"
             >
               <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
             </button>
-            {/* Background Glow Effect */}
+
+            {/* Background Glow — solid radial, NO blur (blur-3xl = ~64px CSS filter, forces full GPU composite repaint per frame) */}
             <div
-              className={`absolute -inset-10 opacity-20 blur-3xl rounded-full transition-colors ${
+              className={`absolute -inset-10 opacity-15 rounded-full ${
                 type === "thumbs_up"
                   ? "bg-emerald-500"
                   : type === "crying"
@@ -82,29 +83,28 @@ export const AttendanceAnimationPopup: React.FC = () => {
             {/* 1. THUMBS UP ANIMATION */}
             {type === "thumbs_up" && (
               <div className="relative flex flex-col items-center">
-                {/* Sparkle particles */}
                 <motion.div
                   initial={{ scale: 0 }}
-                  animate={{ scale: [0, 1.2, 1], rotate: [0, 15, -10, 0] }}
-                  transition={{ duration: 0.6 }}
+                  animate={{ scale: [0, 1.15, 1], rotate: [0, 12, -8, 0] }}
+                  transition={{ duration: 0.5 }}
                   className="w-24 h-24 rounded-full bg-emerald-500/20 text-emerald-500 flex items-center justify-center border-2 border-emerald-500/40 shadow-lg shadow-emerald-500/30"
                 >
                   <ThumbsUp className="w-12 h-12 fill-emerald-500/20 text-emerald-500" />
                 </motion.div>
 
-                {/* Floating Stars */}
+                {/* Sparkles — run once only; popup closes in 1.9s so repeat:Infinity is wasteful */}
                 <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: [0, 1, 0], y: [-10, -40], x: [-15, 15] }}
-                  transition={{ duration: 1.2, repeat: Infinity }}
+                  initial={{ opacity: 0, y: 0 }}
+                  animate={{ opacity: [0, 1, 0], y: -40 }}
+                  transition={{ duration: 1.0 }}
                   className="absolute -top-2 left-2 text-emerald-400"
                 >
                   <Sparkles className="w-6 h-6" />
                 </motion.div>
                 <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: [0, 1, 0], y: [-10, -35], x: [15, -10] }}
-                  transition={{ duration: 1.4, repeat: Infinity, delay: 0.2 }}
+                  initial={{ opacity: 0, y: 0 }}
+                  animate={{ opacity: [0, 1, 0], y: -32 }}
+                  transition={{ duration: 1.1, delay: 0.2 }}
                   className="absolute -top-2 right-2 text-amber-400"
                 >
                   <Sparkles className="w-5 h-5" />
@@ -116,29 +116,25 @@ export const AttendanceAnimationPopup: React.FC = () => {
             {type === "crying" && (
               <div className="relative flex flex-col items-center">
                 <motion.div
-                  initial={{ scale: 0.5, rotate: -10 }}
-                  animate={{
-                    scale: [0.8, 1.05, 1],
-                    rotate: [-5, 5, -5, 0],
-                  }}
+                  initial={{ scale: 0.5 }}
+                  animate={{ scale: [0.8, 1.05, 1], rotate: [-4, 4, -4, 0] }}
                   transition={{ duration: 0.5 }}
                   className="w-24 h-24 rounded-full bg-rose-500/20 text-rose-500 flex items-center justify-center border-2 border-rose-500/40 shadow-lg shadow-rose-500/30 relative"
                 >
-                  {/* Sad Emoji SVG / Icon */}
                   <span className="text-5xl">😭</span>
 
-                  {/* Falling Animated Tear Drops */}
+                  {/* Tear drops — no CSS blur, run once (popup closes in 1.9s) */}
                   <motion.div
-                    initial={{ opacity: 0, y: 0, scale: 0.8 }}
-                    animate={{ opacity: [1, 1, 0], y: [0, 30], scale: [1, 1.2, 0.5] }}
-                    transition={{ duration: 0.8, repeat: Infinity, ease: "easeIn" }}
-                    className="absolute bottom-2 left-4 w-2.5 h-4 bg-cyan-400 rounded-full blur-[0.5px]"
+                    initial={{ opacity: 0, y: 0 }}
+                    animate={{ opacity: [1, 1, 0], y: 32 }}
+                    transition={{ duration: 0.9, ease: "easeIn" }}
+                    className="absolute bottom-2 left-4 w-2.5 h-4 bg-cyan-400 rounded-full"
                   />
                   <motion.div
-                    initial={{ opacity: 0, y: 0, scale: 0.8 }}
-                    animate={{ opacity: [1, 1, 0], y: [0, 30], scale: [1, 1.2, 0.5] }}
-                    transition={{ duration: 0.8, repeat: Infinity, delay: 0.3, ease: "easeIn" }}
-                    className="absolute bottom-2 right-4 w-2.5 h-4 bg-cyan-400 rounded-full blur-[0.5px]"
+                    initial={{ opacity: 0, y: 0 }}
+                    animate={{ opacity: [1, 1, 0], y: 32 }}
+                    transition={{ duration: 0.9, delay: 0.35, ease: "easeIn" }}
+                    className="absolute bottom-2 right-4 w-2.5 h-4 bg-cyan-400 rounded-full"
                   />
                 </motion.div>
               </div>
@@ -147,14 +143,12 @@ export const AttendanceAnimationPopup: React.FC = () => {
             {/* 3. ARROW HITTING TARGET (75% TOUCHED) */}
             {type === "target_hit" && (
               <div className="relative w-32 h-32 flex items-center justify-center">
-                {/* Dartboard Target */}
                 <motion.div
                   initial={{ scale: 0.6, opacity: 0 }}
                   animate={{ scale: 1, opacity: 1 }}
                   transition={{ duration: 0.3 }}
                   className="relative w-28 h-28 rounded-full border-4 border-amber-500 bg-amber-500/10 flex items-center justify-center shadow-xl shadow-amber-500/20 overflow-hidden"
                 >
-                  {/* Target Rings */}
                   <div className="w-20 h-20 rounded-full border-4 border-rose-500 bg-rose-500/10 flex items-center justify-center">
                     <div className="w-12 h-12 rounded-full border-4 border-white bg-amber-400 flex items-center justify-center font-black text-black text-xs shadow-inner">
                       75%
@@ -162,23 +156,21 @@ export const AttendanceAnimationPopup: React.FC = () => {
                   </div>
                 </motion.div>
 
-                {/* Flying Arrow striking center */}
                 <motion.div
                   initial={{ x: 90, y: -90, scale: 1.5, opacity: 0, rotate: -45 }}
                   animate={{ x: 0, y: 0, scale: 1, opacity: 1, rotate: -45 }}
                   transition={{ type: "spring", damping: 12, stiffness: 250, delay: 0.15 }}
                   className="absolute z-20"
                 >
-                  {/* Arrow SVG */}
                   <svg className="w-16 h-16 text-rose-600 drop-shadow-md" viewBox="0 0 24 24" fill="currentColor">
                     <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
                   </svg>
                 </motion.div>
 
-                {/* Impact Ripple Effect */}
+                {/* Impact ripple — run once */}
                 <motion.div
                   initial={{ scale: 0.2, opacity: 0 }}
-                  animate={{ scale: [0.5, 1.8, 2.2], opacity: [0.8, 0.4, 0] }}
+                  animate={{ scale: 2.2, opacity: [0.8, 0.4, 0] }}
                   transition={{ duration: 0.6, delay: 0.25 }}
                   className="absolute w-12 h-12 rounded-full border-4 border-amber-400 pointer-events-none"
                 />
@@ -188,40 +180,37 @@ export const AttendanceAnimationPopup: React.FC = () => {
             {/* 4. DANCE ANIMATION FOR OFF CLASS */}
             {type === "off_class" && (
               <div className="relative flex flex-col items-center justify-center">
+                {/* Main emoji: uses transform only (scale + rotate + translateY) — GPU composited */}
                 <motion.div
-                  initial={{ scale: 0, rotate: -15 }}
-                  animate={{
-                    scale: [0.8, 1.1, 1],
-                    rotate: [-12, 12, -8, 8, 0],
-                    y: [0, -10, 0, -5, 0],
-                  }}
-                  transition={{ duration: 0.7, repeat: Infinity, repeatType: "reverse" }}
-                  className="w-24 h-24 rounded-full bg-amber-500/20 border-2 border-amber-500/40 flex items-center justify-center shadow-lg shadow-amber-500/30 text-5xl relative"
+                  initial={{ scale: 0 }}
+                  animate={{ scale: [0.8, 1.1, 1], rotate: [-10, 10, -6, 6, 0], y: [0, -8, 0] }}
+                  transition={{ duration: 0.65 }}
+                  className="w-24 h-24 rounded-full bg-amber-500/20 border-2 border-amber-500/40 flex items-center justify-center shadow-lg shadow-amber-500/30 text-5xl"
                 >
                   💃
                 </motion.div>
 
-                {/* Floating Dancing Emojis & Music Notes */}
+                {/* Floating particles — run once, no repeat */}
                 <motion.div
-                  initial={{ opacity: 0, y: 10, scale: 0.5 }}
-                  animate={{ opacity: [0, 1, 0], y: [-10, -45], x: [-20, 20], scale: [0.5, 1.2, 0.8] }}
-                  transition={{ duration: 1.1, repeat: Infinity }}
+                  initial={{ opacity: 0, y: 0 }}
+                  animate={{ opacity: [0, 1, 0], y: -45 }}
+                  transition={{ duration: 1.0 }}
                   className="absolute -top-3 -left-3 text-2xl"
                 >
                   🕺
                 </motion.div>
                 <motion.div
-                  initial={{ opacity: 0, y: 10, scale: 0.5 }}
-                  animate={{ opacity: [0, 1, 0], y: [-10, -40], x: [20, -15], scale: [0.5, 1.2, 0.8] }}
-                  transition={{ duration: 1.3, repeat: Infinity, delay: 0.2 }}
+                  initial={{ opacity: 0, y: 0 }}
+                  animate={{ opacity: [0, 1, 0], y: -38 }}
+                  transition={{ duration: 1.1, delay: 0.2 }}
                   className="absolute -top-2 -right-3 text-2xl"
                 >
                   🎵
                 </motion.div>
                 <motion.div
                   initial={{ opacity: 0, scale: 0 }}
-                  animate={{ opacity: [0, 1, 0], scale: [0, 1.5, 1] }}
-                  transition={{ duration: 1.0, repeat: Infinity, delay: 0.4 }}
+                  animate={{ opacity: [0, 1, 0], scale: [0, 1.4, 1] }}
+                  transition={{ duration: 0.9, delay: 0.4 }}
                   className="absolute -bottom-1 text-xl"
                 >
                   ✨
@@ -232,35 +221,30 @@ export const AttendanceAnimationPopup: React.FC = () => {
             {/* 5. CELEBRATION ANIMATION FOR FULL DAY OFF */}
             {type === "full_day_off" && (
               <div className="relative flex flex-col items-center justify-center">
-                {/* Party Emoji Big Icon */}
                 <motion.div
-                  initial={{ scale: 0.2, rotate: -20 }}
-                  animate={{
-                    scale: [0.8, 1.25, 1],
-                    rotate: [-15, 15, -10, 10, 0],
-                  }}
+                  initial={{ scale: 0.2 }}
+                  animate={{ scale: [0.8, 1.2, 1], rotate: [-12, 12, -8, 8, 0] }}
                   transition={{ duration: 0.6 }}
-                  className="w-28 h-28 rounded-full bg-gradient-to-tr from-purple-500/30 via-pink-500/20 to-amber-500/30 border-2 border-purple-500/40 flex items-center justify-center shadow-xl shadow-purple-500/30 text-6xl relative"
+                  className="w-28 h-28 rounded-full bg-purple-500/20 border-2 border-purple-500/40 flex items-center justify-center shadow-xl shadow-purple-500/30 text-6xl"
                 >
                   🥳
                 </motion.div>
 
-                {/* Confetti Explosion Burst */}
-                {[...Array(8)].map((_, i) => (
+                {/* Confetti — reduced from 8 to 5 particles, run once, stagger short */}
+                {["🎊", "✨", "🎈", "🌟", "💫"].map((emoji, i) => (
                   <motion.div
                     key={i}
                     initial={{ opacity: 1, scale: 0, x: 0, y: 0 }}
                     animate={{
                       opacity: [1, 1, 0],
                       scale: [0.5, 1, 0.5],
-                      x: (i % 2 === 0 ? 1 : -1) * (20 + (i * 12)),
-                      y: -20 - (i * 10),
-                      rotate: i * 45,
+                      x: (i % 2 === 0 ? 1 : -1) * (22 + i * 14),
+                      y: -22 - i * 12,
                     }}
-                    transition={{ duration: 1.2, repeat: Infinity, delay: i * 0.1 }}
+                    transition={{ duration: 1.0, delay: i * 0.08 }}
                     className="absolute text-xl pointer-events-none"
                   >
-                    {["🎊", "✨", "🎈", "🌟", "💫", "🔥", "🚀", "🕺"][i]}
+                    {emoji}
                   </motion.div>
                 ))}
               </div>
@@ -274,25 +258,33 @@ export const AttendanceAnimationPopup: React.FC = () => {
                   animate={{ scale: [0.8, 1.1, 1], y: 0 }}
                   transition={{ duration: 0.5, type: "spring" }}
                   className={`w-28 h-28 rounded-full flex items-center justify-center shadow-xl relative overflow-hidden ${
-                    type === "exam" ? "bg-rose-500/10 border-2 border-rose-500/20 shadow-rose-500/10" : "bg-purple-500/10 border-2 border-purple-500/20 shadow-purple-500/10"
+                    type === "exam"
+                      ? "bg-rose-500/10 border-2 border-rose-500/20 shadow-rose-500/10"
+                      : "bg-purple-500/10 border-2 border-purple-500/20 shadow-purple-500/10"
                   }`}
                 >
+                  {/* Gentle rock — only rotate, no blur, GPU composited */}
                   <motion.div
                     animate={{ rotate: [-5, 5, -5] }}
-                    transition={{ duration: 2, repeat: Infinity }}
+                    transition={{ duration: 1.6 }}
                     className="text-6xl"
                   >
                     {type === "exam" ? "📝" : "🔬"}
                   </motion.div>
                 </motion.div>
-                
-                {/* Floating sparkles for exams */}
-                {[...Array(3)].map((_, i) => (
+
+                {/* Sparkles — run once */}
+                {[0, 1, 2].map((i) => (
                   <motion.div
                     key={i}
-                    initial={{ opacity: 1, scale: 0, y: 0 }}
-                    animate={{ opacity: [0, 1, 0], scale: [0.5, 1.2, 0], y: -30 - (i * 10), x: (i % 2 === 0 ? 1 : -1) * 30 }}
-                    transition={{ duration: 1.5, repeat: Infinity, delay: i * 0.2 }}
+                    initial={{ opacity: 0, scale: 0, y: 0 }}
+                    animate={{
+                      opacity: [0, 1, 0],
+                      scale: [0.5, 1.2, 0],
+                      y: -30 - i * 10,
+                      x: (i % 2 === 0 ? 1 : -1) * 30,
+                    }}
+                    transition={{ duration: 1.2, delay: i * 0.2 }}
                     className={`absolute text-xl ${type === "exam" ? "text-rose-400" : "text-purple-400"}`}
                   >
                     ✨
@@ -305,9 +297,9 @@ export const AttendanceAnimationPopup: React.FC = () => {
             {HOLIDAY_ASSETS[type as AnimationType] && type !== "exam" && type !== "practical" && (
               <div className="relative flex flex-col items-center justify-center">
                 <motion.div
-                  initial={{ scale: 0.2, rotate: -10 }}
-                  animate={{ scale: [0.8, 1.15, 1], rotate: [0, 5, -5, 0] }}
-                  transition={{ duration: 0.8, type: "spring", bounce: 0.5 }}
+                  initial={{ scale: 0.2 }}
+                  animate={{ scale: [0.8, 1.12, 1], rotate: [0, 4, -4, 0] }}
+                  transition={{ duration: 0.7, type: "spring", bounce: 0.4 }}
                   className="w-28 h-28 rounded-full bg-primary/10 border-2 border-primary/20 flex items-center justify-center shadow-xl shadow-primary/10 relative overflow-hidden"
                 >
                   <motion.div
@@ -315,25 +307,26 @@ export const AttendanceAnimationPopup: React.FC = () => {
                     animate={{ y: 0, opacity: 1 }}
                     transition={{ delay: 0.2 }}
                   >
-                    <HolidayIconRenderer 
-                      src={HOLIDAY_ASSETS[type as AnimationType] as string} 
-                      alt="Holiday Icon" 
+                    <HolidayIconRenderer
+                      src={HOLIDAY_ASSETS[type as AnimationType] as string}
+                      alt="Holiday Icon"
                       className="w-16 h-16 drop-shadow-md"
                     />
                   </motion.div>
                 </motion.div>
-                {/* Soft Sparkles */}
-                {[...Array(4)].map((_, i) => (
+
+                {/* Sparkles — run once */}
+                {[0, 1, 2, 3].map((i) => (
                   <motion.div
                     key={i}
-                    initial={{ opacity: 1, scale: 0, y: 0 }}
+                    initial={{ opacity: 0, scale: 0, y: 0 }}
                     animate={{
                       opacity: [0, 1, 0],
                       scale: [0.5, 1.2, 0],
-                      y: -40 - (i * 10),
+                      y: -40 - i * 10,
                       x: (i % 2 === 0 ? 1 : -1) * 35,
                     }}
-                    transition={{ duration: 1.5, repeat: Infinity, delay: i * 0.3 }}
+                    transition={{ duration: 1.3, delay: i * 0.25 }}
                     className="absolute text-primary/60"
                   >
                     <Sparkles size={16} />

@@ -7,11 +7,14 @@ export class AuthController {
 
   static async forgotPassword(req: Request, res: Response) {
     try {
-      const email = req.body.email;
+      const email = String(req.body.email || "").toLowerCase().trim();
       if (!email) return res.status(400).json({ message: "Email is required" });
       const result = await AuthService.forgotPassword(email);
       res.status(200).json({ message: "If an account exists, an OTP has been sent.", token: result.token });
     } catch (error: any) {
+      console.error("Forgot password error:", error);
+      const { FailureLogRecorder } = require("../utils/failureLogRecorder");
+      FailureLogRecorder.recordError(error, req);
       res.status(500).json({ message: "Something went wrong" });
     }
   }
@@ -21,7 +24,7 @@ export class AuthController {
     try {
       const { token, otp } = req.body;
       if (!token || !otp) return res.status(400).json({ message: "Token and OTP are required" });
-      const isValid = await AuthService.validateOtp(token, otp);
+      const isValid = await AuthService.validateOtp(token, String(otp).trim());
       if (!isValid) return res.status(400).json({ message: "Invalid OTP" });
       res.status(200).json({ message: "OTP valid" });
     } catch (error: any) {
@@ -34,7 +37,7 @@ export class AuthController {
       const { token, otp, newPassword } = req.body;
       if (!token || !otp || !newPassword) return res.status(400).json({ message: "Token, OTP, and new password are required" });
       
-      await AuthService.resetPassword(token, otp, newPassword);
+      await AuthService.resetPassword(token, String(otp).trim(), newPassword);
       res.status(200).json({ message: "Password reset successful" });
     } catch (error: any) {
       res.status(400).json({ message: error.message });
@@ -43,15 +46,15 @@ export class AuthController {
 
   static async login(req: Request, res: Response) {
     try {
-      const email = req.body.email || "";
+      const email = String(req.body.email || "").toLowerCase().trim();
       
       const allowedDomainsStr = process.env.ALLOWED_DOMAINS || "iiitu.ac.in,gmail.com";
-      const allowedDomains = allowedDomainsStr.split(",").map(d => d.trim());
+      const allowedDomains = allowedDomainsStr.split(",").map(d => d.trim().toLowerCase());
       const emailDomain = email.split("@")[1];
-      if (!emailDomain || !allowedDomains.includes(emailDomain)) {
-        return res.status(401).json({ message: "Email domain is not authorized for this platform." }); // SEC-M01 FIX: Do not leak allowed domains
+      if (!emailDomain || (!allowedDomains.includes("*") && !allowedDomains.includes(emailDomain))) {
+        return res.status(401).json({ message: "Email domain is not authorized for this platform." });
       }
-      const { user, accessToken, refreshToken } = await AuthService.login(req.body, req);
+      const { user, accessToken, refreshToken } = await AuthService.login({ ...req.body, email }, req);
       setRefreshCookie(res, refreshToken);
       res.status(200).json({ user, accessToken, refreshToken });
     } catch (error: any) {
@@ -61,7 +64,8 @@ export class AuthController {
 
   static async refresh(req: Request, res: Response) {
     try {
-      const oldRefreshToken = req.cookies.refreshToken || req.body.refreshToken;
+      // Prioritize explicit body token from client store over potentially stale/mismatched cookie
+      const oldRefreshToken = req.body.refreshToken || req.cookies.refreshToken;
       if (!oldRefreshToken) {
         return res.status(401).json({ message: "No refresh token provided" });
       }

@@ -330,7 +330,6 @@ export class NotificationService {
 
       if (permStatus.receive !== 'granted') {
         console.warn('User denied push notification permissions.');
-        import('sonner').then(({ toast }) => toast.error('Notification permission denied by OS.'));
         return;
       }
 
@@ -339,8 +338,10 @@ export class NotificationService {
         console.log('[FCM] Push registration success, token: ' + token.value);
         localStorage.setItem('fcm_token', token.value);
         try {
-          // Send FCM token to the backend (might fail if not logged in yet)
-          await api.patch('/users/me', { fcmToken: token.value });
+          // Only send FCM token to backend if already authenticated
+          if (useAuthStore.getState().isAuthenticated) {
+            await api.patch('/users/me', { fcmToken: token.value });
+          }
         } catch (error) {
           console.error('[FCM] Failed to sync FCM token to backend (will retry on login):', error);
         }
@@ -348,7 +349,6 @@ export class NotificationService {
 
       PushNotifications.addListener('registrationError', (error: any) => {
         console.error('[FCM] Error on registration: ' + JSON.stringify(error));
-        import('sonner').then(({ toast }) => toast.error('FCM Registration Error: ' + JSON.stringify(error)));
       });
 
       await PushNotifications.register();
@@ -363,7 +363,10 @@ export class NotificationService {
                  id: Math.floor(Math.random() * 1000000),
                  title: notification.title || "New Message",
                  body: notification.body || "",
-                 schedule: { at: new Date(Date.now() + 100) }, // Schedule immediately
+                 smallIcon: "ic_stat_attendx",
+                 largeIcon: "attendx_notification_icon",
+                 iconColor: "#10B981",
+                 channelId: "class_alerts",
                  extra: notification.data
                }
              ]
@@ -377,8 +380,8 @@ export class NotificationService {
         if (data && data.type === 'ota_update') {
           // Tell the OTAUpdateModal to fetch the manifest and show itself
           window.dispatchEvent(new Event('check_ota_update'));
-        } else if (data && data.route) {
-          window.dispatchEvent(new CustomEvent('push_route', { detail: data.route }));
+        } else if (data && (data.route || data.url)) {
+          window.dispatchEvent(new CustomEvent('push_route', { detail: data.route || data.url }));
         }
       });
     } catch (e) {
@@ -561,6 +564,10 @@ export class NotificationService {
                window.dispatchEvent(new Event('check_ota_update'));
                return;
             }
+            if (extra && (extra.route || extra.url)) {
+               navigateInApp(extra.route || extra.url);
+               return;
+            }
             const id = Number(action.notification.id);
             // Academic updates series (8800..8899)
             if (id >= ACADEMIC_UPDATES_START_ID && id <= ACADEMIC_UPDATES_END_ID) {
@@ -634,7 +641,7 @@ export class NotificationService {
             }
 
             // Try muting with scheduled unmute epoch
-            const success = await mutePhone(endTime.getTime());
+            const success = await mutePhone(endTime.getTime(), classTitle || "Class");
             if (!success) {
               toast.error("Failed to mute phone. DND Permission missing.");
               return;
@@ -695,7 +702,8 @@ export class NotificationService {
             body: `Starts at ${timeStr} ${location ? `| ${location.trim()}` : ''}`,
             largeBody: `\uD83D\uDCDA Class: ${cleanTitle}\n\u23F0 Time: ${timeStr} - ${endTimeStr || 'TBD'}\n\uD83D\uDCCD Room: ${location ? location.trim() : 'N/A'}\n\nTap the action button below to instantly mute your phone for the duration of this class.`,
             summaryText: "Class Reminder",
-            smallIcon: "ic_stat_adobe",
+            smallIcon: "ic_stat_attendx",
+            largeIcon: "attendx_notification_icon",
             iconColor: "#6366F1", 
             channelId: 'class_alerts',
             foreground: true,
@@ -722,16 +730,20 @@ export class NotificationService {
       const cleanClassName = (className || "Class").trim();
       const timeStr = endTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
+      // Trigger native ringer plugin to silence and register native resurrection
+      await mutePhone(endTime.getTime(), cleanClassName);
+
       await LocalNotifications.schedule({
         notifications: [
           {
             id: PINNED_MUTE_NOTIF_ID,
             title: `Class in Session`,
             body: `Phone is silenced until ${timeStr}`,
-            largeBody: `\uD83D\uDD15 Current Class: ${cleanClassName}\n\nYour phone has been manually muted via AttendX. It will restore to normal volume automatically at ${timeStr}, or you can unmute manually below.`,
+            largeBody: `\uD83D\uDD15 Current Class: ${cleanClassName}\n\nYour phone has been muted via AttendX. It will restore to normal volume automatically at ${timeStr}, or you can unmute manually below.`,
             summaryText: "Do Not Disturb Active",
-            smallIcon: "ic_stat_adobe",
-            iconColor: "#EF4444", 
+            smallIcon: "ic_stat_attendx",
+            largeIcon: "attendx_notification_icon",
+            iconColor: "#10B981", 
             channelId: 'silent_mode',
             ongoing: true,
             autoCancel: false,
@@ -777,7 +789,8 @@ export class NotificationService {
             body: customMessage,
             largeBody: "\u2728 " + cleanHolidayName + "\n\n" + customMessage,
             summaryText: "Holiday Event",
-            smallIcon: "ic_stat_adobe",
+            smallIcon: "ic_stat_attendx",
+            largeIcon: "attendx_notification_icon",
             iconColor: "#10B981", 
             channelId: "class_alerts",
             schedule: { at: targetDate, allowWhileIdle: true }
@@ -818,7 +831,8 @@ export class NotificationService {
             body: `Wish ${cleanName} a great birthday today!`,
             largeBody: `\uD83C\uDF82 It's ${cleanName}'s birthday today!\n\nDon't forget to send them your best wishes and make their day special!`,
             summaryText: "Birthday Event",
-            smallIcon: "ic_stat_adobe",
+            smallIcon: "ic_stat_attendx",
+            largeIcon: "attendx_notification_icon",
             iconColor: "#F59E0B", 
             channelId: "class_alerts",
             schedule: { at: targetDate, allowWhileIdle: true }
@@ -860,6 +874,17 @@ export class NotificationService {
           activeSemesterId = cached.activeSemester.id;
         }
       }
+      if (!activeSemesterId) {
+        try {
+          const semRes = await api.get("/semesters/active");
+          if (semRes.data?.id) {
+            activeSemesterId = semRes.data.id;
+            useAttendanceStore.setState({ activeSemesterId: semRes.data.id, hasActiveSemester: true });
+          }
+        } catch (e) {
+          console.warn("NotificationService: could not fetch active semester", e);
+        }
+      }
       if (!activeSemesterId) return;
 
       console.log("Auto-scheduling local notifications for upcoming classes and events...");
@@ -876,7 +901,21 @@ export class NotificationService {
       const slots: any[] = Array.isArray(rawSlots) ? rawSlots : (rawSlots?.slots || []);
       if (slots.length === 0) return;
 
-      const events = useAttendanceStore.getState().events || [];
+      let events = useAttendanceStore.getState().events || [];
+      if (events.length === 0) {
+        try {
+          const evRes = await api.get(`/events?semesterId=${activeSemesterId}`);
+          if (Array.isArray(evRes.data)) {
+            events = evRes.data.map((ev: any) => ({
+              title: ev.title || "Event",
+              type: ev.eventType || "academic",
+              date: ev.date ? ev.date.split('T')[0] + "T00:00:00" : "",
+              endDate: ev.endDate ? ev.endDate.split('T')[0] + "T00:00:00" : undefined
+            }));
+            useAttendanceStore.setState({ events });
+          }
+        } catch (e) {}
+      }
       const allEvents = [...events];
       
       const pending = await LocalNotifications.getPending();
@@ -896,28 +935,8 @@ export class NotificationService {
       for (let i = 0; i < 7; i++) {
         const currentDay = addDays(today, i);
         
-        // Handle User's own birthday
-        if (user?.birthday) {
-          const userDob = new Date(user.birthday);
-          if (userDob.getUTCDate() === currentDay.getDate() && userDob.getUTCMonth() === currentDay.getMonth()) {
-            const notifyTime = setHours(currentDay, 8); // 8 AM greeting
-            if (notifyTime.getTime() > Date.now()) {
-              const firstName = (user.name || "there").split(' ')[0];
-              notificationsToSchedule.push({
-                id: getBirthdayNotificationId("Self", formatLocalDate(currentDay)),
-                title: "\ud83c\udf82 Happy Birthday!",
-                body: `Happy Birthday ${firstName}! Have a wonderful day!`,
-                largeBody: `\uD83C\uDF82 Happy Birthday ${firstName}!\n\nWe hope you have an incredible day filled with joy and celebration. Take a break and treat yourself today!`,
-                summaryText: "Your Birthday",
-                smallIcon: "ic_stat_adobe",
-                iconColor: "#F59E0B", 
-                channelId: "system_alerts",
-                schedule: { at: notifyTime, allowWhileIdle: true }
-              });
-              scheduledCount++;
-            }
-          }
-        }
+        // Note: Self Birthday notifications are dispatched as official FCM Push Notifications from the backend at 8:00 AM IST.
+        // Local notification scheduling for Self Birthday is disabled to eliminate duplicate alerts.
 
         // Multi-day event support: check if currentDay falls anywhere within event date range
         const dayEvents = allEvents.filter(e => isEventActiveOnDate(e, currentDay));
@@ -973,7 +992,8 @@ export class NotificationService {
                 body: `Wish ${cleanName} a great birthday today!`,
                 largeBody: `\uD83C\uDF82 It's ${cleanName}'s birthday today!\n\nDon't forget to send them your best wishes and make their day special!`,
                 summaryText: "Birthday Event",
-                smallIcon: "ic_stat_adobe",
+                smallIcon: "ic_stat_attendx",
+                largeIcon: "attendx_notification_icon",
                 iconColor: "#F59E0B", 
                 channelId: "class_alerts",
                 schedule: { at: notifyTime, allowWhileIdle: true }
@@ -995,7 +1015,8 @@ export class NotificationService {
               body: specialMessage,
               largeBody: "\u2728 " + cleanHolidayName + "\n\n" + specialMessage,
               summaryText: eventCancelsClasses ? "Holiday Event" : "Calendar Event",
-              smallIcon: "ic_stat_adobe",
+              smallIcon: "ic_stat_attendx",
+              largeIcon: "attendx_notification_icon",
               iconColor: eventCancelsClasses ? "#10B981" : "#3B82F6", 
               channelId: "class_alerts",
               schedule: { at: notifyTime, allowWhileIdle: true }
@@ -1035,7 +1056,8 @@ export class NotificationService {
           if (config?.notifyNextClassOnEnd && prevSlot && prevSlot.endTime) {
             const prevEndObj = parseTimeOnDate(currentDay, prevSlot.endTime);
             if (prevEndObj) {
-              if (prevEndObj.getTime() >= (classStartObj.getTime() - 60 * 60 * 1000) && prevEndObj.getTime() <= (standardNotifyTime.getTime() - 5 * 60 * 1000)) {
+              // Fire heads-up when the previous class ends, provided it ends before the standard notification time
+              if (prevEndObj.getTime() <= (standardNotifyTime.getTime() - 5 * 60 * 1000)) {
                 headsUpTime = prevEndObj;
               }
             }
@@ -1053,7 +1075,8 @@ export class NotificationService {
                 body: `Starts at ${timeStr} ${roomStr ? `| ${roomStr}` : ''}`,
                 largeBody: `\uD83D\uDCDA Class: ${subjectName}\n\u23F0 Time: ${timeStr} - ${endTimeStr || 'TBD'}\n\uD83D\uDCCD Room: ${roomStr || 'N/A'}\n\nTap the action button below to instantly mute your phone for the duration of this class.`,
                 summaryText: "Class Reminder",
-                smallIcon: "ic_stat_adobe",
+                smallIcon: "ic_stat_attendx",
+                largeIcon: "attendx_notification_icon",
                 iconColor: "#6366F1", 
                 channelId: 'class_alerts',
                 foreground: true,
@@ -1072,7 +1095,8 @@ export class NotificationService {
                 body: `Starts at ${timeStr} ${roomStr ? `| ${roomStr}` : ''}`,
                 largeBody: `\uD83D\uDCDA Class: ${subjectName}\n\u23F0 Time: ${timeStr} - ${endTimeStr || 'TBD'}\n\uD83D\uDCCD Room: ${roomStr || 'N/A'}\n\nTap the action button below to instantly mute your phone for the duration of this class.`,
                 summaryText: "Class Reminder",
-                smallIcon: "ic_stat_adobe",
+                smallIcon: "ic_stat_attendx",
+                largeIcon: "attendx_notification_icon",
                 iconColor: "#6366F1", 
                 channelId: 'class_alerts',
                 foreground: true,
@@ -1161,7 +1185,8 @@ export class NotificationService {
               largeBody: endOfDayLargeBody,
               schedule: { at: maxEndTimeObj, allowWhileIdle: true },
               summaryText: "End of Day",
-              smallIcon: "ic_stat_adobe",
+              smallIcon: "ic_stat_attendx",
+              largeIcon: "attendx_notification_icon",
               iconColor: "#3B82F6",
               channelId: 'class_alerts'
             });
@@ -1320,7 +1345,8 @@ export class NotificationService {
               body: cleanTitle,
               largeBody: `\u23F0 Reminder: "${cleanTitle}" is ${rem.text} at ${deadline.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`,
               channelId: "assignment_alerts",
-              smallIcon: "ic_stat_adobe",
+              smallIcon: "ic_stat_attendx",
+              largeIcon: "attendx_notification_icon",
               iconColor: "#EF4444",
               schedule: { at: remDate, allowWhileIdle: true }
             });
@@ -1510,7 +1536,8 @@ export class NotificationService {
           body,
           largeBody,
           summaryText: "Academic Update",
-          smallIcon: "ic_stat_adobe",
+          smallIcon: "ic_stat_attendx",
+          largeIcon: "attendx_notification_icon",
           iconColor: "#3B82F6",
           channelId: "academic_briefings",
           schedule: { at: notifyDate, allowWhileIdle: true }

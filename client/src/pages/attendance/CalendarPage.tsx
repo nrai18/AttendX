@@ -13,6 +13,7 @@ import { useCacheStore } from "../../stores/cacheStore";
 import { useBackHandlerStore } from "../../stores/backHandlerStore";
 import { useAttendanceStore } from "../../stores/attendanceStore";
 import { useSwipeable } from "react-swipeable";
+import { hapticSelection } from "../../utils/haptics";
 
 interface DayDetail {
   id: string;
@@ -26,6 +27,7 @@ interface CalendarEvent {
   title: string;
   eventType: string;
   isHolidayList?: boolean;
+  isHoliday?: boolean;
 }
 
 interface CalendarData {
@@ -51,6 +53,35 @@ interface CalendarData {
   };
 }
 
+function deduplicateCalendarEvents(eventsList: CalendarEvent[]): CalendarEvent[] {
+  if (!eventsList || eventsList.length <= 1) return eventsList;
+  const result: CalendarEvent[] = [];
+  for (const ev of eventsList) {
+    const isHoliday = Boolean(ev.isHoliday) || ["holiday", "restricted_holiday"].includes(ev.eventType || "");
+    if (isHoliday) {
+      const matchIdx = result.findIndex(r => {
+        const rIsHoliday = Boolean(r.isHoliday) || ["holiday", "restricted_holiday"].includes(r.eventType || "");
+        if (!rIsHoliday) return false;
+        const normR = r.title.toLowerCase().replace(/\(.*?\)/g, "").trim();
+        const normE = ev.title.toLowerCase().replace(/\(.*?\)/g, "").trim();
+        return normR === normE || normR.includes(normE) || normE.includes(normR);
+      });
+      if (matchIdx !== -1) {
+        if (ev.title.length > result[matchIdx].title.length) {
+          result[matchIdx] = ev;
+        }
+        continue;
+      }
+    } else {
+      if (result.some(r => r.title.toLowerCase().trim() === ev.title.toLowerCase().trim())) {
+        continue;
+      }
+    }
+    result.push(ev);
+  }
+  return result;
+}
+
 export const CalendarPage = () => {
   const cachedData = useCacheStore((state) => state.calendar);
   const setCache = useCacheStore((state) => state.setCache);
@@ -64,12 +95,14 @@ export const CalendarPage = () => {
   const swipeHandlers = useSwipeable({
     onSwipedLeft: () => {
       if (selectedMobileDate) {
+        hapticSelection();
         const nextDay = format(addDays(new Date(selectedMobileDate + 'T00:00:00'), 1), 'yyyy-MM-dd');
         setSelectedMobileDate(nextDay);
       }
     },
     onSwipedRight: () => {
       if (selectedMobileDate) {
+        hapticSelection();
         const prevDay = format(addDays(new Date(selectedMobileDate + 'T00:00:00'), -1), 'yyyy-MM-dd');
         setSelectedMobileDate(prevDay);
       }
@@ -106,8 +139,10 @@ export const CalendarPage = () => {
     if (!touchStartX || !touchEndX) return;
     const distance = touchStartX - touchEndX;
     if (distance > 50) {
+      hapticSelection();
       setCurrentDate(prev => addMonths(prev, 1));
     } else if (distance < -50) {
+      hapticSelection();
       setCurrentDate(prev => subMonths(prev, 1));
     }
     setTouchStartX(null);
@@ -170,17 +205,29 @@ export const CalendarPage = () => {
           if (dayDetails.length > 0) {
             d.details[dateStr] = dayDetails;
             
-            const hasAttended = dayDetails.some((l: any) => ['present', 'attended'].includes(l.status.toLowerCase()));
-            const hasMissed = dayDetails.some((l: any) => ['absent', 'missed'].includes(l.status.toLowerCase()));
-            
-            if (hasAttended && hasMissed) {
-              d.days[dateStr] = "mixed";
-            } else if (hasAttended) {
-              d.days[dateStr] = "attended";
-            } else if (hasMissed) {
-              d.days[dateStr] = "missed";
+            // A day only gets a status color (attended, missed, mixed, off) when it is FULLY MARKED.
+            // If any slot is still pending/unmarked, the day remains 'not_marked' (uncoloured).
+            const isFullyMarked = dayDetails.every((l: any) => {
+              const s = (l.status || '').toLowerCase();
+              const isUnmarkedId = typeof l.id === 'string' && l.id.startsWith('unmarked-');
+              return !isUnmarkedId && s && s !== 'not_marked';
+            });
+
+            if (!isFullyMarked) {
+              d.days[dateStr] = "not_marked";
             } else {
-              d.days[dateStr] = "off";
+              const hasAttended = dayDetails.some((l: any) => ['present', 'attended', 'medical', 'od'].includes(l.status.toLowerCase()));
+              const hasMissed = dayDetails.some((l: any) => ['absent', 'missed'].includes(l.status.toLowerCase()));
+              
+              if (hasAttended && hasMissed) {
+                d.days[dateStr] = "mixed";
+              } else if (hasAttended) {
+                d.days[dateStr] = "attended";
+              } else if (hasMissed) {
+                d.days[dateStr] = "missed";
+              } else {
+                d.days[dateStr] = "off";
+              }
             }
           }
         });
@@ -239,21 +286,33 @@ export const CalendarPage = () => {
               remarks: null,
             }));
 
-            const hasAttended = dayLogs.some((l: any) => ['present', 'attended'].includes(l.status.toLowerCase()));
-            const hasMissed = dayLogs.some((l: any) => ['absent', 'missed'].includes(l.status.toLowerCase()));
-            
-            if (hasAttended && hasMissed) {
-              days[dateStr] = "mixed";
-              mixed++;
-            } else if (hasAttended) {
-              days[dateStr] = "attended";
-              attended++;
-            } else if (hasMissed) {
-              days[dateStr] = "missed";
-              missed++;
+            let expectedSlotCount = 0;
+            if (Array.isArray(timetable)) {
+              expectedSlotCount = timetable.filter((slot: any) => slot.dayOfWeek === dbDay).length;
+            }
+
+            const isFullyMarked = expectedSlotCount === 0 || dayLogs.length >= expectedSlotCount;
+
+            if (!isFullyMarked) {
+              days[dateStr] = dateStr > today ? "future" : "not_marked";
+              not_marked++;
             } else {
-              days[dateStr] = "off";
-              off++;
+              const hasAttended = dayLogs.some((l: any) => ['present', 'attended', 'medical', 'od'].includes(l.status.toLowerCase()));
+              const hasMissed = dayLogs.some((l: any) => ['absent', 'missed'].includes(l.status.toLowerCase()));
+              
+              if (hasAttended && hasMissed) {
+                days[dateStr] = "mixed";
+                mixed++;
+              } else if (hasAttended) {
+                days[dateStr] = "attended";
+                attended++;
+              } else if (hasMissed) {
+                days[dateStr] = "missed";
+                missed++;
+              } else {
+                days[dateStr] = "off";
+                off++;
+              }
             }
           } else {
             let hasClasses = false;
@@ -302,8 +361,8 @@ export const CalendarPage = () => {
     const params = new URLSearchParams(window.location.search);
     if (params.get("promptSync") === "true") {
       setTimeout(() => {
-        toast.info("Please click 'Sync Events' to ensure all your dates, lectures, and data are perfectly synchronized!", {
-          duration: 8000,
+        toast.info("Click 'Sync Events' to ensure your lectures and calendar dates are fully synchronized.", {
+          duration: 3500,
           position: "top-center"
         });
         // Remove the param so it doesn't keep prompting on refresh
@@ -379,13 +438,13 @@ export const CalendarPage = () => {
           </div>
         </div>
         <div className="flex gap-2">
-          <button onClick={() => setCurrentDate(subMonths(currentDate, 1))} className="p-2 hover:bg-muted rounded-lg text-muted-foreground transition-colors cursor-pointer">
+          <button onClick={() => { hapticSelection(); setCurrentDate(subMonths(currentDate, 1)); }} className="p-2 hover:bg-muted rounded-lg text-muted-foreground transition-colors cursor-pointer">
             <ChevronLeft className="w-5 h-5" />
           </button>
-          <button onClick={() => setCurrentDate(new Date())} className="px-3 py-1.5 hover:bg-muted rounded-lg text-sm font-medium text-foreground transition-colors cursor-pointer">
+          <button onClick={() => { hapticSelection(); setCurrentDate(new Date()); }} className="px-3 py-1.5 hover:bg-muted rounded-lg text-sm font-medium text-foreground transition-colors cursor-pointer">
             Today
           </button>
-          <button onClick={() => setCurrentDate(addMonths(currentDate, 1))} className="p-2 hover:bg-muted rounded-lg text-muted-foreground transition-colors cursor-pointer">
+          <button onClick={() => { hapticSelection(); setCurrentDate(addMonths(currentDate, 1)); }} className="p-2 hover:bg-muted rounded-lg text-muted-foreground transition-colors cursor-pointer">
             <ChevronRight className="w-5 h-5" />
           </button>
         </div>
@@ -452,6 +511,7 @@ export const CalendarPage = () => {
               {isCurrentMonth ? (
                 <button
                   onClick={() => {
+                    hapticSelection();
                     if (window.innerWidth < 640) {
                       setSelectedMobileDate(dateKey);
                     } else {
@@ -496,7 +556,7 @@ export const CalendarPage = () => {
                     {/* Events */}
                     {dayEvents.length > 0 && (
                       <div className="flex flex-col gap-1">
-                        {dayEvents.map((e, idx) => (
+                        {deduplicateCalendarEvents(dayEvents).map((e, idx) => (
                           <div key={idx} className="flex items-start gap-1.5 text-xs font-semibold text-primary">
                             <span className="w-1.5 h-1.5 rounded-full bg-primary mt-1 shrink-0" />
                             <span className="leading-tight">{e.title}</span>
@@ -679,7 +739,7 @@ export const CalendarPage = () => {
                     {dayEvents.length > 0 && (
                       <div className="flex flex-col gap-2 mb-2">
                         <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Events</h4>
-                        {dayEvents.map((e, idx) => (
+                        {deduplicateCalendarEvents(dayEvents).map((e, idx) => (
                           <div key={idx} className="flex items-start gap-2 text-sm font-semibold text-primary bg-primary/10 p-2.5 rounded-xl border border-primary/20">
                             <span className="w-2 h-2 rounded-full bg-primary mt-1.5 shrink-0" />
                             <span className="leading-tight">{e.title}</span>

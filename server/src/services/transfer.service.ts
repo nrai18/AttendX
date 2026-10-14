@@ -28,6 +28,7 @@ export class TransferService {
     // 3. Fetch Events (Academic Calendar)
     const events = await prisma.event.findMany({
       where: { 
+        userId,
         OR: [
           { semesterId: activeSem.id },
           { semesterId: null }
@@ -42,8 +43,8 @@ export class TransferService {
       
       if (dateRange && dateRange.startDate && dateRange.endDate) {
         whereClause.date = {
-          gte: new Date(dateRange.startDate).toISOString(),
-          lte: new Date(dateRange.endDate).toISOString()
+          gte: new Date(dateRange.startDate),
+          lte: new Date(dateRange.endDate)
         };
       }
       

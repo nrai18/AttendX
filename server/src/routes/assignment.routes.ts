@@ -42,7 +42,7 @@ router.post("/", authenticate, async (req, res) => {
   }
 });
 
-router.put("/:id", authenticate, async (req, res) => {
+const updateHandler = async (req: any, res: any) => {
   try {
     const { title, description, deadline, priority, subjectId } = req.body;
     const assignment = await prisma.assignment.update({
@@ -60,7 +60,10 @@ router.put("/:id", authenticate, async (req, res) => {
     console.error(error);
     res.status(500).json({ error: "Failed to update assignment" });
   }
-});
+};
+
+router.put("/:id", authenticate, updateHandler);
+router.patch("/:id", authenticate, updateHandler);
 
 router.delete("/:id", authenticate, async (req, res) => {
   try {
@@ -74,7 +77,7 @@ router.delete("/:id", authenticate, async (req, res) => {
   }
 });
 
-router.post("/:id/toggle", authenticate, async (req, res) => {
+const toggleHandler = async (req: any, res: any) => {
   try {
     const assignmentId = (req.params.id as string);
     const userId = (req as any).user.userId;
@@ -98,6 +101,9 @@ router.post("/:id/toggle", authenticate, async (req, res) => {
     console.error(error);
     res.status(500).json({ error: "Failed to toggle completion" });
   }
-});
+};
+
+router.post("/:id/toggle", authenticate, toggleHandler);
+router.post("/:id/complete", authenticate, toggleHandler);
 
 export default router;

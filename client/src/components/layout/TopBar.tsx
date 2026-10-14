@@ -6,6 +6,7 @@ import { Plus, LogOut, Sun, Moon, Loader2 } from "lucide-react";
 import { Button } from "../ui/button";
 import { useAttendanceStore } from "../../stores/attendanceStore";
 import { useThemeStore } from "../../stores/themeStore";
+import { hapticLight, hapticWarning } from "../../utils/haptics";
 
 interface TopBarProps {
   title?: string;
@@ -29,6 +30,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   
   const [isLoggingOut, setIsLoggingOut] = React.useState(false);
   const handleLogout = async () => {
+    hapticWarning();
     setIsLoggingOut(true);
     try {
       await api.post("/auth/logout");
@@ -41,7 +43,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   const { theme, toggleTheme } = useThemeStore();
 
   // Route-specific styling
-  const headerBg = isReports || isPredictive ? "bg-[#EED3CF]/80 dark:bg-[#1A090C]/80 border-[#74313A]/20 dark:border-[#EED3CF]/20" : (isSemester || isSettings || isToday || isTimetable || isSubjects) ? "bg-transparent border-border/30 backdrop-blur-xl" : "bg-background/80 border-border";
+  const headerBg = isReports || isPredictive ? "bg-[#EED3CF]/80 dark:bg-[#1A090C]/80 border-[#74313A]/20 dark:border-[#EED3CF]/20" : (isSemester || isSettings || isToday || isTimetable || isSubjects) ? "bg-transparent border-border/30" : "bg-background/80 border-border";
   const positionClass = "sticky top-0";
   const textColor = (isReports || isPredictive) ? "text-[#111827] dark:text-[#FDF8F5]" : isSubjects ? "text-foreground dark:text-white" : "text-foreground";
   const mutedTextColor = (isReports || isPredictive) ? "text-[#74313A]/60 dark:text-[#EED3CF]/60" : isSubjects ? "text-muted-foreground dark:text-white/80" : "text-muted-foreground";

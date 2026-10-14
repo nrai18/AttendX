@@ -91,7 +91,8 @@ export class TransferController {
       }
 
       // 3. Atomically delete and return the row (Single-Use Guarantee)
-      await prisma.shareTransfer.delete({ where: { code } });
+      // Keep transfer active during its 5-minute TTL so preview cancel doesn't burn the code
+      // and multi-peer group syncs can redeem it before expiry.
 
       const sender = await prisma.user.findUnique({
         where: { id: transfer.senderUserId },

@@ -1,7 +1,8 @@
 import React, { useState } from "react";
 import { X, Upload, Mail, Lightbulb, Bug } from "lucide-react";
 import { toast } from "sonner";
-import { api } from "../../lib/api";
+import { api, getRecentApiErrors } from "../../lib/api";
+import { getLogs } from "../../lib/logger";
 import { useAuthStore } from "../../stores/authStore";
 import { useHardwareBack } from "../../hooks/useHardwareBack";
 
@@ -72,10 +73,13 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({
           userAgent: navigator.userAgent,
           platform: navigator.platform,
           localStorage: { ...localStorage },
-            errorDetails,
-            email,
+          errorDetails: errorDetails || null,
+          recentApiErrors: getRecentApiErrors(),
+          consoleLogs: getLogs(),
+          email,
           windowSize: `${window.innerWidth}x${window.innerHeight}`,
-          url: window.location.href
+          url: window.location.href,
+          timestamp: new Date().toISOString()
         };
       }
 

@@ -23,6 +23,8 @@ export const SubjectReconciliationModal: React.FC<ReconciliationProps> = ({
   isOpen,
   onClose,
   semesterId,
+  newSubjectIds,
+  existingSubjectIds,
   onComplete,
 }) => {
   useScrollLock(isOpen);
@@ -53,19 +55,39 @@ export const SubjectReconciliationModal: React.FC<ReconciliationProps> = ({
 
   const getFullSubjectName = (sub: Subject) => `${sub.name} ${sub.code ? `(${sub.code})` : ""}`.trim();
 
-  // Filter the subjects using regex to find codes in parentheses
+  // Filter the subjects using newSubjectIds or codes in parentheses, with fallback to all subjects
   const targetSubjects = useMemo(() => {
-    return subjects.filter(s => /\([A-Z0-9_]+\)/.test(getFullSubjectName(s)));
-  }, [subjects]);
+    if (newSubjectIds && newSubjectIds.length > 0) {
+      const filtered = subjects.filter(s => newSubjectIds.includes(s.id));
+      if (filtered.length > 0) return filtered;
+    }
+    const withCode = subjects.filter(s => /\([A-Z0-9_]+\)/.test(getFullSubjectName(s)));
+    if (withCode.length > 0) return withCode;
+    // Fallback: If no subjects have codes in parentheses, all subjects are eligible targets
+    return subjects;
+  }, [subjects, newSubjectIds]);
 
   const duplicateOptions = useMemo(() => {
-    return subjects.filter(s => !/\([A-Z0-9_]+\)/.test(getFullSubjectName(s)));
-  }, [subjects]);
+    if (existingSubjectIds && existingSubjectIds.length > 0) {
+      const filtered = subjects.filter(s => existingSubjectIds.includes(s.id));
+      if (filtered.length > 0) return filtered;
+    }
+    const withoutCode = subjects.filter(s => !/\([A-Z0-9_]+\)/.test(getFullSubjectName(s)));
+    if (withoutCode.length > 0) return withoutCode;
+    return subjects;
+  }, [subjects, existingSubjectIds]);
 
   const autoMap = (loadedSubjects: Subject[]) => {
     const getFullName = (sub: Subject) => `${sub.name} ${sub.code ? `(${sub.code})` : ""}`.trim();
-    const targets = loadedSubjects.filter(s => /\([A-Z0-9_]+\)/.test(getFullName(s)));
-    const duplicates = loadedSubjects.filter(s => !/\([A-Z0-9_]+\)/.test(getFullName(s)));
+    let targets = newSubjectIds && newSubjectIds.length > 0
+      ? loadedSubjects.filter(s => newSubjectIds.includes(s.id))
+      : loadedSubjects.filter(s => /\([A-Z0-9_]+\)/.test(getFullName(s)));
+    if (targets.length === 0) targets = loadedSubjects;
+
+    let duplicates = existingSubjectIds && existingSubjectIds.length > 0
+      ? loadedSubjects.filter(s => existingSubjectIds.includes(s.id))
+      : loadedSubjects.filter(s => !/\([A-Z0-9_]+\)/.test(getFullName(s)));
+    if (duplicates.length === 0) duplicates = loadedSubjects;
     
     const initialMappings: Record<string, string | null> = {};
 
@@ -152,10 +174,10 @@ export const SubjectReconciliationModal: React.FC<ReconciliationProps> = ({
     if (isOpen) {
       document.body.style.overflow = 'hidden';
     } else {
-      document.body.style.overflow = 'unset';
+      document.body.style.overflow = '';
     }
     return () => {
-      document.body.style.overflow = 'unset';
+      document.body.style.overflow = '';
     };
   }, [isOpen]);
 
@@ -212,13 +234,15 @@ export const SubjectReconciliationModal: React.FC<ReconciliationProps> = ({
                         onChange={(e) => setMappings(m => ({ ...m, [targetSub.id]: e.target.value === "none" ? null : e.target.value }))}
                       >
                         <option value="none">None (Keep separate)</option>
-                        {duplicateOptions.map(dupSub => {
-                          return (
-                            <option key={dupSub.id} value={dupSub.id}>
-                              {getFullSubjectName(dupSub)}
-                            </option>
-                          );
-                        })}
+                        {duplicateOptions
+                          .filter(dupSub => dupSub.id !== targetSub.id)
+                          .map(dupSub => {
+                            return (
+                              <option key={dupSub.id} value={dupSub.id}>
+                                {getFullSubjectName(dupSub)}
+                              </option>
+                            );
+                          })}
                       </select>
                     </div>
                   </div>

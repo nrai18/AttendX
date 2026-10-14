@@ -99,6 +99,11 @@ export const useBackgroundSync = () => {
           }
           
           console.log("[BackgroundSync] Global pre-fetch complete!");
+          import("../services/NotificationService")
+            .then(({ NotificationService }) => {
+              NotificationService.autoScheduleFromTimetable().catch(() => {});
+            })
+            .catch(() => {});
         } catch (err) {
           console.error("[BackgroundSync] Pre-fetch failed:", err);
           hasSynced.current = false; // Allow retry if it failed (e.g. spotty network)

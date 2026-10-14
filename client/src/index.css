@@ -918,10 +918,10 @@ html.light body.theme-orbital {
 }
 
 .theme-terrascape .bg-card,
-.theme-terrascape .bg-card\\/60,
-.theme-terrascape .bg-card\\/40,
-.theme-terrascape .bg-card\\/80,
-.theme-terrascape .bg-card\\/90 {
+.theme-terrascape .bg-card\/60,
+.theme-terrascape .bg-card\/40,
+.theme-terrascape .bg-card\/80,
+.theme-terrascape .bg-card\/90 {
   background-color: var(--ts-surface) !important;
   border-color: var(--ts-border) !important;
   box-shadow: none !important;
@@ -929,8 +929,8 @@ html.light body.theme-orbital {
   backdrop-filter: blur(12px) !important;
 }
 
-.theme-terrascape .bg-white\\/5,
-.theme-terrascape .bg-white\\/10 {
+.theme-terrascape .bg-white\/5,
+.theme-terrascape .bg-white\/10 {
   background-color: var(--ts-surface) !important;
 }
 
@@ -940,21 +940,21 @@ html.light body.theme-orbital {
 }
 
 .theme-terrascape .text-muted-foreground,
-.theme-terrascape .text-white\\/80 {
+.theme-terrascape .text-white\/80 {
   color: var(--ts-text-secondary) !important;
 }
 
-.theme-terrascape .border-border\\/50,
-.theme-terrascape .border-white\\/10,
-.theme-terrascape .border-white\\/20 {
+.theme-terrascape .border-border\/50,
+.theme-terrascape .border-white\/10,
+.theme-terrascape .border-white\/20 {
   border-color: var(--ts-border) !important;
 }
 
 /* Suppress the vibrant colored backgrounds from the old AI slop */
-.theme-terrascape .bg-emerald-500\\/10,
-.theme-terrascape .bg-rose-500\\/10,
-.theme-terrascape .bg-amber-500\\/10,
-.theme-terrascape .bg-purple-500\\/10 {
+.theme-terrascape .bg-emerald-500\/10,
+.theme-terrascape .bg-rose-500\/10,
+.theme-terrascape .bg-amber-500\/10,
+.theme-terrascape .bg-purple-500\/10 {
   background-color: var(--ts-surface) !important;
   border-color: var(--ts-border) !important;
 }
@@ -977,9 +977,9 @@ html.light body.theme-orbital {
 }
 
 /* Disable shadow glow from the original UI */
-.theme-terrascape .shadow-emerald-500\\/20,
-.theme-terrascape .shadow-rose-500\\/20,
-.theme-terrascape .shadow-amber-500\\/20 {
+.theme-terrascape .shadow-emerald-500\/20,
+.theme-terrascape .shadow-rose-500\/20,
+.theme-terrascape .shadow-amber-500\/20 {
   box-shadow: none !important;
 }
 

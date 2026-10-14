@@ -9,22 +9,33 @@ interface ConfigState {
   fetchConfig: () => Promise<void>;
 }
 
-export const useConfigStore = create<ConfigState>((set) => ({
+let fetchPromise: Promise<void> | null = null;
+
+export const useConfigStore = create<ConfigState>((set, get) => ({
   wsUrl: null,
   mlApiUrl: null,
   googleClientId: null,
   appDownloadLink: null,
   fetchConfig: async () => {
-    try {
-      const { data } = await api.get('/system/config', { timeout: 5000 });
-      set({
-        wsUrl: data.wsUrl,
-        mlApiUrl: data.mlApiUrl,
-        googleClientId: data.googleClientId,
-        appDownloadLink: data.appDownloadLink
-      });
-    } catch (err) {
-      console.error("Failed to fetch dynamic config", err);
-    }
+    if (get().appDownloadLink) return;
+    if (fetchPromise) return fetchPromise;
+
+    fetchPromise = (async () => {
+      try {
+        const { data } = await api.get('/system/config', { timeout: 6000 });
+        set({
+          wsUrl: data.wsUrl,
+          mlApiUrl: data.mlApiUrl,
+          googleClientId: data.googleClientId,
+          appDownloadLink: data.appDownloadLink
+        });
+      } catch (err) {
+        console.warn("[ConfigStore] Using fallback config due to network timeout/unreachable backend");
+      } finally {
+        fetchPromise = null;
+      }
+    })();
+
+    return fetchPromise;
   }
 }));

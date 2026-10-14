@@ -8,6 +8,8 @@ router.get("/me", authenticate, UserController.getMe);
 router.patch("/me", authenticate, UserController.updateMe);
 router.delete("/me", authenticate, UserController.deleteAccount);
 router.get("/onboarding-status", authenticate, UserController.getOnboardingStatus);
+router.patch("/onboarding-status", authenticate, UserController.updateOnboardingStatus);
+router.post("/onboarding-status", authenticate, UserController.updateOnboardingStatus);
 router.post("/reset-data", authenticate, UserController.resetData);
 router.post("/reset-subject-attendance", authenticate, UserController.resetSubjectAttendance);
 router.post("/reset-all-attendance", authenticate, UserController.resetAllAttendance);

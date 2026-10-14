@@ -39,6 +39,7 @@ export class PushNotificationService {
               data: { fcmToken: null }
             });
             console.log(`[PushNotification] Purged 1 dead token from database.`);
+            return false;
           }
           throw err;
         }

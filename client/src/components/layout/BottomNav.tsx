@@ -2,6 +2,7 @@ import React from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { CalendarDays, Table, BookOpen, Settings, BarChart3, Calendar } from "lucide-react";
 import { cn } from "../../lib/utils";
+import { hapticSelection } from "../../utils/haptics";
 
 const navItems = [
   { label: "Today", path: "/today", icon: CalendarDays },
@@ -18,7 +19,7 @@ export const BottomNav: React.FC = () => {
   const isPredictive = location.pathname.startsWith("/predictive");
   const isToday = location.pathname.startsWith("/today");
 
-  const navBg = (isReports || isPredictive) ? "bg-[#EED3CF]/90 dark:bg-[#1A090C]/90 border-[#EED3CF]/30 dark:border-[#74313A]/30" : isSemester ? "bg-transparent border-border/30 backdrop-blur-xl" : "bg-card/90 border-border";
+  const navBg = (isReports || isPredictive) ? "bg-[#EED3CF]/90 dark:bg-[#1A090C]/90 border-[#EED3CF]/30 dark:border-[#74313A]/30" : isSemester ? "bg-transparent border-border/30" : "bg-card/90 border-border";
 
   return (
     <nav className={`fixed bottom-0 left-0 right-0 z-50 ${navBg} backdrop-blur-lg border-t pb-[env(safe-area-inset-bottom)] md:hidden transition-colors`}>
@@ -29,6 +30,7 @@ export const BottomNav: React.FC = () => {
             <NavLink
               key={item.path}
               to={item.path}
+              onClick={() => hapticSelection()}
               className={({ isActive }) => {
                 if (isActive && isReports) {
                   return "flex flex-col items-center justify-center flex-1 py-1 text-[11px] font-medium transition-colors text-[#74313A] dark:text-[#EED3CF]";

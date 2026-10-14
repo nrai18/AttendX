@@ -19,9 +19,13 @@ router.delete("/import-rag/cache", CalendarRagController.clearCache);
 router.post("/import-rag", upload.single("file"), CalendarRagController.parseDocument);
 router.post("/import-rag/save", CalendarRagController.saveEvents);
 router.post("/save-wizard", EventController.saveWizard);
+router.get("/templates/holidays", EventController.getTemplateHolidays);
+router.get("/templates/academic-calendar", EventController.getTemplateAcademicCalendar);
+router.post("/templates/sync", EventController.syncTemplates);
 router.get("/today-status", EventController.getTodayStatus);
 router.post("/clear", EventController.clearAllEvents);
 router.delete("/all", EventController.clearAllEvents);
+router.delete("/:id", EventController.deleteEvent);
 router.delete("/", EventController.clearAllEvents);
 
 export default router;

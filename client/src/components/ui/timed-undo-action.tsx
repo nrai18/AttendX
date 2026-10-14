@@ -1,7 +1,7 @@
 "use client";
 
 import { cn } from "../../lib/utils";
-import { Undo2 } from "lucide-react";
+import { Undo2, Trash2 } from "lucide-react";
 import { useEffect, useState, type FC, type ReactNode } from "react";
 import { AnimatePresence, motion, MotionConfig } from "motion/react";
 import useMeasure from "react-use-measure";
@@ -11,6 +11,7 @@ export interface TimedUndoActionProps {
   deleteLabel?: string;
   undoLabel?: string;
   icon?: ReactNode;
+  undoIcon?: ReactNode;
   onConfirm?: () => void;
   disabled?: boolean;
 }
@@ -20,6 +21,7 @@ export const TimedUndoAction: FC<TimedUndoActionProps> = ({
   deleteLabel = "Delete Account",
   undoLabel = "Cancel Delete",
   icon,
+  undoIcon,
   onConfirm,
   disabled = false,
 }) => {
@@ -63,7 +65,7 @@ export const TimedUndoAction: FC<TimedUndoActionProps> = ({
   }, [countDown, isDeleting, onConfirm]);
 
   return (
-    <div className="flex w-full items-center justify-center font-sans">
+    <div className="flex items-center justify-center font-sans">
       <div className="flex flex-col items-center justify-center will-change-transform">
         <MotionConfig
           transition={{
@@ -74,8 +76,10 @@ export const TimedUndoAction: FC<TimedUndoActionProps> = ({
         >
           <motion.div
             className={cn(
-              "relative flex items-center justify-start overflow-hidden rounded-lg bg-red-500 transition-colors duration-300 dark:bg-red-500",
-              isDeleting ? "bg-red-500/10 dark:bg-red-500/20" : "",
+              "relative flex h-[42px] items-center justify-start overflow-hidden rounded-xl border transition-all duration-300",
+              isDeleting
+                ? "bg-rose-950/80 border-rose-500/50 shadow-md shadow-rose-950/40 text-rose-100"
+                : "bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border-rose-500/25 hover:border-rose-500/40",
               disabled ? "opacity-50 cursor-not-allowed pointer-events-none" : "cursor-pointer"
             )}
             animate={{
@@ -85,39 +89,43 @@ export const TimedUndoAction: FC<TimedUndoActionProps> = ({
           >
             <div
               className={cn(
-                "flex items-center justify-center gap-2 px-6 py-3",
-                isDeleting && "px-3"
+                "flex h-[42px] items-center justify-center gap-2 px-4 select-none",
+                isDeleting && "px-3 gap-2.5"
               )}
               ref={ref}
             >
-              <AnimatePresence mode="popLayout">
-                {isDeleting && (
+              <AnimatePresence mode="popLayout" initial={false}>
+                {isDeleting ? (
                   <motion.div
-                    className="rounded-lg bg-red-500 p-2"
-                    initial={{
-                      opacity: 0,
-                      filter: "blur(2px)",
-                    }}
-                    animate={{
-                      opacity: 1,
-                      filter: "blur(0px)",
-                    }}
-                    exit={{
-                      opacity: 0,
-                      filter: "blur(2px)",
-                    }}
+                    key="undo-icon"
+                    className="flex items-center justify-center w-6 h-6 rounded-lg bg-rose-500/25 border border-rose-500/40 text-rose-200 shrink-0"
+                    initial={{ opacity: 0, scale: 0.6, filter: "blur(2px)" }}
+                    animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
+                    exit={{ opacity: 0, scale: 0.6, filter: "blur(2px)" }}
+                    transition={{ type: "spring", stiffness: 300, damping: 20 }}
                   >
-                    {icon ?? <Undo2 className="size-5 text-white" />}
+                    {undoIcon ?? <Undo2 className="w-3.5 h-3.5" />}
+                  </motion.div>
+                ) : (
+                  <motion.div
+                    key="delete-icon"
+                    className="flex items-center justify-center text-rose-400 shrink-0"
+                    initial={{ opacity: 0, scale: 0.6 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.6 }}
+                    transition={{ type: "spring", stiffness: 300, damping: 20 }}
+                  >
+                    {icon ?? <Trash2 className="w-4 h-4" />}
                   </motion.div>
                 )}
               </AnimatePresence>
 
-              <div className="flex items-center justify-center gap-2">
+              <div className="flex items-center justify-center">
                 <AnimatedText
                   text={isDeleting ? undoLabel : deleteLabel}
                   className={cn(
-                    "z-10 text-lg",
-                    isDeleting ? "text-red-400" : "text-neutral-50"
+                    "text-sm font-bold tracking-tight whitespace-nowrap",
+                    isDeleting ? "text-rose-100" : "text-rose-400"
                   )}
                 />
               </div>
@@ -125,47 +133,24 @@ export const TimedUndoAction: FC<TimedUndoActionProps> = ({
               <AnimatePresence mode="popLayout">
                 {isDeleting && (
                   <motion.div
-                    className="flex items-center justify-center rounded-lg bg-red-500 px-3 py-1 text-neutral-50 tabular-nums"
-                    initial={{
-                      opacity: 0,
-                      filter: "blur(2px)",
-                    }}
-                    animate={{
-                      opacity: 1,
-                      filter: "blur(0px)",
-                    }}
-                    exit={{
-                      opacity: 0,
-                      filter: "blur(2px)",
-                    }}
+                    className="flex items-center justify-center w-6 h-6 rounded-lg bg-rose-500 text-white font-mono text-xs font-bold shrink-0 overflow-hidden shadow-sm"
+                    initial={{ opacity: 0, scale: 0.5, filter: "blur(2px)" }}
+                    animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
+                    exit={{ opacity: 0, scale: 0.5, filter: "blur(2px)" }}
+                    transition={{ type: "spring", stiffness: 300, damping: 20 }}
                   >
                     <AnimatePresence mode="popLayout">
                       <motion.span
                         key={countDown}
-                        className="text-lg"
-                        initial={{
-                          opacity: 0,
-                          y: -20,
-                          filter: "blur(2px)",
-                          scale: 0.5,
-                        }}
-                        animate={{
-                          opacity: 1,
-                          y: 0,
-                          filter: "blur(0px)",
-                          scale: 1,
-                        }}
-                        exit={{
-                          opacity: 0,
-                          y: 20,
-                          filter: "blur(2px)",
-                          scale: 0.5,
-                        }}
+                        className="inline-block text-xs font-bold tabular-nums leading-none"
+                        initial={{ opacity: 0, y: -12, scale: 0.7 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: 12, scale: 0.7 }}
                         transition={{
                           type: "spring",
-                          stiffness: 240,
-                          damping: 20,
-                          mass: 1,
+                          stiffness: 280,
+                          damping: 18,
+                          mass: 0.8,
                         }}
                       >
                         {countDown}

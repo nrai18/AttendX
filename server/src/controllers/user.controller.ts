@@ -9,6 +9,7 @@ export class UserController {
     try {
       const userId = req.user!.userId;
       await UserService.deleteAccount(userId);
+      await CacheService.invalidateUser(userId);
       // Ensure the refresh token cookie is cleared if they delete themselves
       res.clearCookie("refreshToken", {
         httpOnly: true,
@@ -35,7 +36,18 @@ export class UserController {
       const userId = req.user!.userId;
       const { prisma } = require("../lib/prisma");
 
-      const activeSemester = await prisma.semester.findFirst({ where: { userId, isActive: true } });
+      const [activeSemester, user] = await Promise.all([
+        prisma.semester.findFirst({ where: { userId, isActive: true } }),
+        prisma.user.findUnique({
+          where: { id: userId },
+          select: {
+            hasUsedVoiceMode: true,
+            hasUsedPredictive: true,
+            hasUsedPeerSync: true,
+            onboardingDismissed: true,
+          }
+        })
+      ]);
       const hasSemester = !!activeSemester;
       
       let hasSubjects = false;
@@ -57,7 +69,54 @@ export class UserController {
         hasAttendance = attCount > 0;
       }
 
-      res.status(200).json({ hasSemester, hasSubjects, hasTimetable, hasCalendar, hasAttendance });
+      res.status(200).json({
+        hasSemester,
+        hasSubjects,
+        hasTimetable,
+        hasCalendar,
+        hasAttendance,
+        hasUsedVoiceMode: user?.hasUsedVoiceMode ?? false,
+        hasUsedPredictive: user?.hasUsedPredictive ?? false,
+        hasUsedPeerSync: user?.hasUsedPeerSync ?? false,
+        onboardingDismissed: user?.onboardingDismissed ?? false,
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  }
+
+  static async updateOnboardingStatus(req: AuthenticatedRequest, res: Response) {
+    try {
+      const userId = req.user!.userId;
+      const { prisma } = require("../lib/prisma");
+      const { hasUsedVoiceMode, hasUsedPredictive, hasUsedPeerSync, onboardingDismissed, step } = req.body;
+
+      const dataToUpdate: any = {};
+      if (hasUsedVoiceMode !== undefined) dataToUpdate.hasUsedVoiceMode = !!hasUsedVoiceMode;
+      if (hasUsedPredictive !== undefined) dataToUpdate.hasUsedPredictive = !!hasUsedPredictive;
+      if (hasUsedPeerSync !== undefined) dataToUpdate.hasUsedPeerSync = !!hasUsedPeerSync;
+      if (onboardingDismissed !== undefined) dataToUpdate.onboardingDismissed = !!onboardingDismissed;
+
+      if (step === "voice_mode" || step === "onboarding_voice_mode") dataToUpdate.hasUsedVoiceMode = true;
+      if (step === "predictive" || step === "onboarding_predictive") dataToUpdate.hasUsedPredictive = true;
+      if (step === "peer_sync" || step === "onboarding_peer_sync") dataToUpdate.hasUsedPeerSync = true;
+      if (step === "dismiss") dataToUpdate.onboardingDismissed = true;
+
+      const updatedUser = await prisma.user.update({
+        where: { id: userId },
+        data: dataToUpdate,
+        select: {
+          hasUsedVoiceMode: true,
+          hasUsedPredictive: true,
+          hasUsedPeerSync: true,
+          onboardingDismissed: true,
+        }
+      });
+
+      res.status(200).json({
+        success: true,
+        ...updatedUser
+      });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }

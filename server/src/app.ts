@@ -29,6 +29,8 @@ import { CURRICULUM_META } from "./utils/subjectDictionary";
 
 import passport from "./config/passport";
 import { sanitizeErrorsMiddleware } from "./middleware/sanitizeErrors";
+import { MemoryMonitor } from "./utils/memoryMonitor";
+import { FailureLogRecorder } from "./utils/failureLogRecorder";
 
 const app = express();
 app.set("trust proxy", 1); // Trust Render's reverse proxy for correct https redirects
@@ -46,8 +48,9 @@ app.use(
     credentials: true,
   })
 );
-app.use(express.json({ limit: "50mb" }));
-app.use(express.urlencoded({ extended: true, limit: "50mb" }));
+app.use(MemoryMonitor.middleware());
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 app.use(cookieParser());
 if (process.env.NODE_ENV !== "production") {
   app.use(
@@ -103,8 +106,20 @@ app.get("/api/health", async (_req, res) => {
   try {
     // Keep the Neon database awake!
     await prisma.$queryRaw`SELECT 1`;
-    console.log("Health check ping received. Backend and DB are active.");
-    res.status(200).json({ status: "ok", message: "AttendX API and DB are running" });
+    const mem = MemoryMonitor.getSnapshot();
+    res.status(200).json({
+      status: "ok",
+      message: "AttendX API and DB are running",
+      timestamp: new Date().toISOString(),
+      memory: {
+        rssMB: mem.rssMB,
+        heapUsedMB: mem.heapUsedMB,
+        heapTotalMB: mem.heapTotalMB,
+        heapLimitMB: mem.heapLimitMB,
+        uptimeSeconds: mem.uptimeSeconds,
+        activeRequests: mem.activeRequests,
+      }
+    });
   } catch (err) {
     console.error("Health check DB error:", err);
     res.status(500).json({ status: "error", message: "Database connection failed" });
@@ -113,11 +128,23 @@ app.get("/api/health", async (_req, res) => {
 
 // Error Handling Middleware for API
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  FailureLogRecorder.recordError(err, req);
+
   if (process.env.NODE_ENV !== "production") {
-    console.error(`[Global Error] ${req.method} ${req.url}`, err.message);
+    console.error(`[Global Error] ${req.method} ${req.url}`, err?.message || err);
   } else {
     console.error(`[Error] ${req.method} ${req.url} failed.`);
   }
+
+  // If this was a direct browser document navigation (address bar, link click, or top-level redirect)
+  const isDocumentNavigation = req.headers["sec-fetch-dest"] === "document" || 
+    (req.headers.accept && req.headers.accept.includes("text/html") && !req.xhr);
+
+  if (isDocumentNavigation) {
+    const frontendUrl = process.env.FRONTEND_URL || (process.env.NODE_ENV === "production" ? "https://attendx.tech" : "http://localhost:5173");
+    return res.redirect(`${frontendUrl}/404?error=${encodeURIComponent(err?.message || "Internal Server Error")}`);
+  }
+
   if (req.path.startsWith("/api")) {
     return res.status(err.status || 500).json({
       message: "Internal Server Error",
@@ -151,6 +178,7 @@ export async function startServer() {
     console.log(`Server ready at: http://0.0.0.0:${PORT}`);
   });
   server.timeout = 300000; // 5 minutes
+  return server;
 }
 
 export default app;

@@ -34,11 +34,13 @@ export class DocumentController {
         return res.status(404).json({ message: 'Document not found' });
       }
 
-      // We stored the URL as /uploads/filename
+      // Return database stored binary buffer with explicit Content-Length
       if (doc.fileData) {
-        res.setHeader('Content-Disposition', `attachment; filename="${doc.name}"`);
+        const binaryBuffer = Buffer.from(doc.fileData);
+        res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(doc.name)}"`);
         res.setHeader('Content-Type', doc.mimeType);
-        return res.send(doc.fileData);
+        res.setHeader('Content-Length', binaryBuffer.length);
+        return res.end(binaryBuffer);
       }
 
       // Fallback to disk storage (legacy)

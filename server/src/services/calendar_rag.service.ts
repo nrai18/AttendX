@@ -54,12 +54,16 @@ Return a JSON array of objects following this exact schema. Do not output anythi
         ],
         config: {
           responseMimeType: "application/json",
-          temperature: 0.1
+          temperature: 0.1,
+          thinkingConfig: {
+            thinkingLevel: 'MINIMAL'
+          }
         }
       });
       
-      const text = response.text;
-      const parsed = JSON.parse(text || "[]");
+      const rawText = typeof response.text === 'function' ? response.text() : (response.text || "");
+      const cleanedText = rawText.replace(/```(?:json)?/gi, "").replace(/```/g, "").trim();
+      const parsed = JSON.parse(cleanedText || "[]");
       
       // Sort events chronologically to guarantee correct order on the frontend
       for (const group of parsed) {

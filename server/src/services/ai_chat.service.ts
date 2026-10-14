@@ -37,10 +37,16 @@ export class AiChatService {
     }
     const eventsSummary =
       context.calendarEvents && Array.isArray(context.calendarEvents) && context.calendarEvents.length > 0
-        ? context.calendarEvents.map((e: any) => {
-            let dateStr = e.date || e.startDate || 'Unknown Date';
-            if (e.endDate && e.endDate !== dateStr) {
-               dateStr += ` to ${e.endDate}`;
+        ? context.calendarEvents.slice(0, 25).map((e: any) => {
+            let dateStr = 'Unknown Date';
+            if (e.date) {
+              dateStr = e.date instanceof Date ? e.date.toISOString().split('T')[0] : String(e.date).split('T')[0];
+            } else if (e.startDate) {
+              dateStr = e.startDate instanceof Date ? e.startDate.toISOString().split('T')[0] : String(e.startDate).split('T')[0];
+            }
+            if (e.endDate) {
+              const endStr = e.endDate instanceof Date ? e.endDate.toISOString().split('T')[0] : String(e.endDate).split('T')[0];
+              if (endStr !== dateStr) dateStr += ` to ${endStr}`;
             }
             return `${e.title || e.name || e.eventName || 'Unnamed Event'} (${dateStr})`;
           }).join(", ")
@@ -50,8 +56,8 @@ export class AiChatService {
     const userId = context.userId || "anonymous";
     const userName = context.userName || "Student";
     const role = "student";
-    const department = "Computer Science & Engineering";
-    const batch = "2023-2027";
+    const department = (context as any).department || "General Academics";
+    const batch = (context as any).batch || "Current Batch";
     const targetAttendance = context.targetPercentage ?? 75;
 
     const localTime = context.localTime || new Date().toISOString();

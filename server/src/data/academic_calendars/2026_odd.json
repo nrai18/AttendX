@@ -1,0 +1,304 @@
+{
+  "academicYear": "2026-27",
+  "semesterType": "odd",
+  "year": 2026,
+  "events": [
+    {
+      "title": "Institute Fee Payment",
+      "startDate": "2026-06-16",
+      "endDate": "2026-07-13",
+      "eventType": "other",
+      "allDay": true,
+      "semesters": [3, 5, 7],
+      "description": "Fee payment window for Semesters 3, 5, and 7"
+    },
+    {
+      "title": "Course Registration & Fee Verification",
+      "startDate": "2026-07-13",
+      "endDate": "2026-07-13",
+      "eventType": "other",
+      "allDay": true,
+      "semesters": [3, 5, 7],
+      "description": "Course registration and fee payment verification for Semesters 3, 5, and 7"
+    },
+    {
+      "title": "Commencement of Classes",
+      "startDate": "2026-07-14",
+      "endDate": "2026-07-14",
+      "eventType": "institute",
+      "allDay": true,
+      "semesters": [3, 5, 7],
+      "description": "Commencement of class work for Semesters 3, 5, and 7"
+    },
+    {
+      "title": "Supplementary Examination (IV Year)",
+      "startDate": "2026-07-27",
+      "endDate": "2026-07-31",
+      "eventType": "exam",
+      "allDay": true,
+      "semesters": [7],
+      "description": "Supplementary examination for even semester backlogs (IV Year / Semester 7)"
+    },
+    {
+      "title": "Commencement of Classes (Semester 1)",
+      "startDate": "2026-09-01",
+      "endDate": "2026-09-01",
+      "eventType": "institute",
+      "allDay": true,
+      "semesters": [1],
+      "description": "Commencement of classes for first year (Semester 1)"
+    },
+    {
+      "title": "Cycle Test-I (CT-I)",
+      "startDate": "2026-09-07",
+      "endDate": "2026-09-09",
+      "eventType": "ct",
+      "allDay": true,
+      "semesters": [7],
+      "description": "Cycle Test-I for Semester 7"
+    },
+    {
+      "title": "Supplementary Examination (II & III Year)",
+      "startDate": "2026-09-14",
+      "endDate": "2026-09-18",
+      "eventType": "exam",
+      "allDay": true,
+      "semesters": [3, 5],
+      "description": "Supplementary examination for even semester backlogs (Semesters 3 & 5)"
+    },
+    {
+      "title": "Last Day of Showing Evaluated Answer-Sheets of CT-I",
+      "startDate": "2026-09-15",
+      "endDate": "2026-09-15",
+      "eventType": "other",
+      "allDay": true,
+      "semesters": [7],
+      "description": "Showing evaluated answer-sheets of CT-I to Semester 7 students"
+    },
+    {
+      "title": "Mid Semester Exam (MSE)",
+      "startDate": "2026-09-21",
+      "endDate": "2026-09-23",
+      "eventType": "midsem",
+      "allDay": true,
+      "semesters": [3, 5],
+      "description": "Official Mid Semester Examination for Semesters 3 and 5"
+    },
+    {
+      "title": "Practical Lab Demo",
+      "startDate": "2026-09-24",
+      "endDate": "2026-09-25",
+      "eventType": "lab_exam",
+      "allDay": true,
+      "semesters": [3, 5],
+      "description": "Practical Lab Demonstration evaluation for Semesters 3 and 5"
+    },
+    {
+      "title": "Annual Cultural Fest (Mridang)",
+      "startDate": "2026-10-01",
+      "endDate": "2026-10-03",
+      "eventType": "fest",
+      "allDay": true,
+      "semesters": [1, 3, 5, 7],
+      "description": "Annual Cultural Fest Mridang 2026"
+    },
+    {
+      "title": "Institute Day",
+      "startDate": "2026-10-03",
+      "endDate": "2026-10-03",
+      "eventType": "institute",
+      "allDay": true,
+      "semesters": [1, 3, 5, 7],
+      "description": "Official Institute Day celebration"
+    },
+    {
+      "title": "Last Day of Showing Evaluated Answer-Sheets of MSE",
+      "startDate": "2026-10-05",
+      "endDate": "2026-10-05",
+      "eventType": "other",
+      "allDay": true,
+      "semesters": [3, 5],
+      "description": "Showing evaluated answer-sheets of Mid Semester Exam for Semesters 3 and 5"
+    },
+    {
+      "title": "Annual Sports Fest (Yalgaar)",
+      "startDate": "2026-10-05",
+      "endDate": "2026-10-28",
+      "eventType": "fest",
+      "allDay": true,
+      "semesters": [1, 3, 5, 7],
+      "description": "Annual Sports Fest Yalgaar 2026 (After Academic Hours Only)"
+    },
+    {
+      "title": "Cycle Test-II (CT-II)",
+      "startDate": "2026-11-02",
+      "endDate": "2026-11-04",
+      "eventType": "ct",
+      "allDay": true,
+      "semesters": [7],
+      "description": "Cycle Test-II for Semester 7"
+    },
+    {
+      "title": "Mid Semester Exam (Semester 1)",
+      "startDate": "2026-11-02",
+      "endDate": "2026-11-04",
+      "eventType": "midsem",
+      "allDay": true,
+      "semesters": [1],
+      "description": "Official Mid Semester Examination for Semester 1"
+    },
+    {
+      "title": "Practical Lab Demo (Semester 1)",
+      "startDate": "2026-11-05",
+      "endDate": "2026-11-06",
+      "eventType": "lab_exam",
+      "allDay": true,
+      "semesters": [1],
+      "description": "Practical Lab Demonstration for Semester 1"
+    },
+    {
+      "title": "Mid Semester Break",
+      "startDate": "2026-11-09",
+      "endDate": "2026-11-13",
+      "eventType": "vacation",
+      "allDay": true,
+      "semesters": [1, 3, 5, 7],
+      "description": "Official Mid Semester Break for all students"
+    },
+    {
+      "title": "Last Day of Showing Evaluated Answer-Sheets CT-II & MSE",
+      "startDate": "2026-11-18",
+      "endDate": "2026-11-18",
+      "eventType": "other",
+      "allDay": true,
+      "semesters": [1, 7],
+      "description": "Showing evaluated answer-sheets of CT-II (Sem 7) and Mid Semester Exam (Sem 1)"
+    },
+    {
+      "title": "Last Teaching Day",
+      "startDate": "2026-11-25",
+      "endDate": "2026-11-25",
+      "eventType": "institute",
+      "allDay": true,
+      "semesters": [3, 5, 7],
+      "description": "Last teaching day of the semester for Semesters 3, 5, and 7"
+    },
+    {
+      "title": "Final Notification of Attendance Shortage",
+      "startDate": "2026-11-26",
+      "endDate": "2026-11-26",
+      "eventType": "other",
+      "allDay": true,
+      "semesters": [3, 5, 7],
+      "description": "Official notification of attendance shortage published by departments for Semesters 3, 5, and 7"
+    },
+    {
+      "title": "End Semester Theory Exam / Absentee Assessment",
+      "startDate": "2026-11-30",
+      "endDate": "2026-12-05",
+      "eventType": "endsem",
+      "allDay": true,
+      "semesters": [3, 5, 7],
+      "description": "End Semester Theory Examinations for Semesters 3, 5, and 7"
+    },
+    {
+      "title": "End Semester Lab Exam",
+      "startDate": "2026-12-07",
+      "endDate": "2026-12-12",
+      "eventType": "endsem",
+      "allDay": true,
+      "semesters": [3, 5, 7],
+      "description": "End Semester Practical Lab Examinations for Semesters 3, 5, and 7"
+    },
+    {
+      "title": "Last Teaching Day (Semester 1)",
+      "startDate": "2026-12-17",
+      "endDate": "2026-12-17",
+      "eventType": "institute",
+      "allDay": true,
+      "semesters": [1],
+      "description": "Last teaching day for Semester 1"
+    },
+    {
+      "title": "Final Notification of Attendance Shortage (Semester 1)",
+      "startDate": "2026-12-18",
+      "endDate": "2026-12-18",
+      "eventType": "other",
+      "allDay": true,
+      "semesters": [1],
+      "description": "Notification of attendance shortage by departments for Semester 1"
+    },
+    {
+      "title": "Commencement of Student Vacation",
+      "startDate": "2026-12-21",
+      "endDate": "2027-01-10",
+      "eventType": "vacation",
+      "allDay": true,
+      "semesters": [3, 5, 7],
+      "description": "Winter vacation for Semesters 3, 5, and 7 students"
+    },
+    {
+      "title": "End Semester Theory Exam (Semester 1)",
+      "startDate": "2026-12-21",
+      "endDate": "2026-12-28",
+      "eventType": "endsem",
+      "allDay": true,
+      "semesters": [1],
+      "description": "End Semester Theory Examination for Semester 1"
+    },
+    {
+      "title": "End Semester Lab Exam (Semester 1)",
+      "startDate": "2026-12-29",
+      "endDate": "2027-01-02",
+      "eventType": "endsem",
+      "allDay": true,
+      "semesters": [1],
+      "description": "End Semester Lab Examination for Semester 1"
+    },
+    {
+      "title": "Commencement of Student Vacation (Semester 1)",
+      "startDate": "2027-01-04",
+      "endDate": "2027-01-10",
+      "eventType": "vacation",
+      "allDay": true,
+      "semesters": [1],
+      "description": "Winter vacation for Semester 1 students"
+    },
+    {
+      "title": "Next Semester Commencement Date",
+      "startDate": "2027-01-11",
+      "endDate": "2027-01-11",
+      "eventType": "institute",
+      "allDay": true,
+      "semesters": [1, 3, 5, 7],
+      "description": "Official commencement date of the upcoming Even Semester (AY 2026-27)"
+    },
+    {
+      "title": "Last Day of Showing Evaluated Answer-Sheets ESE",
+      "startDate": "2027-01-12",
+      "endDate": "2027-01-12",
+      "eventType": "other",
+      "allDay": true,
+      "semesters": [3, 5, 7],
+      "description": "Showing evaluated answer-sheets of End Semester Exam for Semesters 3, 5, and 7"
+    },
+    {
+      "title": "Last Day of Showing Evaluated Answer-Sheets ESE (Semester 1)",
+      "startDate": "2027-01-15",
+      "endDate": "2027-01-15",
+      "eventType": "other",
+      "allDay": true,
+      "semesters": [1],
+      "description": "Showing evaluated answer-sheets of End Semester Exam for Semester 1"
+    },
+    {
+      "title": "Result Preparation and Declaration",
+      "startDate": "2027-01-20",
+      "endDate": "2027-01-20",
+      "eventType": "other",
+      "allDay": true,
+      "semesters": [1, 3, 5, 7],
+      "description": "Official result preparation and declaration for Odd Semester"
+    }
+  ]
+}

@@ -1,4 +1,5 @@
 import { prisma } from "../lib/prisma";
+import { isSameHoliday } from "../utils/holidayUtils";
 
 export class AttendanceService {
   private static toLocalIso(date: Date): string {
@@ -25,8 +26,9 @@ export class AttendanceService {
    * 3. Fetch any existing Attendance records for these slots/overrides
    */
   static async getTodayAgenda(userId: string, dateStr: string) {
-    const targetDate = new Date(dateStr);
-    const dayOfWeek = targetDate.getDay() === 0 ? 6 : targetDate.getDay() - 1; // 0=Mon, 6=Sun in our db
+    const [year, month, day] = dateStr.split("-").map(Number);
+    const targetDate = new Date(Date.UTC(year, month - 1, day));
+    const dayOfWeek = targetDate.getUTCDay() === 0 ? 6 : targetDate.getUTCDay() - 1; // 0=Mon, 6=Sun in our db
 
     // We need to fetch the active semester for the user first
     const activeSemester = await prisma.semester.findFirst({
@@ -43,30 +45,62 @@ export class AttendanceService {
       const targetDateEnd = new Date(targetDate);
       targetDateEnd.setHours(23, 59, 59, 999);
 
-      // 1. Fetch regular slots that were active on THIS SPECIFIC targetDate (Time-Travel)
-    const rawRegularSlots = await prisma.timetableSlot.findMany({
-      where: {
-        semesterId: activeSemester.id,
-        dayOfWeek,
-        validFrom: { lte: targetDateEnd },
-        OR: [
-          { validUntil: null },
-          { validUntil: { gte: targetDateEnd } }
-        ]
-      },
-      include: {
-        subject: true,
-      },
-    });
+      // Check if targetDate is past the semester's Last Teaching Day or endDate
+      const semEndDate = new Date(activeSemester.endDate);
+      semEndDate.setHours(23, 59, 59, 999);
 
-    // Deduplicate regular slots by subjectId to prevent showing duplicates on the transition day
+      const lastTeachingEvent = await prisma.event.findFirst({
+        where: {
+          userId,
+          OR: [
+            { semesterId: activeSemester.id },
+            { semesterId: null }
+          ],
+          title: {
+            contains: "Last Teaching Day",
+            mode: "insensitive"
+          }
+        },
+        orderBy: { date: "desc" }
+      });
+
+      let isPastTeachingDay = false;
+      if (lastTeachingEvent) {
+        const lastTeachingDateEnd = new Date(lastTeachingEvent.endDate || lastTeachingEvent.date);
+        lastTeachingDateEnd.setHours(23, 59, 59, 999);
+        if (targetDateEnd > lastTeachingDateEnd) {
+          isPastTeachingDay = true;
+        }
+      } else if (targetDateEnd > semEndDate) {
+        isPastTeachingDay = true;
+      }
+
+      // 1. Fetch regular slots that were active on THIS SPECIFIC targetDate (Time-Travel)
+      const rawRegularSlots = isPastTeachingDay ? [] : await prisma.timetableSlot.findMany({
+        where: {
+          semesterId: activeSemester.id,
+          dayOfWeek,
+          validFrom: { lte: targetDateEnd },
+          OR: [
+            { validUntil: null },
+            { validUntil: { gte: targetDateStart } }
+          ]
+        },
+        include: {
+          subject: true,
+        },
+      });
+
+    // Deduplicate regular slots by subjectId and time window to prevent showing duplicates on the transition day
+    // while strictly preserving multiple periods/labs of the same subject on the same day.
     const regularSlots = [];
-    const seenSubjects = new Set<string>();
+    const seenSlotWindows = new Set<string>();
     // Sort descending by validFrom so the newer slot is kept if they overlap
     const sortedRaw = [...rawRegularSlots].sort((a, b) => new Date(b.validFrom).getTime() - new Date(a.validFrom).getTime());
     for (const s of sortedRaw) {
-      if (!seenSubjects.has(s.subjectId)) {
-        seenSubjects.add(s.subjectId);
+      const timeKey = `${s.subjectId}_${(s.startTime || '').trim()}_${(s.endTime || '').trim()}`;
+      if (!seenSlotWindows.has(timeKey)) {
+        seenSlotWindows.add(timeKey);
         regularSlots.push(s);
       }
     }
@@ -97,9 +131,20 @@ export class AttendanceService {
 
     // Map them together
     const agenda: any[] = [];
+    const nowTime = new Date();
+    const isTargetToday = targetDate.getUTCFullYear() === nowTime.getUTCFullYear() &&
+                          targetDate.getUTCMonth() === nowTime.getUTCMonth() &&
+                          targetDate.getUTCDate() === nowTime.getUTCDate();
 
     // Add regular slots, replacing them if they have an override (rescheduled/holiday)
     for (const slot of regularSlots) {
+      // If a slot was archived/deleted earlier today and has NO marked attendance, skip it from today's agenda
+      if (isTargetToday && slot.validUntil && new Date(slot.validUntil) <= nowTime) {
+        const hasAttendance = attendanceRecords.some(a => a.timetableSlotId === slot.id);
+        if (!hasAttendance) {
+          continue;
+        }
+      }
       const relatedOverride = overrides.find(o => o.originalSlotId === slot.id);
       
       if (relatedOverride) {
@@ -213,6 +258,27 @@ export class AttendanceService {
     overrideId?: string;
     attendanceId?: string;
   }) {
+    const ownsSubject = await prisma.subject.findFirst({
+      where: { id: data.subjectId, userId }
+    });
+
+    if (!ownsSubject) {
+      // If user is clearing or unmarking a ghost class whose subject is already deleted:
+      if (data.status === "not_marked" || data.status === "clear") {
+        await prisma.attendance.deleteMany({
+          where: {
+            userId,
+            OR: [
+              ...(data.attendanceId && !data.attendanceId.startsWith("extra-") ? [{ id: data.attendanceId }] : []),
+              { subjectId: data.subjectId }
+            ]
+          }
+        }).catch(() => null);
+        return { success: true, cleared: true, ghost: true };
+      }
+      throw new Error("Forbidden: Subject does not belong to user");
+    }
+
     const targetDate = new Date(data.date);
     
     // Check if record exists
@@ -226,12 +292,14 @@ export class AttendanceService {
           userId,
           subjectId: data.subjectId,
           date: targetDate,
-          ...(data.timetableSlotId 
-            ? { OR: [{ timetableSlotId: data.timetableSlotId }, { timetableSlotId: null }] } 
-            : {}),
-          ...(data.overrideId 
-            ? { OR: [{ overrideId: data.overrideId }, { overrideId: null }] } 
-            : {}),
+          // When a specific slot/override ID is given, match it exactly.
+          // Previously the OR also matched null-slot records, which "stole" orphan records
+          // and left a second floating row behind — causing a phantom extra class in the calendar.
+          ...(data.timetableSlotId
+            ? { timetableSlotId: data.timetableSlotId }
+            : data.overrideId
+              ? { overrideId: data.overrideId }
+              : { timetableSlotId: null, overrideId: null }),
         },
       });
     }
@@ -280,7 +348,8 @@ export class AttendanceService {
       });
     }
 
-    return prisma.attendance.create({
+    try {
+      return await prisma.attendance.create({
       data: {
         userId,
         subjectId: data.subjectId,
@@ -291,6 +360,25 @@ export class AttendanceService {
         overrideId: data.overrideId,
       },
     });
+    } catch (err: any) {
+      if (err.code === "P2002") {
+        const concurrent = await prisma.attendance.findFirst({
+          where: {
+            userId,
+            subjectId: data.subjectId,
+            date: targetDate,
+            ...(data.timetableSlotId ? { timetableSlotId: data.timetableSlotId } : {})
+          }
+        });
+        if (concurrent) {
+          return prisma.attendance.update({
+            where: { id: concurrent.id },
+            data: { status: data.status, remarks: data.remarks || null }
+          });
+        }
+      }
+      throw err;
+    }
   }
 
   static async getAttendanceLogs(userId: string, options: { subjectId?: string; semesterId?: string }) {
@@ -379,12 +467,7 @@ export class AttendanceService {
       include: { subject: true },
     });
 
-    console.log(`getAttendanceLogs options.subjectId=${options.subjectId}`);
-    console.log(`Found ${attendanceRecords.length} attendanceRecords`);
-    const dec1Records = attendanceRecords.filter(a => new Date(a.date).toISOString().includes("2026-11-30") || new Date(a.date).toISOString().includes("2026-12-01"));
-    if (dec1Records.length > 0) {
-      console.log(`Dec 1 records:`, dec1Records.map(a => ({ id: a.id, subjectId: a.subjectId, status: a.status })));
-    }
+
 
     const today = new Date();
     today.setHours(23, 59, 59, 999);
@@ -882,6 +965,18 @@ export class AttendanceService {
     const dayStats = { not_marked: 0, off: 0, missed: 0, attended: 0, mixed: 0 };
     const lectureStats = { off: 0, missed: 0, attended: 0, total: 0, percentage: 0 };
 
+    const lastTeachingEvent = globalEvents.find(e => 
+      /last\s*(teaching|working)\s*day/i.test(e.title)
+    );
+    const lastTeachingDateEnd = lastTeachingEvent 
+      ? new Date(lastTeachingEvent.endDate || lastTeachingEvent.date)
+      : null;
+    if (lastTeachingDateEnd) {
+      lastTeachingDateEnd.setHours(23, 59, 59, 999);
+    }
+    const semEndDate = new Date(activeSemester.endDate);
+    semEndDate.setHours(23, 59, 59, 999);
+
     const numDays = new Date(year, m, 0).getDate();
     for (let day = 1; day <= numDays; day++) {
       const d = new Date(year, m - 1, day);
@@ -901,7 +996,31 @@ export class AttendanceService {
       const isGlobalOff = dayEvents.some(e => ["holiday", "vacation"].includes(e.eventType));
 
       if (dayEvents.length > 0) {
-        eventsObj[dateKey] = dayEvents.map(e => ({
+        // Smart deduplication: collapse holidays that share the same root name or are duplicates on the same date
+        const deduplicatedDayEvents: any[] = [];
+        for (const ev of dayEvents) {
+          const isHol = ev.isHoliday || ["holiday", "restricted_holiday"].includes(ev.eventType);
+          if (isHol) {
+            const existingHolIdx = deduplicatedDayEvents.findIndex(d => 
+              (d.isHoliday || ["holiday", "restricted_holiday"].includes(d.eventType)) &&
+              isSameHoliday(d.title, ev.title)
+            );
+            if (existingHolIdx !== -1) {
+              // Prefer the more descriptive title (e.g. "Dussehra (Vijay Dashmi)" over "Dussehra")
+              if (ev.title.length > deduplicatedDayEvents[existingHolIdx].title.length) {
+                deduplicatedDayEvents[existingHolIdx] = ev;
+              }
+              continue;
+            }
+          } else {
+            // Non-holiday exact duplicate title check
+            const exactDup = deduplicatedDayEvents.some(d => d.title.toLowerCase().trim() === ev.title.toLowerCase().trim());
+            if (exactDup) continue;
+          }
+          deduplicatedDayEvents.push(ev);
+        }
+
+        eventsObj[dateKey] = deduplicatedDayEvents.map(e => ({
           id: e.id,
           title: e.title,
           eventType: e.eventType,
@@ -914,24 +1033,27 @@ export class AttendanceService {
       const dEnd = new Date(d);
       dEnd.setHours(23, 59, 59, 999);
 
-      const rawDaySlots = regularSlots.filter(s => {
+      const isPastTeachingDay = (lastTeachingDateEnd && dEnd > lastTeachingDateEnd) || dEnd > semEndDate;
+
+      const rawDaySlots = isPastTeachingDay ? [] : regularSlots.filter(s => {
         if (s.dayOfWeek !== dbDayOfWeek) return false;
         const validFromDate = new Date(s.validFrom);
         if (validFromDate > dEnd) return false; // Not active yet
         if (s.validUntil) {
           const validUntilDate = new Date(s.validUntil);
-          if (validUntilDate < dEnd) return false; // Already archived before end of day
+          if (validUntilDate < dStart) return false; // Already archived before this day began
         }
         return true;
       });
 
-      // Deduplicate overlapping daySlots (old vs new timetable on transition day) by subjectId
+      // Deduplicate overlapping daySlots (old vs new timetable on transition day) by subjectId and time window
       const daySlots = [];
-      const seenDaySubjects = new Set<string>();
+      const seenDaySlotWindows = new Set<string>();
       const sortedRawDaySlots = [...rawDaySlots].sort((a, b) => new Date(b.validFrom).getTime() - new Date(a.validFrom).getTime());
       for (const s of sortedRawDaySlots) {
-        if (!seenDaySubjects.has(s.subjectId)) {
-          seenDaySubjects.add(s.subjectId);
+        const timeKey = `${s.subjectId}_${(s.startTime || '').trim()}_${(s.endTime || '').trim()}`;
+        if (!seenDaySlotWindows.has(timeKey)) {
+          seenDaySlotWindows.add(timeKey);
           daySlots.push(s);
         }
       }
@@ -967,11 +1089,7 @@ export class AttendanceService {
       // Filter attendance records for this day
       const dayAtts = attendances.filter(a => AttendanceService.toDbLocalIso(a.date) === dateKey);
 
-      if (dateKey === '2026-09-07') {
-        console.log('Sept 7 daySlots:', daySlots.length);
-        console.log('Sept 7 dayAtts:', dayAtts.length);
-        console.log('Sept 7 expectedClasses:', expectedClasses);
-      }
+
 
       // Add manual attendances (that don't match any expected slot/override) to expectedClasses
       for (const a of dayAtts) {
@@ -1037,7 +1155,12 @@ export class AttendanceService {
         if (!isGlobalOff) {
           let att = dayAtts.find(a => a.timetableSlotId === slot.id);
           if (!att) {
-            att = dayAtts.find(a => !handledAttendanceIds.has(a.id) && a.subjectId === slot.subjectId && !a.timetableSlotId);
+            // Fallback: match any unhandled attendance for the same subject on this day.
+            // This covers the case where a slot was swapped/edited (new UUID created) but
+            // the existing attendance record still references the old slot UUID.
+            // Requiring !a.timetableSlotId here would leave those records orphaned and cause
+            // a duplicate "Not Marked" row + stale absent row in the calendar bottom sheet.
+            att = dayAtts.find(a => !handledAttendanceIds.has(a.id) && a.subjectId === slot.subjectId);
           }
           if (att) handledAttendanceIds.add(att.id);
           dayAgenda.push({

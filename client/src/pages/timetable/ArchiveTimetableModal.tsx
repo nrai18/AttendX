@@ -14,6 +14,18 @@ interface ArchiveTimetableModalProps {
 
 const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
+const safeFormatDate = (dateVal: any, fallback = "Unknown Date") => {
+  if (!dateVal) return fallback;
+  try {
+    const raw = String(dateVal).split("T")[0];
+    const d = new Date(raw + "T00:00:00");
+    if (isNaN(d.getTime())) return fallback;
+    return format(d, "MMM d, yyyy");
+  } catch {
+    return fallback;
+  }
+};
+
 export const ArchiveTimetableModal: React.FC<ArchiveTimetableModalProps> = ({ isOpen, onClose, semesterId }) => {
   useScrollLock(isOpen);
   const [versions, setVersions] = useState<any[]>([]);
@@ -26,8 +38,12 @@ export const ArchiveTimetableModal: React.FC<ArchiveTimetableModalProps> = ({ is
     }
   }, [isOpen, semesterId]);
 
-  const getCachedVersions = () => {
+  const getCachedVersions = (semId?: string) => {
     const cacheStore = useCacheStore.getState();
+    const semKey = semId ? `archived_timetables_${semId}` : null;
+    if (semKey && (cacheStore as any)[semKey] && Array.isArray((cacheStore as any)[semKey]) && (cacheStore as any)[semKey].length > 0) {
+      return (cacheStore as any)[semKey];
+    }
     if (cacheStore.archived_timetables && Array.isArray(cacheStore.archived_timetables) && cacheStore.archived_timetables.length > 0) {
       return cacheStore.archived_timetables;
     }
@@ -41,7 +57,7 @@ export const ArchiveTimetableModal: React.FC<ArchiveTimetableModalProps> = ({ is
     const effectiveSemesterId = semesterId || (useCacheStore.getState().timetable as any)?.activeSemester?.id;
 
     // Load from offline cache first (both keys supported)
-    const cached = getCachedVersions();
+    const cached = getCachedVersions(effectiveSemesterId);
     if (cached.length > 0) {
       setVersions(cached);
       if (!selectedVersionId) {
@@ -67,11 +83,14 @@ export const ArchiveTimetableModal: React.FC<ArchiveTimetableModalProps> = ({ is
       const newData = res.data || [];
       
       // Update cache
+      useCacheStore.getState().setCache(`archived_timetables_${effectiveSemesterId}`, newData);
       useCacheStore.getState().setCache('archived_timetables', newData);
       
       setVersions(newData);
-      if (newData.length > 0 && (!selectedVersionId || !cached.length)) {
-        setSelectedVersionId(newData[0].id);
+      if (newData.length > 0) {
+        if (!selectedVersionId || !newData.some((v: any) => v.id === selectedVersionId)) {
+          setSelectedVersionId(newData[0].id);
+        }
       }
     } catch (error) {
       console.error("Failed to load archived timetables:", error);
@@ -86,10 +105,10 @@ export const ArchiveTimetableModal: React.FC<ArchiveTimetableModalProps> = ({ is
     if (isOpen) {
       document.body.style.overflow = 'hidden';
     } else {
-      document.body.style.overflow = 'unset';
+      document.body.style.overflow = '';
     }
     return () => {
-      document.body.style.overflow = 'unset';
+      document.body.style.overflow = '';
     };
   }, [isOpen]);
 
@@ -99,7 +118,7 @@ export const ArchiveTimetableModal: React.FC<ArchiveTimetableModalProps> = ({ is
 
   // Group slots by day
   const slotsByDay: Record<number, any[]> = {};
-  if (selectedVersion) {
+  if (selectedVersion && Array.isArray(selectedVersion.slots)) {
     selectedVersion.slots.forEach((s: any) => {
       if (!slotsByDay[s.dayOfWeek]) slotsByDay[s.dayOfWeek] = [];
       slotsByDay[s.dayOfWeek].push(s);
@@ -138,16 +157,25 @@ export const ArchiveTimetableModal: React.FC<ArchiveTimetableModalProps> = ({ is
                         : "bg-card border-border hover:border-primary/30 text-muted-foreground hover:text-foreground"
                     }`}
                   >
-                    <div className="font-bold text-sm mb-1 text-foreground">Version {versions.length - i}</div>
+                    <div className="font-bold text-sm mb-1 text-foreground flex items-center justify-between gap-1.5">
+                      <span>{v.isCurrent ? "Current Timetable" : `Version ${v.versionNumber || (versions.length - i)}`}</span>
+                      {v.isCurrent && (
+                        <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-500 border border-emerald-500/30">
+                          Active
+                        </span>
+                      )}
+                    </div>
                     <div className="text-xs space-y-1">
                       <div className="flex items-center gap-1.5">
-                        <CalendarIcon className="w-3 h-3" />
+                        <CalendarIcon className="w-3 h-3 flex-shrink-0" />
                         <span>
-                          {format(new Date(v.validFrom.split("T")[0] + "T00:00:00"), "MMM d, yyyy")} - 
-                          {v.validUntil ? format(new Date(v.validUntil.split("T")[0] + "T00:00:00"), "MMM d, yyyy") : "Present"}
+                          {safeFormatDate(v.validFrom)} - 
+                          {v.validUntil ? safeFormatDate(v.validUntil) : "Present"}
                         </span>
                       </div>
-                      
+                      <div className="text-[11px] text-muted-foreground pl-4.5">
+                        {v.slots?.length || 0} classes
+                      </div>
                     </div>
                   </button>
                 ))}
@@ -173,7 +201,7 @@ export const ArchiveTimetableModal: React.FC<ArchiveTimetableModalProps> = ({ is
                           <div key={slot.id} className="bg-muted/30 border border-border rounded-xl p-3 flex flex-col gap-2">
                             <div className="flex justify-between items-start gap-2">
                               <div className="font-bold text-sm text-foreground line-clamp-2">
-                                {slot.subject?.name || "Unknown Subject"}
+                                {slot.subject?.code ? `${slot.subject.name} (${slot.subject.code})` : slot.subject?.name || "Unknown Subject"}
                               </div>
                               <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-primary/10 text-primary whitespace-nowrap">
                                 {slot.slotType}

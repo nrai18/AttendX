@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from "react";
 import { format, addMonths, subMonths, startOfMonth, endOfMonth, startOfWeek, endOfWeek, isSameMonth, isSameDay, addDays, isAfter, startOfDay, differenceInDays } from "date-fns";
-import { ChevronLeft, ChevronRight, Upload, Calendar as CalendarIcon, Loader2, Sparkles, AlertTriangle, ListFilter, AlignLeft, CalendarDays, Timer, CheckCircle2, Plus, Trash2, Palmtree } from "lucide-react";
+import { ChevronLeft, ChevronRight, Upload, Calendar as CalendarIcon, Loader2, Sparkles, AlertTriangle, ListFilter, AlignLeft, CalendarDays, Timer, CheckCircle2, Plus, Trash2, Palmtree, GraduationCap } from "lucide-react";
 import { api } from "../../lib/api";
 import { EventWizardModal } from "./EventWizardModal";
 import { AddEventModal } from "./AddEventModal";
 import { CreateSemesterModal } from "../../components/semester/CreateSemesterModal";
+import { SemesterTransitionModal } from "../../components/semester/SemesterTransitionModal";
 import { CalendarImportModal } from "../../components/calendar/CalendarImportModal";
 import { HolidayListTab } from "./HolidayListTab";
 import { Link, useSearchParams, useParams } from "react-router-dom";
@@ -85,9 +86,11 @@ export const SemesterHubPage = () => {
   const [wizardPayload, setWizardPayload] = useState<any>(null);
   const [isCreateSemesterOpen, setIsCreateSemesterOpen] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [isTransitionModalOpen, setIsTransitionModalOpen] = useState(false);
 
   useEffect(() => {
     const unregister = useBackHandlerStore.getState().register(() => {
+      if (isTransitionModalOpen) { setIsTransitionModalOpen(false); return true; }
       if (isImportModalOpen) { setIsImportModalOpen(false); return true; }
       if (isAddEventOpen) { setIsAddEventOpen(false); return true; }
       if (isWizardOpen) { setIsWizardOpen(false); return true; }
@@ -95,7 +98,7 @@ export const SemesterHubPage = () => {
       return false;
     });
     return () => unregister();
-  }, [isImportModalOpen, isAddEventOpen, isWizardOpen, isCreateSemesterOpen]);
+  }, [isTransitionModalOpen, isImportModalOpen, isAddEventOpen, isWizardOpen, isCreateSemesterOpen]);
 
   const nextEventId = React.useMemo(() => {
     const _today = startOfDay(new Date());
@@ -266,6 +269,28 @@ export const SemesterHubPage = () => {
     }
   };
 
+  const handleDeleteSingleEvent = (event: AppEvent) => {
+    toast(`Delete event "${event.title}"?`, {
+      description: "This will remove the event from your semester calendar.",
+      action: {
+        label: "Delete",
+        onClick: async () => {
+          try {
+            await api.delete(`/events/${event.id}`);
+            toast.success("Event deleted successfully!");
+            fetchData();
+            fetchCalendar();
+            window.dispatchEvent(new Event("attendance-updated"));
+          } catch (error) {
+            console.error("Failed to delete event:", error);
+            toast.error("Failed to delete event.");
+          }
+        }
+      },
+      cancel: { label: "Cancel", onClick: () => {} }
+    });
+  };
+
   const getEventDotSolidColor = (event: any) => {
     const type = event?.eventType || "";
     if (type === "fest") return "bg-fuchsia-500";
@@ -418,7 +443,7 @@ export const SemesterHubPage = () => {
                 deleteLabel="Clear Calendar" 
                 undoLabel="Cancel"
                 onConfirm={handleClearEvents} 
-                icon={<Trash2 className="w-4 h-4 mr-2 inline-block" />}
+                icon={<Trash2 className="w-4 h-4" />}
               />
             </div>
           )}
@@ -440,6 +465,17 @@ export const SemesterHubPage = () => {
             <Sparkles className="w-4 h-4" />
             AI Import
           </button>
+
+          {activeSemester && (
+            <button
+              onClick={() => setIsTransitionModalOpen(true)}
+              className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold bg-amber-500/10 text-amber-500 hover:bg-amber-500/20 border border-amber-500/30 transition-all cursor-pointer"
+              title="Transition to next semester"
+            >
+              <GraduationCap className="w-4 h-4" />
+              <span>Next Semester</span>
+            </button>
+          )}
         </div>
         
         <CalendarImportModal 
@@ -448,6 +484,34 @@ export const SemesterHubPage = () => {
           onSuccess={fetchData}
         />
       </div>
+
+      {activeSemester && (() => {
+        const end = new Date(activeSemester.endDate);
+        end.setHours(23, 59, 59, 999);
+        return new Date() > end;
+      })() && (
+        <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-500 flex items-center justify-center shrink-0">
+              <GraduationCap className="w-5 h-5" />
+            </div>
+            <div>
+              <h4 className="text-sm font-bold text-foreground">
+                {activeSemester.name} Complete!
+              </h4>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Ready for your next semester? Tap to reset app data & pre-load official calendar.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => setIsTransitionModalOpen(true)}
+            className="px-4 py-2 rounded-xl bg-primary text-primary-foreground text-xs font-bold transition-all hover:bg-primary/90 shadow-sm shrink-0 cursor-pointer"
+          >
+            Transition Now
+          </button>
+        </div>
+      )}
 
       {activeSemester ? (
         <div className="bg-card border border-border rounded-2xl p-6 flex flex-col md:flex-row md:items-center gap-6 shadow-xl">
@@ -752,10 +816,17 @@ export const SemesterHubPage = () => {
                       : format(parseLocalDate(event.date), "MMMM d, yyyy")}
                   </p>
                 </div>
-                <div className="flex justify-start">
+                <div className="flex items-center gap-2">
                   <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border ${getEventColor(event)}`}>
                     {event.eventType.replace(/_/g, " ")}
                   </span>
+                  <button
+                    onClick={() => handleDeleteSingleEvent(event)}
+                    className="p-1.5 text-muted-foreground hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors cursor-pointer"
+                    title="Delete event"
+                  >
+                    <Trash2 size={15} />
+                  </button>
                 </div>
               </div>
             ))}
@@ -791,6 +862,12 @@ export const SemesterHubPage = () => {
       <CreateSemesterModal
         isOpen={isCreateSemesterOpen}
         onClose={() => setIsCreateSemesterOpen(false)}
+        onSuccess={fetchData}
+      />
+
+      <SemesterTransitionModal
+        isOpen={isTransitionModalOpen}
+        onClose={() => setIsTransitionModalOpen(false)}
         onSuccess={fetchData}
       />
     </div>

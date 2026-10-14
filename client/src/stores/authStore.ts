@@ -33,7 +33,7 @@ interface AuthState {
   setAccessToken: (token: string | null) => void;
   setRefreshToken: (token: string | null) => void;
   setAuth: (user: User, accessToken: string, refreshToken?: string) => void;
-  logout: () => void;
+  logout: (skipBackendCall?: boolean) => void;
   setLoading: (loading: boolean) => void;
   setHasHydrated: (h: boolean) => void;
 }
@@ -72,16 +72,16 @@ export const useAuthStore = create<AuthState>()(
         });
       },
 
-      logout: async () => {
+      logout: async (skipBackendCall = false) => {
         const wasAuthenticated = get().isAuthenticated;
 
-        try {
-          // Clear the device FCM token in the backend so logged-out devices don't get push notifications
-          if (wasAuthenticated) {
+        if (!skipBackendCall && wasAuthenticated) {
+          try {
+            // Clear the device FCM token in the backend so logged-out devices don't get push notifications
             await api.patch('/users/me', { fcmToken: null });
+          } catch (error) {
+            console.error("Failed to clear FCM token on logout:", error);
           }
-        } catch (error) {
-          console.error("Failed to clear FCM token on logout:", error);
         }
 
         const keysToRemove = [

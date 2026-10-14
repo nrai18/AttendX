@@ -1,13 +1,24 @@
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Button } from '../components/ui/button';
 import { ArrowLeft, Home } from 'lucide-react';
 
 export const NotFoundPage: React.FC = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const errorParam = searchParams.get('error');
+
+  const title = errorParam ? 'Something Went Wrong' : 'Page Not Found';
+  const description = errorParam
+    ? (errorParam === 'domain'
+        ? 'Only @iiitu.ac.in or @gmail.com accounts are permitted.'
+        : errorParam.length > 80
+        ? 'An unexpected error occurred while processing your request. Please try again.'
+        : errorParam)
+    : "We couldn't find the page you were looking for. It might have been moved, deleted, or perhaps it never existed.";
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-[85vh] space-y-2 text-center px-4 select-none">
+    <div className="flex flex-col items-center justify-center min-h-[85vh] w-full space-y-2 text-center px-4 select-none">
       
       {/* 404 Text */}
       <div className="flex items-center justify-center gap-2 mb-[-20px] z-10">
@@ -45,9 +56,9 @@ export const NotFoundPage: React.FC = () => {
       </div>
 
       <div className="mt-8 space-y-3 z-10 relative">
-        <h2 className="text-3xl font-bold tracking-tight text-foreground">Page Not Found</h2>
+        <h2 className="text-3xl font-bold tracking-tight text-foreground">{title}</h2>
         <p className="text-muted-foreground max-w-md pb-6 text-lg">
-          We couldn't find the page you were looking for. It might have been moved, deleted, or perhaps it never existed.
+          {description}
         </p>
         <div className="flex items-center justify-center gap-4">
           <Button onClick={() => navigate(-1)} variant="outline" className="rounded-xl h-11 px-6 font-semibold border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 bg-white dark:bg-slate-900/50 backdrop-blur-sm">
