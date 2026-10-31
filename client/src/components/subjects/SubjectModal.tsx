@@ -4,14 +4,18 @@ import { motion, AnimatePresence } from "motion/react";
 import { api } from "../../lib/api";
 import { toast } from "sonner";
 import { useAuthStore } from "../../stores/authStore";
+import { useAttendanceStore } from "../../stores/attendanceStore";
 import { Stepper } from "../ui/stepper";
 import { useScrollLock } from "../../hooks/useScrollLock";
 import { hapticMedium, hapticSuccess, hapticError, hapticSelection } from "../../utils/haptics";
+import { SoundFX } from "../../utils/soundEffects";
+import { triggerDynamicHUD } from "../ui/dynamic-island-hud";
 
 interface SubjectModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSuccess: () => void;
+  onSuccess: (newSubject?: any) => void;
+  semesterId?: string;
   subject?: {
     id: string;
     name: string;
@@ -24,7 +28,7 @@ interface SubjectModalProps {
 
 const COLORS = ["#8b5cf6", "#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#ec4899", "#14b8a6", "#f43f5e"];
 
-export const SubjectModal: React.FC<SubjectModalProps> = ({ isOpen, onClose, onSuccess, subject }) => {
+export const SubjectModal: React.FC<SubjectModalProps> = ({ isOpen, onClose, onSuccess, semesterId, subject }) => {
   useScrollLock(isOpen);
   const { user } = useAuthStore();
   const [name, setName] = useState("");
@@ -64,31 +68,37 @@ export const SubjectModal: React.FC<SubjectModalProps> = ({ isOpen, onClose, onS
     try {
       hapticMedium();
       setIsSubmitting(true);
-      const payload = {
+      const targetSemId = semesterId || useAttendanceStore.getState().activeSemesterId || undefined;
+      const payload: any = {
         name: name.trim(),
         code: code.trim() || undefined,
         faculty: faculty.trim() || undefined,
         colorHex,
         targetAttendance: targetAttendance !== "" ? Number(targetAttendance) : null,
+        ...(targetSemId ? { semesterId: targetSemId } : {}),
       };
 
+      let savedSubject: any = null;
       if (subject?.id) {
-        await api.patch(`/subjects/${subject.id}`, payload);
-        toast.success("Subject updated successfully");
+        const res = await api.patch(`/subjects/${subject.id}`, payload);
+        savedSubject = res.data;
         hapticSuccess();
-        hapticSuccess();
+        SoundFX.playSnapPopSound();
+        triggerDynamicHUD({ type: "sparkle", label: "Subject Updated" });
       } else {
-        await api.post("/subjects", payload);
-        toast.success("Subject added successfully");
+        const res = await api.post("/subjects", payload);
+        savedSubject = res.data;
         hapticSuccess();
-        hapticSuccess();
+        SoundFX.playSnapPopSound();
+        triggerDynamicHUD({ type: "sparkle", label: "Subject Created" });
       }
 
-      // Notify other components that attendance-related data changed
-      window.dispatchEvent(new Event("attendance-updated"));
-      
-      onSuccess();
+      onSuccess(savedSubject);
       onClose();
+      // Notify other components in background without race-canceling local state
+      setTimeout(() => {
+        window.dispatchEvent(new Event("attendance-updated"));
+      }, 350);
     } catch (error: any) {
       hapticError();
       console.error("Failed to save subject:", error);
@@ -126,21 +136,22 @@ export const SubjectModal: React.FC<SubjectModalProps> = ({ isOpen, onClose, onS
             initial={{ opacity: 0, scale: 0.95, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
-            className="relative w-full max-w-md bg-card border border-border rounded-3xl shadow-xl overflow-hidden"
+            className="relative w-full max-w-md bg-card border border-border rounded-3xl shadow-xl overflow-hidden flex flex-col max-h-[90vh]"
           >
-            <div className="flex items-center justify-between p-6 pb-4 border-b border-border/50">
+            <div className="flex items-center justify-between p-4 sm:p-6 pb-4 border-b border-border/50 shrink-0">
               <h2 className="text-xl font-bold text-foreground">
                 {subject ? "Edit Subject" : "New Subject"}
               </h2>
               <button
                 onClick={onClose}
-                className="p-2 -mr-2 rounded-full text-muted-foreground hover:bg-muted transition-colors"
+                className="p-2 -mr-1 rounded-full text-muted-foreground hover:bg-muted transition-colors cursor-pointer"
+                aria-label="Close"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="p-6 space-y-5">
+            <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-5 overflow-y-auto flex-1">
               <div className="space-y-1.5">
                 <label className="text-sm font-medium text-foreground">Subject Name *</label>
                 <input
@@ -183,8 +194,8 @@ export const SubjectModal: React.FC<SubjectModalProps> = ({ isOpen, onClose, onS
                     Global: {user?.targetAttendance ?? 75}%
                   </span>
                 </div>
-                <div className="flex items-center gap-3">
-                  <div className="flex-1">
+                <div className="flex items-center gap-2 sm:gap-3">
+                  <div className="flex-1 min-w-0">
                     <Stepper 
                       min={0} 
                       max={100} 
@@ -196,7 +207,7 @@ export const SubjectModal: React.FC<SubjectModalProps> = ({ isOpen, onClose, onS
                     <button
                       type="button"
                       onClick={() => setTargetAttendance("")}
-                      className="px-3 py-1.5 bg-muted hover:bg-muted/80 text-muted-foreground text-xs font-semibold rounded-lg transition-colors"
+                      className="px-3 py-1.5 bg-muted hover:bg-muted/80 text-muted-foreground text-xs font-semibold rounded-lg transition-colors shrink-0 cursor-pointer"
                     >
                       Clear
                     </button>
@@ -209,7 +220,7 @@ export const SubjectModal: React.FC<SubjectModalProps> = ({ isOpen, onClose, onS
 
               <div className="space-y-3">
                 <label className="text-sm font-medium text-foreground">Color Theme</label>
-                <div className="flex flex-wrap gap-3">
+                <div className="flex flex-wrap gap-2.5 sm:gap-3">
                   {COLORS.map((color) => (
                     <button
                       key={color}
@@ -218,29 +229,29 @@ export const SubjectModal: React.FC<SubjectModalProps> = ({ isOpen, onClose, onS
                         hapticSelection();
                         setColorHex(color);
                       }}
-                      className="relative w-10 h-10 rounded-full transition-transform hover:scale-110 focus:outline-none"
+                      className="relative w-9 h-9 sm:w-10 sm:h-10 rounded-full transition-transform hover:scale-110 focus:outline-none cursor-pointer"
                       style={{ backgroundColor: color }}
                     >
                       {colorHex === color && (
-                        <Check className="absolute inset-0 m-auto text-white w-5 h-5 drop-shadow-md" />
+                        <Check className="absolute inset-0 m-auto text-white w-4 h-4 sm:w-5 sm:h-5 drop-shadow-md" />
                       )}
                     </button>
                   ))}
                 </div>
               </div>
 
-              <div className="pt-4 flex justify-end gap-3">
+              <div className="pt-3 border-t border-border/40 flex items-center justify-end gap-3">
                 <button
                   type="button"
                   onClick={onClose}
-                  className="px-5 py-2.5 rounded-xl text-sm font-semibold text-muted-foreground hover:bg-muted transition-colors"
+                  className="flex-1 sm:flex-none px-4 sm:px-5 py-2.5 rounded-xl text-xs sm:text-sm font-semibold text-muted-foreground hover:bg-muted transition-colors cursor-pointer text-center"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="px-5 py-2.5 rounded-xl text-sm font-semibold bg-foreground hover:bg-foreground/90 text-background transition-colors disabled:opacity-50 flex items-center gap-2 shadow-md shadow-black/10 dark:shadow-white/10"
+                  className="flex-[1.4] sm:flex-none px-5 sm:px-6 py-2.5 rounded-xl text-xs sm:text-sm font-semibold bg-foreground hover:bg-foreground/90 text-background transition-colors disabled:opacity-50 flex items-center justify-center gap-2 shadow-md shadow-black/10 dark:shadow-white/10 cursor-pointer"
                 >
                   {isSubmitting ? "Saving..." : "Save Subject"}
                 </button>

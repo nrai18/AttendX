@@ -42,6 +42,19 @@ export class AIManager {
       const currentModel = modelsToTry[mIndex];
       const modelOptions = { ...options, model: currentModel };
       
+      // Normalize thinkingConfig: strip unsupported thinkingLevel and ensure valid thinkingBudget
+      if (modelOptions.config?.thinkingConfig) {
+        modelOptions.config = { ...modelOptions.config };
+        const tc = { ...modelOptions.config.thinkingConfig };
+        if ('thinkingLevel' in tc) {
+          delete tc.thinkingLevel;
+          if (!('thinkingBudget' in tc)) {
+            tc.thinkingBudget = 0;
+          }
+        }
+        modelOptions.config.thinkingConfig = tc;
+      }
+      
       let attemptsOnThisModel = 0;
       const maxAttempts = this.keys.length;
 
@@ -104,6 +117,14 @@ export class AIManager {
           if (typeof cleanMsg === 'string' && cleanMsg.length > 200) cleanMsg = cleanMsg.slice(0, 200) + '...';
           
           console.warn(`[AIManager] Model ${currentModel} on Key ${this.currentKeyIndex} failed (${status} - ${cleanMsg}).`);
+          
+          if (status === 400 && (msg.includes('thinking') || msg.includes('Thinking') || msg.includes('thinkingConfig'))) {
+            console.warn(`[AIManager] Invalid thinkingConfig detected for ${currentModel}. Stripping thinkingConfig and retrying...`);
+            if (modelOptions.config) {
+              delete modelOptions.config.thinkingConfig;
+            }
+            continue;
+          }
           
           if (status === 503 || msg.includes('503') || msg.includes('UNAVAILABLE') || msg.includes('overloaded')) {
              console.warn(`[AIManager] 503 Unavailable detected. Downgrading model immediately...`);

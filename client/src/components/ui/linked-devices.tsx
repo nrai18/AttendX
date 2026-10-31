@@ -7,11 +7,17 @@ import {
   X,
   Globe,
   Laptop,
+  LogOut,
+  Trash2,
 } from "lucide-react";
 import { api } from "../../lib/api";
 import { toast } from "sonner";
 import { useHardwareBack } from "../../hooks/useHardwareBack";
 import { useScrollLock } from "../../hooks/useScrollLock";
+import { SoundFX } from "../../utils/soundEffects";
+import { confirmDeleteToast } from "./confirm-delete-toast";
+import { triggerDynamicHUD } from "./dynamic-island-hud";
+import { hapticMedium, hapticHeavy, hapticSelection } from "../../utils/haptics";
 
 interface Session {
   id: string;
@@ -144,28 +150,89 @@ function formatShortDate(dateStr: string) {
   return d.toLocaleDateString("en-US", { month: "short", day: "2-digit" }); // Jul 15
 }
 
-function SessionRow({ session, onRevoke }: { session: Session; onRevoke: () => void }) {
+function SessionRow({
+  session,
+  onRevoke,
+  isTerminating,
+  staggerDelay = 0,
+}: {
+  session: Session;
+  onRevoke: () => void;
+  isTerminating?: boolean;
+  staggerDelay?: number;
+}) {
   const locationText = session.location && session.location !== "Unknown Location" ? session.location : null;
   const subtitle = getSessionSubtitle(session);
 
   return (
-    <button
-      onClick={onRevoke}
-      className="w-full flex items-center gap-3.5 px-4 py-3 hover:bg-accent/60 transition-colors text-left"
+    <div
+      style={
+        isTerminating
+          ? {
+              animation: `sessionWhooshTrajectory 0.45s cubic-bezier(0.2, 0.9, 0.3, 1) ${staggerDelay}ms forwards`,
+              pointerEvents: "none",
+              zIndex: 50,
+            }
+          : undefined
+      }
+      className={`w-full flex items-center justify-between gap-3.5 px-4 py-3 hover:bg-accent/60 active:bg-accent/80 transition-all text-left relative overflow-hidden select-none ${
+        isTerminating ? "bg-rose-500/10 border-rose-500/40" : ""
+      }`}
     >
-      <DeviceAvatar os={session.os} browser={session.browser} />
-      <div className="flex-1 min-w-0 flex flex-col justify-center">
-        <p className="text-[15px] font-semibold text-foreground leading-tight">{getSessionTitle(session)}</p>
-        <p className="text-[13px] text-muted-foreground leading-snug mt-0.5">{subtitle}</p>
-        <p className="text-[13px] text-muted-foreground/80 leading-snug">
-          {locationText && <span>{locationText}{" \u2022 "}</span>}
-          {session.isCurrent
-            ? <span className="text-muted-foreground/80">online</span>
-            : <span>{formatShortDate(session.lastActive)}</span>
-          }
-        </p>
-      </div>
-    </button>
+      <button
+        type="button"
+        onClick={() => {
+          hapticSelection();
+          onRevoke();
+        }}
+        className="flex items-center gap-3.5 flex-1 min-w-0 text-left cursor-pointer"
+      >
+        <DeviceAvatar os={session.os} browser={session.browser} />
+        <div className="flex-1 min-w-0 flex flex-col justify-center">
+          <div className="flex items-center gap-2">
+            <p className="text-[15px] font-semibold text-foreground leading-tight truncate">
+              {getSessionTitle(session)}
+            </p>
+            {session.isCurrent && (
+              <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-emerald-500 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20 shrink-0">
+                Current
+              </span>
+            )}
+          </div>
+          <p className="text-[13px] text-muted-foreground leading-snug mt-0.5 truncate">{subtitle}</p>
+          <p className="text-[13px] text-muted-foreground/80 leading-snug truncate">
+            {locationText && <span>{locationText}{" \u2022 "}</span>}
+            {session.isCurrent
+              ? <span className="text-emerald-500 font-medium">online</span>
+              : <span>{formatShortDate(session.lastActive)}</span>
+            }
+          </p>
+        </div>
+      </button>
+
+      {/* Direct Terminate Action Button */}
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          hapticMedium();
+          onRevoke();
+        }}
+        className={`p-2.5 rounded-xl transition-all cursor-pointer shrink-0 flex items-center justify-center active:scale-95 ${
+          session.isCurrent
+            ? "text-rose-500 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20"
+            : "text-muted-foreground hover:text-rose-500 hover:bg-rose-500/10 border border-transparent hover:border-rose-500/20"
+        }`}
+        title={session.isCurrent ? "Log out this device" : "Terminate this session"}
+        aria-label={session.isCurrent ? "Log Out" : "Terminate Session"}
+      >
+        {session.isCurrent ? (
+          <LogOut className="w-4 h-4 text-rose-500" />
+        ) : (
+          <Trash2 className="w-4 h-4" />
+        )}
+      </button>
+    </div>
   );
 }
 
@@ -177,6 +244,7 @@ export const LinkedDevicesModal: React.FC<LinkedDevicesProps> = ({ isOpen, onClo
   const { user, setUser } = useAuthStore();
   const [sessions, setSessions] = useState<Session[]>(() => cachedSessions || []);
   const [loading, setLoading] = useState(false);
+  const [terminatingSessionIds, setTerminatingSessionIds] = useState<string[]>([]);
 
   const currentSession = sessions.find((s) => s.isCurrent);
   const otherSessions = sessions.filter((s) => !s.isCurrent);
@@ -199,16 +267,16 @@ export const LinkedDevicesModal: React.FC<LinkedDevicesProps> = ({ isOpen, onClo
     let timeout: any;
     let isMounted = true;
     
-    const poll = async () => {
+    const refresh = async (isBackground = false) => {
       if (!isMounted) return;
-      await fetchSessions();
+      await fetchSessions(isBackground);
       if (isMounted) {
-        timeout = setTimeout(poll, 5000);
+        timeout = setTimeout(() => refresh(true), 30000);
       }
     };
     
     if (isOpen) {
-      poll();
+      refresh(false);
     }
     
     return () => { 
@@ -217,7 +285,7 @@ export const LinkedDevicesModal: React.FC<LinkedDevicesProps> = ({ isOpen, onClo
     };
   }, [isOpen]);
 
-  const fetchSessions = async () => {
+  const fetchSessions = async (isBackground = false) => {
     try {
       if (!cachedSessions || cachedSessions.length === 0) {
         setLoading(true);
@@ -230,50 +298,111 @@ export const LinkedDevicesModal: React.FC<LinkedDevicesProps> = ({ isOpen, onClo
         setSessions([]);
       }
     } catch (e: any) {
-      toast.error(e.response?.data?.message || "Failed to load devices");
+      // NEVER show irritating toasts on background polling or if cached devices are already visible
+      if (!isBackground && (!cachedSessions || cachedSessions.length === 0)) {
+        toast.error(e.response?.data?.message || "Failed to load devices");
+      }
     } finally {
       setLoading(false);
     }
   };
 
-  const executeRevoke = async (sessionId: string, isCurrent: boolean) => {
-    try {
-      await api.delete(`/users/sessions/${sessionId}`);
-      // Device removed from list in place
-      if (isCurrent) { useAuthStore.getState().logout(); return; }
-      setSessions((s) => {
-        const next = s.filter((x) => x.id !== sessionId);
-        cachedSessions = next;
-        return next;
-      });
-    } catch (e: any) {
-      toast.error(e.response?.data?.message || "Failed to sign out");
-    }
-  };
+  const handleRevoke = (session: Session) => {
+    SoundFX.warmUp();
+    confirmDeleteToast({
+      title: session.isCurrent ? "Log Out Current Device?" : "Terminate Linked Device?",
+      description: session.isCurrent
+        ? "You will be logged out of AttendX on this device. You will need to sign in again to access your attendance."
+        : `Do you want to log out and terminate the active session for ${getSessionTitle(session)}?`,
+      itemName: getSessionTitle(session) + (session.isCurrent ? " (Current Device)" : ""),
+      confirmLabel: session.isCurrent ? "Log Out" : "Terminate Session",
+      cancelLabel: "Keep Active",
+      icon: session.isCurrent ? <LogOut className="w-5 h-5 text-rose-500" /> : <Trash2 className="w-5 h-5 text-rose-500" />,
+      onConfirm: async () => {
+        // 1. Instant aerodynamic whoosh sound & tactile kick
+        SoundFX.playWhooshSound();
+        hapticHeavy();
 
-  const handleRevoke = (sessionId: string, isCurrent: boolean) => {
-    if (isCurrent) {
-      toast("You will be logged out of this device.", {
-        action: { label: "Confirm", onClick: () => executeRevoke(sessionId, isCurrent) }
-      });
-      return;
-    }
-    executeRevoke(sessionId, isCurrent);
-  };
+        // 2. Trigger whoosh flight trajectory animation
+        setTerminatingSessionIds((prev) => [...prev, session.id]);
 
-  const executeSignOutAllOthers = async () => {
-    try {
-      await api.delete("/users/sessions");
-      // Other sessions cleared in place
-      await fetchSessions();
-    } catch (e: any) {
-      toast.error(e.response?.data?.message || "Failed to sign out");
-    }
+        // 3. Dynamic Island HUD notification fires as row whooshes off
+        setTimeout(() => {
+          triggerDynamicHUD({
+            type: "trash",
+            label: session.isCurrent ? "Device Logged Out" : "Session Terminated",
+            durationMs: 3500,
+          });
+        }, 380);
+
+        // 4. Smooth eviction & API deletion
+        setTimeout(async () => {
+          if (session.isCurrent) {
+            try {
+              await api.delete(`/users/sessions/${session.id}`);
+            } catch {}
+            useAuthStore.getState().logout();
+            return;
+          }
+
+          setSessions((prev) => {
+            const next = prev.filter((s) => s.id !== session.id);
+            cachedSessions = next;
+            return next;
+          });
+          setTerminatingSessionIds((prev) => prev.filter((id) => id !== session.id));
+
+          try {
+            await api.delete(`/users/sessions/${session.id}`);
+          } catch (e: any) {
+            toast.error(e.response?.data?.message || "Failed to terminate session");
+            fetchSessions(true);
+          }
+        }, 460);
+      },
+    });
   };
 
   const handleSignOutAllOthers = () => {
-    toast("Terminate all other sessions?", {
-      action: { label: "Terminate", onClick: () => executeSignOutAllOthers() }
+    SoundFX.warmUp();
+    confirmDeleteToast({
+      title: "Terminate All Other Sessions?",
+      description: "This will immediately sign out all linked devices and active sessions across all platforms except this device.",
+      itemName: `${otherSessions.length} active session${otherSessions.length > 1 ? "s" : ""}`,
+      confirmLabel: "Terminate All",
+      cancelLabel: "Keep Active",
+      icon: <Trash2 className="w-5 h-5 text-rose-500" />,
+      onConfirm: async () => {
+        SoundFX.playWhooshSound();
+        hapticHeavy();
+
+        const ids = otherSessions.map((s) => s.id);
+        setTerminatingSessionIds(ids);
+
+        setTimeout(() => {
+          triggerDynamicHUD({
+            type: "trash",
+            label: "All Other Sessions Terminated",
+            durationMs: 3800,
+          });
+        }, 400);
+
+        setTimeout(async () => {
+          setSessions((prev) => {
+            const next = prev.filter((s) => s.isCurrent);
+            cachedSessions = next;
+            return next;
+          });
+          setTerminatingSessionIds([]);
+
+          try {
+            await api.delete("/users/sessions");
+            fetchSessions(true);
+          } catch (e: any) {
+            toast.error(e.response?.data?.message || "Failed to terminate sessions");
+          }
+        }, 520);
+      },
     });
   };
 
@@ -322,18 +451,43 @@ export const LinkedDevicesModal: React.FC<LinkedDevicesProps> = ({ isOpen, onClo
               ) : (
                 <div className="space-y-6 pt-2">
                   {/* This Device */}
+                  <style>{`
+                    @keyframes sessionWhooshTrajectory {
+                      0% {
+                        transform: perspective(700px) translateY(0) translateX(0) scale(1) rotateY(0deg) rotateZ(0deg);
+                        opacity: 1;
+                        filter: blur(0px);
+                      }
+                      22% {
+                        transform: perspective(700px) translateY(-3px) translateX(-14px) scale(1.02) rotateY(-8deg) rotateZ(-1.5deg);
+                        opacity: 0.95;
+                        box-shadow: 0 4px 24px rgba(239, 68, 68, 0.45);
+                      }
+                      100% {
+                        transform: perspective(700px) translateY(-22px) translateX(130%) scale(0.6) rotateY(26deg) rotateZ(12deg);
+                        opacity: 0;
+                        filter: blur(6px);
+                        visibility: hidden;
+                      }
+                    }
+                  `}</style>
                   {currentSession && (
                     <div className="bg-card sm:rounded-xl border-y sm:border border-border mx-0 sm:mx-4 overflow-hidden shadow-sm">
                       <p className="text-[13px] font-semibold text-[#2AABEE] px-4 pt-3 pb-1">
                         This device
                       </p>
-                      <SessionRow session={currentSession} onRevoke={() => handleRevoke(currentSession.id, true)} />
+                      <SessionRow
+                        session={currentSession}
+                        onRevoke={() => handleRevoke(currentSession)}
+                        isTerminating={terminatingSessionIds.includes(currentSession.id)}
+                      />
                       {otherSessions.length > 0 && (
                         <>
                           <div className="h-px bg-border/60 mx-4" />
                           <button
+                            type="button"
                             onClick={handleSignOutAllOthers}
-                            className="w-full flex items-center gap-4 px-4 py-3 hover:bg-accent/60 active:bg-accent/80 transition-colors text-left"
+                            className="w-full flex items-center gap-4 px-4 py-3 hover:bg-accent/60 active:bg-accent/80 transition-colors text-left cursor-pointer"
                           >
                             <div className="w-11 h-11 flex items-center justify-center shrink-0">
                               <svg className="w-6 h-6 text-[#E53935]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -362,7 +516,12 @@ export const LinkedDevicesModal: React.FC<LinkedDevicesProps> = ({ isOpen, onClo
                       {otherSessions.map((session, idx) => (
                         <div key={session.id}>
                           {idx > 0 && <div className="h-[0.5px] bg-border/60 ml-[68px]" />}
-                          <SessionRow session={session} onRevoke={() => handleRevoke(session.id, false)} />
+                          <SessionRow
+                            session={session}
+                            onRevoke={() => handleRevoke(session)}
+                            isTerminating={terminatingSessionIds.includes(session.id)}
+                            staggerDelay={terminatingSessionIds.length > 1 ? idx * 45 : 0}
+                          />
                         </div>
                       ))}
                     </div>

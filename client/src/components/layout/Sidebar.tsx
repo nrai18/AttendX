@@ -7,7 +7,6 @@ import {
   BookOpen,
   Settings,
   LogOut,
-  GraduationCap,
   LayoutDashboard,
   Sparkles,
   Loader2,
@@ -40,20 +39,32 @@ export const Sidebar: React.FC = () => {
   const isTimetable = location.pathname.startsWith("/timetable");
   const isPredictive = location.pathname.startsWith("/predictive");
   const isSubjects = location.pathname.startsWith("/subjects");
+  const isClassrooms = location.pathname.startsWith("/classrooms");
   
   const [isLoggingOut, setIsLoggingOut] = React.useState(false);
   const handleLogout = async () => {
     hapticWarning();
     setIsLoggingOut(true);
-    try {
-      await api.post("/auth/logout");
-    } catch (e) {}
-    logout();
+    await logout();
   };
 
-  const sidebarBg = (isReports || isPredictive) ? "bg-[#EED3CF]/80 dark:bg-[#1A090C]/80 border-[#EED3CF]/30 dark:border-[#74313A]/30" : (isSemester || isSettings || isToday || isTimetable) ? "bg-transparent border-border/30 backdrop-blur-xl" : "bg-card border-border";
-  const textColor = (isReports || isPredictive) ? "text-[#111827] dark:text-[#FDF8F5]" : "text-foreground";
-  const mutedTextColor = (isReports || isPredictive) ? "text-[#74313A]/60 dark:text-[#EED3CF]/60" : "text-muted-foreground";
+  const sidebarBg = isClassrooms
+    ? "bg-white dark:bg-[#000000] border-neutral-200 dark:border-white/[0.08]"
+    : (isReports || isPredictive) 
+    ? "bg-[#EED3CF]/80 dark:bg-[#1A090C]/80 border-[#EED3CF]/30 dark:border-[#74313A]/30" 
+    : (isSemester || isSettings || isToday || isTimetable) 
+    ? "bg-transparent border-border/30 backdrop-blur-xl" 
+    : "bg-card border-border";
+  const textColor = isClassrooms
+    ? "text-neutral-900 dark:text-white"
+    : (isReports || isPredictive) 
+    ? "text-[#111827] dark:text-[#FDF8F5]" 
+    : "text-foreground";
+  const mutedTextColor = isClassrooms
+    ? "text-neutral-500 dark:text-neutral-400"
+    : (isReports || isPredictive) 
+    ? "text-[#74313A]/60 dark:text-[#EED3CF]/60" 
+    : "text-muted-foreground";
 
   return (
     <aside className={`hidden md:flex flex-col w-64 h-screen ${sidebarBg} border-r p-4 sticky top-0 z-40 transition-colors`}>
@@ -78,6 +89,9 @@ export const Sidebar: React.FC = () => {
               to={item.path}
               onClick={() => hapticSelection()}
               className={({ isActive }) => {
+                if (isActive && isClassrooms) {
+                  return "flex items-center gap-3 px-3 py-2.5 rounded-xl font-semibold text-sm transition-all duration-200 bg-neutral-900 text-white dark:bg-white dark:text-black shadow-md shadow-black/10 dark:shadow-white/10";
+                }
                 if (isActive && isReports) {
                   return "flex items-center gap-3 px-3 py-2.5 rounded-xl font-medium text-sm transition-all duration-200 bg-[#74313A] text-[#FDF8F5] shadow-md shadow-[#74313A]/20";
                 }
@@ -92,6 +106,8 @@ export const Sidebar: React.FC = () => {
                   "flex items-center gap-3 px-3 py-2.5 rounded-xl font-medium text-sm transition-all duration-200",
                   isActive
                     ? "bg-primary text-primary-foreground font-semibold shadow-md shadow-primary/20"
+                    : isClassrooms
+                    ? "text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white hover:bg-neutral-100 dark:hover:bg-white/5"
                     : (isReports || isPredictive)
                       ? "text-[#74313A]/60 dark:text-[#EED3CF]/60 hover:text-[#74313A] dark:hover:text-[#EED3CF] hover:bg-[#74313A]/10 dark:hover:bg-[#EED3CF]/10"
                       : isSubjects
@@ -108,13 +124,13 @@ export const Sidebar: React.FC = () => {
       </nav>
 
       {/* User Profile Card Footer */}
-      <div className={`pt-4 border-t ${(isReports || isPredictive) ? "border-[#EED3CF]/30 dark:border-[#74313A]/30" : "border-border"}`}>
-        <div className={`flex items-center justify-between p-2 rounded-xl border group ${(isReports || isPredictive) ? "bg-[#74313A]/5 dark:bg-[#EED3CF]/5 border-[#EED3CF]/30 dark:border-[#74313A]/30" : "bg-muted/40 border-border"}`}>
+      <div className={`pt-4 border-t ${isClassrooms ? "border-neutral-200 dark:border-white/[0.08]" : (isReports || isPredictive) ? "border-[#EED3CF]/30 dark:border-[#74313A]/30" : "border-border"}`}>
+        <div className={`flex items-center justify-between p-2 rounded-xl border group ${isClassrooms ? "bg-neutral-50 dark:bg-[#0c0d0e] border-neutral-200 dark:border-white/[0.08]" : (isReports || isPredictive) ? "bg-[#74313A]/5 dark:bg-[#EED3CF]/5 border-[#EED3CF]/30 dark:border-[#74313A]/30" : "bg-muted/40 border-border"}`}>
           <NavLink 
             to="/settings?action=edit-profile" 
             className="flex items-center gap-2.5 min-w-0 flex-1 hover:opacity-80 transition-opacity cursor-pointer"
           >
-            <div className={`w-8 h-8 avatar-circle rounded-full overflow-hidden flex items-center justify-center font-bold text-xs shrink-0 ${(isReports || isPredictive) ? "bg-[#74313A]/20 text-[#74313A] dark:bg-[#EED3CF]/20 dark:text-[#EED3CF]" : "bg-primary/20 text-primary"}`}>
+            <div className={`w-8 h-8 avatar-circle rounded-full overflow-hidden flex items-center justify-center font-bold text-xs shrink-0 ${isClassrooms ? "bg-neutral-200 dark:bg-white/10 text-neutral-900 dark:text-white" : (isReports || isPredictive) ? "bg-[#74313A]/20 text-[#74313A] dark:bg-[#EED3CF]/20 dark:text-[#EED3CF]" : "bg-primary/20 text-primary"}`}>
               {user?.avatarUrl && user?.avatarUrl !== "null" ? (<img src={user.avatarUrl} alt="Avatar" className="w-full h-full object-cover" referrerPolicy="no-referrer" onError={(e) => { e.currentTarget.src = "https://api.dicebear.com/7.x/notionists/svg?seed=" + encodeURIComponent(user?.name || "U"); }} />) : (user?.name?.[0] || "U")}
             </div>
             <div className="min-w-0 flex-1">

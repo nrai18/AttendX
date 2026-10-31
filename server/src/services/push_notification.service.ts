@@ -344,4 +344,102 @@ export class PushNotificationService {
       return false;
     }
   }
+
+  /**
+   * Broadcast an FCM notification to all enrolled members of a classroom (excluding sender)
+   */
+  static async sendToClassroomMembers(classroomId: string, excludeUserId: string, title: string, body: string, data?: any) {
+    if (!isFirebaseInitialized) return false;
+
+    try {
+      const members = await prisma.classroomMember.findMany({
+        where: {
+          classroomId,
+          userId: { not: excludeUserId },
+        },
+        select: { userId: true },
+      });
+
+      if (members.length === 0) return true;
+
+      const userIds = members.map(m => m.userId);
+
+      const sessions = await prisma.refreshToken.findMany({
+        where: {
+          userId: { in: userIds },
+          fcmToken: { not: null },
+        },
+        select: { fcmToken: true },
+      });
+
+      const rawTokens = sessions.map(s => s.fcmToken as string).filter(t => t && t.trim() !== '');
+      const tokens = Array.from(new Set(rawTokens));
+      if (tokens.length === 0) return true;
+
+      const stringifiedData: Record<string, string> = {
+        route: `/classrooms/${classroomId}`,
+        url: `/classrooms/${classroomId}`,
+        classroomId,
+      };
+      if (data) {
+        for (const [key, val] of Object.entries(data)) {
+          stringifiedData[key] = typeof val === 'string' ? val : JSON.stringify(val);
+        }
+      }
+
+      const notificationPayload: any = { title, body };
+      const androidPayload: any = {
+        priority: 'high',
+        collapseKey: `classroom_${classroomId}`,
+        notification: {
+          title,
+          body,
+          icon: 'ic_stat_attendx',
+          color: '#10B981',
+          channelId: 'class_alerts',
+          tag: `classroom_${classroomId}`,
+        },
+      };
+
+      const BATCH_SIZE = 500;
+      for (let i = 0; i < tokens.length; i += BATCH_SIZE) {
+        const batch = tokens.slice(i, i + BATCH_SIZE);
+        const response = await getMessaging().sendEachForMulticast({
+          tokens: batch,
+          notification: notificationPayload,
+          android: androidPayload,
+          data: stringifiedData,
+        });
+
+        // Prune stale or uninstalled tokens automatically to protect FCM quotas
+        if (response.failureCount > 0) {
+          const failedTokens: string[] = [];
+          response.responses.forEach((resp, idx) => {
+            if (!resp.success) {
+              const errorCode = resp.error?.code;
+              if (
+                errorCode === 'messaging/invalid-registration-token' ||
+                errorCode === 'messaging/registration-token-not-registered'
+              ) {
+                failedTokens.push(batch[idx]);
+              }
+            }
+          });
+
+          if (failedTokens.length > 0) {
+            await prisma.refreshToken.updateMany({
+              where: { fcmToken: { in: failedTokens } },
+              data: { fcmToken: null },
+            }).catch(() => {});
+          }
+        }
+      }
+
+      console.log(`[PushNotification] Broadcasted classroom announcement to ${tokens.length} member device(s).`);
+      return true;
+    } catch (error) {
+      console.error("[PushNotification] Failed to send classroom broadcast:", error);
+      return false;
+    }
+  }
 }

@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import { generateAccessToken, generateRefreshToken, verifyRefreshToken } from "../utils/jwt";
 import { EmailService } from "./email.service";
+import { CacheService } from "./cache.service";
 import jwt from "jsonwebtoken";
 
 export class AuthService {
@@ -167,6 +168,7 @@ export class AuthService {
         deviceType
       },
     });
+    CacheService.del(user.id, "user:sessions").catch(() => {});
 
     const { passwordHash, ...safeUser } = user;
     const userWithHasPassword = { ...safeUser, hasPassword: !!passwordHash };
@@ -199,6 +201,11 @@ export class AuthService {
     const sessionId = tokenRecord.id;
     const user = tokenRecord.user;
     if (!user) throw new Error("User not found");
+
+    try {
+      const { clearSessionRevocation } = require("../middleware/authenticate");
+      clearSessionRevocation(sessionId);
+    } catch {}
 
     // Disable strict token rotation to prevent flaky mobile network logouts (Token Reuse false positives)
     const accessToken = generateAccessToken(user.id, user.role, sessionId);

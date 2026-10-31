@@ -25,14 +25,20 @@ router.get("/", authenticate, async (req, res) => {
 router.post("/", authenticate, async (req, res) => {
   try {
     const { title, description, deadline, priority, subjectId } = req.body;
+    const d = new Date(deadline);
+    const validDeadline = !isNaN(d.getTime()) ? d : new Date();
     const assignment = await prisma.assignment.create({
       data: {
         userId: (req as any).user.userId,
         title,
         description,
-        deadline: new Date(deadline),
+        deadline: validDeadline,
         priority: priority || "medium",
         subjectId,
+      },
+      include: {
+        completions: true,
+        subject: true,
       },
     });
     res.json(assignment);
@@ -67,10 +73,15 @@ router.patch("/:id", authenticate, updateHandler);
 
 router.delete("/:id", authenticate, async (req, res) => {
   try {
-    await prisma.assignment.delete({
-      where: { id: (req.params.id as string), userId: (req as any).user.userId },
+    const id = req.params.id as string;
+    const userId = (req as any).user.userId;
+    await prisma.assignmentCompletion.deleteMany({
+      where: { assignmentId: id },
     });
-    res.json({ success: true });
+    const result = await prisma.assignment.deleteMany({
+      where: { id, userId },
+    });
+    res.json({ success: true, count: result.count });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: "Failed to delete assignment" });

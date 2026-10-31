@@ -9,7 +9,7 @@ export function useTheme() {
 
   useEffect(() => {
     if (user?.theme && !localStorage.getItem("app_theme")) {
-      setTheme(user.theme as any);
+      setTheme(user.theme as any, undefined, true);
     }
   }, [user?.theme, setTheme]);
 

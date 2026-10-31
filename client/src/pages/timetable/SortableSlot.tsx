@@ -31,6 +31,13 @@ interface SortableSlotProps {
   isSelectMode?: boolean;
   isSelected?: boolean;
   onToggleSelect?: (slotId: string) => void;
+  isCrumbling?: boolean;
+  isFluttering?: boolean;
+  isDominoFalling?: boolean;
+  dominoIndex?: number;
+  isRainDropping?: boolean;
+  rainIndex?: number;
+  isJustDropped?: boolean;
 }
 
 export const SortableSlot: React.FC<SortableSlotProps> = ({
@@ -41,7 +48,15 @@ export const SortableSlot: React.FC<SortableSlotProps> = ({
   isSelectMode,
   isSelected,
   onToggleSelect,
+  isCrumbling,
+  isFluttering,
+  isDominoFalling,
+  dominoIndex = 0,
+  isRainDropping = false,
+  rainIndex = 0,
+  isJustDropped = false,
 }) => {
+  const isCrumpling = isCrumbling || isFluttering;
   const navigate = useNavigate();
   const {
     attributes,
@@ -52,11 +67,34 @@ export const SortableSlot: React.FC<SortableSlotProps> = ({
     isDragging,
   } = useSortable({ id: slot.id, disabled: isSelectMode });
 
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    zIndex: isDragging ? 10 : 1,
-    opacity: isDragging ? 0.8 : 1,
+  const style: React.CSSProperties = {
+    transform: isDominoFalling || isRainDropping || isJustDropped ? undefined : CSS.Transform.toString(transform),
+    transition: isDominoFalling || isCrumpling || isRainDropping || isJustDropped ? undefined : transition,
+    zIndex: isDragging ? 25 : isJustDropped ? 20 : isCrumpling ? 50 : 1,
+    opacity: isDragging ? 0.75 : 1,
+    ...(isCrumpling
+      ? {
+          animation: "origamiPaperCrumbleSlot 4.0s cubic-bezier(0.4, 0, 0.2, 1) forwards",
+          pointerEvents: "none",
+        }
+      : {}),
+    ...(isDominoFalling
+      ? {
+          transformOrigin: "top center",
+          animation: `dominoCascadeFall 1.1s cubic-bezier(0.25, 1, 0.5, 1) ${0.15 + dominoIndex * 0.142}s forwards`,
+          pointerEvents: "none",
+        }
+      : {}),
+    ...(isRainDropping
+      ? {
+          animation: `rainDropSlot 0.65s cubic-bezier(0.22, 1, 0.36, 1) ${Math.min(rainIndex * 0.04, 1.15)}s backwards`,
+        }
+      : {}),
+    ...(isJustDropped
+      ? {
+          animation: "slotDropSnap 0.45s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards",
+        }
+      : {}),
   };
 
   const normalizedStart = normalizeTimeString(slot.startTime, "09:00");
@@ -64,19 +102,74 @@ export const SortableSlot: React.FC<SortableSlotProps> = ({
   const displayTimeRange = formatTimeRange(normalizedStart, normalizedEnd, "09:00 - 10:00");
   const niceTimeFormat = `${formatTo12Hour(normalizedStart)} - ${formatTo12Hour(normalizedEnd)}`;
 
-  if (isDesktop) {
-    return (
-      <div 
-        ref={setNodeRef}
-        style={style}
-        onClick={() => {
-          if (isSelectMode && onToggleSelect) {
-            onToggleSelect(slot.id);
-          } else if (!isSelectMode) {
-            onEdit(slot);
+  return (
+    <>
+      <style>{`
+        @keyframes origamiPaperCrumbleSlot {
+          0% { transform: perspective(900px) scale(1) rotateX(0deg) rotateY(0deg) rotateZ(0deg) translateY(0); opacity: 1; filter: blur(0px); border-radius: 12px; }
+          15% { transform: perspective(900px) scale(0.96) rotateX(24deg) rotateY(-18deg) rotateZ(6deg) translateY(-8px); opacity: 0.98; box-shadow: 0 16px 30px rgba(0,0,0,0.3); }
+          35% { transform: perspective(900px) scale(0.82) rotateX(-36deg) rotateY(42deg) rotateZ(-16deg) translateY(-14px); opacity: 0.92; filter: contrast(1.15); border-radius: 18px; }
+          55% { transform: perspective(900px) scale(0.65) rotateX(65deg) rotateY(-60deg) rotateZ(35deg) translateY(-8px); opacity: 0.82; border-radius: 35%; }
+          75% { transform: perspective(900px) scale(0.42) rotateX(-85deg) rotateY(120deg) rotateZ(-70deg) translateY(15px); opacity: 0.65; border-radius: 50%; filter: blur(0.5px); }
+          90% { transform: perspective(900px) scale(0.24) rotateX(160deg) rotateY(240deg) rotateZ(180deg) translateY(65px); opacity: 0.35; border-radius: 50%; filter: blur(2px); }
+          100% { transform: perspective(900px) scale(0) rotateX(220deg) rotateY(360deg) rotateZ(270deg) translateY(120px); opacity: 0; filter: blur(6px); visibility: hidden; }
+        }
+        @keyframes dominoCascadeFall {
+          0% { transform: perspective(800px) rotateX(0deg) translateY(0) scale(1); opacity: 1; }
+          50% { transform: perspective(800px) rotateX(70deg) translateY(25px) scale(0.92); opacity: 0.8; }
+          100% { transform: perspective(800px) rotateX(90deg) translateY(55px) scale(0.7); opacity: 0; }
+        }
+        @keyframes rainDropSlot {
+          0% {
+            opacity: 0;
+            transform: perspective(800px) translateY(-85px) scaleY(1.2) scaleX(0.88);
+            filter: blur(4px);
           }
-        }}
-        className={`relative group p-3 rounded-xl border transition-all duration-200 cursor-pointer ${
+          55% {
+            opacity: 0.95;
+            transform: perspective(800px) translateY(6px) scaleY(0.92) scaleX(1.05);
+            filter: blur(0px);
+          }
+          75% {
+            transform: perspective(800px) translateY(-3px) scaleY(1.03) scaleX(0.98);
+          }
+          100% {
+            opacity: 1;
+            transform: perspective(800px) translateY(0px) scale(1);
+            filter: blur(0px);
+          }
+        }
+        @keyframes slotDropSnap {
+          0% {
+            transform: scale(1.06) translateY(-8px);
+            box-shadow: 0 14px 28px -4px rgba(59, 130, 246, 0.35), 0 0 0 2px rgba(59, 130, 246, 0.6);
+          }
+          45% {
+            transform: scale(0.97) translateY(2px);
+            box-shadow: 0 4px 12px -2px rgba(59, 130, 246, 0.25), 0 0 0 1.5px rgba(59, 130, 246, 0.4);
+          }
+          75% {
+            transform: scale(1.01) translateY(-1px);
+          }
+          100% {
+            transform: scale(1) translateY(0);
+            box-shadow: none;
+          }
+        }
+      `}</style>
+      {isDesktop ? (
+        <div 
+          id={`slot-card-${slot.id}`}
+          ref={setNodeRef}
+          style={style}
+          onClick={() => {
+            if (isSelectMode && onToggleSelect) {
+              onToggleSelect(slot.id);
+            } else if (!isSelectMode) {
+              onEdit(slot);
+            }
+          }}
+        className={`relative group p-3 rounded-xl border transition-all duration-200 cursor-pointer animate-in fade-in zoom-in-[0.98] ${
           isSelected
             ? "border-primary bg-primary/10 shadow-sm"
             : "border-border bg-card/90 hover:border-primary/50 hover:shadow-md"
@@ -134,7 +227,7 @@ export const SortableSlot: React.FC<SortableSlotProps> = ({
           <h3 className="text-sm font-bold text-foreground leading-tight mb-1 truncate" title={slot.subject?.name}>{slot.subject?.name}</h3>
           <div className="flex items-center justify-between text-[10px] uppercase font-bold text-muted-foreground mt-1">
             <span 
-              className="px-1.5 py-0.5 rounded border tracking-wider"
+              className="px-1.5 py-0.5 rounded-lg border tracking-wider"
               style={{
                 backgroundColor: slot.subject?.colorHex ? `${slot.subject.colorHex}15` : "var(--muted)",
                 borderColor: slot.subject?.colorHex ? `${slot.subject.colorHex}30` : "transparent",
@@ -147,22 +240,20 @@ export const SortableSlot: React.FC<SortableSlotProps> = ({
           </div>
         </div>
       </div>
-    );
-  }
-
-  // Mobile layout
-  return (
-    <div 
-      ref={setNodeRef}
-      style={style}
-      onClick={() => {
+      ) : (
+      /* Mobile layout */
+      <div 
+        id={`slot-card-${slot.id}`}
+        ref={setNodeRef}
+        style={style}
+        onClick={() => {
           if (isSelectMode && onToggleSelect) {
             onToggleSelect(slot.id);
           } else if (!isSelectMode) {
             onEdit(slot);
           }
         }}
-      className={`flex items-center justify-between p-4 rounded-2xl border transition-all shadow-sm ${
+      className={`flex items-center justify-between p-4 rounded-2xl border transition-all shadow-sm animate-in fade-in zoom-in-[0.98] duration-200 ${
         isSelected 
           ? "border-primary bg-primary/10 ring-1 ring-primary/40" 
           : "bg-card border-border hover:border-border/80"
@@ -199,9 +290,9 @@ export const SortableSlot: React.FC<SortableSlotProps> = ({
         <div className="flex-1 min-w-0">
           <h3 className="text-base font-bold text-foreground truncate">{slot.subject?.name || "Unknown Subject"}</h3>
           <div className="flex flex-wrap items-center gap-2 mt-1 text-[11px] font-bold text-muted-foreground uppercase tracking-wider">
-            <span className="bg-muted px-2 py-0.5 rounded-md text-foreground/90 font-semibold font-mono shadow-sm">{displayTimeRange}</span>
+            <span className="bg-muted px-2 py-0.5 rounded-lg text-foreground/90 font-semibold font-mono shadow-sm">{displayTimeRange}</span>
             <span 
-              className="px-1.5 py-0.5 rounded border tracking-wider"
+              className="px-1.5 py-0.5 rounded-lg border tracking-wider"
               style={{
                 backgroundColor: slot.subject?.colorHex ? `${slot.subject.colorHex}15` : "var(--muted)",
                 borderColor: slot.subject?.colorHex ? `${slot.subject.colorHex}30` : "transparent",
@@ -244,5 +335,7 @@ export const SortableSlot: React.FC<SortableSlotProps> = ({
         </div>
       )}
     </div>
+    )}
+  </>
   );
 };

@@ -152,6 +152,18 @@ function createInMemoryModelHandler(modelName: string) {
       memoryStore[storeKey] = list.filter((item) => !matchesWhere(item, args?.where));
       return { count: initialCount - memoryStore[storeKey].length };
     },
+    async createMany(args: any) {
+      const list = memoryStore[storeKey];
+      const items = Array.isArray(args?.data) ? args.data : (args?.data ? [args.data] : []);
+      const createdItems = items.map((item: any) => ({
+        id: item.id || `mem_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        ...item,
+      }));
+      list.push(...createdItems);
+      return { count: createdItems.length };
+    },
     async count(args: any) {
       const list = memoryStore[storeKey];
       return list.filter((item) => matchesWhere(item, args?.where)).length;
@@ -165,7 +177,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 const isTransientConnectionError = (dbError: any): boolean => {
   if (!dbError) return false;
   const code = String(dbError?.code || dbError?.cause?.code || "");
-  const msg = `${dbError?.message || ""} ${dbError?.cause?.message || ""}`.toLowerCase();
+  const msg = `${dbError?.message || ""} ${dbError?.cause?.message || ""} ${dbError?.meta?.driverAdapterError || ""}`.toLowerCase();
   return (
     code.startsWith("P1") ||
     code === "ECONNRESET" ||
@@ -176,9 +188,14 @@ const isTransientConnectionError = (dbError: any): boolean => {
     msg.includes("timeout") ||
     msg.includes("terminated unexpectedly") ||
     msg.includes("network") ||
-    msg.includes("socket")
+    msg.includes("socket") ||
+    msg.includes("can't reach database") ||
+    msg.includes("databasenotreachable") ||
+    msg.includes("driveradaptererror")
   );
 };
+
+const DB_RETRY_DELAYS_MS = [400, 1200, 2500];
 
 let realPrisma: any = null;
 if (process.env.DATABASE_URL && process.env.DATABASE_URL.trim().length > 0) {
@@ -196,24 +213,20 @@ if (process.env.DATABASE_URL && process.env.DATABASE_URL.trim().length > 0) {
     const pool = new Pool({
       connectionString: connStr,
       keepAlive: true,
-      keepAliveInitialDelayMillis: 5000,
-      min: 2,
-      max: 8,
-      idleTimeoutMillis: 60000,
-      connectionTimeoutMillis: 20000,
+      keepAliveInitialDelayMillis: 3000,
+      min: 0,
+      max: 20,
+      idleTimeoutMillis: 30000,
+      connectionTimeoutMillis: 8000,
       maxUses: 500,
     });
     pool.on("error", (err) => {
       console.warn("[pg] Idle client error (evicted from pool):", err.message);
     });
-    // Pre-warm 2 pooled connections on startup so the first wave of requests never waits on cold TLS handshakes
-    Promise.all([pool.connect(), pool.connect()])
-      .then((clients) => clients.forEach((c) => c.release()))
-      .catch(() => {});
-    // Keep pooled Neon connections warm with a lightweight 20s heartbeat
-    setInterval(() => {
-      pool.query("SELECT 1").catch(() => {});
-    }, 20000).unref();
+    // Serverless-friendly pg pool: idle connections drain to 0 allowing Neon to auto-suspend when inactive
+
+
+
     const adapter = new PrismaPg(pool);
     realPrisma = new PrismaClient({ adapter });
   } catch (err) {
@@ -235,8 +248,15 @@ export const prisma = new Proxy(
             return await boundFn(...args);
           } catch (dbError: any) {
             if (isTransientConnectionError(dbError)) {
-              await new Promise((r) => setTimeout(r, 200));
-              return await boundFn(...args);
+              for (const delayMs of DB_RETRY_DELAYS_MS) {
+                try {
+                  await new Promise((r) => setTimeout(r, delayMs));
+                  return await boundFn(...args);
+                } catch (retryError: any) {
+                  dbError = retryError;
+                  if (!isTransientConnectionError(dbError)) break;
+                }
+              }
             }
             throw dbError;
           }
@@ -259,8 +279,8 @@ export const prisma = new Proxy(
                 }
 
                 if (isTransientConnectionError(dbError)) {
-                  // Retry up to 2 times on a fresh pooled connection
-                  for (const delayMs of [200, 500]) {
+                  // Retry up to 3 times on a fresh pooled connection spanning ~4.1 seconds
+                  for (const delayMs of DB_RETRY_DELAYS_MS) {
                     try {
                       await new Promise((r) => setTimeout(r, delayMs));
                       return await originalFn.apply(targetModel, args);

@@ -92,7 +92,7 @@ export class AiChatService {
     const formattedHistory =
       history && history.length > 0
         ? history
-            .slice(-3)
+            .slice(-10)
             .map((m: any) => `${m.role === "user" ? "Student" : "Copilot"}: ${m.content || m.text || ""}`)
             .join("\n")
         : "None";
@@ -224,14 +224,16 @@ ${formattedHistory}
       history: effectiveHistory,
     };
 
-    // Auto-enrich missing profile / semester metadata from database if userId exists
-    if (copilotContext.userId && (!copilotContext.userBirthday || !copilotContext.endDate || !copilotContext.userEmail)) {
+    // Auto-enrich missing profile / semester metadata & calendar events from database if userId exists
+    if (copilotContext.userId) {
       try {
         const [dbUser, dbSem] = await Promise.all([
-          prisma.user.findUnique({
-            where: { id: copilotContext.userId },
-            select: { birthday: true, email: true, name: true },
-          }),
+          (!copilotContext.userBirthday || !copilotContext.userEmail || !copilotContext.userName || copilotContext.userName === "Student")
+            ? prisma.user.findUnique({
+                where: { id: copilotContext.userId },
+                select: { birthday: true, email: true, name: true },
+              })
+            : Promise.resolve(null),
           !copilotContext.endDate
             ? prisma.semester.findFirst({
                 where: { userId: copilotContext.userId, isActive: true },
@@ -254,6 +256,37 @@ ${formattedHistory}
           if (!copilotContext.startDate) copilotContext.startDate = dbSem.startDate.toISOString().split("T")[0];
           if (!copilotContext.endDate) copilotContext.endDate = dbSem.endDate.toISOString().split("T")[0];
           if (!copilotContext.lastWorkingDay) copilotContext.lastWorkingDay = dbSem.endDate.toISOString().split("T")[0];
+        }
+
+        // Auto-enrich calendar events from database if client sent an incomplete/empty list
+        const semId = copilotContext.activeSemesterId || dbSem?.id;
+        const dbEvents = await prisma.event.findMany({
+          where: {
+            OR: [{ userId: copilotContext.userId }, { userId: null }],
+            ...(semId ? { OR: [{ semesterId: semId }, { semesterId: null }] } : {}),
+          },
+          orderBy: { date: "asc" },
+        });
+        if (dbEvents && dbEvents.length > 0) {
+          const eventMap = new Map<string, any>();
+          (copilotContext.calendarEvents || []).forEach((e: any) => {
+            const key = e.id || `${e.title}_${e.date}`;
+            eventMap.set(key, e);
+          });
+          dbEvents.forEach((e: any) => {
+            const key = e.id || `${e.title}_${e.date instanceof Date ? e.date.toISOString().split("T")[0] : e.date}`;
+            eventMap.set(key, {
+              id: e.id,
+              title: e.title,
+              eventType: e.eventType,
+              date: e.date,
+              endDate: e.endDate,
+              description: e.description,
+              isHoliday: e.isHoliday,
+              isHolidayList: e.isHolidayList,
+            });
+          });
+          copilotContext.calendarEvents = Array.from(eventMap.values());
         }
       } catch (dbEnrichErr) {
         console.warn("[AiChatService] Database context enrichment failed:", dbEnrichErr);

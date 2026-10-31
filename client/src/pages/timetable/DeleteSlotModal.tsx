@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { Trash2, ShieldCheck, AlertCircle, Calendar, CalendarRange, X } from "lucide-react";
 import { formatTimeRange } from "../../utils/timeUtils";
 import { useScrollLock } from "../../hooks/useScrollLock";
+import { SoundFX } from "../../utils/soundEffects";
 
 interface Subject {
   id: string;
@@ -51,6 +52,7 @@ export const DeleteSlotModal: React.FC<DeleteSlotModalProps> = ({
   const subjectName = isSingle ? singleSlot.subject?.name : `${slotsToDelete.length} lectures`;
 
   const handleAction = async (forcePreserve?: boolean) => {
+    SoundFX.warmUp();
     setIsDeleting(true);
     try {
       await onConfirmDelete({

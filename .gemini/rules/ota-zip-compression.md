@@ -1,4 +1,4 @@
-﻿---
+---
 description: How to safely package OTA update zips for Capgo/Capacitor
 ---
 

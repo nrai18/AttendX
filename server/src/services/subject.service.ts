@@ -20,28 +20,18 @@ export class SubjectService {
     }
 
     if (targetSemesterId) {
-      const fullSubjects = await CacheService.getOrSet(
-        userId,
-        `subjects:full:${targetSemesterId}`,
-        () =>
-          prisma.subject.findMany({
-            where: {
-              userId,
-              semesterId: targetSemesterId,
-            },
-            include: {
-              attendance: true,
-              semester: true,
-              timetableSlots: true,
-            },
-          })
-      );
-      return [...fullSubjects]
-        .sort((a: any, b: any) => (a.name || "").localeCompare(b.name || ""))
-        .map((s: any) => ({
-          ...s,
-          _count: { attendance: Array.isArray(s.attendance) ? s.attendance.length : 0 },
-        }));
+      return prisma.subject.findMany({
+        where: {
+          userId,
+          semesterId: targetSemesterId,
+        },
+        include: {
+          semester: true,
+          timetableSlots: true,
+          _count: { select: { attendance: true } },
+        },
+        orderBy: { name: "asc" },
+      });
     }
 
     return prisma.subject.findMany({
@@ -76,7 +66,7 @@ export class SubjectService {
       semesterId = activeSemester.id;
     }
 
-    return prisma.subject.create({
+    const newSubject = await prisma.subject.create({
       data: {
         userId,
         semesterId,
@@ -88,6 +78,8 @@ export class SubjectService {
         targetAttendance: data.targetAttendance ? Number(data.targetAttendance) : undefined,
       },
     });
+    CacheService.del(userId, "onboarding:status").catch(() => {});
+    return newSubject;
   }
 
   static async updateSubject(userId: string, subjectId: string, data: any) {
@@ -128,61 +120,82 @@ export class SubjectService {
 
     // Safely decouple or clean up references that do not cascade automatically
     try {
-      const subjectSlots = await prisma.timetableSlot.findMany({
-        where: { subjectId: subject.id },
-        select: { id: true },
-      });
+      const [subjectSlots, subjectOverrides] = await Promise.all([
+        prisma.timetableSlot.findMany({
+          where: { subjectId: subject.id },
+          select: { id: true },
+        }),
+        prisma.timetableOverride.findMany({
+          where: { subjectId: subject.id },
+          select: { id: true },
+        }),
+      ]);
       const slotIds = subjectSlots.map((s) => s.id);
-
-      const subjectOverrides = await prisma.timetableOverride.findMany({
-        where: {
-          OR: [
-            { subjectId: subject.id },
-            ...(slotIds.length > 0 ? [{ originalSlotId: { in: slotIds } }] : []),
-          ],
-        },
-        select: { id: true },
-      });
       const overrideIds = subjectOverrides.map((o) => o.id);
 
-      // Detach or delete attendance references BEFORE deleting overrides and slots
-      if (preserveHistory) {
-        await prisma.attendance.updateMany({
-          where: {
-            OR: [
-              { subjectId: subject.id },
-              ...(slotIds.length > 0 ? [{ timetableSlotId: { in: slotIds } }] : []),
-              ...(overrideIds.length > 0 ? [{ overrideId: { in: overrideIds } }] : []),
-            ],
-          },
-          data: { timetableSlotId: null, overrideId: null },
-        });
-      } else {
-        await prisma.attendance.deleteMany({
-          where: {
-            OR: [
-              { subjectId: subject.id },
-              ...(slotIds.length > 0 ? [{ timetableSlotId: { in: slotIds } }] : []),
-              ...(overrideIds.length > 0 ? [{ overrideId: { in: overrideIds } }] : []),
-            ],
-          },
-        });
+      const cleanupOps: Promise<any>[] = [];
+
+      if (slotIds.length > 0) {
+        if (preserveHistory) {
+          cleanupOps.push(
+            prisma.attendance.updateMany({
+              where: { timetableSlotId: { in: slotIds } },
+              data: { timetableSlotId: null },
+            })
+          );
+        } else {
+          cleanupOps.push(
+            prisma.attendance.deleteMany({
+              where: { timetableSlotId: { in: slotIds } },
+            })
+          );
+        }
+        cleanupOps.push(
+          prisma.timetableOverride.deleteMany({
+            where: { originalSlotId: { in: slotIds } },
+          }),
+          prisma.timetableSlot.deleteMany({
+            where: { id: { in: slotIds } },
+          })
+        );
       }
 
       if (overrideIds.length > 0) {
-        await prisma.timetableOverride.deleteMany({ where: { id: { in: overrideIds } } });
+        if (preserveHistory) {
+          cleanupOps.push(
+            prisma.attendance.updateMany({
+              where: { overrideId: { in: overrideIds } },
+              data: { overrideId: null },
+            })
+          );
+        } else {
+          cleanupOps.push(
+            prisma.attendance.deleteMany({
+              where: { overrideId: { in: overrideIds } },
+            })
+          );
+        }
+        cleanupOps.push(
+          prisma.timetableOverride.deleteMany({
+            where: { id: { in: overrideIds } },
+          })
+        );
       }
-      await Promise.all([
-        prisma.timetableSlot.deleteMany({ where: { subjectId: subject.id } }),
+
+      cleanupOps.push(
         prisma.assignment.updateMany({ where: { subjectId: subject.id }, data: { subjectId: null } }),
         prisma.note.updateMany({ where: { subjectId: subject.id }, data: { subjectId: null } }),
-        prisma.export.deleteMany({ where: { subjectId: subject.id } }),
-      ]);
+        prisma.export.deleteMany({ where: { subjectId: subject.id } })
+      );
+
+      await Promise.all(cleanupOps);
     } catch (e) {}
 
-    return prisma.subject.delete({
+    const deleted = await prisma.subject.delete({
       where: { id: subject.id },
     });
+    CacheService.del(userId, "onboarding:status").catch(() => {});
+    return deleted;
   }
 
   static async mergeSubjects(userId: string, merges: { targetId: string, sourceId: string }[]) {

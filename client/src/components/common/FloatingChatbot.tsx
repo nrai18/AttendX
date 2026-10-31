@@ -36,7 +36,7 @@ import { FormattedChatMessage } from "./FormattedChatMessage";
 import { VoiceModeOverlay } from "./VoiceModeOverlay";
 import { useAttendanceStore } from "../../stores/attendanceStore";
 import { useAuthStore } from "../../stores/authStore";
-import { NativeVoiceService } from "../../services/NativeVoiceService";
+import { NativeVoiceService, isVoiceBreakoutCommand } from "../../services/NativeVoiceService";
 import { Capacitor } from "@capacitor/core";
 import { useCacheStore } from "../../stores/cacheStore";
 import { useThemeStore } from "../../stores/themeStore";
@@ -44,6 +44,7 @@ import { useNotificationStore } from "../../stores/notificationStore";
 import { NotificationService } from "../../services/NotificationService";
 import { useAssignmentStore } from "../../stores/assignmentStore";
 import { App } from "@capacitor/app";
+import { maskProfanity, TOXIC_PATTERN } from "../../utils/profanityMask";
 
 interface ActionPayload {
   id?: string;
@@ -104,6 +105,7 @@ interface Message {
   timestamp: string;
   pendingActions?: ActionPayload[];
   actionsExecuted?: boolean;
+  actionsExpired?: boolean;
   isExecutingAction?: boolean;
   simulation?: SimulationPayload;
   semesterProjection?: SemesterProjectionPayload;
@@ -172,18 +174,29 @@ export const FloatingChatbot: React.FC = () => {
   const [isServerOnline, setIsServerOnline] = useState(true);
 
   useEffect(() => {
-    const handleOpenVoiceMode = () => setIsVoiceOpen(true);
+    const handleOpenVoiceMode = () => {
+      try {
+        localStorage.setItem("onboarding_voice_mode", "true");
+        api.patch("/users/onboarding-status", { step: "voice_mode" }).catch(() => {});
+        window.dispatchEvent(new CustomEvent("onboarding-step-completed", { detail: { step: "voice_mode" } }));
+      } catch {}
+      setIsVoiceOpen(true);
+    };
     window.addEventListener('open-voice-mode', handleOpenVoiceMode);
-
-    if (isVoiceOpen) {
-      localStorage.setItem("onboarding_voice_mode", "true");
-      api.patch("/users/onboarding-status", { step: "voice_mode" }).catch(() => {});
-    }
     
     App.getInfo().then(info => setAppVersion(info.version)).catch(() => {});
     
+    // Check initial online status
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      setIsServerOnline(false);
+    }
+
     // Poll server health
     const checkHealth = async () => {
+      if (typeof navigator !== "undefined" && !navigator.onLine) {
+        setIsServerOnline(false);
+        return;
+      }
       try {
         await api.get("/health", { timeout: 8000, silent: true });
         setIsServerOnline(true);
@@ -194,10 +207,12 @@ export const FloatingChatbot: React.FC = () => {
     checkHealth();
     const interval = setInterval(checkHealth, 30000);
 
-    // Instantly check health when the app comes to foreground or network reconnects
+    // Instantly check health when the app comes to foreground or network reconnects/disconnects
     const handleOnline = () => checkHealth();
+    const handleOffline = () => setIsServerOnline(false);
     window.addEventListener('online', handleOnline);
-    
+    window.addEventListener('offline', handleOffline);
+
     const appStateListener = App.addListener('appStateChange', ({ isActive }) => {
       if (isActive) checkHealth();
     });
@@ -205,10 +220,21 @@ export const FloatingChatbot: React.FC = () => {
     return () => {
       clearInterval(interval);
       window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
       window.removeEventListener('open-voice-mode', handleOpenVoiceMode);
       appStateListener.then(listener => listener.remove());
     };
   }, []);
+
+  useEffect(() => {
+    if (isVoiceOpen) {
+      try {
+        localStorage.setItem("onboarding_voice_mode", "true");
+        api.patch("/users/onboarding-status", { step: "voice_mode" }).catch(() => {});
+        window.dispatchEvent(new CustomEvent("onboarding-step-completed", { detail: { step: "voice_mode" } }));
+      } catch {}
+    }
+  }, [isVoiceOpen]);
 
   const { overallPercentage, targetPercentage, totalAttended, totalClasses, subjects, hasActiveSemester, fetchStats } = useAttendanceStore();
   const user = useAuthStore((state) => state.user);
@@ -295,9 +321,7 @@ export const FloatingChatbot: React.FC = () => {
   };
 
   const checkHandsFreeVoiceBreakout = (text: string) => {
-    const norm = text.trim().toLowerCase().replace(/[.,!?;:]/g, "");
-    const breakoutWords = ["stop", "cancel", "stop conversation", "goodbye", "exit", "quit"];
-    if (breakoutWords.includes(norm)) {
+    if (isVoiceBreakoutCommand(text)) {
       stopHandsFreeMode("Voice breakout command detected: conversation stopped.");
       return true;
     }
@@ -319,6 +343,7 @@ export const FloatingChatbot: React.FC = () => {
     if (isLoading) {
       handleStopGeneration();
     }
+    NativeVoiceService.stopSpeaking();
     NativeVoiceService.stopContinuousLoop();
     setIsListeningMic(false);
     if (reason) {
@@ -347,6 +372,12 @@ export const FloatingChatbot: React.FC = () => {
     lastInputMethodRef.current = "voice";
     resetHandsFreeSilenceTimer();
 
+    try {
+      localStorage.setItem("onboarding_voice_mode", "true");
+      api.patch("/users/onboarding-status", { step: "voice_mode" }).catch(() => {});
+      window.dispatchEvent(new CustomEvent("onboarding-step-completed", { detail: { step: "voice_mode" } }));
+    } catch {}
+
     const listenOptions = {
       lang: "en-IN",
       onStart: () => {
@@ -358,7 +389,7 @@ export const FloatingChatbot: React.FC = () => {
         if (text === lastSubmittedVoiceQueryRef.current && (Date.now() - handsFreeMicStartTimeRef.current < 1500)) {
           return;
         }
-        setInput(text);
+        setInput(maskProfanity(text));
         currentTranscriptRef.current = text;
         resetHandsFreeSilenceTimer();
         if (checkHandsFreeVoiceBreakout(text)) {
@@ -372,14 +403,14 @@ export const FloatingChatbot: React.FC = () => {
           if (isHandsFreeRef.current && !isHandsFreeProcessingRef.current && text.trim()) {
             triggerHandsFreeSubmit(text.trim());
           }
-        }, 5000);
+        }, 1200);
       },
       onFinalResult: (text: string) => {
         if (!isHandsFreeRef.current || isHandsFreeProcessingRef.current) return;
         if (text === lastSubmittedVoiceQueryRef.current && (Date.now() - handsFreeMicStartTimeRef.current < 1500)) {
           return;
         }
-        setInput(text);
+        setInput(maskProfanity(text));
         currentTranscriptRef.current = text;
         resetHandsFreeSilenceTimer();
         if (checkHandsFreeVoiceBreakout(text)) {
@@ -393,7 +424,7 @@ export const FloatingChatbot: React.FC = () => {
           if (isHandsFreeRef.current && !isHandsFreeProcessingRef.current && text.trim()) {
             triggerHandsFreeSubmit(text.trim());
           }
-        }, 5000);
+        }, 1200);
       },
       onError: (err: any) => {
         console.warn("Hands-free speech recognition error:", err);
@@ -434,6 +465,7 @@ export const FloatingChatbot: React.FC = () => {
 
   const triggerHandsFreeSubmit = async (queryText: string) => {
     if (!queryText.trim() || isHandsFreeProcessingRef.current || !isHandsFreeRef.current) return;
+    if (checkHandsFreeVoiceBreakout(queryText)) return;
     
     if (handsFreeSilenceTimerRef.current) {
       clearTimeout(handsFreeSilenceTimerRef.current);
@@ -505,11 +537,11 @@ export const FloatingChatbot: React.FC = () => {
     const started = await NativeVoiceService.startListening({
       lang: "en-IN",
       onPartialResult: (text) => {
-        setInput(text);
+        setInput(maskProfanity(text));
         lastInputMethodRef.current = "voice";
       },
       onFinalResult: (text) => {
-        setInput(text);
+        setInput(maskProfanity(text));
         lastInputMethodRef.current = "voice";
       },
       onError: (err: any) => {
@@ -613,6 +645,15 @@ const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'vo
     const query = textToSend || input.trim();
     if (!query || isLoading) return;
 
+    // Voice breakout command check: ONLY apply when actively in hands-free mode or voice input
+    const isVoiceInput = wasHandsFree || isHandsFreeRef.current || effectiveInputMethod === 'voice' || effectiveInputMethod === 'voice_overlay';
+    if (isVoiceInput && isVoiceBreakoutCommand(query)) {
+      if (isHandsFreeRef.current) {
+        stopHandsFreeMode("Voice breakout command detected: conversation stopped.");
+      }
+      return;
+    }
+
     // Immediately stop any currently playing speech to prevent audio clash
     await NativeVoiceService.stopSpeaking();
     setSpeakingId(null);
@@ -651,10 +692,18 @@ const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'vo
       }
     }
 
+    // Auto-expire prior unconfirmed actions so they do NOT linger as permanent UI errors
+    setMessages(prev => prev.map(m => {
+      if (m.pendingActions && !m.actionsExecuted && !m.actionsExpired) {
+        return { ...m, actionsExpired: true };
+      }
+      return m;
+    }));
+
     const userMessage: Message = {
       id: String(Date.now()),
       role: "user",
-      content: query,
+      content: maskProfanity(query),
       timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
     };
 
@@ -664,7 +713,8 @@ const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'vo
 
     try {
       abortControllerRef.current = new AbortController();
-      const history = messages.slice(-4).map(m => ({
+      const currentMsgList = messagesRef.current && messagesRef.current.length > 0 ? messagesRef.current : messages;
+      const history = currentMsgList.slice(-10).map(m => ({
         role: m.role,
         content: m.content
       }));
@@ -677,19 +727,51 @@ const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'vo
       const currentAttended = state.totalAttended || totalAttended;
       const currentTotal = state.totalClasses || totalClasses;
       const currentLogs = state.historyLogs || [];
-      const currentEvents = state.events || [];
+      const cachedEvents = useCacheStore.getState().semester?.events || [];
+      const eventMap = new Map<string, any>();
+      (cachedEvents || []).forEach((e: any) => {
+        if (e && (e.id || e.title)) eventMap.set(String(e.id || `${e.title}_${e.date}`), e);
+      });
+      (state.events || []).forEach((e: any) => {
+        if (e && (e.id || e.title)) eventMap.set(String(e.id || `${e.title}_${e.date}`), e);
+      });
+      const currentEvents = Array.from(eventMap.values());
       const timetableSlots = useCacheStore.getState().timetable?.slots || [];
       const today = new Date();
       const pad2 = (n: number) => String(n).padStart(2, "0");
       const localTodayStr = `${today.getFullYear()}-${pad2(today.getMonth() + 1)}-${pad2(today.getDate())}`;
 
+      const toIsoDateOnly = (val: any): string => {
+        if (!val) return "";
+        if (val instanceof Date) return val.toISOString().split("T")[0];
+        const s = String(val).trim();
+        if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.substring(0, 10);
+        const parsed = new Date(s);
+        return isNaN(parsed.getTime()) ? "" : parsed.toISOString().split("T")[0];
+      };
+
       // --- TIER 0 & TIER 1: CLIENT-SIDE 0ms DETERMINISTIC FAST-PATH ---
       const tryClientFastPath = (): { reply: string; simulation?: SimulationPayload; semesterProjection?: SemesterProjectionPayload } | null => {
-        const lower = query.trim().toLowerCase().replace(/[?!.]+$/g, "").trim();
+        // Multi-layer query sanitizer: strips surrounding quotes, brackets, bot greetings, and trailing punctuation
+        const rawClean = query
+          .trim()
+          .replace(/^[\s"'“”‘’`.,;:!?~_/\\()[\]{}\-]+|[\s"'“”‘’`.,;:!?~_/\\()[\]{}\-]+$/g, "")
+          .replace(/^(?:(?:hey|hi|hello|ok|okay)?\s*(?:attendx|assistant|bot|ai)[\s,:]+)/i, "");
 
-        // 1. Abusive / Toxic Language Guardrail (0ms)
-        const TOXIC_PATTERN =
-          /\b(fuck|fucking|fucker|shit|bullshit|bitch|bitching|asshole|dick|dickhead|cunt|slut|whore|bastard|motherfucker|stfu|dumbass|idiot|retard|fag|nigger|nigga|madarchod|mc|behenchod|bhenchod|bc|bhosdike|bhosdiwale|bhosda|chutiya|chutiye|gaand|gandu|gandwe|lavde|laude|lodu|lode|lund|jhantu|harami|kamina|kamine|saala|saale|randi|raand|tatte|jhaat|bakchod|bakchodi|gaandmara|gandmara)\b|[\u0900-\u097F]*(?:चूतिया|मादरचोद|बहनचोद|भोसड़ीके|भोसड़ीवाले|गांडू|गांड|लौड़े|लवड़े|लंड|हरामी|कमीना|रंडी|झांट|बकचोद|चूत|गाली)[\u0900-\u097F]*/i;
+        const normalized = rawClean
+          .replace(/\btime\s+table\b/gi, "timetable")
+          .replace(/\bpeer\s*[- ]?sync\b/gi, "peer-sync")
+          .replace(/\bclass\s+room(s)?\b/gi, "classroom$1")
+          .replace(/\bmid\s+sem(ester)?\b/gi, "midsem")
+          .replace(/\bend\s+sem(ester)?\b/gi, "endsem")
+          .replace(/\battend\s+x\b/gi, "attendx")
+          .replace(/\bdark\s+theme\b/gi, "dark mode")
+          .replace(/\blight\s+theme\b/gi, "light mode")
+          .replace(/\bsystem\s+theme\b/gi, "system mode")
+          .replace(/\bheads?\s+up\b/gi, "heads-up");
+        const lower = normalized.trim().toLowerCase().replace(/^[\s"'“”‘’`.,;:!?~_/\\()[\]{}\-]+|[\s"'“”‘’`.,;:!?~_/\\()[\]{}\-]+$/g, "").trim();
+
+        // 1. Abusive / Toxic Language Guardrail (0ms) - Raw and Pre-Starred Matching
         if (TOXIC_PATTERN.test(lower)) {
           return { reply: "I'm here to help you manage your attendance, timetable, assignments, and academic queries for AttendX. Please keep our conversation respectful so I can assist you effectively." };
         }
@@ -742,21 +824,27 @@ const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'vo
         }
 
         // 2. Greetings & Identity (0ms)
+        const farewellPattern =
+          /^(?:bye(?:\s+bye)?|byebye|goodbye|good\s+bye|cya(?:\s+later)?|see\s+(?:you|ya|u)(?:\s+(?:later|soon|around))?|catch\s+you\s+later|talk\s+to\s+you\s+later|take\s+care|have\s+a\s+(?:good|great|nice)\s+day|goodnight|good\s+night)$/i;
+
+        if (farewellPattern.test(lower)) {
+          const uName = user?.name || "Student";
+          return { reply: `See you later, ${uName}! Stay on top of your ${currentTarget}% attendance goal!` };
+        }
+
         const greetingPattern =
-          /^(hi+|he+y+|hello+|heya|howdy|sup|yo|namaste|greetings|good\s+(morning|afternoon|evening|day|night)|how\s+(are|r)\s+(you|u|ya)|how('s|\s+is)\s+it\s+going|what('s|\s+is)\s+up|whats\s+up|who\s+(are|r)\s+(you|u)|what\s+is\s+your\s+name|what('s|\s+is)\s+your\s+name|who\s+(made|created|built|developed)\s+(you|u)|what\s+can\s+you\s+do|help|thank(s|\s+you|\s+u|\s+you\s+so\s+much)?|thx|bye(\s+bye)?|goodbye|see\s+(you|ya))$/i;
+          /^(?:hi+|he+y+|hello+|heya|howdy|sup|yo|namaste|greetings|good\s+(?:morning|afternoon|evening|day)|how\s+(?:are|r)\s+(?:you|u|ya)(?:\s+doing)?|how(?:'s|\s+is)\s+it\s+going|what(?:'s|\s+is)\s+up|whats\s+up|who\s+(?:are|r)\s+(?:you|u)|what\s+is\s+your\s+name|what(?:'s|\s+is)\s+your\s+name|who\s+(?:made|created|built|developed|designed)\s+(?:you|u)|what\s+can\s+you\s+do|help|thank(?:s|\s+you|\s+u|\s+you\s+so\s+much|\s+a\s+lot)?|thx|ty|tysm)$/i;
+
         if (greetingPattern.test(lower)) {
           const uName = user?.name || "Student";
-          if (/\b(who (made|created|built|developed) (you|u))\b/i.test(lower)) {
+          if (/\b(who (made|created|built|developed|designed) (you|u))\b/i.test(lower)) {
             return { reply: `I am AttendX AI Copilot, created and engineered by **Naman Rai** as your intelligent academic companion and policy advisor for IIIT Una.` };
           }
           if (/\b(what can you do|help)\b/i.test(lower)) {
             return { reply: `I can instantly check your attendance & safe bunks, simulate leaves, switch light/dark themes, navigate across the app, tell you your next class or upcoming holiday, swap timetable slots, and email your weekly or monthly attendance reports!` };
           }
-          if (/^(thank|thx)/i.test(lower)) {
+          if (/^(thank|thx|ty|tysm)/i.test(lower)) {
             return { reply: `You're welcome, ${uName}! Let me know anytime you need help with your attendance or schedule.` };
-          }
-          if (/^(bye|goodbye|see)/i.test(lower)) {
-            return { reply: `See you later, ${uName}! Stay on top of your ${currentTarget}% attendance goal!` };
           }
           let reply = `Hey ${uName}! Your overall attendance is **${Number(currentOverall).toFixed(1)}%** (${currentAttended}/${currentTotal} classes — **${overallStatus}** vs your ${currentTarget}% target).`;
           if (nextUpcomingClass) {
@@ -774,6 +862,128 @@ const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'vo
           const targetTheme = themeMatch[1].toLowerCase() as "dark" | "light";
           useThemeStore.getState().setTheme(targetTheme);
           return { reply: `Switched your app appearance to **${targetTheme} mode**.` };
+        }
+
+        // 3.6. Birthday & Peer Birthday Knowledge (0ms Client Fast-Path)
+        if (/\b(birthdays?|b'?days?|dob|born)\b/i.test(lower)) {
+          const uName = user?.name || "Student";
+          // A. User's own birthday query
+          const isMyBirthday = (
+            /\bmy\s+(?:birthdays?|b'?days?|dob)\b/i.test(lower) ||
+            /\b(?:when|what)\s+(?:is\s+)?my\b/i.test(lower) ||
+            /\bdo\s+you\s+(?:know|remember|have)\s+my\s+(?:birthdays?|b'?days?|dob)\b/i.test(lower) ||
+            /\b(?:tell\s+me|check|show)\s+(?:my\s+)?(?:birthdays?|b'?days?|dob)\b/i.test(lower) ||
+            /\bwhen\s+was\s+i\s+born\b/i.test(lower) ||
+            /^(?:my\s+)?(?:birthdays?|b'?days?|dob)\??$/i.test(lower.trim())
+          ) && !/\b(whose|who\s+has|anybody|anyone|peer|friend|classmate)\b/i.test(lower);
+
+          if (isMyBirthday) {
+            const rawBday = user?.birthday;
+            if (rawBday) {
+              const bDate = new Date(rawBday);
+              const bFormatted = bDate.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+              return { reply: `Yes, ${uName}! According to your profile, your birthday is **${bFormatted}**! 🎂 Let me know if you need to update it.` };
+            } else {
+              return { reply: `You don't have a birthday saved in your profile yet! You can set it in **Settings > Edit Profile**, or just tell me here (e.g. "Set my birthday to November 18")! 🎂` };
+            }
+          }
+
+          // B. Whose birthday is today / Peer birthday query
+          const isWhoseBirthday = (
+            /\b(whose|who\s+has|anybody('s)?|anyone('s)?|any|check)\s+(?:peer\s+)?(?:birthdays?|b'?days?)\b/i.test(lower) ||
+            /\b(?:birthdays?|b'?days?)\s+(?:is\s+)?today\b/i.test(lower) ||
+            /\bis\s+today\s+(?:anybody('s)?|anyone('s)?|a)\s+(?:birthdays?|b'?days?)\b/i.test(lower) ||
+            /\bupcoming\s+(?:birthdays?|b'?days?)\b/i.test(lower)
+          );
+
+          if (isWhoseBirthday) {
+            const todayFormatted = today.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+
+            // Check if user's own birthday is today
+            let isUserBdayToday = false;
+            if (user?.birthday) {
+              const ub = new Date(user.birthday);
+              if (ub.getMonth() === today.getMonth() && ub.getDate() === today.getDate()) {
+                isUserBdayToday = true;
+              }
+            }
+
+            if (isUserBdayToday) {
+              return { reply: `Today is **YOUR birthday**, ${uName}! 🎉🎂 Wishing you a wonderful birthday filled with joy and academic success from the entire AttendX team!` };
+            }
+
+            // Check calendar events for today
+            const todayEvents = (currentEvents || []).filter((e: any) => {
+              const startStr = toIsoDateOnly(e.date);
+              const endStr = toIsoDateOnly(e.endDate) || startStr;
+              return startStr <= localTodayStr && localTodayStr <= endStr;
+            });
+
+            // Priority 1: Events explicitly mentioning birthday
+            const explicitBdayEvents = todayEvents.filter((e: any) =>
+              /\b(birthdays?|b'?days?|dob)\b/i.test(e.title || "") || /\b(birthdays?|b'?days?|dob)\b/i.test(e.description || "")
+            );
+
+            if (explicitBdayEvents.length > 0) {
+              const names = explicitBdayEvents.map((e: any) => e.title).join(", ");
+              return { reply: `Today on your calendar: **${names}**! 🎉🎂 Let them know you're celebrating with them today!` };
+            }
+
+            // Priority 2: Custom/personal events scheduled for today (e.g. "Priya Didi")
+            const customEvents = todayEvents.filter((e: any) => {
+              const t = String(e.eventType || e.event_type || e.type || "").toLowerCase();
+              return t === "other" || (!e.isHoliday && t !== "holiday" && t !== "restricted_holiday" && t !== "vacation");
+            });
+
+            if (customEvents.length > 0) {
+              const names = customEvents.map((e: any) => e.title).join(", ");
+              return { reply: `Today on your calendar: **${names}** is scheduled for today (${todayFormatted})! 🎉🎂 Let them know you're celebrating with them!` };
+            }
+
+            // Priority 3: Upcoming birthdays in the calendar
+            const upcomingBdayEvents = (currentEvents || [])
+              .filter((e: any) => {
+                const startStr = toIsoDateOnly(e.date);
+                const t = String(e.eventType || e.event_type || e.type || "").toLowerCase();
+                return startStr >= localTodayStr && (
+                  /\b(birthdays?|b'?days?|dob)\b/i.test(e.title || "") ||
+                  /\b(birthdays?|b'?days?|dob)\b/i.test(e.description || "") ||
+                  t === "other"
+                );
+              })
+              .sort((a: any, b: any) => toIsoDateOnly(a.date).localeCompare(toIsoDateOnly(b.date)))
+              .slice(0, 3);
+
+            if (upcomingBdayEvents.length > 0) {
+              const formattedList = upcomingBdayEvents.map((e: any) => {
+                const d = new Date(toIsoDateOnly(e.date) + "T00:00:00");
+                return `**${e.title}** (${d.toLocaleDateString("en-US", { month: "short", day: "numeric" })})`;
+              }).join(", ");
+              const userBdayStr = user?.birthday ? ` Your birthday on record is **${new Date(user.birthday).toLocaleDateString("en-US", { month: "long", day: "numeric" })}**.` : "";
+              return { reply: `There are no peer birthdays scheduled for today. Upcoming on your calendar: ${formattedList}.${userBdayStr}` };
+            }
+
+            const userBdayStr = user?.birthday ? ` Your birthday on record is **${new Date(user.birthday).toLocaleDateString("en-US", { month: "long", day: "numeric" })}**.` : " (Set your birthday in Settings > Edit Profile).";
+            return { reply: `There are no peer birthdays scheduled for today.${userBdayStr}` };
+          }
+
+          // C. Asking about a specific person or event's birthday
+          const specificMatch = lower.match(/(?:when|what|is)\s+(?:is\s+)?([a-z0-9\s'-]+?)(?:'s|\s+has)?\s+(?:birthdays?|b'?days?|dob)\b/i) ||
+            lower.match(/(?:when|is\s+it)\s+([a-z0-9\s'-]+?)(?:'s)?\s+(?:birthdays?|b'?days?)\b/i);
+          if (specificMatch) {
+            const queryName = specificMatch[1].trim().toLowerCase();
+            if (queryName && !/^(my|your|the)$/.test(queryName)) {
+              const matchedEvent = (currentEvents || []).find((e: any) => {
+                const t = String(e.title || "").toLowerCase();
+                return t.includes(queryName) || queryName.split(" ").some(part => part.length >= 3 && t.includes(part));
+              });
+              if (matchedEvent) {
+                const d = new Date(String(matchedEvent.date).split("T")[0] + "T00:00:00");
+                const formatted = d.toLocaleDateString("en-US", { month: "long", day: "numeric" });
+                return { reply: `According to your calendar, **${matchedEvent.title}** is on **${formatted}**! 🎂` };
+              }
+            }
+          }
         }
 
         // 3.5. Timetable Alerts & Notification Settings (0ms)
@@ -851,41 +1061,70 @@ const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'vo
           return { reply: `Done! I have ${alertNotes.join(" and ")}. Your alarms and local notifications have been rescheduled immediately.` };
         }
 
-        // 4. Direct App Navigation (0ms)
-        const navMatch = lower.match(
-          /^(?:please\s+)?(?:navigate(?:\s+to)?|open(?:\s+up)?|go\s+to|take\s+me\s+to|show(?:\s+me)?(?:\s+my)?|view(?:\s+my)?)\s+(?:the\s+)?(timetable|schedule|routine|settings|preferences|reports?|analytics|calendar|forecast|predictive|prediction|today(?:'s\s+agenda)?|agenda|dashboard|subjects?|courses?|assignments?|tasks?|semester(?:\s+overview|\s+hub)?|overview|timeline|holidays?|countdowns?|events?|profile|edit\s+profile|linked\s+devices|devices|sessions|peer\s+sync|changelog|update\s+history|feedback|contact(?:\s+us)?|faq|classrooms?)(?:\s+page|\s+screen|\s+tab|\s+view)?$/i
-        );
-        if (navMatch) {
-          const targetKey = navMatch[1].toLowerCase();
-          let path = "/today";
-          let title = "Today's Agenda";
-          if (/(timetable|schedule|routine)/.test(targetKey)) { path = "/timetable"; title = "Timetable"; }
-          else if (/(edit\s+profile|profile)/.test(targetKey)) { path = "/settings/profile"; title = "Edit Profile"; }
-          else if (/(device|devices|sessions)/.test(targetKey)) { path = "/settings/devices"; title = "Linked Devices"; }
-          else if (/(peer\s+sync)/.test(targetKey)) { path = "/settings/peer-sync"; title = "Peer Sync"; }
-          else if (/(contact)/.test(targetKey)) { path = "/settings/contact"; title = "Contact Us"; }
-          else if (/(feedback)/.test(targetKey)) { path = "/settings/feedback"; title = "Send Feedback"; }
-          else if (/(changelog|update\s+history)/.test(targetKey)) { path = "/settings/changelog"; title = "Update History"; }
-          else if (/(faq)/.test(targetKey)) { path = "/settings/faq"; title = "FAQ"; }
-          else if (/(setting|preferences)/.test(targetKey)) { path = "/settings"; title = "Settings"; }
-          else if (/(report|analytics)/.test(targetKey)) { path = "/report"; title = "Analytics Reports"; }
-          else if (/(forecast|predictive|prediction)/.test(targetKey)) { path = "/predictive"; title = "Forecast Engine"; }
-          else if (/(holiday)/.test(targetKey)) { path = "/semester/holidays"; title = "Semester Holidays"; }
-          else if (/(countdown)/.test(targetKey)) { path = "/semester/countdowns"; title = "Semester Countdowns"; }
-          else if (/^events?$/.test(targetKey)) { path = "/semester/events"; title = "Semester Events"; }
-          else if (/(semester|overview|timeline)/.test(targetKey)) { path = "/semester"; title = "Semester Overview"; }
-          else if (/(calendar)/.test(targetKey)) { path = "/calendar"; title = "Calendar"; }
-          else if (/(subject|course)/.test(targetKey)) { path = "/subjects"; title = "Subjects"; }
-          else if (/(assignment|task)/.test(targetKey)) { path = "/assignments"; title = "Assignments"; }
-          else if (/(classroom)/.test(targetKey)) { path = "/classrooms"; title = "Classrooms"; }
-          navigate(path);
-          return { reply: `Opening **${title}**.` };
+        // 4. Direct App Navigation (0ms Client Fast-Path)
+        const strippedNav = lower
+          .replace(/^(?:can\s+you(?:\s+please)?|could\s+you(?:\s+please)?|would\s+you|please|pls|i\s+want\s+to|i\s+need\s+to|help\s+me(?:\s+to)?|let\s+me|just)\s+/i, "")
+          .replace(/^(?:navigate(?:\s+to)?|open(?:\s+up)?|go\s+to|take\s+me\s+to|show(?:\s+me)?|view|switch\s+to|display|check(?:\s+out)?|bring\s+up|launch|see|head\s+to)\s+/i, "")
+          .replace(/^(?:all\s+)?(?:the|my|our)\s+/i, "")
+          .replace(/\s+(?:please|pls|for\s+me|now|right\s+now|asap|screen|tab|page|view|modal|section|form|dialog)$/i, "")
+          .replace(/^[\s"'“”‘’`.,;:!?~_/\\()[\]{}\-]+|[\s"'“”‘’`.,;:!?~_/\\()[\]{}\-]+$/g, "")
+          .trim();
+
+        let navTarget: { path: string; title: string } | null = null;
+
+        if (/^(?:(?:exam|semester|holiday|academic|event|upcoming)\s+)?countdowns?$|^countdown(?:\s+timers?)?$/i.test(strippedNav)) {
+          navTarget = { path: "/semester/countdowns", title: "Semester Countdowns" };
+        } else if (/^(?:(?:semester|academic|upcoming|college)\s+)?holidays?$|^holiday\s+list$/i.test(strippedNav)) {
+          navTarget = { path: "/semester/holidays", title: "Semester Holidays" };
+        } else if (/^(?:(?:semester|academic|upcoming|calendar)\s+)?events?$|^academic\s+calendar$|^event\s+list$/i.test(strippedNav)) {
+          navTarget = { path: "/semester/events", title: "Semester Events" };
+        } else if (/^(?:(?:class|weekly|daily)\s+)?(?:timetable|time\s*table|schedule|routine)$/i.test(strippedNav)) {
+          navTarget = { path: "/timetable", title: "Timetable" };
+        } else if (/^(?:edit\s+)?profile$|^my\s+account$|^user\s+profile$/i.test(strippedNav)) {
+          navTarget = { path: "/settings/profile", title: "Edit Profile" };
+        } else if (/^(?:(?:linked|active|connected|logged\s*in)\s+)?(?:devices|sessions)$/i.test(strippedNav)) {
+          navTarget = { path: "/settings/devices", title: "Linked Devices" };
+        } else if (/^peer\s*[- ]?sync$|^friends\s+sync$|^data\s+transfer$/i.test(strippedNav)) {
+          navTarget = { path: "/settings/peer-sync", title: "Peer Sync" };
+        } else if (/^(?:(?:send|give|open|show|submit)\s+)?feedback(?:\s+(?:form|page|screen|tab|dialog|modal))?$|^report\s+(?:a\s+)?(?:bug|issue)$/i.test(strippedNav)) {
+          navTarget = { path: "/settings/feedback", title: "Send Feedback" };
+        } else if (/^changelog$|^what'?s\s+new$|^update\s+history$|^release\s+notes$/i.test(strippedNav)) {
+          navTarget = { path: "/settings/changelog", title: "Update History" };
+        } else if (/^contact(?:\s+us)?$|^support$/i.test(strippedNav)) {
+          navTarget = { path: "/settings/contact", title: "Contact Us" };
+        } else if (/^faqs?$|^help(?:\s+(?:desk|center|&?\s*support))?$/i.test(strippedNav)) {
+          navTarget = { path: "/settings/faq", title: "FAQ" };
+        } else if (/^(?:app\s+)?(?:settings|preferences|options)$/i.test(strippedNav)) {
+          navTarget = { path: "/settings", title: "Settings" };
+        } else if (/^(?:(?:detailed|attendance|analytics)\s+)?reports?$|^analytics$|^bunk\s+calculator$|^attendance\s+stats?$/i.test(strippedNav)) {
+          navTarget = { path: "/report", title: "Analytics Reports" };
+        } else if (/^(?:attendance\s+)?(?:forecast|predictive|prediction)(?:\s+engine)?$|^what\s*if\s+calculator$/i.test(strippedNav)) {
+          navTarget = { path: "/predictive", title: "Forecast Engine" };
+        } else if (/^(?:my\s+)?(?:subjects?|courses?)$|^attendance\s+cards?$/i.test(strippedNav)) {
+          navTarget = { path: "/subjects", title: "Subjects" };
+        } else if (/^(?:(?:pending|upcoming|academic|my)\s+)?(?:assignments?|tasks?)$|^todo(?:\s*list)?$|^homework$/i.test(strippedNav)) {
+          navTarget = { path: "/assignments", title: "Assignments" };
+        } else if (/^(?:campus\s+)?classrooms?$|^campus\s+rooms?$/i.test(strippedNav)) {
+          navTarget = { path: "/classrooms", title: "Classrooms" };
+        } else if (/^semester(?:\s+(?:overview|hub))?$|^timeline$/i.test(strippedNav)) {
+          navTarget = { path: "/semester", title: "Semester Overview" };
+        } else if (/^calendar$|^month\s+view$/i.test(strippedNav)) {
+          navTarget = { path: "/calendar", title: "Calendar" };
+        } else if (/^(?:today(?:'s)?(?:\s+(?:agenda|dashboard|schedule|classes|attendance|routine|overview|plan))?|daily\s+(?:agenda|dashboard|schedule|overview)|agenda|dashboard|home(?:\s+screen)?|main\s+screen)$/i.test(strippedNav)) {
+          navTarget = { path: "/today", title: "Today's Agenda" };
+        }
+
+        if (navTarget) {
+          navigate(navTarget.path);
+          return { reply: `Opening **${navTarget.title}**.` };
         }
 
         // 5. Next Upcoming Event / Holiday / Exam & Next Class / Today's Schedule (0ms)
         if (
           /^(what('s|\s+is)\s+(my\s+)?)?(next|upcoming)\s+(event|events|holiday|vacation|break|exam|midsem|endsem|milestone|festival|fest)s?$/i.test(lower) ||
-          /\b(when\s+is\s+(the\s+)?next\s+(event|holiday|exam|break|vacation)|tell\s+me\s+(the\s+)?next\s+upcoming\s+event|upcoming\s+events?|next\s+holiday)\b/i.test(lower)
+          /\b(when\s+is\s+(the\s+)?next\s+(event|holiday|exam|break|vacation)|tell\s+me\s+(the\s+)?next\s+upcoming\s+event|upcoming\s+events?|next\s+holiday)\b/i.test(lower) ||
+          /\b(how\s+many\s+days\s+(until|to|left\s+for|before)|days\s+(left\s+)?(until|to|for)|countdown\s+to|time\s+until)\s+(the\s+)?(next\s+)?(exam|midsem|endsem|holiday|vacation|break|event)s?\b/i.test(lower) ||
+          /\b(when\s+(is|are)\s+(the\s+)?(next\s+)?(exam|midsem|endsem|test|quiz)s?)\b/i.test(lower)
         ) {
           const todayMidnight = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
           const upcoming = (currentEvents || [])
@@ -911,16 +1150,61 @@ const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'vo
             .filter((e: any) => e.date && e.endMs >= todayMidnight)
             .sort((a: any, b: any) => a.date.localeCompare(b.date));
 
-          const wantsHoliday = /\b(holiday|vacation|break)\b/i.test(lower);
-          const wantsExam = /\b(exam|midsem|endsem|ct|quiz|test)\b/i.test(lower);
-          const filtered = upcoming.filter((e: any) => {
-            if (wantsHoliday) return e.eventType.includes("holiday") || e.eventType.includes("vacation") || /holiday|vacation|jayanti|diwali|holi/i.test(e.title);
-            if (wantsExam) return e.eventType.includes("exam") || e.eventType.includes("sem") || e.eventType.includes("ct") || /exam|mid|end|test|quiz/i.test(e.title);
-            return true;
-          });
+          const isExamEvent = (e: any): boolean => {
+            const type = String(e.eventType || "").toLowerCase().replace(/[-_]/g, " ").trim();
+            const title = String(e.title || "").toLowerCase();
+            if (type.includes("holiday") || type.includes("vacation") || type.includes("break") || type.includes("fest")) return false;
+            if (/\b(break|vacation|holiday|fest|festival|puja|diwali|chaturdasi|duj|jayanti|birthday)\b/i.test(title)) return false;
+            if (/\b(exams?|midsem|endsem|tests?|quiz(?:zes)?|assessments?|lab\s+exams?)\b/i.test(type)) return true;
+            if (/\b(mid\s*sem(ester)?\s+exam|end\s*sem(ester)?\s+exam|exams?|theory\s+exam|lab\s+exam|practical\s+exam|class\s+test|cycle\s+test|unit\s+test|quiz|assessment)\b/i.test(title)) return true;
+            return false;
+          };
+
+          const wantsBreak = /\b(break|vacation)\b/i.test(lower);
+          const wantsEndsem = /\b(end\s*sem(ester)?)\b/i.test(lower) && !wantsBreak;
+          const wantsMidsem = /\b(mid\s*sem(ester)?)\b/i.test(lower) && !wantsBreak;
+          const wantsHoliday = /\b(holidays?|fests?|festivals?)\b/i.test(lower);
+          const wantsExam = (/\b(exams?|tests?|quiz(?:zes)?|assessments?)\b/i.test(lower) || wantsEndsem || wantsMidsem) && !wantsBreak && !wantsHoliday;
+
+          let categoryLabel = "event";
+          let filtered: any[] = [];
+
+          if (wantsEndsem) {
+            categoryLabel = "end-semester exam";
+            filtered = upcoming.filter((e: any) => {
+              const type = String(e.eventType || "").toLowerCase();
+              const title = String(e.title || "").toLowerCase();
+              return (type.includes("endsem") || /\bend\s*sem(ester)?\b/i.test(title)) && !type.includes("break") && !title.includes("break") && !type.includes("holiday");
+            });
+          } else if (wantsMidsem) {
+            categoryLabel = "mid-semester exam";
+            filtered = upcoming.filter((e: any) => {
+              const type = String(e.eventType || "").toLowerCase();
+              const title = String(e.title || "").toLowerCase();
+              return (type.includes("midsem") || /\bmid\s*sem(ester)?\b/i.test(title)) && !type.includes("break") && !title.includes("break") && !type.includes("holiday");
+            });
+          } else if (wantsBreak) {
+            categoryLabel = "break / vacation";
+            filtered = upcoming.filter((e: any) => {
+              const type = String(e.eventType || "").toLowerCase();
+              const title = String(e.title || "").toLowerCase();
+              return type.includes("vacation") || type.includes("break") || /\b(break|vacation)\b/i.test(title);
+            });
+          } else if (wantsExam) {
+            categoryLabel = "exam";
+            filtered = upcoming.filter(isExamEvent);
+          } else if (wantsHoliday) {
+            categoryLabel = "holiday";
+            filtered = upcoming.filter((e: any) => {
+              const type = String(e.eventType || "").toLowerCase();
+              const title = String(e.title || "").toLowerCase();
+              return type.includes("holiday") || /\b(holiday|diwali|puja|jayanti|chaturdasi|duj|christmas)\b/i.test(title);
+            });
+          }
+
           const list = filtered.length > 0 ? filtered : upcoming;
           if (list.length === 0) {
-            return { reply: `You don't have any upcoming events or holidays recorded in your active semester calendar yet.` };
+            return { reply: `You don't have any upcoming ${categoryLabel}s recorded in your active semester calendar.` };
           }
           const top = list[0];
           const countdownText = top.daysUntil === 0 ? "today" : top.daysUntil === 1 ? "tomorrow (in 1 day)" : `in **${top.daysUntil} days**`;
@@ -929,7 +1213,7 @@ const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'vo
             .map((e: any) => `• **${e.title}** — ${e.date}${e.endDate ? ` to ${e.endDate}` : ""} (${e.daysUntil === 0 ? "Today" : `in ${e.daysUntil}d`})`)
             .join("\n");
           return {
-            reply: `Your next upcoming ${wantsHoliday ? "holiday" : wantsExam ? "exam" : "event"} is **${top.title}** on **${top.date}${top.endDate ? ` – ${top.endDate}` : ""}** (${countdownText}).${moreList ? `\n\n**Following up:**\n${moreList}` : ""}`,
+            reply: `Your next upcoming ${categoryLabel} is **${top.title}** on **${top.date}${top.endDate ? ` – ${top.endDate}` : ""}** (${countdownText}).${moreList ? `\n\n**Following up:**\n${moreList}` : ""}`,
           };
         }
 
@@ -1132,12 +1416,14 @@ const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'vo
         history_logs: needsHistoryLogs ? currentLogs.slice(0, 30) : [],
         calendar_events: currentEvents
           .filter(e => {
-            const eventDate = new Date(e.endDate || e.date);
+            const dateStr = toIsoDateOnly(e.endDate) || toIsoDateOnly(e.date);
+            if (!dateStr) return true;
+            const eventDate = new Date(dateStr + "T00:00:00");
             const monthAgo = new Date();
             monthAgo.setDate(monthAgo.getDate() - 30);
             return eventDate >= monthAgo;
           })
-          .slice(0, 40),
+          .slice(0, 50),
         assignments: useAssignmentStore.getState().assignments || []
       };
 
@@ -1350,6 +1636,9 @@ const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'vo
           if (action.payload.endOfDaySummary !== undefined) {
             updates.endOfDaySummary = Boolean(action.payload.endOfDaySummary);
           }
+          if (action.payload.summaryTime !== undefined) {
+            updates.summaryTime = String(action.payload.summaryTime);
+          }
           useNotificationStore.getState().updateConfig(updates);
           NotificationService.autoScheduleFromTimetable().catch(() => {});
         } else if (action.type === 'ADD_TIMETABLE_SLOT') {
@@ -1521,6 +1810,7 @@ const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'vo
       
       
 
+      setIsServerOnline(true);
       return data.response || data.reply;
     } catch (err: any) {
       if (err.name === 'CanceledError' || err.code === 'ERR_CANCELED') {
@@ -1528,6 +1818,8 @@ const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'vo
         return;
       }
       console.error("AI Chat error:", err);
+      // Immediately flag server as offline so yellow status dot & offline warning banner activate
+      setIsServerOnline(false);
       const errorMessage: Message = {
         id: String(Date.now() + 1),
         role: "assistant",
@@ -1560,35 +1852,37 @@ const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'vo
 
   return (
     <>
-      {/* Floating Trigger Dock with Ambient Glow */}
-      <div className="fixed bottom-[calc(5rem+env(safe-area-inset-bottom))] md:bottom-6 right-6 z-40">
-        <motion.button
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-          onClick={() => {
-            setIsOpen(prev => {
-              if (prev && isHandsFreeRef.current) {
-                stopHandsFreeMode();
-              }
-              return !prev;
-            });
-          }}
-          className={`chatbot-btn group relative flex items-center gap-2.5 px-4 py-3 rounded-full shadow-xl transition-all cursor-pointer text-xs font-semibold ${getPillClasses()}`}
-          aria-label="Open AttendX AI"
-        >
-          <div className="relative">
-            <Sparkles className="w-4 h-4 text-current animate-pulse" />
-            <span className="absolute -top-1 -right-1 flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-current opacity-50"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-current"></span>
+      {/* Floating Trigger Dock with Ambient Glow (hidden when drawer is open to prevent overlapping artifacts) */}
+      {!isOpen && (
+        <div className="fixed bottom-[calc(5rem+env(safe-area-inset-bottom))] md:bottom-6 right-6 z-40">
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={() => {
+              setIsOpen(prev => {
+                if (prev && isHandsFreeRef.current) {
+                  stopHandsFreeMode();
+                }
+                return !prev;
+              });
+            }}
+            className={`chatbot-btn group relative flex items-center gap-2.5 px-4 py-3 rounded-full shadow-xl transition-all cursor-pointer text-xs font-semibold ${getPillClasses()}`}
+            aria-label="Open AttendX AI"
+          >
+            <div className="relative">
+              <Sparkles className="w-4 h-4 text-current animate-pulse" />
+              <span className="absolute -top-1 -right-1 flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-current opacity-50"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-current"></span>
+              </span>
+            </div>
+            <span className="font-bold tracking-wide">AttendX AI</span>
+            <span className="hidden sm:inline-block text-[10px] px-1.5 py-0.5 rounded-md font-mono border border-current opacity-70">
+              Ctrl+/
             </span>
-          </div>
-          <span className="font-bold tracking-wide">AttendX AI</span>
-          <span className="hidden sm:inline-block text-[10px] px-1.5 py-0.5 rounded-md font-mono border border-current opacity-70">
-            Ctrl+/
-          </span>
-        </motion.button>
-      </div>
+          </motion.button>
+        </div>
+      )}
 
       {/* Voice Mode Fullscreen Overlay */}
       <VoiceModeOverlay 
@@ -1597,7 +1891,7 @@ const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'vo
         onSendMessage={async (q, inputMethod = 'voice') => {
           return await handleSendMessage(q, inputMethod);
         }}
-        pendingActionMsgId={(function(){ const lastMsg = messages[messages.length - 1]; return (lastMsg && lastMsg.role === 'assistant' && lastMsg.pendingActions && !lastMsg.actionsExecuted && !lastMsg.isExecutingAction) ? lastMsg.id : undefined; })()}
+        pendingActionMsgId={(function(){ const lastMsg = messages[messages.length - 1]; return (lastMsg && lastMsg.role === 'assistant' && lastMsg.pendingActions && !lastMsg.actionsExecuted && !lastMsg.actionsExpired && !lastMsg.isExecutingAction) ? lastMsg.id : undefined; })()}
         onConfirmPendingAction={(id) => {
            if ((window as any)._executePendingActions) {
               (window as any)._executePendingActions(id);
@@ -1618,14 +1912,14 @@ const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'vo
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.88, y: 25 }}
             transition={{ type: "spring", damping: 22, stiffness: 280 }}
-            className={`chatbot-window fixed z-50 flex flex-col bg-card dark:bg-black border border-primary/20 dark:border-primary/30 shadow-2xl shadow-primary/20 overflow-hidden text-foreground ${
+            className={`chatbot-window fixed z-50 flex flex-col bg-white dark:bg-[#0c0d0e] border border-slate-200/90 dark:border-white/15 shadow-2xl shadow-black/25 overflow-hidden text-foreground ${
               isExpanded
                 ? "bottom-4 right-4 sm:bottom-6 sm:right-6 w-[calc(100vw-2rem)] sm:w-[680px] h-[88vh] max-h-[780px] rounded-none"
                 : "bottom-24 md:bottom-20 right-4 sm:right-6 w-[calc(100vw-2rem)] sm:w-[440px] h-[80vh] max-h-[620px] rounded-none"
             }`}
           >
-            {/* Header with Frosted Glass Top Bar */}
-            <div className="px-5 py-3.5 border-b border-primary/10 dark:border-white/10 bg-white/70 dark:bg-black/70 backdrop-blur-md flex items-center justify-between">
+            {/* Header with Solid Opaque Top Bar */}
+            <div className="px-5 py-3.5 border-b border-slate-200/80 dark:border-white/10 bg-white dark:bg-[#0c0d0e] flex items-center justify-between z-10 shrink-0">
               <div className="flex items-center gap-3 min-w-0">
 
                 <div className="relative">
@@ -1691,7 +1985,7 @@ const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'vo
             )}
 
             {/* Main Content Area */}
-            <div className="flex-1 overflow-y-auto">
+            <div className="flex-1 overflow-y-auto bg-white dark:bg-[#0c0d0e]">
               {messages.length === 0 ? (
                 <motion.div 
                   initial="hidden"
@@ -1808,7 +2102,7 @@ const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'vo
                             )}
 
                             {/* Itemized Action Confirmation Card */}
-                            {msg.pendingActions && msg.pendingActions.length > 0 && !msg.actionsExecuted && (
+                            {msg.pendingActions && msg.pendingActions.length > 0 && !msg.actionsExecuted && !msg.actionsExpired && (
                               <div className="mt-3.5 pt-3 border-t border-rose-500/30">
                                 <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-foreground">
                                   <div className="flex items-center gap-2 mb-2 text-rose-600 dark:text-rose-400">
@@ -1884,6 +2178,12 @@ const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'vo
                                 </div>
                               </div>
                             )}
+                            {msg.pendingActions && msg.actionsExpired && !msg.actionsExecuted && (
+                              <div className="mt-3 pt-2 border-t border-border/40 text-[11px] text-muted-foreground/80 italic flex items-center gap-1.5">
+                                <Clock className="w-3.5 h-3.5 text-muted-foreground/60 shrink-0" />
+                                <span>Action confirmation expired (superseded by follow-up)</span>
+                              </div>
+                            )}
                             {msg.pendingActions && msg.actionsExecuted && (
                               <div className="mt-3.5 pt-3 border-t border-emerald-500/30">
                                 <div className="p-2 rounded-none bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center gap-2 text-xs font-bold">
@@ -1954,7 +2254,7 @@ const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'vo
             </div>
 
             {/* Gemini-style Bottom Composer Pill */}
-            <div className="p-3 bg-gradient-to-t from-background/90 to-transparent pb-4">
+            <div className="p-3 bg-white dark:bg-[#0c0d0e] border-t border-slate-100 dark:border-white/10 pb-4 z-10 shrink-0">
 
               <AnimatePresence>
                 {isHandsFree && (
@@ -1962,31 +2262,39 @@ const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'vo
                     initial={{ opacity: 0, y: 10, height: 0 }}
                     animate={{ opacity: 1, y: 0, height: 'auto' }}
                     exit={{ opacity: 0, y: 10, height: 0 }}
-                    className="mb-3 mx-1 bg-black/90 backdrop-blur-md rounded-[20px] border border-white/10 p-3 shadow-lg flex items-center justify-between overflow-hidden"
+                    className="mb-3 mx-1 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md rounded-2xl border border-slate-200 dark:border-white/10 p-3 shadow-lg flex items-center justify-between gap-3 transition-colors"
                   >
-                    <div className="flex flex-col">
-                      <div className="flex items-center gap-2">
-                        <div className={`w-2.5 h-2.5 rounded-full ${
+                    <div className="flex flex-col min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${
                           handsFreeStatus === 'LISTENING' ? 'bg-emerald-500 animate-pulse' :
                           handsFreeStatus === 'SPEAKING' ? 'bg-blue-500 animate-pulse' :
                           'bg-amber-500 animate-pulse'
                         }`} />
-                        <span className="text-white font-bold text-xs tracking-wider">HANDS-FREE<br/>MODE</span>
-                        <span className="text-xs bg-slate-800 text-slate-300 px-2 py-0.5 rounded-full ml-1 font-medium">
+                        <span className="font-bold text-xs tracking-wider text-slate-900 dark:text-white shrink-0">
+                          HANDS-FREE
+                        </span>
+                        <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${
+                          handsFreeStatus === 'LISTENING' ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20' :
+                          handsFreeStatus === 'SPEAKING' ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20' :
+                          'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20'
+                        }`}>
                           {handsFreeStatus === 'LISTENING' ? 'Listening...' :
                            handsFreeStatus === 'SPEAKING' ? 'Speaking...' :
                            'Thinking...'}
                         </span>
                       </div>
-                      <span className="text-[10px] text-white/50 mt-1">Say "stop" or tap Stop Conv...</span>
+                      <span className="text-[10px] text-slate-500 dark:text-white/50 mt-1 truncate">
+                        Say "stop" or tap Stop to exit
+                      </span>
                     </div>
                     <button
                       type="button"
                       onClick={() => stopHandsFreeMode()}
-                      className="bg-[#ff004d] hover:bg-rose-500 text-white text-[11px] font-bold px-3 py-2 rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer"
+                      className="bg-rose-600 hover:bg-rose-500 active:bg-rose-700 text-white text-xs font-semibold px-3 py-1.5 rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer shrink-0 shadow-sm"
                     >
-                      <Square className="w-3 h-3 fill-current" />
-                      Stop Conversation
+                      <Square className="w-3.5 h-3.5 fill-current" />
+                      <span>Stop</span>
                     </button>
                   </motion.div>
                 )}
@@ -1995,7 +2303,10 @@ const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'vo
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
-                  handleSendMessage();
+                  const text = input.trim();
+                  if (text && !isLoading) {
+                    handleSendMessage(text, 'text');
+                  }
                 }}
                 className="relative flex items-center gap-2 bg-slate-100 dark:bg-black rounded-[24px] px-2 py-1.5 shadow-sm dark:shadow-[0_0_15px_rgba(0,0,0,0.5)] mx-1 border border-slate-200 dark:border-white/10"
               >
@@ -2010,7 +2321,13 @@ const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'vo
                       lastInputMethodRef.current = 'text';
                     }}
                     onKeyDown={(e) => {
-                      if (e.key !== 'Enter') {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        const text = input.trim();
+                        if (text && !isLoading) {
+                          handleSendMessage(text, 'text');
+                        }
+                      } else {
                         lastInputMethodRef.current = 'text';
                       }
                     }}
@@ -2034,6 +2351,13 @@ const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'vo
                     <button
                       type="submit"
                       disabled={isLoading}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        const text = input.trim();
+                        if (text && !isLoading) {
+                          handleSendMessage(text, 'text');
+                        }
+                      }}
                       className="w-9 h-9 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center hover:bg-blue-500/30 transition-colors cursor-pointer"
                       title="Send"
                     >
@@ -2045,7 +2369,9 @@ const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'vo
                         type="button"
                         onClick={startHandsFreeMode}
                         className={`w-9 h-9 rounded-full flex items-center justify-center transition-colors cursor-pointer ${
-                          isHandsFree ? 'bg-emerald-500/20 text-emerald-500 hover:bg-emerald-500/30' : 'text-slate-400 hover:text-slate-600 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-white/10'
+                          isHandsFree 
+                            ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/30 ring-2 ring-emerald-500/40' 
+                            : 'text-slate-400 hover:text-slate-600 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-white/10'
                         }`}
                         title={isHandsFree ? "Stop Hands-Free Mode" : "Start Hands-Free Mode"}
                       >
@@ -2054,6 +2380,11 @@ const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'vo
                       <button
                         type="button"
                         onClick={() => {
+                          try {
+                            localStorage.setItem("onboarding_voice_mode", "true");
+                            api.patch("/users/onboarding-status", { step: "voice_mode" }).catch(() => {});
+                            window.dispatchEvent(new CustomEvent("onboarding-step-completed", { detail: { step: "voice_mode" } }));
+                          } catch {}
                           setIsVoiceOpen(true);
                         }}
                         className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-slate-200 dark:hover:bg-white/10 text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors cursor-pointer"

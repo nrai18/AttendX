@@ -5,8 +5,8 @@ import { PushNotificationService } from "./push_notification.service";
 
 export class SemesterService {
   private static async wipeSemesterRelations(semesterId: string, userId: string) {
-    // 1. Detach classrooms and fetch subjects in parallel
-    const [, subjects] = await Promise.all([
+    // 1. Fetch relations by concrete indexed IDs in parallel
+    const [, subjects, slots, overrides] = await Promise.all([
       prisma.classroom.updateMany({
         where: { semesterId },
         data: { semesterId: null }
@@ -15,23 +15,21 @@ export class SemesterService {
         where: { semesterId },
         select: { id: true }
       }),
+      prisma.timetableSlot.findMany({
+        where: { semesterId },
+        select: { id: true }
+      }),
+      prisma.timetableOverride.findMany({
+        where: { semesterId },
+        select: { id: true }
+      }),
     ]);
     const subjectIds = subjects.map(s => s.id);
+    const slotIds = slots.map(s => s.id);
+    const overrideIds = overrides.map(o => o.id);
 
-    // 2. Detach notes/assignments and delete exports + attendance in parallel
-    await Promise.all([
-      ...(subjectIds.length > 0
-        ? [
-            prisma.note.updateMany({
-              where: { subjectId: { in: subjectIds } },
-              data: { subjectId: null }
-            }),
-            prisma.assignment.updateMany({
-              where: { subjectId: { in: subjectIds } },
-              data: { subjectId: null }
-            }),
-          ]
-        : []),
+    // 2. Detach notes/assignments, delete exports, and delete attendance by direct indexed FK columns
+    const cleanupOps: Promise<any>[] = [
       prisma.export.deleteMany({
         where: {
           OR: [
@@ -39,18 +37,42 @@ export class SemesterService {
             ...(subjectIds.length > 0 ? [{ subjectId: { in: subjectIds } }] : []),
           ]
         }
-      }),
-      prisma.attendance.deleteMany({
-        where: {
-          userId,
-          OR: [
-            ...(subjectIds.length > 0 ? [{ subjectId: { in: subjectIds } }] : []),
-            { timetableSlot: { semesterId } },
-            { override: { semesterId } },
-          ]
-        }
-      }),
-    ]);
+      })
+    ];
+
+    if (subjectIds.length > 0) {
+      cleanupOps.push(
+        prisma.note.updateMany({
+          where: { subjectId: { in: subjectIds } },
+          data: { subjectId: null }
+        }),
+        prisma.assignment.updateMany({
+          where: { subjectId: { in: subjectIds } },
+          data: { subjectId: null }
+        }),
+        prisma.attendance.deleteMany({
+          where: { userId, subjectId: { in: subjectIds } }
+        })
+      );
+    }
+
+    if (slotIds.length > 0) {
+      cleanupOps.push(
+        prisma.attendance.deleteMany({
+          where: { userId, timetableSlotId: { in: slotIds } }
+        })
+      );
+    }
+
+    if (overrideIds.length > 0) {
+      cleanupOps.push(
+        prisma.attendance.deleteMany({
+          where: { userId, overrideId: { in: overrideIds } }
+        })
+      );
+    }
+
+    await Promise.all(cleanupOps);
 
     // 3. Delete overrides, events, and slots, then subjects
     await Promise.all([
@@ -89,7 +111,11 @@ export class SemesterService {
         isActive: data.isActive ?? true,
       },
     });
-    await CacheService.invalidateUser(userId);
+    await Promise.all([
+      CacheService.del(userId, "onboarding:status"),
+      CacheService.del(userId, "semesters:active"),
+      CacheService.invalidateUser(userId),
+    ]);
     return semester;
   }
 
@@ -117,7 +143,11 @@ export class SemesterService {
       where: { id: semester.id },
       data: { isActive: true },
     });
-    await CacheService.invalidateUser(userId);
+    await Promise.all([
+      CacheService.del(userId, "onboarding:status"),
+      CacheService.del(userId, "semesters:active"),
+      CacheService.invalidateUser(userId),
+    ]);
     return updatedSemester;
   }
 
@@ -137,20 +167,48 @@ export class SemesterService {
       const deletedSemester = await prisma.semester.delete({
         where: { id: semester.id },
       });
-      await CacheService.invalidateUser(userId);
+      await Promise.all([
+        CacheService.del(userId, "onboarding:status"),
+        CacheService.del(userId, "semesters:active"),
+        CacheService.invalidateUser(userId),
+      ]);
       return deletedSemester;
     } else {
       // Detach attendance and overrides before removing slots while retaining historical attendance
-      await prisma.attendance.updateMany({
-        where: {
-          userId,
-          OR: [
-            { timetableSlot: { semesterId: semester.id } },
-            { override: { semesterId: semester.id } },
-          ],
-        },
-        data: { timetableSlotId: null, overrideId: null },
-      });
+      const [slots, overrides] = await Promise.all([
+        prisma.timetableSlot.findMany({
+          where: { semesterId: semester.id },
+          select: { id: true },
+        }),
+        prisma.timetableOverride.findMany({
+          where: { semesterId: semester.id },
+          select: { id: true },
+        }),
+      ]);
+      const slotIds = slots.map((s) => s.id);
+      const overrideIds = overrides.map((o) => o.id);
+
+      const detachOps: Promise<any>[] = [];
+      if (slotIds.length > 0) {
+        detachOps.push(
+          prisma.attendance.updateMany({
+            where: { userId, timetableSlotId: { in: slotIds } },
+            data: { timetableSlotId: null },
+          })
+        );
+      }
+      if (overrideIds.length > 0) {
+        detachOps.push(
+          prisma.attendance.updateMany({
+            where: { userId, overrideId: { in: overrideIds } },
+            data: { overrideId: null },
+          })
+        );
+      }
+      if (detachOps.length > 0) {
+        await Promise.all(detachOps);
+      }
+
       await prisma.timetableOverride.deleteMany({
         where: { semesterId: semester.id },
       });
@@ -161,7 +219,11 @@ export class SemesterService {
         where: { id: semester.id },
         data: { isActive: false },
       });
-      await CacheService.invalidateUser(userId);
+      await Promise.all([
+        CacheService.del(userId, "onboarding:status"),
+        CacheService.del(userId, "semesters:active"),
+        CacheService.invalidateUser(userId),
+      ]);
       return updatedSemester;
     }
   }
@@ -277,7 +339,8 @@ export class SemesterService {
     autoSyncHolidays?: boolean;
   }) {
     const activeSemester = await prisma.semester.findFirst({
-      where: { userId, isActive: true }
+      where: { userId, isActive: true },
+      orderBy: { createdAt: "desc" }
     });
 
     // 1. Wipe or deactivate old semester
@@ -297,6 +360,12 @@ export class SemesterService {
       }
     }
 
+    // Ensure any remaining active semesters for user are deactivated
+    await prisma.semester.updateMany({
+      where: { userId, isActive: true },
+      data: { isActive: false }
+    });
+
     // 2. Create the new semester
     const newSemester = await prisma.semester.create({
       data: {
@@ -308,21 +377,18 @@ export class SemesterService {
       }
     });
 
-    // 3. Auto-sync calendar and holidays if requested
-    let syncResult: any = { syncedCount: 0 };
+    // 3. Auto-sync calendar and holidays asynchronously / non-blocking so the transition completes sub-second
     if (data.autoSyncCalendar !== false || data.autoSyncHolidays !== false) {
-      try {
-        syncResult = await TemplateEventService.syncToSemester({
-          userId,
-          semesterId: newSemester.id,
-          syncHolidayList: data.autoSyncHolidays !== false,
-          syncAcademicCalendar: data.autoSyncCalendar !== false,
-          semesterNumber: data.semesterNumber,
-          year: new Date(data.startDate).getFullYear()
-        });
-      } catch (err) {
-        console.error("[SemesterService] Auto-sync failed during transition:", err);
-      }
+      TemplateEventService.syncToSemester({
+        userId,
+        semesterId: newSemester.id,
+        syncHolidayList: data.autoSyncHolidays !== false,
+        syncAcademicCalendar: data.autoSyncCalendar !== false,
+        semesterNumber: data.semesterNumber,
+        year: new Date(data.startDate).getFullYear()
+      }).catch((err) => {
+        console.error("[SemesterService] Auto-sync failed in background during transition:", err);
+      });
     }
 
     await CacheService.invalidateUser(userId);
@@ -330,7 +396,7 @@ export class SemesterService {
       success: true,
       message: "Successfully transitioned to next semester",
       semester: newSemester,
-      syncedCount: syncResult.syncedCount || 0
+      syncedCount: 0
     };
   }
 

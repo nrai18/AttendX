@@ -14,7 +14,11 @@ const validSessions = new Map<string, { userId: string; expiresAt: number }>();
 const revokedSessions = new Set<string>();
 const SESSION_CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes (revocations call invalidateSessionCache immediately)
 
-export function invalidateSessionCache(sessionId?: string, userId?: string) {
+export function clearSessionRevocation(sessionId: string) {
+  revokedSessions.delete(sessionId);
+}
+
+export function invalidateSessionCache(sessionId?: string, userId?: string, keepSessionId?: string) {
   if (sessionId) {
     validSessions.delete(sessionId);
     sessionPromises.delete(sessionId);
@@ -22,7 +26,7 @@ export function invalidateSessionCache(sessionId?: string, userId?: string) {
   }
   if (userId) {
     for (const [sid, entry] of validSessions.entries()) {
-      if (entry.userId === userId) {
+      if (entry.userId === userId && sid !== keepSessionId) {
         validSessions.delete(sid);
         sessionPromises.delete(sid);
         revokedSessions.add(sid);

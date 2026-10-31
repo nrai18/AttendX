@@ -1,7 +1,6 @@
 process.env.TZ = "Asia/Kolkata"; // Fix timing and date-rollover issues
 import express from "express";
 import cors from "cors";
-import { prisma } from "./lib/prisma";
 import helmet from "helmet";
 import morgan from "morgan";
 import cookieParser from "cookie-parser";
@@ -80,6 +79,7 @@ app.use("/api", (req, res, next) => {
 // Registered Routes
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
+app.use("/api/user", userRoutes);
 app.use("/api/semesters", semesterRoutes);
 app.use("/api/subjects", subjectRoutes);
 app.use("/api/timetable", timetableRoutes);
@@ -107,29 +107,12 @@ app.get("/api/curriculum/meta", (_req, res) => {
   res.status(200).json(CURRICULUM_META);
 });
 
-// Health check endpoint (non-blocking response + throttled 90s Neon keep-alive ping)
-let lastDbHealthPingAt = 0;
-let isDbHealthPingInFlight = false;
-const DB_HEALTH_PING_INTERVAL_MS = 90_000;
-
+// Health check endpoint (pure process/memory check; zero DB queries so Render/uptime pings keep Node warm without waking Neon Postgres)
 app.get("/api/health", (_req, res) => {
-  const now = Date.now();
-  if (!isDbHealthPingInFlight && now - lastDbHealthPingAt >= DB_HEALTH_PING_INTERVAL_MS) {
-    isDbHealthPingInFlight = true;
-    lastDbHealthPingAt = now;
-    prisma.$queryRaw`SELECT 1`
-      .catch((err: any) => {
-        console.warn("[HealthCheck] Transient DB keep-alive warning:", err?.message || err);
-      })
-      .finally(() => {
-        isDbHealthPingInFlight = false;
-      });
-  }
-
   const mem = MemoryMonitor.getSnapshot();
   res.status(200).json({
     status: "ok",
-    message: "AttendX API and DB are running",
+    message: "AttendX API is running",
     timestamp: new Date().toISOString(),
     memory: {
       rssMB: mem.rssMB,
@@ -198,4 +181,3 @@ export async function startServer() {
 }
 
 export default app;
-

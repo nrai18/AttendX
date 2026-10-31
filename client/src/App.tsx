@@ -22,6 +22,8 @@ import { ClassroomFeedPage } from "./pages/social/ClassroomFeedPage";
 import { FaqPage } from "./pages/settings/FaqPage";
 import { Loader2 } from "lucide-react";
 import { ErrorBoundary } from "./components/common/ErrorBoundary";
+import { DynamicIslandHUD } from "./components/ui/dynamic-island-hud";
+import { ShockwaveCelebrationOverlay } from "./components/ui/shockwave-celebration";
 
 // Protected Route Guard Component
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({
@@ -38,7 +40,7 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({
   }
 
   if (!isAuthenticated) {
-    return <Navigate to="/login" replace />;
+    return <Navigate to="/" replace />;
   }
 
   return <>{children}</>;
@@ -266,6 +268,8 @@ export function App() {
 
   return (
     <ErrorBoundary>
+      <DynamicIslandHUD />
+      <ShockwaveCelebrationOverlay />
       {!splashFinished && (
         <WebSplashScreen onComplete={handleSplashComplete} />
       )}

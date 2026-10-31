@@ -164,6 +164,8 @@ export const useCacheStore = create<CacheState>()(
           subject_logs: {},
           all_logs: null,
           insights: null,
+          reminderFrequency: { type: 'Daily' },
+          frequencyMemory: { Weekly: 'Sun', Monthly: '1', Yearly: 'Jan' },
           mutationVersion: (state.mutationVersion || 0) + 1,
         }));
         onClearListeners.forEach((cb) => {

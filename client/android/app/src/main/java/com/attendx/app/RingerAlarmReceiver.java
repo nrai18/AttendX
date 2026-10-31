@@ -68,16 +68,26 @@ public class RingerAlarmReceiver extends BroadcastReceiver {
             AudioManager audioManager = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
             NotificationManager notificationManager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
 
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                if (notificationManager == null || !notificationManager.isNotificationPolicyAccessGranted()) {
-                    Log.w(TAG, "DND access not granted; unable to auto-restore ringer.");
-                    return;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && notificationManager != null) {
+                if (notificationManager.isNotificationPolicyAccessGranted()) {
+                    try {
+                        notificationManager.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_ALL);
+                        Log.d(TAG, "DND interruption filter successfully restored to INTERRUPTION_FILTER_ALL.");
+                    } catch (Exception dndEx) {
+                        Log.e(TAG, "Failed to restore DND interruption filter to ALL", dndEx);
+                    }
+                } else {
+                    Log.w(TAG, "DND access not granted; unable to auto-restore interruption filter.");
                 }
             }
 
             if (audioManager != null) {
-                audioManager.setRingerMode(AudioManager.RINGER_MODE_NORMAL);
-                Log.d(TAG, "Ringer successfully restored to NORMAL by native alarm.");
+                try {
+                    audioManager.setRingerMode(AudioManager.RINGER_MODE_NORMAL);
+                    Log.d(TAG, "Ringer successfully restored to NORMAL by native alarm.");
+                } catch (Exception ringerEx) {
+                    Log.e(TAG, "Failed to set ringer mode to NORMAL", ringerEx);
+                }
             }
 
             // Clear stored unmute preferences
@@ -124,6 +134,15 @@ public class RingerAlarmReceiver extends BroadcastReceiver {
         try {
             AudioManager audioManager = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
             NotificationManager notificationManager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && notificationManager != null && notificationManager.isNotificationPolicyAccessGranted()) {
+                try {
+                    notificationManager.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_ALL);
+                    Log.d(TAG, "DND interruption filter cleared on manual unmute.");
+                } catch (Exception dndEx) {
+                    Log.e(TAG, "Failed to restore DND interruption filter on manual unmute", dndEx);
+                }
+            }
 
             if (audioManager != null) {
                 audioManager.setRingerMode(AudioManager.RINGER_MODE_NORMAL);

@@ -1,4 +1,4 @@
-﻿import { AnimationType } from "../stores/animationPopupStore";
+import { AnimationType } from "../stores/animationPopupStore";
 
 export const HOLIDAY_ASSETS: Partial<Record<AnimationType, string>> = {
   diwali: "/lottie/diwali.json",

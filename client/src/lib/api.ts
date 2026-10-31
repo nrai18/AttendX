@@ -1,4 +1,4 @@
-import axios from "axios";
+import axios, { type AxiosRequestConfig, type AxiosResponse } from "axios";
 import { useAuthStore } from "../stores/authStore";
 import { useOfflineStore } from "../stores/offlineStore";
 import { useCacheStore } from "../stores/cacheStore";
@@ -32,6 +32,73 @@ export const api = axios.create({
   withCredentials: true, // Send httpOnly refresh cookies automatically
   timeout: 120000,
 });
+
+// In-flight GET request deduplication: collapses identical concurrent GET calls into 1 network roundtrip
+const inFlightGetRequests = new Map<string, Promise<any>>();
+const originalGet = api.get.bind(api);
+(api as any).get = function <T = any, R = AxiosResponse<T>, D = any>(url: string, config?: AxiosRequestConfig<D>): Promise<R> {
+  if (config?.responseType === 'blob') {
+    return originalGet(url, config);
+  }
+  const paramsCopy = { ...(config?.params || {}) };
+  delete paramsCopy._t;
+  const paramKey = Object.keys(paramsCopy).sort().map(k => `${k}=${String(paramsCopy[k])}`).join('&');
+  const cacheKey = `${url}?${paramKey}`;
+
+  const callerSignal = config?.signal;
+
+  let basePromise: Promise<R>;
+  if (inFlightGetRequests.has(cacheKey)) {
+    basePromise = inFlightGetRequests.get(cacheKey)!;
+  } else {
+    // Shared network request without single-caller signal so concurrent listeners share the promise
+    const sharedConfig = { ...config };
+    delete sharedConfig.signal;
+    basePromise = originalGet<T, R, D>(url, sharedConfig)
+      .finally(() => {
+        setTimeout(() => {
+          inFlightGetRequests.delete(cacheKey);
+        }, 300);
+      });
+    inFlightGetRequests.set(cacheKey, basePromise);
+  }
+
+  const signal = callerSignal as AbortSignal | undefined;
+  if (!signal) {
+    return basePromise;
+  }
+
+  if (signal.aborted) {
+    return Promise.reject(new axios.CanceledError('canceled'));
+  }
+
+  return new Promise<R>((resolve, reject) => {
+    const onAbort = () => {
+      if (typeof signal.removeEventListener === 'function') {
+        signal.removeEventListener('abort', onAbort);
+      }
+      reject(new axios.CanceledError('canceled'));
+    };
+    if (typeof signal.addEventListener === 'function') {
+      signal.addEventListener('abort', onAbort);
+    }
+    basePromise.then(
+      (res) => {
+        if (typeof signal.removeEventListener === 'function') {
+          signal.removeEventListener('abort', onAbort);
+        }
+        resolve(res);
+      },
+      (err) => {
+        if (typeof signal.removeEventListener === 'function') {
+          signal.removeEventListener('abort', onAbort);
+        }
+        reject(err);
+      }
+    );
+  });
+};
+
 
 // Helper to check token expiration
 const isTokenExpired = (token: string) => {
@@ -147,8 +214,8 @@ api.interceptors.request.use(
           const isNetworkError = !error.response || error.response.status === 0 || error.response.status >= 500 || error.code === 'ECONNABORTED' || error.message === 'Network Error' || (error.message && error.message.toLowerCase().includes('timeout'));
           if (!isNetworkError) {
             useAuthStore.getState().logout();
+            token = null;
           }
-          token = null;
         } finally {
 
           isRefreshing = false;
@@ -158,6 +225,7 @@ api.interceptors.request.use(
           token = await new Promise<string>((resolve, reject) => {
             failedQueue.push({ resolve, reject });
           });
+          
         } catch (error) {
           token = null;
         }
@@ -236,7 +304,18 @@ api.interceptors.response.use(
       isRefreshing = true;
 
       try {
-        const response = await api.post("/auth/refresh", { refreshToken: useAuthStore.getState().refreshToken });
+        let response;
+        try {
+          response = await api.post("/auth/refresh", { refreshToken: useAuthStore.getState().refreshToken });
+        } catch (firstErr: any) {
+          const isTransient = !firstErr.response || firstErr.response.status === 0 || firstErr.response.status >= 500 || firstErr.code === 'ECONNABORTED' || firstErr.message === 'Network Error';
+          if (isTransient) {
+            await new Promise((r) => setTimeout(r, 1200));
+            response = await api.post("/auth/refresh", { refreshToken: useAuthStore.getState().refreshToken });
+          } else {
+            throw firstErr;
+          }
+        }
 
         const { accessToken, refreshToken } = response.data;
         useAuthStore.getState().setAccessToken(accessToken);
@@ -278,12 +357,12 @@ api.interceptors.response.use(
              data: parsedData,
              headers: originalRequest.headers
           });
-          
+
           import("sonner").then(({ toast }) => {
           // Silent offline queue (no noisy toast)
           });
-          
-          return Promise.resolve({ data: { id: 'temp-' + Date.now(), _queued: true } });
+
+          return Promise.resolve({ data: { id: 'temp-' + Date.now(), _queued: true } }); 
       }
     } else if (
       !axios.isCancel(error) &&

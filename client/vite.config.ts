@@ -31,11 +31,12 @@ export default defineConfig({
         proxyTimeout: 300000,
         configure: (proxy) => {
           proxy.on("error", (err, _req, res) => {
-            if ((err as any).code === "ECONNREFUSED") {
+            const code = (err as any).code;
+            if (code === "ECONNREFUSED" || code === "ECONNRESET" || code === "ETIMEDOUT") {
               const serverRes = res as any;
               if (serverRes && typeof serverRes.writeHead === "function" && !serverRes.headersSent) {
                 serverRes.writeHead(503, { "Content-Type": "application/json" });
-                serverRes.end(JSON.stringify({ error: "Backend server is offline on 127.0.0.1:3000", code: "BACKEND_OFFLINE" }));
+                serverRes.end(JSON.stringify({ error: "Backend server is restarting or offline on 127.0.0.1:3000", code: "BACKEND_OFFLINE" }));
               }
             }
           });

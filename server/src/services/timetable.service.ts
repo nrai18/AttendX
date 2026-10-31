@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import { prisma } from "../lib/prisma";
 
 
@@ -10,83 +11,99 @@ import { CacheService } from "./cache.service";
 export class TimetableService {
   
   static async getArchivedTimetables(userId: string, semesterId: string) {
+    if (!semesterId || semesterId === "undefined" || semesterId === "null" || semesterId === "active") {
+      const activeSem = await prisma.semester.findFirst({
+        where: { userId, isActive: true },
+        select: { id: true }
+      });
+      if (activeSem) {
+        semesterId = activeSem.id;
+      } else {
+        const latestSem = await prisma.semester.findFirst({
+          where: { userId },
+          orderBy: { updatedAt: "desc" },
+          select: { id: true }
+        });
+        if (latestSem) {
+          semesterId = latestSem.id;
+        }
+      }
+    }
+
     const allSlots = await prisma.timetableSlot.findMany({
       where: { 
-        semesterId,
+        ...(semesterId ? { semesterId } : {}),
         semester: { userId }
       },
       include: { subject: true }
     });
+
+    if (allSlots.length === 0) {
+      return [];
+    }
+
+    const retiredSlots = allSlots.filter(s => s.validUntil !== null);
     
     // Find all distinct mutation timestamps (when slots were archived)
     const rawMutationTimes = Array.from(new Set(
-      allSlots
-        .filter(s => s.validUntil !== null)
-        .map(s => new Date(s.validUntil!).getTime())
-    )).sort((a, b) => a - b); // Ascending order for clustering
+      retiredSlots.map(s => new Date(s.validUntil!).getTime())
+    )).sort((a, b) => b - a); // Descending order (newest first)
     
-    // Cluster mutations that occur within 24 hours of each other to avoid 
-    // flooding the archive with micro-versions from a single editing session.
-    // We keep the EARLIEST mutation in each cluster (which gives us the stable state BEFORE the edits began).
-    const CLUSTER_WINDOW_MS = 24 * 60 * 60 * 1000;
-    const mutationTimes: number[] = [];
+    // Cluster mutations that occur in the same editing/clearing session (within 3 minutes)
+    const CLUSTER_WINDOW_MS = 3 * 60 * 1000;
+    const clusterCentres: number[] = [];
     
-    let currentClusterStart = -1;
     for (const time of rawMutationTimes) {
-      if (currentClusterStart === -1 || time - currentClusterStart > CLUSTER_WINDOW_MS) {
-        currentClusterStart = time;
-        // Require that the cluster retired a meaningful set of slots (>= 5)
-        // so individual slot edits or minor swaps do not create false archived timetables.
-        const retiredInCluster = allSlots.filter(s => 
-          s.validUntil && Math.abs(new Date(s.validUntil).getTime() - time) <= CLUSTER_WINDOW_MS
-        ).length;
-        if (retiredInCluster >= 5) {
-          mutationTimes.push(time);
-        }
+      const existing = clusterCentres.find(c => Math.abs(c - time) <= CLUSTER_WINDOW_MS);
+      if (!existing) {
+        clusterCentres.push(time);
       }
     }
     
-    // Sort descending for UI (newest archives first)
-    mutationTimes.sort((a, b) => b - a);
-    
-    const versions = mutationTimes.map((time, idx) => {
+    const versions = clusterCentres.map((time) => {
       // Reconstruct timetable exactly as it existed right before this mutation
       const activeSlotsAtTime = allSlots.filter(s => {
-        const from = new Date(s.validFrom).getTime();
-        const until = s.validUntil ? new Date(s.validUntil).getTime() : Infinity;
-        // The slot must have been created before or at this mutation time, 
-        // and must not have been deleted strictly before this mutation time.
-        return from <= time && until >= time;
+        const slotRetired = s.validUntil ? new Date(s.validUntil).getTime() : Infinity;
+        const slotCreated = new Date(s.validFrom).getTime();
+
+        // 1. If this slot was retired during this cluster, it is part of this version
+        if (s.validUntil && Math.abs(slotRetired - time) <= CLUSTER_WINDOW_MS) {
+          return true;
+        }
+
+        // 2. Otherwise, it must have been created before or around this cluster time,
+        // and retired strictly after this cluster (or currently active)
+        return slotCreated <= time + 60000 && slotRetired > time + CLUSTER_WINDOW_MS;
       });
+
+      // Deduplicate slots by ID
+      const uniqueSlots = Array.from(new Map(activeSlotsAtTime.map(s => [s.id, s])).values());
       
       // Sort slots cleanly
-      activeSlotsAtTime.sort((a, b) => {
+      uniqueSlots.sort((a, b) => {
         if (a.dayOfWeek !== b.dayOfWeek) return a.dayOfWeek - b.dayOfWeek;
         return a.startTime.localeCompare(b.startTime);
       });
 
       // Calculate the true earliest validFrom among active slots in this version
-      const earliestFrom = activeSlotsAtTime.reduce((min, s) => {
-        const t = s.validFrom.getTime();
+      const earliestFrom = uniqueSlots.reduce((min, s) => {
+        const t = new Date(s.validFrom).getTime();
         return t < min ? t : min;
       }, Infinity);
-      const validFrom = earliestFrom !== Infinity ? new Date(earliestFrom) : new Date(time);
+      const validFrom = earliestFrom !== Infinity && earliestFrom <= time
+        ? new Date(earliestFrom)
+        : new Date(time);
 
       return {
         id: `version_${time}`,
-        versionNumber: mutationTimes.length - idx,
+        versionNumber: 0, // Assigned sequentially below
         archivedAt: new Date(time),
         validFrom,
         validUntil: new Date(time) as Date | null,
         isCurrent: false,
-        slots: activeSlotsAtTime
+        slots: uniqueSlots
       };
     }).filter(v => v.slots.length > 0);
-
-    // Re-index sequential version numbers so there are no skipped versions
-    versions.forEach((v, index) => {
-      v.versionNumber = versions.length - index;
-    });
 
     // Reconstruct current active timetable version (validUntil is null)
     const currentSlots = allSlots.filter(s => s.validUntil === null);
@@ -96,9 +113,8 @@ export class TimetableService {
         return a.startTime.localeCompare(b.startTime);
       });
 
-      // Earliest validFrom among currently active slots (starts from semester start/phase start, e.g. 2026-09-07)
       const earliestCurrentFrom = currentSlots.reduce((min, s) => {
-        const t = s.validFrom.getTime();
+        const t = new Date(s.validFrom).getTime();
         return t < min ? t : min;
       }, Infinity);
 
@@ -112,11 +128,197 @@ export class TimetableService {
         slots: currentSlots
       };
 
-      // Place the current timetable above Version 1
+      // Place the current timetable above historical versions
       versions.unshift(currentVersion);
+    }
+
+    // Number historical versions sequentially (Version 1 = oldest, Version N = newest)
+    const historical = versions.filter(v => !v.isCurrent);
+    historical.forEach((v, index) => {
+      v.versionNumber = historical.length - index;
+    });
+
+    if (versions.length > 0 && versions[0].isCurrent) {
+      versions[0].versionNumber = historical.length + 1;
     }
     
     return versions;
+  }
+
+  static async deleteArchivedVersion(userId: string, semesterId: string, versionId: string, slotIds?: string[]) {
+    if (!semesterId || semesterId === "undefined" || semesterId === "null" || semesterId === "active") {
+      const activeSem = await prisma.semester.findFirst({
+        where: { userId, isActive: true },
+        select: { id: true }
+      });
+      if (activeSem) {
+        semesterId = activeSem.id;
+      } else {
+        const latestSem = await prisma.semester.findFirst({
+          where: { userId },
+          orderBy: { updatedAt: "desc" },
+          select: { id: true }
+        });
+        if (latestSem) semesterId = latestSem.id;
+      }
+    }
+
+    if (!semesterId) {
+      throw new Error("No semester found to delete archived timetable version from");
+    }
+
+    const ownsSemester = await prisma.semester.findFirst({
+      where: { id: semesterId, userId },
+      select: { id: true }
+    });
+    if (!ownsSemester) {
+      throw new Error("Forbidden: Semester does not belong to user");
+    }
+
+    let targetSlotIds: string[] = [];
+
+    // 1. If explicit slot IDs were passed, filter for those belonging to this user/semester that are retired
+    if (Array.isArray(slotIds) && slotIds.length > 0) {
+      const validSlots = await prisma.timetableSlot.findMany({
+        where: {
+          id: { in: slotIds },
+          semesterId,
+          semester: { userId },
+          validUntil: { not: null } // Never delete active slots!
+        },
+        select: { id: true }
+      });
+      targetSlotIds = validSlots.map(s => s.id);
+    }
+
+    // 2. Fallback: Parse cluster timestamp from versionId (e.g., "version_1793263700000")
+    if (targetSlotIds.length === 0) {
+      const match = versionId.match(/^version_(\d+)$/);
+      if (match) {
+        const clusterTime = Number(match[1]);
+        const CLUSTER_WINDOW_MS = 3 * 60 * 1000;
+
+        const candidateSlots = await prisma.timetableSlot.findMany({
+          where: {
+            semesterId,
+            semester: { userId },
+            validUntil: { not: null }
+          },
+          select: { id: true, validUntil: true }
+        });
+
+        targetSlotIds = candidateSlots
+          .filter(s => s.validUntil && Math.abs(new Date(s.validUntil).getTime() - clusterTime) <= CLUSTER_WINDOW_MS)
+          .map(s => s.id);
+      }
+    }
+
+    if (targetSlotIds.length === 0) {
+      return { count: 0, message: "No retired slots found for this archived version" };
+    }
+
+    // 3. Foreign key decoupling in parallel: decouple attendance records & overrides safely
+    await Promise.all([
+      prisma.attendance.updateMany({
+        where: { timetableSlotId: { in: targetSlotIds } },
+        data: { timetableSlotId: null }
+      }),
+      prisma.timetableOverride.updateMany({
+        where: { originalSlotId: { in: targetSlotIds } },
+        data: { originalSlotId: null }
+      })
+    ]);
+
+    // 4. Delete the retired slots
+    const deleteResult = await prisma.timetableSlot.deleteMany({
+      where: {
+        id: { in: targetSlotIds },
+        validUntil: { not: null } // Strict invariant
+      }
+    });
+
+    // 5. Invalidate caches
+    await Promise.all([
+      CacheService.del(userId, `timetable:archived:${semesterId}`),
+      CacheService.del(userId, "archived_timetables"),
+      CacheService.del(userId, `archived_timetables_${semesterId}`),
+      CacheService.del(userId, `timetable:${semesterId}`),
+      CacheService.invalidateUser(userId)
+    ]);
+
+    return {
+      count: deleteResult.count,
+      deletedSlotIds: targetSlotIds,
+      message: "Archived timetable version deleted successfully"
+    };
+  }
+
+  static async deleteAllArchivedVersions(userId: string, semesterId: string) {
+    if (!semesterId || semesterId === "undefined" || semesterId === "null" || semesterId === "active") {
+      const activeSem = await prisma.semester.findFirst({
+        where: { userId, isActive: true },
+        select: { id: true }
+      });
+      if (activeSem) {
+        semesterId = activeSem.id;
+      } else {
+        const latestSem = await prisma.semester.findFirst({
+          where: { userId },
+          orderBy: { updatedAt: "desc" },
+          select: { id: true }
+        });
+        if (latestSem) semesterId = latestSem.id;
+      }
+    }
+
+    if (!semesterId) {
+      throw new Error("No semester found");
+    }
+
+    const candidateSlots = await prisma.timetableSlot.findMany({
+      where: {
+        semesterId,
+        semester: { userId },
+        validUntil: { not: null } // Only retired slots!
+      },
+      select: { id: true }
+    });
+
+    const targetSlotIds = candidateSlots.map(s => s.id);
+    if (targetSlotIds.length === 0) {
+      return { count: 0, message: "No archived timetable slots found to delete" };
+    }
+
+    await Promise.all([
+      prisma.attendance.updateMany({
+        where: { timetableSlotId: { in: targetSlotIds } },
+        data: { timetableSlotId: null }
+      }),
+      prisma.timetableOverride.updateMany({
+        where: { originalSlotId: { in: targetSlotIds } },
+        data: { originalSlotId: null }
+      })
+    ]);
+
+    const deleteResult = await prisma.timetableSlot.deleteMany({
+      where: {
+        id: { in: targetSlotIds },
+        validUntil: { not: null }
+      }
+    });
+
+    await Promise.all([
+      CacheService.del(userId, `timetable:archived:${semesterId}`),
+      CacheService.del(userId, "archived_timetables"),
+      CacheService.del(userId, `archived_timetables_${semesterId}`),
+      CacheService.del(userId, `timetable:${semesterId}`),
+      CacheService.invalidateUser(userId)
+    ]);
+
+    return {
+      count: deleteResult.count,
+      message: "All archived timetable versions deleted successfully"
+    };
   }
 
   static async getTimetable(userId: string, semesterId: string, group?: string) {
@@ -176,7 +378,7 @@ export class TimetableService {
       where: { id: data.semesterId, userId }
     });
     if (!ownsSemester) throw new Error("Forbidden: Semester does not belong to user");
-    return prisma.timetableSlot.create({
+    const newSlot = await prisma.timetableSlot.create({
       data: {
         semesterId: data.semesterId,
         subjectId: data.subjectId,
@@ -188,6 +390,8 @@ export class TimetableService {
       },
       include: { subject: true },
     });
+    CacheService.del(userId, "onboarding:status").catch(() => {});
+    return newSlot;
   }
 
   // SEC-04 FIX: Helper to verify slot ownership
@@ -322,7 +526,7 @@ export class TimetableService {
       newEndB = newEndA + durB;
     }
 
-    return prisma.$transaction(async (tx) => {
+    const tx = prisma;
       // In-place logical timing swap: Preserves intrinsic class duration (e.g. 100m lab remains 100m,
       // 50m lecture remains 50m). Slots preserve their own UUIDs, subjects, and rooms.
       // No slots are retired, no attendance logs orphaned, and no spurious versions created.
@@ -343,7 +547,7 @@ export class TimetableService {
           endTime: formatMins(newEndB),
         }
       });
-    });
+      return { success: true };
   }
 
 
@@ -472,7 +676,7 @@ export class TimetableService {
       throw new Error("Subject not found or has been deleted");
     }
 
-    let semesterId = data.semesterId || subject.semesterId;
+    let semesterId: string | undefined = data.semesterId || subject.semesterId;
     if (!semesterId) {
       const activeSem = await prisma.semester.findFirst({
         where: { isActive: true, userId: data.userId },
@@ -633,7 +837,7 @@ CRITICAL EXTRACTION RULES:
           responseMimeType: "application/json",
           temperature: 0.1,
           thinkingConfig: {
-            thinkingLevel: 'MINIMAL'
+            thinkingBudget: 0
           }
         }
       });
@@ -801,8 +1005,8 @@ CRITICAL EXTRACTION RULES:
       }
 
       // 2. Filter Lab Groups (G1 vs G2 vs G1/G2)
-      const isElective = slot.code.toUpperCase().includes("SE3") || slot.code.toUpperCase().includes("SE4") || slot.code.toUpperCase().startsWith("SCMS") || slot.code.toUpperCase().startsWith("SEMS");
-        if (!isElective && !isGroupMatch(slot.group, labGroup)) {
+      // Practicals and group slots must strictly match user's lab group
+      if (!isGroupMatch(slot.group, labGroup)) {
         return false;
       }
 
@@ -820,12 +1024,34 @@ CRITICAL EXTRACTION RULES:
       return true;
     });
 
-    const createdSlots = [];
+    // If the client wizard already provided exact WYSIWYG previewed slots, honor them with 100% fidelity
+    const finalSlotsToSave = (Array.isArray(selections.filteredSlots) && selections.filteredSlots.length > 0)
+      ? selections.filteredSlots.map((s: any) => ({
+          ...s,
+          code: (s.code || "").trim(),
+          group: s.group || "ALL",
+          type: s.type || "lecture",
+          startTime: normalizeTimeString(s.startTime, "09:00"),
+          endTime: normalizeTimeString(s.endTime, "10:00"),
+          room: s.room || null,
+          faculty: s.faculty || null,
+        }))
+      : filteredSlots;
+
     const subjectsMap = new Map<string, string>(); // code -> subjectId
     const newSubjectIds = new Set<string>();
     const timetableSubjectIds = new Set<string>();
 
-    for (const slot of filteredSlots) {
+    // 1. Preload all existing subjects for this semester in ONE single query
+    const existingSemesterSubjects = await prisma.subject.findMany({
+      where: { semesterId, userId },
+    });
+    for (const sub of existingSemesterSubjects) {
+      subjectsMap.set(sub.code, sub.id);
+    }
+
+    // 2. Identify unique subjects needed and create/update as needed
+    for (const slot of finalSlotsToSave) {
       const isLab = slot.type === "practical";
       const cleanCode = slot.code.replace(/\s*\([LPT]\)/g, '').trim();
       const actualCode = isLab ? `${cleanCode}_LAB` : cleanCode;
@@ -839,10 +1065,7 @@ CRITICAL EXTRACTION RULES:
       const facultyName = slot.faculty || slot.teacher || slot.instructor || null;
 
       if (!subjectId) {
-        let subject = await prisma.subject.findFirst({
-          where: { semesterId, userId, code: actualCode }
-        });
-
+        let subject = existingSemesterSubjects.find((s) => s.code === actualCode);
         if (!subject) {
           subject = await prisma.subject.create({
             data: {
@@ -873,22 +1096,38 @@ CRITICAL EXTRACTION RULES:
       }
 
       timetableSubjectIds.add(subjectId);
-
-      const newSlot = await prisma.timetableSlot.create({
-        data: {
-          semesterId,
-          subjectId,
-          dayOfWeek: Number(slot.dayOfWeek),
-          startTime: normalizeTimeString(slot.startTime, "09:00"),
-          endTime: normalizeTimeString(slot.endTime, "10:00"),
-          room: slot.room || null,
-          slotType: slot.type || "lecture",
-          validFrom: effectiveStart,
-        },
-        include: { subject: true }
-      });
-      createdSlots.push(newSlot);
     }
+
+    // 3. Batch insert all timetable slots in a single lightning-fast database operation!
+    const slotsToInsert = finalSlotsToSave.map(slot => {
+      const isLab = slot.type === "practical";
+      const cleanCode = slot.code.replace(/\s*\([LPT]\)/g, '').trim();
+      const actualCode = isLab ? `${cleanCode}_LAB` : cleanCode;
+      const subjectId = subjectsMap.get(actualCode)!;
+      return {
+        semesterId,
+        subjectId,
+        dayOfWeek: Number(slot.dayOfWeek),
+        startTime: normalizeTimeString(slot.startTime, "09:00"),
+        endTime: normalizeTimeString(slot.endTime, "10:00"),
+        room: slot.room || null,
+        slotType: slot.type || "lecture",
+        validFrom: effectiveStart,
+      };
+    });
+
+    await prisma.timetableSlot.createMany({
+      data: slotsToInsert,
+    });
+
+    const createdSlots = await prisma.timetableSlot.findMany({
+      where: {
+        semesterId,
+        validFrom: effectiveStart,
+        validUntil: null,
+      },
+      include: { subject: true },
+    });
 
     // Find existing subjects in the semester that were not part of this timetable
     const allSemesterSubjects = await prisma.subject.findMany({
@@ -923,6 +1162,9 @@ CRITICAL EXTRACTION RULES:
 
     // Merge genuinely new subjects with zero-attendance subjects
     const finalNewSubjectIds = Array.from(new Set([...Array.from(newSubjectIds), ...zeroAttendanceTimetableSubjects]));
+
+    // Invalidate onboarding status immediately
+    CacheService.del(userId, "onboarding:status").catch(() => {});
 
     return { 
       slots: createdSlots, 
@@ -966,6 +1208,16 @@ CRITICAL EXTRACTION RULES:
   }
 
   static async safeDeleteTimetable(userId: string, semesterId?: string) {
+    if (!semesterId || semesterId === "undefined" || semesterId === "null" || semesterId === "active") {
+      const activeSem = await prisma.semester.findFirst({
+        where: { userId, isActive: true },
+        select: { id: true }
+      });
+      if (activeSem) {
+        semesterId = activeSem.id;
+      }
+    }
+
     const subjects = await prisma.subject.findMany({
       where: { userId, ...(semesterId ? { semesterId } : {}) },
       select: { id: true }
@@ -977,7 +1229,7 @@ CRITICAL EXTRACTION RULES:
     if (subjectIds.length > 0) conditions.push({ subjectId: { in: subjectIds } });
 
     if (conditions.length === 0) {
-      return;
+      conditions.push({ semester: { userId } });
     }
 
     const whereCond = { OR: conditions };
@@ -989,6 +1241,7 @@ CRITICAL EXTRACTION RULES:
         where: { ...whereCond, validUntil: null },
         data: { validUntil: new Date() }
       });
+      CacheService.del(userId, "onboarding:status").catch(() => {});
     } catch (err) {
       console.error("Failed to archive timetable during clear:", err);
     }
@@ -1067,148 +1320,177 @@ CRITICAL EXTRACTION RULES:
       throw new Error("Invalid timetable payload. Must contain 'subjects' and 'slots' arrays.");
     }
 
-    const ownsSemester = await prisma.semester.findFirst({
-      where: { id: semesterId, userId }
-    });
+    const hasCalendarPayload = Boolean(
+      payload.academicCalendar && Array.isArray(payload.academicCalendar) && payload.academicCalendar.length > 0
+    );
+    const hasOverridesPayload = Boolean(
+      payload.overrides && Array.isArray(payload.overrides) && payload.overrides.length > 0
+    );
+    const hasLogsPayload = Boolean(
+      payload.lectureLogs && Array.isArray(payload.lectureLogs) && payload.lectureLogs.length > 0
+    );
+
+    // ── Phase 0: Single Parallel Read Roundtrip ──────────────────────────────
+    const [
+      ownsSemester,
+      existingReceiverSubjects,
+      allSemesterSlots,
+      existingEvents,
+      existingOverrides,
+      existingLogs,
+    ] = await Promise.all([
+      prisma.semester.findFirst({
+        where: { id: semesterId, userId },
+      }),
+      prisma.subject.findMany({
+        where: { semesterId, userId },
+      }),
+      prisma.timetableSlot.findMany({
+        where: { semesterId },
+        select: { id: true },
+      }),
+      hasCalendarPayload
+        ? prisma.event.findMany({
+            where: { userId },
+            select: { date: true, eventType: true },
+          })
+        : Promise.resolve([]),
+      hasOverridesPayload
+        ? prisma.timetableOverride.findMany({
+            where: { semesterId },
+            select: { id: true, date: true, overrideType: true, originalSlotId: true },
+          })
+        : Promise.resolve([]),
+      hasLogsPayload
+        ? prisma.attendance.findMany({
+            where: { userId, subject: { semesterId } },
+            select: { id: true, date: true, subjectId: true, timetableSlotId: true, overrideId: true },
+          })
+        : Promise.resolve([]),
+    ]);
+
     if (!ownsSemester) throw new Error("Forbidden: Semester does not belong to user");
 
-    // Align semester date range so historical slots & attendance fall within the semester window
-    if (payload.semester?.startDate || payload.semester?.endDate) {
-      const updateData: any = {};
-      if (payload.semester.startDate) {
-        const senderStart = new Date(payload.semester.startDate);
-        if (senderStart < ownsSemester.startDate) {
-          updateData.startDate = senderStart;
-        }
+    // Prepare semester date alignment if needed
+    const semesterUpdateData: any = {};
+    if (payload.semester?.startDate) {
+      const senderStart = new Date(payload.semester.startDate);
+      if (senderStart < ownsSemester.startDate) {
+        semesterUpdateData.startDate = senderStart;
       }
-      if (payload.semester.endDate) {
-        const senderEnd = new Date(payload.semester.endDate);
-        if (senderEnd > ownsSemester.endDate) {
-          updateData.endDate = senderEnd;
-        }
-      }
-      if (Object.keys(updateData).length > 0) {
-        await prisma.semester.update({
-          where: { id: semesterId },
-          data: updateData,
-        });
+    }
+    if (payload.semester?.endDate) {
+      const senderEnd = new Date(payload.semester.endDate);
+      if (senderEnd > ownsSemester.endDate) {
+        semesterUpdateData.endDate = senderEnd;
       }
     }
 
-    await this.safeDeleteTimetable(userId, semesterId);
-
-    // ── 1. Subjects ──────────────────────────────────────────
+    // ── 1. Prepare Subjects (In-Memory UUID Pre-Generation) ──────────────────
     const subjectMap = new Map<string, string>();
-    for (const subData of payload.subjects) {
-      const trimmedName = (subData.name || "").trim();
-      const trimmedCode = (subData.code || "").trim();
-      const orClauses: any[] = [];
-      if (trimmedCode) orClauses.push({ code: { equals: trimmedCode, mode: 'insensitive' } });
-      if (trimmedName) orClauses.push({ name: { equals: trimmedName, mode: 'insensitive' } });
-      let subject = orClauses.length > 0
-        ? await prisma.subject.findFirst({ where: { semesterId, userId, OR: orClauses } })
-        : null;
-      if (!subject) {
-        subject = await prisma.subject.create({
-          data: {
-            semesterId, userId,
-            name: subData.name,
-            code: subData.code || null,
-            credits: subData.credits || 3,
-            faculty: subData.faculty || null,
-            colorHex: subData.colorHex || "#6366f1",
-            targetAttendance: subData.targetAttendance || null,
-          },
-        });
+    for (const es of existingReceiverSubjects) {
+      if (es.code) {
+        subjectMap.set(es.code.trim(), es.id);
+        subjectMap.set(es.code.trim().toLowerCase(), es.id);
       }
-      if (trimmedCode) {
-        subjectMap.set(trimmedCode, subject.id);
-        subjectMap.set(trimmedCode.toLowerCase(), subject.id);
-      }
-      if (trimmedName) {
-        subjectMap.set(trimmedName, subject.id);
-        subjectMap.set(trimmedName.toLowerCase(), subject.id);
+      if (es.name) {
+        subjectMap.set(es.name.trim(), es.id);
+        subjectMap.set(es.name.trim().toLowerCase(), es.id);
       }
     }
 
-    // ── 2. Timetable Slots — preserve original validFrom / validUntil (all versions, active + archived) ──
-    const seenSlots = new Set<string>();
-    const slotRowsWithOriginalId: Array<{ row: any; originalId: string }> = [];
+    const subjectsToCreate: any[] = [];
+    for (const subData of payload.subjects) {
+      const trimmedCode = (subData.code || "").trim();
+      const trimmedName = (subData.name || "").trim();
+      const existingId =
+        (trimmedCode ? subjectMap.get(trimmedCode) || subjectMap.get(trimmedCode.toLowerCase()) : null) ||
+        (trimmedName ? subjectMap.get(trimmedName) || subjectMap.get(trimmedName.toLowerCase()) : null);
 
-    for (const slotData of payload.slots) {
+      if (!existingId) {
+        const newSubjectId = crypto.randomUUID();
+        if (trimmedCode) {
+          subjectMap.set(trimmedCode, newSubjectId);
+          subjectMap.set(trimmedCode.toLowerCase(), newSubjectId);
+        }
+        if (trimmedName) {
+          subjectMap.set(trimmedName, newSubjectId);
+          subjectMap.set(trimmedName.toLowerCase(), newSubjectId);
+        }
+        subjectsToCreate.push({
+          id: newSubjectId,
+          semesterId,
+          userId,
+          name: subData.name,
+          code: subData.code || null,
+          credits: subData.credits || 3,
+          faculty: subData.faculty || null,
+          colorHex: subData.colorHex || "#6366f1",
+          targetAttendance: subData.targetAttendance || null,
+        });
+      }
+    }
+    const validSubjectIds = new Set<string>(subjectMap.values());
+
+    // ── 2. Prepare Timetable Slots (In-Memory UUID Pre-Generation) ───────────
+    const originalIdToNewId = new Map<string, string>();
+    const seenSlots = new Set<string>();
+    const slotRowsToInsert: any[] = [];
+    const validSlotIds = new Set<string>(allSemesterSlots.map((s: any) => s.id));
+
+    const sortedSlots = [...payload.slots].sort((a, b) => {
+      const aActive = !a.validUntil ? 0 : 1;
+      const bActive = !b.validUntil ? 0 : 1;
+      return aActive - bActive;
+    });
+
+    for (const slotData of sortedSlots) {
       const sc = (slotData.subjectCode || "").trim();
       const sn = (slotData.subjectName || "").trim();
-      const subjectId = subjectMap.get(sc) || subjectMap.get(sc.toLowerCase()) || subjectMap.get(sn) || subjectMap.get(sn.toLowerCase());
+      const subjectId =
+        subjectMap.get(sc) ||
+        subjectMap.get(sc.toLowerCase()) ||
+        subjectMap.get(sn) ||
+        subjectMap.get(sn.toLowerCase());
       if (!subjectId) continue;
 
-      // Preserve original validFrom & validUntil strictly so time-travel & archived versions work
       const validFrom = slotData.validFrom ? new Date(slotData.validFrom) : new Date();
       const validUntil = slotData.validUntil ? new Date(slotData.validUntil) : null;
-
-      const key = `${subjectId}_${slotData.dayOfWeek}_${slotData.startTime}_${slotData.endTime}_${validFrom.toISOString()}`;
+      const untilStr = validUntil ? validUntil.toISOString() : "active";
+      const key = `${subjectId}_${slotData.dayOfWeek}_${slotData.startTime}_${slotData.endTime}_${validFrom.toISOString()}_${untilStr}`;
       if (seenSlots.has(key)) continue;
       seenSlots.add(key);
 
-      slotRowsWithOriginalId.push({
-        originalId: slotData.originalId || "",
-        row: {
-          semesterId,
-          subjectId,
-          dayOfWeek: Number(slotData.dayOfWeek),
-          startTime: normalizeTimeString(slotData.startTime, "09:00"),
-          endTime: normalizeTimeString(slotData.endTime, "10:00"),
-          room: slotData.room || null,
-          slotType: slotData.slotType || "lecture",
-          validFrom,
-          validUntil,
-        },
+      const newSlotId = crypto.randomUUID();
+      if (slotData.originalId) {
+        originalIdToNewId.set(slotData.originalId, newSlotId);
+      }
+      validSlotIds.add(newSlotId);
+      slotRowsToInsert.push({
+        id: newSlotId,
+        semesterId,
+        subjectId,
+        dayOfWeek: Number(slotData.dayOfWeek),
+        startTime: normalizeTimeString(slotData.startTime, "09:00"),
+        endTime: normalizeTimeString(slotData.endTime, "10:00"),
+        room: slotData.room || null,
+        slotType: slotData.slotType || "lecture",
+        validFrom,
+        validUntil,
       });
     }
 
-    let importedSlots = 0;
-    // Map: sender's original slot UUID -> receiver's new slot UUID
-    const originalIdToNewId = new Map<string, string>();
+    // ── 3. Prepare Academic Calendar Events ──────────────────────────────────
+    let eventRows: any[] = [];
+    if (hasCalendarPayload) {
+      const existingSet = new Set(
+        existingEvents.map((e: any) => `${e.date.toISOString().split("T")[0]}_${e.eventType}`)
+      );
 
-    // Fetch existing slots in the semester to prevent duplicate slot generation on repeated syncs
-    const existingSlots = await prisma.timetableSlot.findMany({
-      where: { semesterId },
-      select: { id: true, subjectId: true, dayOfWeek: true, startTime: true, endTime: true, validFrom: true }
-    });
-    const existingSlotMap = new Map<string, string>();
-    for (const es of existingSlots) {
-      const k = `${es.subjectId}_${es.dayOfWeek}_${es.startTime}_${es.endTime}_${es.validFrom.toISOString()}`;
-      existingSlotMap.set(k, es.id);
-    }
-
-    for (const { row, originalId } of slotRowsWithOriginalId) {
-      const k = `${row.subjectId}_${row.dayOfWeek}_${row.startTime}_${row.endTime}_${row.validFrom.toISOString()}`;
-      const existingId = existingSlotMap.get(k);
-      if (existingId) {
-        if (originalId) originalIdToNewId.set(originalId, existingId);
-        continue;
-      }
-      try {
-        const created = await prisma.timetableSlot.create({ data: row });
-        importedSlots++;
-        if (originalId) originalIdToNewId.set(originalId, created.id);
-      } catch (err: any) {
-        if (err.code !== 'P2002') throw err;
-      }
-    }
-
-    // ── 3. Academic Calendar Events ──────────────────────────
-    let importedEvents = 0;
-    if (payload.academicCalendar && Array.isArray(payload.academicCalendar) && payload.academicCalendar.length > 0) {
-      const existingEvents = await prisma.event.findMany({
-        where: { userId },
-        select: { date: true, eventType: true }
-      });
-      const existingSet = new Set(existingEvents.map((e: any) => `${e.date.toISOString().split('T')[0]}_${e.eventType}`));
-
-      const eventRows = payload.academicCalendar
+      eventRows = payload.academicCalendar
         .map((event: any) => {
           const resolvedType = event.eventType || event.type || "holiday";
-          const dateStr = new Date(event.date).toISOString().split('T')[0];
+          const dateStr = new Date(event.date).toISOString().split("T")[0];
           const key = `${dateStr}_${resolvedType}`;
           if (existingSet.has(key)) return null;
           existingSet.add(key);
@@ -1223,129 +1505,223 @@ CRITICAL EXTRACTION RULES:
           };
         })
         .filter(Boolean);
-
-      if (eventRows.length > 0) {
-        const result = await prisma.event.createMany({ data: eventRows, skipDuplicates: true });
-        importedEvents = result.count;
-      }
     }
 
-    // ── 4. Timetable Overrides (extra classes, cancellations, reschedules) ──
-    let importedOverrides = 0;
+    // ── 4. Prepare Timetable Overrides (In-Memory UUID Pre-Generation) ───────
     const originalOverrideIdToNewId = new Map<string, string>();
+    const validOverrideIds = new Set<string>();
+    const overrideRowsToInsert: any[] = [];
 
-    if (payload.overrides && Array.isArray(payload.overrides) && payload.overrides.length > 0) {
-      const existingOverrides = await prisma.timetableOverride.findMany({
-        where: { semesterId },
-        select: { date: true, overrideType: true, originalSlotId: true }
-      });
-      const existingOvSet = new Set(existingOverrides.map((o: any) =>
-        `${o.date.toISOString().split('T')[0]}_${o.overrideType}_${o.originalSlotId ?? ''}`
-      ));
+    if (hasOverridesPayload) {
+      for (const eo of existingOverrides) {
+        validOverrideIds.add(eo.id);
+      }
+      const existingOvSet = new Set(
+        existingOverrides.map(
+          (o: any) => `${o.date.toISOString().split("T")[0]}_${o.overrideType}_${o.originalSlotId ?? ""}`
+        )
+      );
 
       for (const ov of payload.overrides) {
-        const dateStr = new Date(ov.date).toISOString().split('T')[0];
-        const mappedOriginalSlotId = ov.originalSlotId ? (originalIdToNewId.get(ov.originalSlotId) ?? null) : null;
+        const dateStr = new Date(ov.date).toISOString().split("T")[0];
+        const rawSlotId = ov.originalSlotId ? (originalIdToNewId.get(ov.originalSlotId) ?? null) : null;
+        const mappedOriginalSlotId = rawSlotId && validSlotIds.has(rawSlotId) ? rawSlotId : null;
 
         let mappedSubjectId: string | null = null;
         if (ov.subjectCode || ov.subjectName) {
           const sc = (ov.subjectCode || "").trim();
           const sn = (ov.subjectName || "").trim();
-          mappedSubjectId = subjectMap.get(sc) || subjectMap.get(sc.toLowerCase()) || subjectMap.get(sn) || subjectMap.get(sn.toLowerCase()) || null;
+          const candId =
+            subjectMap.get(sc) ||
+            subjectMap.get(sc.toLowerCase()) ||
+            subjectMap.get(sn) ||
+            subjectMap.get(sn.toLowerCase()) ||
+            null;
+          if (candId && validSubjectIds.has(candId)) {
+            mappedSubjectId = candId;
+          }
         }
 
-        const dedupKey = `${dateStr}_${ov.overrideType}_${mappedOriginalSlotId ?? ''}`;
+        const dedupKey = `${dateStr}_${ov.overrideType}_${mappedOriginalSlotId ?? ""}`;
         if (existingOvSet.has(dedupKey)) continue;
         existingOvSet.add(dedupKey);
 
-        try {
-          const created = await prisma.timetableOverride.create({
-            data: {
-              semesterId,
-              date: new Date(ov.date),
-              overrideType: ov.overrideType,
-              originalSlotId: mappedOriginalSlotId,
-              subjectId: mappedSubjectId,
-              startTime: ov.startTime ?? null,
-              endTime: ov.endTime ?? null,
-              reason: ov.reason ?? null,
-            },
-          });
-          importedOverrides++;
-          if (ov.originalOverrideId) originalOverrideIdToNewId.set(ov.originalOverrideId, created.id);
-        } catch (err: any) {
-          if (err.code !== 'P2002') throw err;
+        const newOverrideId = crypto.randomUUID();
+        if (ov.originalOverrideId) {
+          originalOverrideIdToNewId.set(ov.originalOverrideId, newOverrideId);
         }
+        validOverrideIds.add(newOverrideId);
+
+        overrideRowsToInsert.push({
+          id: newOverrideId,
+          semesterId,
+          date: new Date(ov.date),
+          overrideType: ov.overrideType,
+          originalSlotId: mappedOriginalSlotId,
+          subjectId: mappedSubjectId,
+          startTime: ov.startTime ?? null,
+          endTime: ov.endTime ?? null,
+          reason: ov.reason ?? null,
+        });
       }
     }
 
-    // ── 5. Attendance Logs ──────────────────────────────────
-    // Rules:
-    // - In SCHEDULE_STATUS: 'HELD' classes are conducted. Since slots exist, leaving them unmarked
-    //   (no attendance row) allows the receiver to see them on the agenda and mark attendance.
-    // - 'CANCELLED' or 'off': inserted as status 'off' with linked slot/override.
-    // - In FULL_EXPORT: all personal attendance records (present, absent, medical, od, off)
-    //   are imported and strictly linked to timetableSlotId (mapped from originalId) or overrideId!
-    let importedLogs = 0;
-    if (payload.lectureLogs && Array.isArray(payload.lectureLogs) && payload.lectureLogs.length > 0) {
-      const existingLogs = await prisma.attendance.findMany({
-        where: { userId, subject: { semesterId } },
-        select: { date: true, subjectId: true, timetableSlotId: true, overrideId: true }
-      });
-      const existingSet = new Set(existingLogs.map((l: any) =>
-        `${l.date.toISOString().split('T')[0]}_${l.subjectId}_${l.timetableSlotId || 'none'}_${l.overrideId || 'none'}`
-      ));
+    // ── 5. Prepare Attendance Logs ───────────────────────────────────────────
+    const attendanceRowsToInsert: any[] = [];
+    const nullSlotUpdates: Array<{ id: string; timetableSlotId?: string; overrideId?: string }> = [];
+
+    if (hasLogsPayload) {
+      const existingLogSet = new Set(
+        existingLogs.map(
+          (l: any) =>
+            `${l.date.toISOString().split("T")[0]}_${l.subjectId}_${l.timetableSlotId || "none"}_${l.overrideId || "none"}`
+        )
+      );
+
+      const nullSlotLogMap = new Map<string, string>();
+      for (const l of existingLogs) {
+        if (!l.timetableSlotId && !l.overrideId) {
+          nullSlotLogMap.set(`${l.date.toISOString().split("T")[0]}_${l.subjectId}`, l.id);
+        }
+      }
+
+      const allowedStatuses = ["present", "absent", "off", "cancelled", "medical", "od"];
 
       for (const log of payload.lectureLogs) {
         const subjectCode = log.subject?.code || log.subjectCode;
         const subjectName = log.subject?.name || log.subjectName;
-        const subjectId = subjectMap.get(subjectCode) || subjectMap.get(subjectName);
-        if (!subjectId) continue;
+        const subjectId =
+          subjectMap.get((subjectCode || "").trim()) ||
+          subjectMap.get((subjectCode || "").trim().toLowerCase()) ||
+          subjectMap.get((subjectName || "").trim()) ||
+          subjectMap.get((subjectName || "").trim().toLowerCase());
+        if (!subjectId || !validSubjectIds.has(subjectId)) continue;
 
         let mappedStatus: string | null = log.status;
+        if (mappedStatus === "HELD") continue;
+        if (mappedStatus === "CANCELLED" || mappedStatus === "cancelled") mappedStatus = "off";
+        if (!allowedStatuses.includes(mappedStatus || "")) continue;
 
-        // In SCHEDULE_STATUS mode, 'HELD' means conducted. Omit personal attendance record so it appears unmarked for the receiver
-        if (mappedStatus === "HELD") {
-          continue;
-        }
-
-        if (mappedStatus === "CANCELLED" || mappedStatus === "cancelled") {
-          mappedStatus = "off";
-        }
-
-        // Validate allowed AttendanceStatus enum values
-        const allowedStatuses = ["present", "absent", "off", "cancelled", "medical", "od"];
-        if (!allowedStatuses.includes(mappedStatus || "")) {
-          continue;
-        }
-
-        const dateStr = new Date(log.date).toISOString().split('T')[0];
+        const dateStr = new Date(log.date).toISOString().split("T")[0];
         const slotKey = log.slot || log.timetableSlotId;
-        const timetableSlotId = slotKey ? (originalIdToNewId.get(slotKey) ?? null) : null;
+        const rawSlotId = slotKey ? (originalIdToNewId.get(slotKey) ?? null) : null;
+        const timetableSlotId = rawSlotId && validSlotIds.has(rawSlotId) ? rawSlotId : null;
+
         const overrideKey = log.overrideId;
-        const overrideId = overrideKey ? (originalOverrideIdToNewId.get(overrideKey) ?? null) : null;
+        const rawOverrideId = overrideKey ? (originalOverrideIdToNewId.get(overrideKey) ?? null) : null;
+        const overrideId = rawOverrideId && validOverrideIds.has(rawOverrideId) ? rawOverrideId : null;
 
-        const dedupKey = `${dateStr}_${subjectId}_${timetableSlotId || 'none'}_${overrideId || 'none'}`;
-        if (existingSet.has(dedupKey)) continue;
-        existingSet.add(dedupKey);
+        const dedupKey = `${dateStr}_${subjectId}_${timetableSlotId || "none"}_${overrideId || "none"}`;
+        if (existingLogSet.has(dedupKey)) continue;
+        existingLogSet.add(dedupKey);
 
-        try {
-          await prisma.attendance.create({
-            data: {
-              userId,
-              subjectId,
-              date: new Date(log.date),
-              status: mappedStatus as any,
-              timetableSlotId,
-              overrideId,
-              remarks: log.remarks || null,
-            }
-          });
-          importedLogs++;
-        } catch (err: any) {
-          if (err.code !== 'P2002') throw err;
+        const nullSlotKey = `${dateStr}_${subjectId}`;
+        const existingNullId = nullSlotLogMap.get(nullSlotKey);
+        if (existingNullId) {
+          if (timetableSlotId || overrideId) {
+            nullSlotUpdates.push({
+              id: existingNullId,
+              timetableSlotId: timetableSlotId || undefined,
+              overrideId: overrideId || undefined,
+            });
+          }
+          nullSlotLogMap.delete(nullSlotKey);
+          continue;
         }
+
+        attendanceRowsToInsert.push({
+          userId,
+          subjectId,
+          date: new Date(log.date),
+          status: mappedStatus as any,
+          timetableSlotId,
+          overrideId,
+          remarks: log.remarks || null,
+        });
       }
+    }
+
+    // ── Write Wave 1: Archive old slots + Update Semester + Create Subjects + Create Events ──
+    const existingSubjectIds = existingReceiverSubjects.map((s) => s.id);
+    const archiveOrConditions: any[] = [{ semesterId }];
+    if (existingSubjectIds.length > 0) {
+      archiveOrConditions.push({ subjectId: { in: existingSubjectIds } });
+    }
+
+    const [, , , eventResult] = await Promise.all([
+      Object.keys(semesterUpdateData).length > 0
+        ? prisma.semester.update({ where: { id: semesterId }, data: semesterUpdateData })
+        : Promise.resolve(null),
+      prisma.timetableSlot.updateMany({
+        where: { OR: archiveOrConditions, validUntil: null },
+        data: { validUntil: new Date() },
+      }),
+      subjectsToCreate.length > 0
+        ? prisma.subject.createMany({ data: subjectsToCreate, skipDuplicates: true })
+        : Promise.resolve({ count: 0 }),
+      eventRows.length > 0
+        ? prisma.event.createMany({ data: eventRows, skipDuplicates: true })
+        : Promise.resolve({ count: 0 }),
+    ]);
+    const importedEvents = eventResult.count;
+    CacheService.del(userId, "onboarding:status").catch(() => {});
+
+    // ── Write Wave 2: Insert Timetable Slots ─────────────────────────────────
+    let importedSlots = 0;
+    if (slotRowsToInsert.length > 0) {
+      const slotResult = await prisma.timetableSlot.createMany({
+        data: slotRowsToInsert,
+        skipDuplicates: true,
+      });
+      importedSlots = slotResult.count;
+    }
+
+    // ── Write Wave 3: Insert Timetable Overrides ─────────────────────────────
+    let importedOverrides = 0;
+    if (overrideRowsToInsert.length > 0) {
+      const ovResult = await prisma.timetableOverride.createMany({
+        data: overrideRowsToInsert,
+        skipDuplicates: true,
+      });
+      importedOverrides = ovResult.count;
+    }
+
+    // ── Write Wave 4: Insert Attendance Logs (Chunked Parallel) + Null-Slot Updates ──
+    let importedLogs = 0;
+    if (attendanceRowsToInsert.length > 0 || nullSlotUpdates.length > 0) {
+      const CHUNK_SIZE = 500;
+      const logChunks: any[][] = [];
+      for (let i = 0; i < attendanceRowsToInsert.length; i += CHUNK_SIZE) {
+        logChunks.push(attendanceRowsToInsert.slice(i, i + CHUNK_SIZE));
+      }
+
+      const [chunkResults] = await Promise.all([
+        Promise.all(
+          logChunks.map((chunk) =>
+            prisma.attendance.createMany({
+              data: chunk,
+              skipDuplicates: true,
+            })
+          )
+        ),
+        nullSlotUpdates.length > 0
+          ? Promise.all(
+              nullSlotUpdates.map((u) =>
+                prisma.attendance
+                  .update({
+                    where: { id: u.id },
+                    data: {
+                      timetableSlotId: u.timetableSlotId,
+                      overrideId: u.overrideId,
+                    },
+                  })
+                  .catch(() => {})
+              )
+            )
+          : Promise.resolve([]),
+      ]);
+
+      importedLogs = chunkResults.reduce((acc, r) => acc + r.count, 0);
     }
 
     return {
@@ -1353,7 +1729,7 @@ CRITICAL EXTRACTION RULES:
       importedSlots,
       importedOverrides,
       importedEvents,
-      importedLogs
+      importedLogs,
     };
   }
 }

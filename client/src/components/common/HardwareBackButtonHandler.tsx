@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { App as CapacitorApp } from "@capacitor/app";
 import { Capacitor } from "@capacitor/core";
 import { useBackHandlerStore } from "../../stores/backHandlerStore";
+import { useAuthStore } from "../../stores/authStore";
 
 export const HardwareBackButtonHandler = () => {
   const navigate = useNavigate();
@@ -43,14 +44,31 @@ export const HardwareBackButtonHandler = () => {
       }
       
       // 3. PUBLIC ENTRY & LEGAL ROUTES
-      // Pressing hardware back on login, signup, privacy, or terms must cleanly return the user to the landing page ('/').
-      const landingSubRoutes = ["/login", "/signup", "/privacy", "/terms"];
-      if (landingSubRoutes.includes(currentPath)) {
+      // For legal pages (/privacy, /terms), respect user auth state & navigation history
+      if (currentPath.startsWith("/privacy") || currentPath.startsWith("/terms")) {
+        const { isAuthenticated } = useAuthStore.getState();
+        if (historyStack.current.length > 1) {
+          historyStack.current.pop();
+          const prev = historyStack.current[historyStack.current.length - 1];
+          if (!prev || prev === "/" || prev === "/login" || prev === "/signup" || prev === "/privacy" || prev === "/terms") {
+            navigate(isAuthenticated ? "/today" : "/", { replace: true });
+          } else {
+            navigate(-1);
+          }
+        } else {
+          navigate(isAuthenticated ? "/today" : "/", { replace: true });
+        }
+        return;
+      }
+
+      // For auth entry routes (/login, /signup, etc.)
+      const authRoutes = ["/login", "/signup", "/forgot-password", "/reset-password"];
+      if (authRoutes.includes(currentPath)) {
         navigate("/", { replace: true });
         return;
       }
       
-      // Sub-routes for subjects, semester, and settings: backing from logs, tabs, or sub-pages returns to parent tab
+      // Sub-routes for subjects, semester, settings, and classrooms: backing from logs, tabs, or sub-pages returns to parent tab
       if (currentPath.startsWith("/subjects/")) {
         navigate("/subjects", { replace: true });
         return;
@@ -63,6 +81,10 @@ export const HardwareBackButtonHandler = () => {
         navigate("/settings", { replace: true });
         return;
       }
+      if (currentPath.startsWith("/classrooms/")) {
+        navigate("/classrooms", { replace: true });
+        return;
+      }
 
       // Secondary pages opened from Subjects or Settings return to their parent page
       if (currentPath === "/semester" || currentPath === "/predictive" || currentPath.startsWith("/predictive/")) {
@@ -70,6 +92,10 @@ export const HardwareBackButtonHandler = () => {
         return;
       }
       if (currentPath === "/report" || currentPath === "/reports" || currentPath.startsWith("/report/")) {
+        navigate("/settings", { replace: true });
+        return;
+      }
+      if (currentPath === "/classrooms") {
         navigate("/settings", { replace: true });
         return;
       }

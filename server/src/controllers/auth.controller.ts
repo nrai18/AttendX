@@ -92,8 +92,9 @@ export class AuthController {
         res.status(401).json({ message: msg });
       } else {
         // Database timeout or other server error (e.g., Prisma "Invalid `prisma...` invocation")
-        console.error("Refresh error (500):", error);
-        res.status(500).json({ message: "Internal server error during refresh" });
+        console.error("Refresh error:", error);
+        res.setHeader("Retry-After", "2");
+        res.status(503).json({ message: "Database temporarily reconnecting, please retry in a moment", transient: true });
       }
     }
   }

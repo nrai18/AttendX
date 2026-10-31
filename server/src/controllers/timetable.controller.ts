@@ -21,15 +21,80 @@ export class TimetableController {
   }
 
   static async getArchivedTimetables(req: Request | any, res: Response) {
-    const semesterId = String(req.params.semesterId);
-    const userId = req.user?.userId || "anonymous";
-    if (req.query.force === "true") {
-      const fresh = await TimetableService.getArchivedTimetables(userId, semesterId);
-      await CacheService.set(userId, `timetable:archived:${semesterId}`, fresh);
-      return res.json(fresh);
+    try {
+      let semesterId = req.params.semesterId ? String(req.params.semesterId) : undefined;
+      const userId = req.user?.userId;
+      if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+      if (!semesterId || semesterId === "undefined" || semesterId === "null" || semesterId === "active") {
+        const activeSem = await SemesterService.getActiveSemester(userId);
+        if (activeSem) {
+          semesterId = activeSem.id;
+        }
+      }
+
+      if (req.query.force === "true" || !semesterId) {
+        const fresh = await TimetableService.getArchivedTimetables(userId, semesterId || "");
+        if (semesterId) {
+          await CacheService.set(userId, `timetable:archived:${semesterId}`, fresh);
+        }
+        return res.json(fresh);
+      }
+      const archivedSlots = await CacheService.getOrSet(
+        userId,
+        `timetable:archived:${semesterId}`,
+        () => TimetableService.getArchivedTimetables(userId, semesterId!)
+      );
+      res.json(archivedSlots);
+    } catch (error: any) {
+      console.error("Failed to get archived timetables:", error);
+      res.status(500).json({ error: "Failed to load archived timetables" });
     }
-    const archivedSlots = await CacheService.getOrSet(userId, `timetable:archived:${semesterId}`, () => TimetableService.getArchivedTimetables(userId, semesterId));
-    res.json(archivedSlots);
+  }
+
+  static async deleteArchivedVersion(req: AuthenticatedRequest | any, res: Response) {
+    try {
+      let semesterId = req.params.semesterId ? String(req.params.semesterId) : undefined;
+      const versionId = String(req.params.versionId);
+      const userId = req.user?.userId;
+      if (!userId) return res.status(401).json({ error: "Unauthorized" });
+      const { slotIds } = req.body || {};
+
+      if (!semesterId || semesterId === "undefined" || semesterId === "null" || semesterId === "active") {
+        const activeSem = await SemesterService.getActiveSemester(userId);
+        if (activeSem) semesterId = activeSem.id;
+      }
+
+      if (versionId === "all") {
+        const result = await TimetableService.deleteAllArchivedVersions(userId, semesterId || "");
+        return res.status(200).json(result);
+      }
+
+      const result = await TimetableService.deleteArchivedVersion(userId, semesterId || "", versionId, slotIds);
+      return res.status(200).json(result);
+    } catch (error: any) {
+      console.error("Delete archived version error:", error);
+      return res.status(400).json({ error: error.message || "Failed to delete archived version" });
+    }
+  }
+
+  static async deleteAllArchivedVersions(req: AuthenticatedRequest | any, res: Response) {
+    try {
+      let semesterId = req.params.semesterId ? String(req.params.semesterId) : undefined;
+      const userId = req.user?.userId;
+      if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+      if (!semesterId || semesterId === "undefined" || semesterId === "null" || semesterId === "active") {
+        const activeSem = await SemesterService.getActiveSemester(userId);
+        if (activeSem) semesterId = activeSem.id;
+      }
+
+      const result = await TimetableService.deleteAllArchivedVersions(userId, semesterId || "");
+      return res.status(200).json(result);
+    } catch (error: any) {
+      console.error("Delete all archived versions error:", error);
+      return res.status(400).json({ error: error.message || "Failed to delete archived versions" });
+    }
   }
 
   static async createSlot(req: AuthenticatedRequest, res: Response) {
@@ -335,6 +400,9 @@ const mappedSchedules: any = {};
 
       const { slots, newSubjectIds, existingSubjectIds } = await TimetableService.saveWizardTimetable(userId, semesterId, selections, rawSlots, startDate);
       await CacheService.invalidateUser(userId);
+      if (Array.isArray(slots) && slots.length > 0) {
+        await CacheService.set(userId, `timetable:${semesterId}:all`, slots);
+      }
       res.status(201).json({ message: "Timetable generated successfully", slots, newSubjectIds, existingSubjectIds });
     } catch (error: any) {
       console.error("Wizard Save Error:", error);
@@ -365,6 +433,9 @@ const mappedSchedules: any = {};
       }
 
       await CacheService.invalidateUser(userId);
+      if (semesterId) {
+        await CacheService.del(userId, `timetable:archived:${semesterId}`);
+      }
       res.status(200).json({ message: "Timetable cleared successfully" });
     } catch (error: any) {
       console.error("Safe Delete Error:", error);

@@ -34,7 +34,8 @@ export async function getDeviceDetails(req: any) {
   if (lat && lon) {
     try {
       const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=10&addressdetails=1`, {
-        headers: { 'User-Agent': 'AttendXApp/1.0 (admin@attendx.tech)' }
+        headers: { 'User-Agent': 'AttendXApp/1.0 (admin@attendx.tech)' },
+        signal: AbortSignal.timeout(1500)
       });
       const data = await response.json();
       if (data && data.address) {
@@ -44,7 +45,7 @@ export async function getDeviceDetails(req: any) {
         else if (data.display_name) location = data.display_name.split(',').slice(0, 2).join(',');
       }
     } catch (e) {
-      console.error('Nominatim error:', e);
+      console.warn('Nominatim lookup skipped or timed out:', (e as any)?.message || e);
     }
   }
 

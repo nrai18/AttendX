@@ -724,6 +724,24 @@ export class CustomMlCopilotService {
   }
 
   /**
+   * Normalize speech-to-text splits and common acoustic variations
+   */
+  public static normalizeVoiceQuery(raw: string): string {
+    if (!raw) return "";
+    return raw
+      .replace(/\btime\s+table\b/gi, "timetable")
+      .replace(/\bpeer\s*[- ]?sync\b/gi, "peer-sync")
+      .replace(/\bclass\s+room(s)?\b/gi, "classroom$1")
+      .replace(/\bmid\s+sem(ester)?\b/gi, "midsem")
+      .replace(/\bend\s+sem(ester)?\b/gi, "endsem")
+      .replace(/\battend\s+x\b/gi, "attendx")
+      .replace(/\bdark\s+theme\b/gi, "dark mode")
+      .replace(/\blight\s+theme\b/gi, "light mode")
+      .replace(/\bsystem\s+theme\b/gi, "system mode")
+      .replace(/\bheads?\s+up\b/gi, "heads-up");
+  }
+
+  /**
    * Tier 1 & Tier 2 Fast-Path Router (< 15ms deterministic local execution, 0 Gemini tokens)
    * Returns null if the query requires Tier 3 (Gemini 3.7/3.8 Flash).
    */
@@ -732,35 +750,23 @@ export class CustomMlCopilotService {
     context: CopilotContext,
     generalCtx: ReturnType<typeof CustomMlCopilotService.buildGeneralContext>
   ): Promise<CopilotResponse | null> {
-    const trimmed = query.trim();
-    const lower = trimmed.toLowerCase().replace(/[?!.]+$/g, "").trim();
+    const rawClean = query
+      .trim()
+      .replace(/^[\s"'“”‘’`.,;:!?~_/\\()[\]{}\-]+|[\s"'“”‘’`.,;:!?~_/\\()[\]{}\-]+$/g, "")
+      .replace(/^(?:(?:hey|hi|hello|ok|okay)?\s*(?:attendx|assistant|bot|ai)[\s,:]+)/i, "");
+    const normalized = this.normalizeVoiceQuery(rawClean);
+    const lower = normalized.toLowerCase().replace(/^[\s"'“”‘’`.,;:!?~_/\\()[\]{}\-]+|[\s"'“”‘’`.,;:!?~_/\\()[\]{}\-]+$/g, "").trim();
     const localDate = context.localTime ? new Date(context.localTime) : new Date();
 
-    // 1. GREETINGS & SMALL TALK
-    // Updated greeting pattern to allow repeated greetings (e.g., "hello hello") and capture small‑talk variations.
-    const greetingPattern =
-      /^(?:\s*(hi+|he+y+|hello+|hey|heya|howdy|sup|yo|namaste|greetings|good\s+(morning|afternoon|evening|day|night))\s*){1,3}$/i;
+    // 1. GREETINGS, FAREWELLS & SMALL TALK (Deterministic Fast-Path <1ms)
+    const { userName, overall, nextUpcomingClass } = generalCtx;
 
-    if (greetingPattern.test(lower)) {
-      const { userName, overall, nextUpcomingClass } = generalCtx;
-      let reply = `Hey ${userName}! Your overall attendance is **${overall.percentage.toFixed(1)}%** (${overall.attended}/${overall.total} classes — **${overall.status}** vs your ${overall.target}% target).`;
-      if (nextUpcomingClass) {
-        reply += ` Your next class is **${nextUpcomingClass.subjectName}** (${nextUpcomingClass.dayName} at ${nextUpcomingClass.startTime}).`;
-      }
-      reply += ` How can I help you today?`;
-
-      if (/\b(who (made|created|built|developed) (you|u))\b/i.test(lower)) {
-        reply = `I am AttendX AI Copilot, created and engineered by **Naman Rai** as your intelligent academic companion and policy advisor for IIIT Una.`;
-      } else if (/\b(what can you do|help)\b/i.test(lower)) {
-        reply = `I can instantly check your attendance & safe bunks, simulate leaves, switch light/dark themes, navigate across the app, tell you your next class or upcoming holiday, swap timetable slots, and email your weekly or monthly attendance reports!`;
-      } else if (/^(thank|thx)/i.test(lower)) {
-        reply = `You're welcome, ${userName}! Let me know anytime you need help with your attendance or schedule.`;
-      } else if (/^(bye|goodbye|see)/i.test(lower)) {
-        reply = `See you later, ${userName}! Stay on top of your ${overall.target}% attendance goal!`;
-      }
-
+    // 1a. Farewells ("see you later", "bye", "goodbye", "cya")
+    const farewellPattern =
+      /^(?:bye(?:\s+bye)?|byebye|goodbye|good\s+bye|cya(?:\s+later)?|see\s+(?:you|ya|u)(?:\s+(?:later|soon|around))?|catch\s+you\s+later|talk\s+to\s+you\s+later|take\s+care|have\s+a\s+(?:good|great|nice)\s+day|goodnight|good\s+night)[\s.?!]*$/i;
+    if (farewellPattern.test(lower)) {
+      const reply = `See you later, ${userName}! Stay on top of your ${overall.target}% attendance goal!`;
       return {
-
         intent: "CHIT_CHAT",
         reply,
         response: reply,
@@ -770,13 +776,80 @@ export class CustomMlCopilotService {
       };
     }
 
-    // 1b. SMALL‑TALK (how are you, what's up, etc.)
-    const smallTalkPattern = /\b(how\s+are\s+you|what('?s)?\s+up|whats\s+up)\b/i;
-    if (smallTalkPattern.test(lower)) {
-      const { userName } = generalCtx;
-      const reply = `I'm doing well, ${userName}! How can I help you with your attendance, timetable, or anything else?`;
+    // 1b. Gratitude ("thanks", "thank you", "tysm")
+    const gratitudePattern =
+      /^(?:thank(?:s|\s+you|\s+u|\s+you\s+so\s+much|\s+a\s+lot)?|thx|ty|tysm|appreciate\s+it)[\s.?!]*$/i;
+    if (gratitudePattern.test(lower)) {
+      const reply = `You're welcome, ${userName}! Let me know anytime you need help with your attendance or schedule.`;
       return {
+        intent: "CHIT_CHAT",
+        reply,
+        response: reply,
+        citations: [],
+        actions: [],
+        requiresConfirmation: false,
+      };
+    }
 
+    // 1c. Assistant Identity & Creator ("who made you", "who are you")
+    const identityPattern =
+      /^(?:who\s+(?:are|r)\s+(?:you|u)|what\s+(?:is|'s)\s+your\s+name|who\s+(?:made|created|built|developed|designed)\s+(?:you|u)|tell\s+me\s+about\s+yourself|what\s+are\s+you)[\s.?!]*$/i;
+    if (identityPattern.test(lower)) {
+      const reply = `I am AttendX AI Copilot, created and engineered by **Naman Rai** as your intelligent academic companion and policy advisor for IIIT Una.`;
+      return {
+        intent: "CHIT_CHAT",
+        reply,
+        response: reply,
+        citations: [],
+        actions: [],
+        requiresConfirmation: false,
+      };
+    }
+
+    // 1d. System Capabilities ("what can you do", "help")
+    const capabilityPattern =
+      /^(?:what\s+can\s+you\s+do|what\s+do\s+you\s+do|help|features)[\s.?!]*$/i;
+    if (capabilityPattern.test(lower)) {
+      const reply = `I can instantly check your attendance & safe bunks, simulate leaves, switch light/dark themes, navigate across the app, tell you your next class or upcoming holiday, swap timetable slots, and email your weekly or monthly attendance reports!`;
+      return {
+        intent: "CHIT_CHAT",
+        reply,
+        response: reply,
+        citations: [],
+        actions: [],
+        requiresConfirmation: false,
+      };
+    }
+
+    // 1e. Small-Talk ("how are you", "what's up")
+    const smallTalkPattern =
+      /^(?:how\s+(?:are|r)\s+(?:you|u|ya)(?:\s+doing)?|how(?:'s|\s+is)\s+it\s+going|what(?:'s|\s+is)\s+up|whats\s+up|sup|wassup)[\s.?!]*$/i;
+    if (smallTalkPattern.test(lower)) {
+      let reply = `Hey ${userName}! Your overall attendance is **${overall.percentage.toFixed(1)}%** (${overall.attended}/${overall.total} classes — **${overall.status}** vs your ${overall.target}% target).`;
+      if (nextUpcomingClass) {
+        reply += ` Your next class is **${nextUpcomingClass.subjectName}** (${nextUpcomingClass.dayName} at ${nextUpcomingClass.startTime}).`;
+      }
+      reply += ` How can I help you today?`;
+      return {
+        intent: "CHIT_CHAT",
+        reply,
+        response: reply,
+        citations: [],
+        actions: [],
+        requiresConfirmation: false,
+      };
+    }
+
+    // 1f. Greetings ("hi", "hello", "good morning")
+    const greetingPattern =
+      /^(?:\s*(?:hi+|he+y+|hello+|hey|heya|howdy|sup|yo|namaste|greetings|good\s+(?:morning|afternoon|evening|day))\s*){1,3}[\s.?!]*$/i;
+    if (greetingPattern.test(lower)) {
+      let reply = `Hey ${userName}! Your overall attendance is **${overall.percentage.toFixed(1)}%** (${overall.attended}/${overall.total} classes — **${overall.status}** vs your ${overall.target}% target).`;
+      if (nextUpcomingClass) {
+        reply += ` Your next class is **${nextUpcomingClass.subjectName}** (${nextUpcomingClass.dayName} at ${nextUpcomingClass.startTime}).`;
+      }
+      reply += ` How can I help you today?`;
+      return {
         intent: "CHIT_CHAT",
         reply,
         response: reply,
@@ -810,39 +883,63 @@ export class CustomMlCopilotService {
       };
     }
 
-    // 3. APP NAVIGATION (Direct Screen Jumps)
-    const navMatch = lower.match(
-      /^(?:please\s+)?(?:navigate(?:\s+to)?|open(?:\s+up)?|go\s+to|take\s+me\s+to|show(?:\s+me)?(?:\s+my)?|view(?:\s+my)?)\s+(?:the\s+)?(timetable|schedule|routine|settings|preferences|reports?|analytics|calendar|forecast|predictive|prediction|today(?:'s\s+agenda)?|agenda|dashboard|subjects?|courses?|assignments?|tasks?|semester(?:\s+overview|\s+hub)?|overview|timeline|holidays?|countdowns?|events?|profile|edit\s+profile|linked\s+devices|devices|sessions|peer\s+sync|changelog|update\s+history|feedback|contact(?:\s+us)?|faq|classrooms?)(?:\s+page|\s+screen|\s+tab|\s+view)?$/i
-    );
-    if (navMatch) {
-      const targetKey = navMatch[1].toLowerCase();
-      let path = "/today";
-      let title = "Today's Agenda";
+    // 3. APP NAVIGATION (Direct Screen Jumps - Supports command verbs OR bare screen utterances)
+    const strippedNav = lower
+      .replace(/^(?:can\s+you(?:\s+please)?|could\s+you(?:\s+please)?|would\s+you|please|pls|i\s+want\s+to|i\s+need\s+to|help\s+me(?:\s+to)?|let\s+me|just)\s+/i, "")
+      .replace(/^(?:navigate(?:\s+to)?|open(?:\s+up)?|go\s+to|take\s+me\s+to|show(?:\s+me)?|view|switch\s+to|display|check(?:\s+out)?|bring\s+up|launch|see|head\s+to)\s+/i, "")
+      .replace(/^(?:all\s+)?(?:the|my|our)\s+/i, "")
+      .replace(/\s+(?:please|pls|for\s+me|now|right\s+now|asap|screen|tab|page|view|modal|section|form|dialog)$/i, "")
+      .replace(/^[\s"'“”‘’`.,;:!?~_/\\()[\]{}\-]+|[\s"'“”‘’`.,;:!?~_/\\()[\]{}\-]+$/g, "")
+      .trim();
 
-      if (/(timetable|schedule|routine)/.test(targetKey)) { path = "/timetable"; title = "Timetable"; }
-      else if (/(edit\s+profile|profile)/.test(targetKey)) { path = "/settings/profile"; title = "Edit Profile"; }
-      else if (/(device|devices|sessions)/.test(targetKey)) { path = "/settings/devices"; title = "Linked Devices"; }
-      else if (/(peer\s+sync)/.test(targetKey)) { path = "/settings/peer-sync"; title = "Peer Sync"; }
-      else if (/(contact)/.test(targetKey)) { path = "/settings/contact"; title = "Contact Us"; }
-      else if (/(feedback)/.test(targetKey)) { path = "/settings/feedback"; title = "Send Feedback"; }
-      else if (/(changelog|update\s+history)/.test(targetKey)) { path = "/settings/changelog"; title = "Update History"; }
-      else if (/(faq)/.test(targetKey)) { path = "/settings/faq"; title = "FAQ"; }
-      else if (/(setting|preferences)/.test(targetKey)) { path = "/settings"; title = "Settings"; }
-      else if (/(report|analytics)/.test(targetKey)) { path = "/report"; title = "Analytics Reports"; }
-      else if (/(forecast|predictive|prediction)/.test(targetKey)) { path = "/predictive"; title = "Forecast Engine"; }
-      else if (/(holiday)/.test(targetKey)) { path = "/semester/holidays"; title = "Semester Holidays"; }
-      else if (/(countdown)/.test(targetKey)) { path = "/semester/countdowns"; title = "Semester Countdowns"; }
-      else if (/^events?$/.test(targetKey)) { path = "/semester/events"; title = "Semester Events"; }
-      else if (/(semester|overview|timeline)/.test(targetKey)) { path = "/semester"; title = "Semester Overview"; }
-      else if (/(calendar)/.test(targetKey)) { path = "/calendar"; title = "Calendar"; }
-      else if (/(subject|course)/.test(targetKey)) { path = "/subjects"; title = "Subjects"; }
-      else if (/(assignment|task)/.test(targetKey)) { path = "/assignments"; title = "Assignments"; }
-      else if (/(classroom)/.test(targetKey)) { path = "/classrooms"; title = "Classrooms"; }
+    let navTarget: { path: string; title: string } | null = null;
 
-      const reply = `Opening **${title}**.`;
-      const action = this.createAction("NAVIGATE", { path }, `route:${path}`, `Navigate to ${title}`, `Safe navigation action: opens ${title}.`);
+    if (/^(?:(?:exam|semester|holiday|academic|event|upcoming)\s+)?countdowns?$|^countdown(?:\s+timers?)?$/i.test(strippedNav)) {
+      navTarget = { path: "/semester/countdowns", title: "Semester Countdowns" };
+    } else if (/^(?:(?:semester|academic|upcoming|college)\s+)?holidays?$|^holiday\s+list$/i.test(strippedNav)) {
+      navTarget = { path: "/semester/holidays", title: "Semester Holidays" };
+    } else if (/^(?:(?:semester|academic|upcoming|calendar)\s+)?events?$|^academic\s+calendar$|^event\s+list$/i.test(strippedNav)) {
+      navTarget = { path: "/semester/events", title: "Semester Events" };
+    } else if (/^(?:(?:class|weekly|daily)\s+)?(?:timetable|time\s*table|schedule|routine)$/i.test(strippedNav)) {
+      navTarget = { path: "/timetable", title: "Timetable" };
+    } else if (/^(?:edit\s+)?profile$|^my\s+account$|^user\s+profile$/i.test(strippedNav)) {
+      navTarget = { path: "/settings/profile", title: "Edit Profile" };
+    } else if (/^(?:(?:linked|active|connected|logged\s*in)\s+)?(?:devices|sessions)$/i.test(strippedNav)) {
+      navTarget = { path: "/settings/devices", title: "Linked Devices" };
+    } else if (/^peer\s*[- ]?sync$|^friends\s+sync$|^data\s+transfer$/i.test(strippedNav)) {
+      navTarget = { path: "/settings/peer-sync", title: "Peer Sync" };
+    } else if (/^(?:(?:send|give|open|show|submit)\s+)?feedback(?:\s+(?:form|page|screen|tab|dialog|modal))?$|^report\s+(?:a\s+)?(?:bug|issue)$/i.test(strippedNav)) {
+      navTarget = { path: "/settings/feedback", title: "Send Feedback" };
+    } else if (/^changelog$|^what'?s\s+new$|^update\s+history$|^release\s+notes$/i.test(strippedNav)) {
+      navTarget = { path: "/settings/changelog", title: "Update History" };
+    } else if (/^contact(?:\s+us)?$|^support$/i.test(strippedNav)) {
+      navTarget = { path: "/settings/contact", title: "Contact Us" };
+    } else if (/^faqs?$|^help(?:\s+(?:desk|center|&?\s*support))?$/i.test(strippedNav)) {
+      navTarget = { path: "/settings/faq", title: "FAQ" };
+    } else if (/^(?:app\s+)?(?:settings|preferences|options)$/i.test(strippedNav)) {
+      navTarget = { path: "/settings", title: "Settings" };
+    } else if (/^(?:(?:detailed|attendance|analytics)\s+)?reports?$|^analytics$|^bunk\s+calculator$|^attendance\s+stats?$/i.test(strippedNav)) {
+      navTarget = { path: "/report", title: "Analytics Reports" };
+    } else if (/^(?:attendance\s+)?(?:forecast|predictive|prediction)(?:\s+engine)?$|^what\s*if\s+calculator$/i.test(strippedNav)) {
+      navTarget = { path: "/predictive", title: "Forecast Engine" };
+    } else if (/^(?:my\s+)?(?:subjects?|courses?)$|^attendance\s+cards?$/i.test(strippedNav)) {
+      navTarget = { path: "/subjects", title: "Subjects" };
+    } else if (/^(?:(?:pending|upcoming|academic|my)\s+)?(?:assignments?|tasks?)$|^todo(?:\s*list)?$|^homework$/i.test(strippedNav)) {
+      navTarget = { path: "/assignments", title: "Assignments" };
+    } else if (/^(?:campus\s+)?classrooms?$|^campus\s+rooms?$/i.test(strippedNav)) {
+      navTarget = { path: "/classrooms", title: "Classrooms" };
+    } else if (/^semester(?:\s+(?:overview|hub))?$|^timeline$/i.test(strippedNav)) {
+      navTarget = { path: "/semester", title: "Semester Overview" };
+    } else if (/^calendar$|^month\s+view$/i.test(strippedNav)) {
+      navTarget = { path: "/calendar", title: "Calendar" };
+    } else if (/^(?:today(?:'s)?(?:\s+(?:agenda|dashboard|schedule|classes|attendance|routine|overview|plan))?|daily\s+(?:agenda|dashboard|schedule|overview)|agenda|dashboard|home(?:\s+screen)?|main\s+screen)$/i.test(strippedNav)) {
+      navTarget = { path: "/today", title: "Today's Agenda" };
+    }
+
+    if (navTarget) {
+      const reply = `Opening **${navTarget.title}**.`;
+      const action = this.createAction("NAVIGATE", { path: navTarget.path }, `route:${navTarget.path}`, `Navigate to ${navTarget.title}`, `Safe navigation action: opens ${navTarget.title}.`);
       return {
-
         intent: "NAVIGATE_APP",
         reply,
         response: reply,
@@ -904,19 +1001,66 @@ export class CustomMlCopilotService {
     // 5. NEXT UPCOMING EVENT / HOLIDAY / EXAM / NEXT CLASS / TODAY'S SCHEDULE
     if (
       /^(what('s|\s+is)\s+(my\s+)?)?(next|upcoming)\s+(event|events|holiday|vacation|break|exam|midsem|endsem|milestone|festival|fest)s?$/i.test(lower) ||
-      /\b(when\s+is\s+(the\s+)?next\s+(event|holiday|exam|break|vacation)|tell\s+me\s+(the\s+)?next\s+upcoming\s+event|upcoming\s+events?|next\s+holiday)\b/i.test(lower)
+      /\b(when\s+is\s+(the\s+)?next\s+(event|holiday|exam|break|vacation)|tell\s+me\s+(the\s+)?next\s+upcoming\s+event|upcoming\s+events?|next\s+holiday)\b/i.test(lower) ||
+      /\b(how\s+many\s+days\s+(until|to|left\s+for|before)|days\s+(left\s+)?(until|to|for)|countdown\s+to|time\s+until)\s+(the\s+)?(next\s+)?(exam|midsem|endsem|holiday|vacation|break|event)s?\b/i.test(lower) ||
+      /\b(when\s+(is|are)\s+(the\s+)?(next\s+)?(exam|midsem|endsem|test|quiz)s?)\b/i.test(lower)
     ) {
-      const wantsHoliday = /\b(holiday|vacation|break)\b/i.test(lower);
-      const wantsExam = /\b(exam|midsem|endsem|ct|quiz|test)\b/i.test(lower);
-      const filtered = generalCtx.nextUpcomingEvents.filter((e) => {
-        if (wantsHoliday) return e.eventType.includes("holiday") || e.eventType.includes("vacation") || /holiday|vacation|jayanti|diwali|holi/i.test(e.title);
-        if (wantsExam) return e.eventType.includes("exam") || e.eventType.includes("sem") || e.eventType.includes("ct") || /exam|mid|end|test|quiz/i.test(e.title);
-        return true;
-      });
+      const isExamEvent = (e: any): boolean => {
+        const type = String(e.eventType || "").toLowerCase().replace(/[-_]/g, " ").trim();
+        const title = String(e.title || "").toLowerCase();
+        if (type.includes("holiday") || type.includes("vacation") || type.includes("break") || type.includes("fest")) return false;
+        if (/\b(break|vacation|holiday|fest|festival|puja|diwali|chaturdasi|duj|jayanti|birthday)\b/i.test(title)) return false;
+        if (/\b(exams?|midsem|endsem|tests?|quiz(?:zes)?|assessments?|lab\s+exams?)\b/i.test(type)) return true;
+        if (/\b(mid\s*sem(ester)?\s+exam|end\s*sem(ester)?\s+exam|exams?|theory\s+exam|lab\s+exam|practical\s+exam|class\s+test|cycle\s+test|unit\s+test|quiz|assessment)\b/i.test(title)) return true;
+        return false;
+      };
+
+      const wantsBreak = /\b(break|vacation)\b/i.test(lower);
+      const wantsEndsem = /\b(end\s*sem(ester)?)\b/i.test(lower) && !wantsBreak;
+      const wantsMidsem = /\b(mid\s*sem(ester)?)\b/i.test(lower) && !wantsBreak;
+      const wantsHoliday = /\b(holidays?|fests?|festivals?)\b/i.test(lower);
+      const wantsExam = (/\b(exams?|tests?|quiz(?:zes)?|assessments?)\b/i.test(lower) || wantsEndsem || wantsMidsem) && !wantsBreak && !wantsHoliday;
+
+      let categoryLabel = "event";
+      let filtered: any[] = [];
+
+      if (wantsEndsem) {
+        categoryLabel = "end-semester exam";
+        filtered = generalCtx.nextUpcomingEvents.filter((e) => {
+          const type = String(e.eventType || "").toLowerCase();
+          const title = String(e.title || "").toLowerCase();
+          return (type.includes("endsem") || /\bend\s*sem(ester)?\b/i.test(title)) && !type.includes("break") && !title.includes("break") && !type.includes("holiday");
+        });
+      } else if (wantsMidsem) {
+        categoryLabel = "mid-semester exam";
+        filtered = generalCtx.nextUpcomingEvents.filter((e) => {
+          const type = String(e.eventType || "").toLowerCase();
+          const title = String(e.title || "").toLowerCase();
+          return (type.includes("midsem") || /\bmid\s*sem(ester)?\b/i.test(title)) && !type.includes("break") && !title.includes("break") && !type.includes("holiday");
+        });
+      } else if (wantsBreak) {
+        categoryLabel = "break / vacation";
+        filtered = generalCtx.nextUpcomingEvents.filter((e) => {
+          const type = String(e.eventType || "").toLowerCase();
+          const title = String(e.title || "").toLowerCase();
+          return type.includes("vacation") || type.includes("break") || /\b(break|vacation)\b/i.test(title);
+        });
+      } else if (wantsExam) {
+        categoryLabel = "exam";
+        filtered = generalCtx.nextUpcomingEvents.filter(isExamEvent);
+      } else if (wantsHoliday) {
+        categoryLabel = "holiday";
+        filtered = generalCtx.nextUpcomingEvents.filter((e) => {
+          const type = String(e.eventType || "").toLowerCase();
+          const title = String(e.title || "").toLowerCase();
+          return type.includes("holiday") || /\b(holiday|diwali|puja|jayanti|chaturdasi|duj|christmas)\b/i.test(title);
+        });
+      }
+
       const list = filtered.length > 0 ? filtered : generalCtx.nextUpcomingEvents;
 
       if (list.length === 0) {
-        const reply = `You don't have any upcoming events or holidays recorded in your active semester calendar yet.`;
+        const reply = `You don't have any upcoming ${categoryLabel}s recorded in your active semester calendar yet.`;
         return {
 
           intent: "TIMETABLE_QUERY",
@@ -935,7 +1079,7 @@ export class CustomMlCopilotService {
         .map((e) => `• **${e.title}** — ${e.date}${e.endDate ? ` to ${e.endDate}` : ""} (${e.daysUntil === 0 ? "Today" : `in ${e.daysUntil}d`})`)
         .join("\n");
 
-      const reply = `Your next upcoming ${wantsHoliday ? "holiday" : wantsExam ? "exam" : "event"} is **${top.title}** on **${top.date}${top.endDate ? ` – ${top.endDate}` : ""}** (${countdownText}).${moreList ? `\n\n**Following up:**\n${moreList}` : ""}`;
+      const reply = `Your next upcoming ${categoryLabel} is **${top.title}** on **${top.date}${top.endDate ? ` – ${top.endDate}` : ""}** (${countdownText}).${moreList ? `\n\n**Following up:**\n${moreList}` : ""}`;
       return {
 
         intent: "TIMETABLE_QUERY",
@@ -948,7 +1092,8 @@ export class CustomMlCopilotService {
     }
 
     if (
-      /^(what('s|\s+is)\s+(my\s+)?)?(next\s+(class|lecture|lab)|classes\s+today|my\s+(classes|schedule|timetable)\s+today|today('s)?\s+(classes|schedule|timetable|agenda))$/i.test(lower)
+      /^(what('s|\s+is)\s+(my\s+)?)?(next\s+(class|lecture|lab)|classes\s+today|my\s+(classes|schedule|timetable)\s+today|today('s)?\s+(classes|schedule|timetable|agenda)|what\s+classes\s+(do\s+i\s+have|are\s+there)\s+today|what\s+is\s+my\s+(schedule|timetable))$/i.test(lower) ||
+      /^(classes\s+today|today('s)?\s+(schedule|timetable|agenda|classes))$/i.test(lower)
     ) {
       const { todayClasses, nextUpcomingClass, todayDayName } = generalCtx;
       let reply = "";
@@ -1310,10 +1455,10 @@ export class CustomMlCopilotService {
       };
     }
 
-    // 11. BIRTHDAY KNOWLEDGE & BIRTHDAY UPDATES
-    if (/\b(birthdays?|b'day|dob)\b/i.test(lower)) {
+    // 11. BIRTHDAY KNOWLEDGE & BIRTHDAY UPDATES (< 1ms Fast-Path)
+    if (/\b(birthdays?|b'?days?|dob|born)\b/i.test(lower)) {
       // 11a. Setting or updating birthday
-      const setMatch = lower.match(/(?:set|update|add|change)\s+(?:my\s+)?birthday(?:\s+to|\s+on|\s+for\s+\w+\s+on)?\s+([a-z0-9\s,-]+)/i);
+      const setMatch = lower.match(/(?:set|update|add|change)\s+(?:my\s+)?(?:birthdays?|b'?days?|dob)(?:\s+to|\s+on|\s+for\s+\w+\s+on)?\s+([a-z0-9\s,-]+)/i);
       if (setMatch) {
         const rawDateStr = setMatch[1].trim();
         const parsed = this.resolveRelativeDate(rawDateStr, wallNow);
@@ -1337,12 +1482,21 @@ export class CustomMlCopilotService {
         }
       }
 
-      // 11b. Asking about user's own birthday
-      if (/\b(when|what|is)\s+(?:is\s+)?(?:my\s+birthday|my\s+dob|do\s+you\s+know\s+my\s+birthday)\b/i.test(lower)) {
+      // 11b. Asking about user's own birthday (comprehensive matcher: "do you know my birthday", "my birthday", "when is my birthday", etc.)
+      const isMyBirthdayQuery = (
+        /\bmy\s+(?:birthdays?|b'?days?|dob)\b/i.test(lower) ||
+        /\b(?:when|what)\s+(?:is\s+)?my\b/i.test(lower) ||
+        /\bdo\s+you\s+(?:know|remember|have)\s+my\s+(?:birthdays?|b'?days?|dob)\b/i.test(lower) ||
+        /\b(?:tell\s+me|check|show)\s+(?:my\s+)?(?:birthdays?|b'?days?|dob)\b/i.test(lower) ||
+        /\bwhen\s+was\s+i\s+born\b/i.test(lower) ||
+        /^(?:my\s+)?(?:birthdays?|b'?days?|dob)\??$/i.test(lower.trim())
+      ) && !/\b(whose|who\s+has|anybody|anyone|peer|friend|classmate)\b/i.test(lower);
+
+      if (isMyBirthdayQuery) {
         if (context.userBirthday) {
           const bDate = new Date(context.userBirthday);
           const bFormatted = bDate.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
-          const reply = `Your birthday on record is **${bFormatted}**! 🎂 Let me know if you need to update it.`;
+          const reply = `Yes, ${context.userName || "Naman"}! According to your profile, your birthday is **${bFormatted}**! 🎂 Let me know if you need to update it.`;
           return {
             intent: "CHIT_CHAT",
             reply,
@@ -1353,7 +1507,7 @@ export class CustomMlCopilotService {
           };
         } else {
           const navAction = this.createAction("NAVIGATE", { path: "/settings/profile" }, "route:/settings/profile", "Open Profile", "Safe navigation action: opens Profile.");
-          const reply = `You don't have a birthday saved in your profile yet! You can set it in **Settings > Edit Profile**, or just tell me here (e.g. "Set my birthday to October 14")!`;
+          const reply = `You don't have a birthday saved in your profile yet! You can set it in **Settings > Edit Profile**, or just tell me here (e.g. "Set my birthday to November 18")! 🎂`;
           return {
             intent: "CHIT_CHAT",
             reply,
@@ -1365,10 +1519,21 @@ export class CustomMlCopilotService {
         }
       }
 
-      // 11c. Asking whose birthday is today
-      if (/\b(whose|who\s+has|anybody('s)?|anyone('s)?)\s+birthday\s+(?:is\s+)?today\b/i.test(lower)) {
+      // 11c. Asking whose birthday is today / peer birthdays / upcoming birthdays
+      const isWhoseBirthdayQuery = (
+        /\b(whose|who\s+has|anybody('s)?|anyone('s)?|any|check)\s+(?:peer\s+)?(?:birthdays?|b'?days?)\b/i.test(lower) ||
+        /\b(?:birthdays?|b'?days?)\s+(?:is\s+)?today\b/i.test(lower) ||
+        /\bis\s+today\s+(?:anybody('s)?|anyone('s)?|a)\s+(?:birthdays?|b'?days?)\b/i.test(lower) ||
+        /\bupcoming\s+(?:birthdays?|b'?days?)\b/i.test(lower)
+      );
+
+      if (isWhoseBirthdayQuery) {
         const todayMonth = wallNow.getUTCMonth() + 1;
         const todayDay = wallNow.getUTCDate();
+        const todayIso = `${wallNow.getUTCFullYear()}-${String(todayMonth).padStart(2, "0")}-${String(todayDay).padStart(2, "0")}`;
+        const todayFormatted = wallNow.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+
+        // 1. Is it the user's own birthday today?
         let isUserBirthday = false;
         if (context.userBirthday) {
           const b = new Date(context.userBirthday);
@@ -1387,8 +1552,33 @@ export class CustomMlCopilotService {
             actions: [],
             requiresConfirmation: false,
           };
-        } else {
-          const reply = `There are no peer birthdays scheduled for today. Your birthday on record is ${context.userBirthday ? `**${new Date(context.userBirthday).toLocaleDateString("en-US", { month: "long", day: "numeric" })}**` : "not set yet (you can set it in Settings > Edit Profile)"}.`;
+        }
+
+        const toIsoDateOnly = (val: any): string => {
+          if (!val) return "";
+          if (val instanceof Date) return val.toISOString().split("T")[0];
+          const s = String(val).trim();
+          if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.substring(0, 10);
+          const parsed = new Date(s);
+          return isNaN(parsed.getTime()) ? "" : parsed.toISOString().split("T")[0];
+        };
+
+        // 2. Check context.calendarEvents for events scheduled on today
+        const allCalendarEvents = (Array.isArray(context.calendarEvents) ? context.calendarEvents : []);
+        const todayEvents = allCalendarEvents.filter((e: any) => {
+          const startStr = toIsoDateOnly(e.date);
+          const endStr = toIsoDateOnly(e.endDate) || startStr;
+          return startStr <= todayIso && todayIso <= endStr;
+        });
+
+        // Match explicit birthday events on today
+        const explicitBdayEvents = todayEvents.filter((e: any) =>
+          /\b(birthdays?|b'?days?|dob)\b/i.test(e.title || "") || /\b(birthdays?|b'?days?|dob)\b/i.test(e.description || "")
+        );
+
+        if (explicitBdayEvents.length > 0) {
+          const titles = explicitBdayEvents.map((e: any) => e.title).join(", ");
+          const reply = `Today on your calendar: **${titles}**! 🎉🎂 Let them know you're celebrating with them today!`;
           return {
             intent: "CHIT_CHAT",
             reply,
@@ -1398,6 +1588,94 @@ export class CustomMlCopilotService {
             requiresConfirmation: false,
           };
         }
+
+        // Match personal / other custom events on today (e.g. "Priya Didi")
+        const customTodayEvents = todayEvents.filter((e: any) => {
+          const t = String(e.eventType || e.event_type || e.type || "").toLowerCase();
+          return t === "other" || (!e.isHoliday && t !== "holiday" && t !== "restricted_holiday" && t !== "vacation");
+        });
+
+        if (customTodayEvents.length > 0) {
+          const titles = customTodayEvents.map((e: any) => e.title).join(", ");
+          const reply = `Today on your calendar: **${titles}** is scheduled for today (${todayFormatted})! 🎉🎂 Let them know you're celebrating with them!`;
+          return {
+            intent: "CHIT_CHAT",
+            reply,
+            response: reply,
+            citations: [],
+            actions: [],
+            requiresConfirmation: false,
+          };
+        }
+
+        // 3. Check for upcoming birthdays on the calendar
+        const upcomingBdayEvents = allCalendarEvents
+          .filter((e: any) => {
+            const startStr = toIsoDateOnly(e.date);
+            const t = String(e.eventType || e.event_type || e.type || "").toLowerCase();
+            return startStr >= todayIso && (
+              /\b(birthdays?|b'?days?|dob)\b/i.test(e.title || "") ||
+              /\b(birthdays?|b'?days?|dob)\b/i.test(e.description || "") ||
+              t === "other"
+            );
+          })
+          .sort((a: any, b: any) => toIsoDateOnly(a.date).localeCompare(toIsoDateOnly(b.date)))
+          .slice(0, 3);
+
+        if (upcomingBdayEvents.length > 0) {
+          const list = upcomingBdayEvents.map((e: any) => {
+            const d = new Date(toIsoDateOnly(e.date) + "T00:00:00");
+            return `**${e.title}** (${d.toLocaleDateString("en-US", { month: "short", day: "numeric" })})`;
+          }).join(", ");
+          const userBdayStr = context.userBirthday ? ` Your birthday on record is **${new Date(context.userBirthday).toLocaleDateString("en-US", { month: "long", day: "numeric" })}**.` : "";
+          const reply = `There are no peer birthdays scheduled for today. Upcoming on your calendar: ${list}.${userBdayStr}`;
+          return {
+            intent: "CHIT_CHAT",
+            reply,
+            response: reply,
+            citations: [],
+            actions: [],
+            requiresConfirmation: false,
+          };
+        }
+
+        const userBdayNotice = context.userBirthday ? ` Your birthday on record is **${new Date(context.userBirthday).toLocaleDateString("en-US", { month: "long", day: "numeric" })}**.` : " (Set your birthday in Settings > Edit Profile).";
+        const reply = `There are no peer birthdays scheduled for today.${userBdayNotice}`;
+        return {
+          intent: "CHIT_CHAT",
+          reply,
+          response: reply,
+          citations: [],
+          actions: [],
+          requiresConfirmation: false,
+        };
+      }
+
+      // 11d. Asking about a specific person or event's birthday
+      const specificMatch = lower.match(/(?:when|what|is)\s+(?:is\s+)?([a-z0-9\s'-]+?)(?:'s|\s+has)?\s+(?:birthdays?|b'?days?|dob)\b/i) ||
+        lower.match(/(?:when|is\s+it)\s+([a-z0-9\s'-]+?)(?:'s)?\s+(?:birthdays?|b'?days?)\b/i);
+      if (specificMatch) {
+        const queryName = specificMatch[1].trim().toLowerCase();
+        if (queryName && !/^(my|your|the)$/.test(queryName)) {
+          const allCalendarEvents = (Array.isArray(context.calendarEvents) ? context.calendarEvents : []);
+          const matchedEvent = allCalendarEvents.find((e: any) => {
+            const t = String(e.title || "").toLowerCase();
+            return t.includes(queryName) || queryName.split(" ").some(part => part.length >= 3 && t.includes(part));
+          });
+          if (matchedEvent) {
+            const d = new Date(String(matchedEvent.date).split("T")[0] + "T00:00:00");
+            const formatted = d.toLocaleDateString("en-US", { month: "long", day: "numeric" });
+            const reply = `According to your calendar, **${matchedEvent.title}** is on **${formatted}**! 🎂`;
+            return {
+              intent: "CHIT_CHAT",
+              reply,
+              response: reply,
+              citations: [],
+              actions: [],
+              requiresConfirmation: false,
+            };
+          }
+        }
       }
     }
 
@@ -1405,11 +1683,21 @@ export class CustomMlCopilotService {
     if (
       /\b(what\s+events|upcoming\s+events|list\s+(?:all\s+)?(?:holidays|events)|all\s+holidays|exam\s+schedule|campus\s+events?|festival\s+schedule|academic\s+calendar)\b/i.test(lower)
     ) {
+      const isExamEvent = (e: any): boolean => {
+        const type = String(e.eventType || "").toLowerCase().replace(/[-_]/g, " ").trim();
+        const title = String(e.title || "").toLowerCase();
+        if (type.includes("holiday") || type.includes("vacation") || type.includes("break") || type.includes("fest")) return false;
+        if (/\b(break|vacation|holiday|fest|festival|puja|diwali|chaturdasi|duj|jayanti|birthday)\b/i.test(title)) return false;
+        if (/\b(exams?|midsem|endsem|tests?|quiz(?:zes)?|assessments?|lab\s+exams?)\b/i.test(type)) return true;
+        if (/\b(mid\s*sem(ester)?\s+exam|end\s*sem(ester)?\s+exam|exams?|theory\s+exam|lab\s+exam|practical\s+exam|class\s+test|cycle\s+test|unit\s+test|quiz|assessment)\b/i.test(title)) return true;
+        return false;
+      };
+
       const wantsHolidays = /\b(holidays?|vacation|break)\b/i.test(lower);
       const wantsExams = /\b(exams?|tests?|midsem|endsem)\b/i.test(lower);
       const filtered = generalCtx.nextUpcomingEvents.filter((e) => {
         if (wantsHolidays) return e.eventType.includes("holiday") || e.eventType.includes("vacation") || /holiday|vacation|jayanti|diwali|holi/i.test(e.title);
-        if (wantsExams) return e.eventType.includes("exam") || e.eventType.includes("sem") || e.eventType.includes("ct") || /exam|mid|end|test|quiz/i.test(e.title);
+        if (wantsExams) return isExamEvent(e);
         return true;
       });
       const list = filtered.length > 0 ? filtered : generalCtx.nextUpcomingEvents;
@@ -1661,9 +1949,9 @@ export class CustomMlCopilotService {
       this.warmup();
     }
 
-    // Preserve toxic guardrail (0ms)
+    // Preserve toxic guardrail (0ms) - Raw & Pre-Starred Matching
     const TOXIC_PATTERN =
-      /\b(fuck|fucking|fucker|shit|bullshit|bitch|bitching|asshole|dick|dickhead|cunt|slut|whore|bastard|motherfucker|stfu|dumbass|idiot|retard|fag|nigger|nigga|madarchod|mc|behenchod|bhenchod|bc|bhosdike|bhosdiwale|bhosda|chutiya|chutiye|gaand|gandu|gandwe|lavde|laude|lodu|lode|lund|jhantu|harami|kamina|kamine|saala|saale|randi|raand|tatte|jhaat|bakchod|bakchodi|gaandmara|gandmara)\b|[\u0900-\u097F]*(?:चूतिया|मादरचोद|बहनचोद|भोसड़ीके|भोसड़ीवाले|गांडू|गांड|लौड़े|लवड़े|लंड|हरामी|कमीना|रंडी|झांट|बकचोद|चूत|गाली)[\u0900-\u097F]*/i;
+      /\b(fuck|fucking|fucker|shit|bullshit|bitch|bitching|asshole|dick|dickhead|cunt|slut|whore|bastard|motherfucker|stfu|dumbass|idiot|retard|fag|nigger|nigga|madarchod|mc|behenchod|bhenchod|bc|bhosdike|bhosdiwale|bhosda|chutiya|chutiye|gaand|gandu|gandwe|lavde|laude|lodu|lode|lund|jhantu|harami|kamina|kamine|saala|saale|randi|raand|tatte|jhaat|bakchod|bakchodi|gaandmara|gandmara)\b|(?:^|\s|[.,!?])(f[\*]{2,}[a-z]?|f[\*]+(?:ing|er|ed|g)?|b[\*]{2,}[a-z]?|s[\*]{2,}[a-z]?|a[\*]{2,}[a-z]?|d[\*]{2,}[a-z]?|m[\*]{2,}[a-z]?|c[\*]{2,}[a-z]?|l[\*]{2,}[a-z]?)(?:$|\s|[.,!?])|[\u0900-\u097F]*(?:चूतिया|मादरचोद|बहनचोद|भोसड़ीके|भोसड़ीवाले|गांडू|गांड|लौड़े|लवड़े|लंड|हरामी|कमीना|रंडी|झांट|बकचोद|चूत|गाली)[\u0900-\u097F]*/i;
     if (TOXIC_PATTERN.test(query)) {
       const reply =
         "I'm here to help you manage your attendance, timetable, assignments, and academic queries for AttendX. Please keep our conversation respectful so I can assist you effectively.";
@@ -1697,7 +1985,13 @@ export class CustomMlCopilotService {
         const precomputedSimBlock = this.computeMultiDaySimulationBlock(query, generalCtx);
 
         const systemPrompt = `You are AttendX AI Copilot, the intelligent academic advisor and intent router for AttendX (created by Naman Rai).
-Analyze the student's query and app context, classify their intent into exactly ONE of the 12 supported intents, formulate a helpful, concise, friendly reply, and stage any corresponding actions.
+Analyze the student's query and app context, classify their intent into exactly ONE of the supported intents, formulate a helpful, concise, friendly reply, and stage any corresponding actions.
+
+CRITICAL - Multi-Turn Dialog Context:
+- The student may reply with short affirmations, confirmations, follow-ups, or continuations (e.g. "yes", "no", "yeah", "yep", "sure", "do it", "why?", "tell me more", "what about lab?", "and tomorrow?").
+- ALWAYS inspect the Prior Dialog History to understand what the student is answering or continuing.
+- If the previous Copilot turn asked a question or proposed a simulation/action and the user says "yes" or "sure", fulfill that proposed action or simulation.
+- Never answer short conversational follow-ups in a vacuum or treat them as unrelated requests.
 
 CRITICAL: Return ONLY a valid JSON object matching the schema below. No markdown wrapping or backticks.
 
@@ -1815,7 +2109,11 @@ Response JSON Schema:
           .map((log: any) => `  * ${log.date} ${log.startTime || ''}: ${subMap[log.subjectId] || log.subjectName || log.subjectId} (Extra Class)`)
           .join("\n");
 
-        const userPrompt = `User Query: "${query}"
+        const historyBlock = context.history && context.history.length > 0
+          ? `Prior Dialog History:\n${context.history.slice(-10).map((m: any) => `${m.role === 'user' ? 'Student' : 'Copilot'}: ${m.content || m.text || ''}`).join('\n')}\n\n`
+          : "";
+
+        const userPrompt = `${historyBlock}User Query: "${query}"
 Context:
 - User Name: ${context.userName || "Student"}
 - Birthday: ${context.userBirthday || "Not provided"}
@@ -1870,30 +2168,9 @@ ${ordContext}`;
            };
         }
         
-        // Explicitly handle Rate Limit / Quota Exceeded (429) errors so users know what happened
-        if (err?.message?.includes("429") || err?.status === 429 || err?.message?.includes("quota") || err?.message?.includes("exhausted")) {
-          return {
-
-            intent: "APP_FAQ",
-            reply: "I am receiving too many requests right now and hit my API limit. Please wait a few seconds and try asking again.",
-            response: "I am receiving too many requests right now and hit my API limit. Please wait a few seconds and try asking again.",
-            citations: [],
-            actions: [],
-            requiresConfirmation: false,
-          };
-        }
-
-        // CATCH-ALL FOR ANY OTHER ERROR (Network, 500, 503, Blocked by safety)
-        console.warn("[CustomMlCopilotService] Returning generic AI connection error to user.");
-        return {
-
-           intent: "APP_FAQ",
-           reply: "I'm having trouble connecting to my AI brain right now. Please check your internet or try again in a moment.",
-           response: "Offline engine error.",
-           citations: [],
-           actions: [],
-           requiresConfirmation: false
-        };
+        // Explicitly handle fallback when Gemini API times out, 429s, or fails
+        console.warn("[CustomMlCopilotService] Gemini call encountered an error or timeout, seamlessly falling back to deterministic offline engine:", err?.message || err);
+        return await this.fallbackProcess(query, context);
       }
     } else {
       console.warn("[CustomMlCopilotService] GEMINI_API_KEY is not configured, using fallback intent router.");
@@ -2312,7 +2589,8 @@ ${ordContext}`;
    * Graceful fallback intent router when Gemini API is unavailable or offline
    */
   private static async fallbackProcess(query: string, context: CopilotContext): Promise<CopilotResponse> {
-    const lower = query.toLowerCase();
+    const normalized = this.normalizeVoiceQuery(query);
+    const lower = normalized.toLowerCase();
     // Wall-clock Date (UTC fields = user's local fields) so relative dates are timezone-safe
     const localDate = this.toWallClock(context.localTime);
 
@@ -2481,37 +2759,66 @@ ${ordContext}`;
     }
 
     // 4. NAVIGATE_APP
-    if (/^(navigate( to)?|open|go to|show me( my)?|view)\s+(timetable|schedule|settings|reports?|calendar|forecast|today|assignments?|peer sync|profile|devices|timeline|changelog|feedback|contact)/i.test(lower)) {
-      let path = "/today";
-      let title = "Today's Agenda";
-      if (/(timetable|schedule|routine)/i.test(lower)) { path = "/timetable"; title = "Timetable"; }
-      else if (/(profile|account)/i.test(lower)) { path = "/settings/profile"; title = "Profile Settings"; }
-        else if (/(device|devices|sessions)/i.test(lower)) { path = "/settings/devices"; title = "Linked Devices"; }
-        else if (/(peer|friends|sync)/i.test(lower)) { path = "/settings/peer-sync"; title = "Peer Sync Settings"; }
-        else if (/(contact|help|support)/i.test(lower)) { path = "/settings/contact"; title = "Contact Us"; }
-        else if (/(feedback|issue|bug)/i.test(lower)) {
-          const extraDesc = query.replace(/^(navigate( to)?|open|go to|show me( my)?|view)\s+(?:the\s+)?(?:feedback|issue|bug)(?:\s+(?:screen|form|modal|page|tab))?(?:\s*(?:about|regarding|for|:)\s*)?/i, "").trim();
-          if (extraDesc.length > 2) {
-            path = `/settings/feedback?issue=${encodeURIComponent(extraDesc.slice(0, 60))}&description=${encodeURIComponent(extraDesc)}`;
-          } else {
-            path = "/settings/feedback";
-          }
-          title = "Feedback";
-        }
-        else if (/(changelog|update|history)/i.test(lower)) { path = "/settings/changelog"; title = "Update History"; }
-        else if (/(timeline)/i.test(lower)) { path = "/semester/timeline"; title = "Timeline"; }
-        else if (/(setting|settings|preference)/i.test(lower)) { path = "/settings"; title = "Settings"; }
-      else if (/(report|reports|analytic|analytics)/i.test(lower)) { path = "/report"; title = "Attendance Reports"; }
-      else if (/(calendar|event|events|academic)/i.test(lower)) { path = "/calendar"; title = "Academic Calendar"; }
-      else if (/(predict|prediction|predictive)/i.test(lower)) { path = "/predictive"; title = "Predictive Forecast"; }
-      
-      else if (/(assignment|assignments|task|tasks)/i.test(lower)) { path = "/assignments"; title = "Assignments"; }
-      else if (/(semester|hub|overview)/i.test(lower)) { path = "/semester"; title = "Semester Overview"; }
+    const strippedNav = lower
+      .replace(/^(?:can\s+you(?:\s+please)?|could\s+you(?:\s+please)?|would\s+you|please|pls|i\s+want\s+to|i\s+need\s+to|help\s+me(?:\s+to)?|let\s+me|just)\s+/i, "")
+      .replace(/^(?:navigate(?:\s+to)?|open(?:\s+up)?|go\s+to|take\s+me\s+to|show(?:\s+me)?|view|switch\s+to|display|check(?:\s+out)?|bring\s+up|launch|see|head\s+to)\s+/i, "")
+      .replace(/^(?:all\s+)?(?:the|my|our)\s+/i, "")
+      .replace(/\s+(?:please|pls|for\s+me|now|right\s+now|asap|screen|tab|page|view|modal|section|form|dialog)$/i, "")
+      .replace(/^[\s"'“”‘’`.,;:!?~_/\\()[\]{}\-]+|[\s"'“”‘’`.,;:!?~_/\\()[\]{}\-]+$/g, "")
+      .trim();
 
-      const reply = `Navigating to ${title}.`;
-      const action = this.createAction("NAVIGATE", { path }, `route:${path}`, `Navigate to ${title}`, `Safe navigation action: opens ${title}.`);
+    let navTarget: { path: string; title: string } | null = null;
+
+    if (/^(?:(?:exam|semester|holiday|academic|event|upcoming)\s+)?countdowns?$|^countdown(?:\s+timers?)?$/i.test(strippedNav)) {
+      navTarget = { path: "/semester/countdowns", title: "Semester Countdowns" };
+    } else if (/^(?:(?:semester|academic|upcoming|college)\s+)?holidays?$|^holiday\s+list$/i.test(strippedNav)) {
+      navTarget = { path: "/semester/holidays", title: "Semester Holidays" };
+    } else if (/^(?:(?:semester|academic|upcoming|calendar)\s+)?events?$|^academic\s+calendar$|^event\s+list$/i.test(strippedNav)) {
+      navTarget = { path: "/semester/events", title: "Semester Events" };
+    } else if (/^(?:(?:class|weekly|daily)\s+)?(?:timetable|time\s*table|schedule|routine)$/i.test(strippedNav)) {
+      navTarget = { path: "/timetable", title: "Timetable" };
+    } else if (/^(?:edit\s+)?profile$|^my\s+account$|^user\s+profile$/i.test(strippedNav)) {
+      navTarget = { path: "/settings/profile", title: "Profile Settings" };
+    } else if (/^(?:(?:linked|active|connected|logged\s*in)\s+)?(?:devices|sessions)$/i.test(strippedNav)) {
+      navTarget = { path: "/settings/devices", title: "Linked Devices" };
+    } else if (/^peer\s*[- ]?sync$|^friends\s+sync$|^data\s+transfer$/i.test(strippedNav)) {
+      navTarget = { path: "/settings/peer-sync", title: "Peer Sync Settings" };
+    } else if (/^(?:(?:send|give|open|show|submit)\s+)?feedback(?:\s+(?:form|page|screen|tab|dialog|modal))?$|^report\s+(?:a\s+)?(?:bug|issue)$/i.test(strippedNav)) {
+      const extraDesc = query.replace(/^(?:(?:please\s+)?(?:navigate(?:\s+to)?|open(?:\s+up)?|go\s+to|take\s+me\s+to|show(?:\s+me)?(?:\s+my)?|view(?:\s+my)?)\s+)?(?:the\s+)?(?:feedback|issue|bug)(?:\s+(?:screen|form|modal|page|tab))?(?:\s*(?:about|regarding|for|:)\s*)?/i, "").trim();
+      navTarget = {
+        path: extraDesc.length > 2 ? `/settings/feedback?issue=${encodeURIComponent(extraDesc.slice(0, 60))}&description=${encodeURIComponent(extraDesc)}` : "/settings/feedback",
+        title: "Feedback",
+      };
+    } else if (/^changelog$|^what'?s\s+new$|^update\s+history$|^release\s+notes$/i.test(strippedNav)) {
+      navTarget = { path: "/settings/changelog", title: "Update History" };
+    } else if (/^contact(?:\s+us)?$|^support$/i.test(strippedNav)) {
+      navTarget = { path: "/settings/contact", title: "Contact Us" };
+    } else if (/^faqs?$|^help(?:\s+(?:desk|center|&?\s*support))?$/i.test(strippedNav)) {
+      navTarget = { path: "/settings/faq", title: "FAQ" };
+    } else if (/^(?:app\s+)?(?:settings|preferences|options)$/i.test(strippedNav)) {
+      navTarget = { path: "/settings", title: "Settings" };
+    } else if (/^(?:(?:detailed|attendance|analytics)\s+)?reports?$|^analytics$|^bunk\s+calculator$|^attendance\s+stats?$/i.test(strippedNav)) {
+      navTarget = { path: "/report", title: "Attendance Reports" };
+    } else if (/^(?:attendance\s+)?(?:forecast|predictive|prediction)(?:\s+engine)?$|^what\s*if\s+calculator$/i.test(strippedNav)) {
+      navTarget = { path: "/predictive", title: "Predictive Forecast" };
+    } else if (/^(?:my\s+)?(?:subjects?|courses?)$|^attendance\s+cards?$/i.test(strippedNav)) {
+      navTarget = { path: "/subjects", title: "Subjects" };
+    } else if (/^(?:(?:pending|upcoming|academic|my)\s+)?(?:assignments?|tasks?)$|^todo(?:\s*list)?$|^homework$/i.test(strippedNav)) {
+      navTarget = { path: "/assignments", title: "Assignments" };
+    } else if (/^(?:campus\s+)?classrooms?$|^campus\s+rooms?$/i.test(strippedNav)) {
+      navTarget = { path: "/classrooms", title: "Classrooms" };
+    } else if (/^semester(?:\s+(?:overview|hub))?$|^timeline$/i.test(strippedNav)) {
+      navTarget = { path: "/semester", title: "Semester Overview" };
+    } else if (/^calendar$|^month\s+view$/i.test(strippedNav)) {
+      navTarget = { path: "/calendar", title: "Academic Calendar" };
+    } else if (/^(?:today(?:'s)?(?:\s+(?:agenda|dashboard|schedule|classes|attendance|routine|overview|plan))?|daily\s+(?:agenda|dashboard|schedule|overview)|agenda|dashboard|home(?:\s+screen)?|main\s+screen)$/i.test(strippedNav)) {
+      navTarget = { path: "/today", title: "Today's Agenda" };
+    }
+
+    if (navTarget) {
+      const reply = `Navigating to ${navTarget.title}.`;
+      const action = this.createAction("NAVIGATE", { path: navTarget.path }, `route:${navTarget.path}`, `Navigate to ${navTarget.title}`, `Safe navigation action: opens ${navTarget.title}.`);
       return {
-
         intent: "NAVIGATE_APP",
         reply,
         response: reply,

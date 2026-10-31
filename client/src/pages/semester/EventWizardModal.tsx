@@ -172,33 +172,33 @@ export const EventWizardModal: React.FC<WizardProps> = ({ isOpen, onClose, onSav
         
         <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500" />
         
-        <div className="p-6 md:p-8 flex-shrink-0">
-          <div className="flex justify-between items-start mb-6">
-            <div>
-              <div className="flex items-center gap-3 mb-2">
-                <div className="p-2.5 bg-indigo-500/20 text-indigo-500 rounded-xl">
-                  <CalendarRange className="w-6 h-6" />
+        <div className="p-4 sm:p-6 md:p-8 flex-shrink-0">
+          <div className="flex justify-between items-start mb-4 sm:mb-6">
+            <div className="min-w-0 flex-1 pr-2">
+              <div className="flex items-center gap-3 mb-1.5">
+                <div className="p-2 sm:p-2.5 bg-indigo-500/20 text-indigo-500 rounded-xl shrink-0">
+                  <CalendarRange className="w-5 h-5 sm:w-6 sm:h-6" />
                 </div>
-                <h2 className="text-2xl font-bold text-foreground">Review Semester Plan</h2>
+                <h2 className="text-xl sm:text-2xl font-bold text-foreground truncate">Review Semester Plan</h2>
               </div>
-              <p className="text-muted-foreground text-sm pl-12">
+              <p className="text-muted-foreground text-xs sm:text-sm pl-0 sm:pl-11">
                 Select a semester and confirm the events to import.
               </p>
             </div>
-            <button onClick={onClose} disabled={isSaving} className="p-2 text-foreground bg-muted/80 hover:bg-muted border border-border rounded-full transition-colors cursor-pointer shadow-sm">
-              <X className="w-5 h-5" />
+            <button onClick={onClose} disabled={isSaving} className="p-2 text-foreground bg-muted/80 hover:bg-muted border border-border rounded-full transition-colors cursor-pointer shadow-sm shrink-0">
+              <X className="w-4 h-4 sm:w-5 sm:h-5" />
             </button>
           </div>
 
-          <div className="pl-12 flex flex-col gap-4 mb-4">
+          <div className="pl-0 sm:pl-11 flex flex-col gap-3 sm:gap-4 mb-2">
              <div>
-               <label className="block text-sm font-medium text-foreground mb-1.5">Parsed Target Semester</label>
+               <label className="block text-xs sm:text-sm font-medium text-foreground mb-1.5">Parsed Target Semester</label>
                <div className="flex flex-wrap gap-2">
                  {eventsPayload.map((g, i) => (
                    <button
                      key={i}
                      onClick={() => setSelectedGroupIndex(i)}
-                     className={`flex-1 min-w-[100px] py-2 px-3 text-sm font-medium rounded-xl border transition-all ${
+                     className={`flex-1 min-w-[90px] py-2 px-3 text-xs sm:text-sm font-medium rounded-xl border transition-all cursor-pointer ${
                        selectedGroupIndex === i 
                          ? 'bg-indigo-500 text-white border-indigo-500 shadow-sm' 
                          : 'bg-black/20 border-white/10 text-white hover:bg-white/5 hover:border-white/20'
@@ -211,13 +211,13 @@ export const EventWizardModal: React.FC<WizardProps> = ({ isOpen, onClose, onSav
              </div>
              
              <div>
-               <label className="block text-sm font-medium text-foreground mb-1.5">Map to System Semester</label>
+               <label className="block text-xs sm:text-sm font-medium text-foreground mb-1.5">Map to System Semester</label>
                <div className="flex flex-wrap gap-2">
                  {semesters.map(s => (
                    <button
                      key={s.id}
                      onClick={() => setSelectedSemester(s.id)}
-                     className={`flex-1 min-w-[100px] py-2 px-3 text-sm font-medium rounded-xl border transition-all ${
+                     className={`flex-1 min-w-[90px] py-2 px-3 text-xs sm:text-sm font-medium rounded-xl border transition-all cursor-pointer ${
                        selectedSemester === s.id 
                          ? 'bg-indigo-500 text-white border-indigo-500 shadow-sm' 
                          : 'bg-black/20 border-white/10 text-white hover:bg-white/5 hover:border-white/20'
@@ -231,42 +231,42 @@ export const EventWizardModal: React.FC<WizardProps> = ({ isOpen, onClose, onSav
           </div>
         </div>
         
-        <div className="p-6 md:p-8 pt-0 overflow-y-auto pl-20">
-          <div className="flex justify-between items-center mb-4 pr-2">
-            <span className="text-sm font-medium text-white/70">
+        <div className="p-4 sm:p-6 md:p-8 pt-0 overflow-y-auto">
+          <div className="flex justify-between items-center mb-3 sm:mb-4 pr-1">
+            <span className="text-xs sm:text-sm font-medium text-white/70">
               {selectedEvents.size} of {currentEvents.length} events selected
             </span>
             <button 
               onClick={toggleAll}
-              className="text-sm font-medium text-indigo-400 hover:text-indigo-300 transition-colors"
+              className="text-xs sm:text-sm font-medium text-indigo-400 hover:text-indigo-300 transition-colors cursor-pointer"
             >
               {selectedEvents.size === currentEvents.length ? "Deselect All" : "Select All"}
             </button>
           </div>
-          <div className="space-y-3">
+          <div className="space-y-2.5 sm:space-y-3">
             {currentEvents.map((evt, idx) => {
               const isHoliday = evt.isHoliday || evt.category.toUpperCase() === "HOLIDAY";
               return (
               <div 
                 key={idx} 
                 onClick={() => toggleEvent(idx)}
-                className={`flex items-center gap-4 p-4 rounded-xl border transition-all cursor-pointer ${
+                className={`flex items-center gap-3 sm:gap-4 p-3 sm:p-4 rounded-xl border transition-all cursor-pointer ${
                   selectedEvents.has(idx) ? 'border-indigo-500/50 bg-indigo-500/5' : 'border-white/5 bg-white/[0.02] opacity-50'
                 } ${isHoliday ? '!opacity-100 cursor-default' : ''}`}
               >
-                <div className={`w-5 h-5 rounded-md border flex items-center justify-center transition-colors ${
+                <div className={`w-5 h-5 rounded-md border flex items-center justify-center shrink-0 transition-colors ${
                   selectedEvents.has(idx) ? 'bg-indigo-500 border-indigo-500 text-white' : 'border-white/20'
                 } ${isHoliday ? 'bg-indigo-600/50 border-indigo-600/50 cursor-not-allowed' : ''}`}>
                   {selectedEvents.has(idx) && <CheckCircle2 className="w-3.5 h-3.5" />}
                 </div>
-                <div className="flex-1">
-                  <h4 className="text-sm font-bold text-white mb-1">{evt.title}</h4>
-                  <p className="text-xs text-muted-foreground">
+                <div className="flex-1 min-w-0">
+                  <h4 className="text-xs sm:text-sm font-bold text-white mb-0.5 truncate">{evt.title}</h4>
+                  <p className="text-[11px] sm:text-xs text-muted-foreground truncate">
                     {formatDate(evt.startDate)}
                     {evt.endDate !== evt.startDate && ` - ${formatDate(evt.endDate)}`}
                   </p>
                 </div>
-                <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-md border ${getTypeColor(evt)}`}>
+                <span className={`text-[9px] sm:text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 sm:py-1 rounded-md border shrink-0 ${getTypeColor(evt)}`}>
                   {evt.category}
                 </span>
               </div>
@@ -275,11 +275,11 @@ export const EventWizardModal: React.FC<WizardProps> = ({ isOpen, onClose, onSav
         </div>
 
         {/* Footer Actions */}
-        <div className="p-6 border-t border-white/5 bg-black/20 flex justify-end gap-3 flex-shrink-0">
+        <div className="p-4 sm:p-6 border-t border-white/5 bg-black/20 flex items-center justify-end gap-2.5 sm:gap-3 flex-shrink-0">
           <button 
             onClick={onClose}
             disabled={isSaving}
-            className="px-6 py-2.5 rounded-xl font-medium text-white hover:bg-white/10 transition-colors"
+            className="flex-1 sm:flex-none px-4 sm:px-6 py-2.5 rounded-xl font-medium text-xs sm:text-sm text-white hover:bg-white/10 transition-colors cursor-pointer text-center"
           >
             Cancel
           </button>

@@ -199,7 +199,7 @@ export const LandingPage: React.FC = () => {
                 <span>App</span>
               </button>
               <button 
-                onClick={toggleTheme} 
+                onClick={(e) => toggleTheme(e)} 
                 className="p-2 text-slate-50/80 hover:text-slate-50 hover:bg-slate-50/10 rounded-full transition-colors"
                 title="Toggle App Theme"
               >

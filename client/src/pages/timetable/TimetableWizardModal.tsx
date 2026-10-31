@@ -2,6 +2,7 @@ import React, { useState, useMemo } from "react";
 import { Loader2, Wand2, BookOpen, FlaskConical, Sparkles, X, ChevronRight, ChevronLeft, Check, Layers, Users, Calendar } from "lucide-react";
 import { COURSE_CURRICULUM, resolveSubjectName, BRANCH_NAMES } from "../../utils/subjectDictionary";
 import { formatTimeRange, normalizeTimeString } from "../../utils/timeUtils";
+import { SoundFX } from "../../utils/soundEffects";
 
 interface WizardProps {
   isOpen: boolean;
@@ -289,6 +290,7 @@ export const TimetableWizardModal: React.FC<WizardProps> = ({ isOpen, onClose, o
   };
 
   const handleSubmit = async () => {
+    SoundFX.warmUp();
     setIsGenerating(true);
     try {
       if (selectedLabGroup) {
@@ -309,7 +311,8 @@ export const TimetableWizardModal: React.FC<WizardProps> = ({ isOpen, onClose, o
         selectedElectives: selectedElectives,
         programElectiveCode: selectedElectives[0] || "",
         minorElectiveCode: selectedElectives[1] || "",
-        rawSlots
+        rawSlots,
+        filteredSlots: previewSlots
       });
     } finally {
       setIsGenerating(false);
@@ -342,33 +345,36 @@ export const TimetableWizardModal: React.FC<WizardProps> = ({ isOpen, onClose, o
         </div>
 
         {/* Progress Stepper Bar */}
-        <div className="px-6 py-3 bg-muted/40 border-b border-border/40 flex items-center justify-between text-xs font-medium">
-          <div className={`flex items-center gap-1.5 ${step >= 1 ? "text-blue-500 font-bold" : "text-muted-foreground"}`}>
-            <span className={`w-5 h-5 rounded-full flex items-center justify-center ${step >= 1 ? "bg-blue-500 text-white" : "bg-muted text-muted-foreground"}`}>1</span>
-            <span>Branch & Semester</span>
+        <div className="px-3.5 sm:px-6 py-2.5 sm:py-3 bg-muted/40 border-b border-border/40 flex items-center justify-between text-xs font-medium overflow-x-auto no-scrollbar gap-1.5 sm:gap-2">
+          <div className={`flex items-center gap-1.5 shrink-0 ${step >= 1 ? "text-blue-500 font-bold" : "text-muted-foreground"}`}>
+            <span className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 ${step >= 1 ? "bg-blue-500 text-white" : "bg-muted text-muted-foreground"}`}>1</span>
+            <span className="hidden sm:inline">Branch & Semester</span>
+            <span className="sm:hidden">Branch</span>
           </div>
-          <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />
+          <ChevronRight className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
           
-          <div className={`flex items-center gap-1.5 ${step >= 2 ? "text-blue-500 font-bold" : "text-muted-foreground"}`}>
-            <span className={`w-5 h-5 rounded-full flex items-center justify-center ${step >= 2 ? "bg-blue-500 text-white" : "bg-muted text-muted-foreground"}`}>2</span>
-            <span>Lab Group & Section</span>
+          <div className={`flex items-center gap-1.5 shrink-0 ${step >= 2 ? "text-blue-500 font-bold" : "text-muted-foreground"}`}>
+            <span className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 ${step >= 2 ? "bg-blue-500 text-white" : "bg-muted text-muted-foreground"}`}>2</span>
+            <span className="hidden sm:inline">Lab Group & Section</span>
+            <span className="sm:hidden">Lab/Sec</span>
           </div>
-          <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />
+          <ChevronRight className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
           
-          <div className={`flex items-center gap-1.5 ${step >= 3 ? "text-blue-500 font-bold" : "text-muted-foreground"} ${!isElectiveSem ? "opacity-50" : ""}`}>
-            <span className={`w-5 h-5 rounded-full flex items-center justify-center ${step >= 3 ? "bg-blue-500 text-white" : "bg-muted text-muted-foreground"}`}>3</span>
-            <span>Electives {isElectiveSem ? "" : "(Sem 5+)"}</span>
+          <div className={`flex items-center gap-1.5 shrink-0 ${step >= 3 ? "text-blue-500 font-bold" : "text-muted-foreground"} ${!isElectiveSem ? "opacity-50" : ""}`}>
+            <span className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 ${step >= 3 ? "bg-blue-500 text-white" : "bg-muted text-muted-foreground"}`}>3</span>
+            <span className="hidden sm:inline">Electives {isElectiveSem ? "" : "(Sem 5+)"}</span>
+            <span className="sm:hidden">Electives</span>
           </div>
-          <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />
+          <ChevronRight className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
 
-          <div className={`flex items-center gap-1.5 ${step === 4 ? "text-blue-500 font-bold" : "text-muted-foreground"}`}>
-            <span className={`w-5 h-5 rounded-full flex items-center justify-center ${step === 4 ? "bg-blue-500 text-white" : "bg-muted text-muted-foreground"}`}>4</span>
+          <div className={`flex items-center gap-1.5 shrink-0 ${step === 4 ? "text-blue-500 font-bold" : "text-muted-foreground"}`}>
+            <span className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 ${step === 4 ? "bg-blue-500 text-white" : "bg-muted text-muted-foreground"}`}>4</span>
             <span>Confirm</span>
           </div>
         </div>
 
         {/* Body Content */}
-        <div className="p-6 md:p-8 overflow-y-auto space-y-6 flex-1">
+        <div className="p-4 sm:p-6 md:p-8 overflow-y-auto space-y-5 sm:space-y-6 flex-1">
           
           {/* STEP 1: Branch & Semester Selection */}
           {step === 1 && (
@@ -735,27 +741,27 @@ export const TimetableWizardModal: React.FC<WizardProps> = ({ isOpen, onClose, o
         </div>
 
         {/* Footer Actions */}
-        <div className="p-6 border-t border-border bg-muted/30 flex justify-between items-center">
+        <div className="p-3.5 sm:p-6 border-t border-border bg-muted/30 flex items-center justify-between gap-2 shrink-0">
           <div>
             {step > 1 && (
               <button
                 type="button"
                 onClick={handlePrevStep}
                 disabled={isGenerating}
-                className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl font-medium text-sm text-muted-foreground hover:bg-muted transition-colors cursor-pointer"
+                className="flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-4 py-2 sm:py-2.5 rounded-xl font-medium text-xs sm:text-sm text-muted-foreground hover:bg-muted transition-colors cursor-pointer"
               >
-                <ChevronLeft className="w-4 h-4" />
-                Back
+                <ChevronLeft className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                <span>Back</span>
               </button>
             )}
           </div>
 
-          <div className="flex gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
             <button
               type="button"
               onClick={onClose}
               disabled={isGenerating}
-              className="px-5 py-2.5 rounded-xl font-medium text-sm text-muted-foreground hover:bg-muted transition-colors cursor-pointer"
+              className="px-3 sm:px-5 py-2 sm:py-2.5 rounded-xl font-medium text-xs sm:text-sm text-muted-foreground hover:bg-muted transition-colors cursor-pointer"
             >
               Cancel
             </button>
@@ -764,20 +770,20 @@ export const TimetableWizardModal: React.FC<WizardProps> = ({ isOpen, onClose, o
               <button
                 type="button"
                 onClick={handleNextStep}
-                className="flex items-center gap-1.5 px-6 py-2.5 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition-colors shadow-md shadow-blue-500/20 cursor-pointer"
+                className="flex items-center gap-1 sm:gap-1.5 px-4 sm:px-6 py-2 sm:py-2.5 bg-blue-600 text-white font-bold rounded-xl text-xs sm:text-sm hover:bg-blue-700 transition-colors shadow-md shadow-blue-500/20 cursor-pointer"
               >
-                Next Step
-                <ChevronRight className="w-4 h-4" />
+                <span>Next Step</span>
+                <ChevronRight className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               </button>
             ) : (
               <button
                 type="button"
                 onClick={handleSubmit}
                 disabled={isGenerating}
-                className="flex items-center gap-2 px-8 py-2.5 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-md shadow-blue-500/20 cursor-pointer"
+                className="flex items-center gap-1.5 sm:gap-2 px-4 sm:px-8 py-2 sm:py-2.5 bg-blue-600 text-white font-bold rounded-xl text-xs sm:text-sm hover:bg-blue-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-md shadow-blue-500/20 cursor-pointer"
               >
-                {isGenerating ? <Loader2 className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5" />}
-                Confirm & Sync Timetable
+                {isGenerating ? <Loader2 className="w-4 h-4 animate-spin shrink-0" /> : <Sparkles className="w-4 h-4 shrink-0" />}
+                <span className="truncate">Confirm & Sync</span>
               </button>
             )}
           </div>

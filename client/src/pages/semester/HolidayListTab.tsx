@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { Info, RefreshCw } from "lucide-react";
 import { api } from "../../lib/api";
 import { toast } from "sonner";
+import { confirmDeleteToast } from "../../components/ui/confirm-delete-toast";
 import { SaveToggle } from "../../components/ui/save-toggle";
 import { useCacheStore } from "../../stores/cacheStore";
 import { useAttendanceStore } from "../../stores/attendanceStore";
@@ -90,11 +91,12 @@ export const HolidayListTab = ({ semesterId, semesterStartDate, semesterEndDate 
   };
 
   const handleClearEvents = async () => {
-    toast("Clear Holidays", {
+    confirmDeleteToast({
+      title: "Clear All Synced Holidays",
       description: "Are you sure you want to clear ALL synced holidays?",
-      action: {
-        label: "Clear All",
-        onClick: async () => {
+      confirmLabel: "Clear Holidays",
+
+      onConfirm: async () => {
           try {
             await api.delete("/events/all?target=holiday_list");
             useCacheStore.getState().setCache("calendar", null);
@@ -108,8 +110,8 @@ export const HolidayListTab = ({ semesterId, semesterStartDate, semesterEndDate 
             toast.error("Failed to clear holidays.");
           }
         }
-      },
-      cancel: { label: "Cancel", onClick: () => {} }
+
+
     });
   };
 

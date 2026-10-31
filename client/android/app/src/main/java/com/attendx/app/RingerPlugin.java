@@ -111,6 +111,14 @@ public class RingerPlugin extends Plugin {
         }
 
         if ("silent".equalsIgnoreCase(mode)) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && notificationManager != null && notificationManager.isNotificationPolicyAccessGranted()) {
+                try {
+                    notificationManager.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_PRIORITY);
+                    Log.d(TAG, "DND interruption filter engaged (PRIORITY).");
+                } catch (Exception e) {
+                    Log.w(TAG, "Could not engage INTERRUPTION_FILTER_PRIORITY", e);
+                }
+            }
             if (audioManager != null) {
                 audioManager.setRingerMode(AudioManager.RINGER_MODE_SILENT);
             }
@@ -126,6 +134,14 @@ public class RingerPlugin extends Plugin {
                 RingerAlarmReceiver.showPinnedMuteNotification(context, className, unmuteEpochMs);
             }
         } else if ("vibrate".equalsIgnoreCase(mode)) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && notificationManager != null && notificationManager.isNotificationPolicyAccessGranted()) {
+                try {
+                    notificationManager.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_ALL);
+                    Log.d(TAG, "DND interruption filter cleared (ALL) for vibrate.");
+                } catch (Exception e) {
+                    Log.w(TAG, "Could not restore INTERRUPTION_FILTER_ALL for vibrate", e);
+                }
+            }
             if (audioManager != null) {
                 audioManager.setRingerMode(AudioManager.RINGER_MODE_VIBRATE);
             }
@@ -133,6 +149,14 @@ public class RingerPlugin extends Plugin {
             clearRingerPrefs(context);
             RingerAlarmReceiver.cancelPinnedMuteNotification(context);
         } else {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && notificationManager != null && notificationManager.isNotificationPolicyAccessGranted()) {
+                try {
+                    notificationManager.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_ALL);
+                    Log.d(TAG, "DND interruption filter cleared (ALL) for normal ringer.");
+                } catch (Exception e) {
+                    Log.w(TAG, "Could not restore INTERRUPTION_FILTER_ALL for normal", e);
+                }
+            }
             if (audioManager != null) {
                 audioManager.setRingerMode(AudioManager.RINGER_MODE_NORMAL);
             }
@@ -158,19 +182,20 @@ public class RingerPlugin extends Plugin {
 
         PendingIntent pendingIntent = PendingIntent.getBroadcast(context, AUTO_UNMUTE_ALARM_ID, intent, flags);
 
+        Intent showIntent = new Intent(context, MainActivity.class);
+        showIntent.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        PendingIntent showPendingIntent = PendingIntent.getActivity(context, 0, showIntent, flags);
+
         try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                if (alarmManager.canScheduleExactAlarms()) {
-                    alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pendingIntent);
-                } else {
-                    alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pendingIntent);
-                }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                // AlarmClockInfo guarantees exact wake up regardless of Doze or OEM background throttling
+                alarmManager.setAlarmClock(new AlarmManager.AlarmClockInfo(triggerAtMillis, showPendingIntent), pendingIntent);
+                Log.d(TAG, "Scheduled high-priority alarm clock unmute at " + triggerAtMillis);
             } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pendingIntent);
             } else {
                 alarmManager.setExact(AlarmManager.RTC_WAKEUP, triggerAtMillis, pendingIntent);
             }
-            Log.d(TAG, "Scheduled native unmute alarm at " + triggerAtMillis);
         } catch (SecurityException se) {
             Log.w(TAG, "Exact alarm permission missing, falling back to setAndAllowWhileIdle", se);
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {

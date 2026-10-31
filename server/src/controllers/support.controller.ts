@@ -47,9 +47,9 @@ export class SupportController {
       const feedback = await prisma.feedback.create({
         data: {
           userId,
-          type,
-          issue,
-          frequency,
+          type: type || "feedback",
+          issue: issue || "general",
+          frequency: frequency || "once",
           description,
           email,
           screenshotUrl: screenshot, // In a real app, upload base64 to Cloudinary and store URL

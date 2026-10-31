@@ -20,24 +20,21 @@ export class DataController {
       const dateStr = new Date().toISOString().split("T")[0];
       const filename = `AttendX_${semName}_Export_${dateStr}.zip`;
 
-      try {
-        await DocumentService.storeDocument(
-          req.user!.userId,
-          zipBuffer,
-          filename,
-          "application/zip",
-          "BACKUP"
-        );
-      } catch (e) {
-        console.error("Failed to store backup document", e);
-      }
-
       res.setHeader(
         "Content-Disposition",
         `attachment; filename="${filename}"`
       );
       res.setHeader("Content-Type", "application/zip");
       res.send(zipBuffer);
+
+      // Store in StoredDocuments asynchronously so user download begins instantaneously
+      DocumentService.storeDocument(
+        req.user!.userId,
+        zipBuffer,
+        filename,
+        "application/zip",
+        "BACKUP"
+      ).catch((e) => console.error("Failed to store backup document", e));
     } catch (error: any) {
       console.error("Export Error:", error);
       const isClientError = error.message?.includes("No active semester");

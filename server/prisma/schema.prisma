@@ -321,8 +321,12 @@ model Classroom {
   qrCodeUrl   String?
   createdById String
   semesterId  String?
+  broadcastPermission String   @default("admins")
+  allowedPosterIds    String[] @default([])
+  deniedPosterIds     String[] @default([])
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  deletedAt   DateTime?
 
   createdBy     User              @relation("ClassroomCreator", fields: [createdById], references: [id], onDelete: Cascade)
   semester      Semester?         @relation(fields: [semesterId], references: [id], onDelete: Cascade)
@@ -453,6 +457,7 @@ model Note {
   isShared    Boolean  @default(false)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  deletedAt   DateTime?
 
   user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   subject   Subject?   @relation(fields: [subjectId], references: [id])

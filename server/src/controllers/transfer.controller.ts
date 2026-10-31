@@ -36,40 +36,41 @@ export class TransferController {
         return res.status(400).json({ message: "contextType is required." });
       }
 
-      // If payload is not provided, build it automatically based on context
-      if (!payload || Object.keys(payload).length === 0) {
-        payload = await TransferService.buildPayload(senderUserId, contextType, dateRange);
-      }
+      // Build payload (if not provided) and clear stale codes for this user concurrently
+      const [builtPayload] = await Promise.all([
+        !payload || Object.keys(payload).length === 0
+          ? TransferService.buildPayload(senderUserId, contextType, dateRange)
+          : Promise.resolve(payload),
+        prisma.shareTransfer.deleteMany({
+          where: { senderUserId }
+        })
+      ]);
+      payload = builtPayload;
 
-      // 1. Prevent spam/stale codes: Delete any existing active code for this user
-      await prisma.shareTransfer.deleteMany({
-        where: {
-          senderUserId: senderUserId
-        }
-      });
-
-      // 2. Generate cryptographically secure 6-digit code
-      const generateCode = () => crypto.randomInt(100000, 1000000).toString();
-      let code = generateCode();
-      
-      // Ensure it's unique
-      while (await prisma.shareTransfer.findUnique({ where: { code } })) {
-        code = generateCode();
-      }
-      
-      // 3. Insert with 5-minute expiry
+      // 2. Generate cryptographically secure 6-digit code & insert directly with collision retry
       const expiresAt = new Date();
       expiresAt.setMinutes(expiresAt.getMinutes() + 5);
 
-      await prisma.shareTransfer.create({
-        data: {
-          code,
-          senderUserId,
-          contextType,
-          payload,
-          expiresAt
+      let created = false;
+      let code = "";
+      for (let attempt = 0; attempt < 5 && !created; attempt++) {
+        code = crypto.randomInt(100000, 1000000).toString();
+        try {
+          await prisma.shareTransfer.create({
+            data: {
+              code,
+              senderUserId,
+              contextType,
+              payload,
+              expiresAt
+            }
+          });
+          created = true;
+        } catch (err: any) {
+          if (err.code !== 'P2002') throw err;
         }
-      });
+      }
+      if (!created) throw new Error("Failed to generate a unique transfer code. Please try again.");
 
       return res.status(200).json({ code, expiresIn: 300 });
 
@@ -90,15 +91,21 @@ export class TransferController {
         return res.status(400).json({ message: "Invalid 6-digit code." });
       }
 
-      // 1. Find the code
-      const transfer = await prisma.shareTransfer.findUnique({
-        where: { code }
-      });
+      // 1. Find the code and receiver profile in parallel
+      const [transfer, retriever] = await Promise.all([
+        prisma.shareTransfer.findUnique({
+          where: { code }
+        }),
+        prisma.user.findUnique({
+          where: { id: receiverUserId },
+          select: { name: true, email: true, avatarUrl: true }
+        })
+      ]);
 
       if (!transfer || transfer.expiresAt < new Date()) {
         if (transfer) {
-          // Cleanup expired code lazily
-          await prisma.shareTransfer.delete({ where: { code } });
+          // Cleanup expired code lazily (non-blocking)
+          prisma.shareTransfer.delete({ where: { code } }).catch(() => {});
         }
         return res.status(404).json({ message: "Code is invalid or has expired." });
       }
@@ -108,17 +115,9 @@ export class TransferController {
         return res.status(403).json({ message: "Cannot retrieve your own shared code." });
       }
 
-      // 3. Atomically delete and return the row (Single-Use Guarantee)
-      // Keep transfer active during its 5-minute TTL so preview cancel doesn't burn the code
-      // and multi-peer group syncs can redeem it before expiry.
-
+      // 3. Fetch sender info
       const sender = await prisma.user.findUnique({
         where: { id: transfer.senderUserId },
-        select: { name: true, email: true, avatarUrl: true }
-      });
-
-            const retriever = await prisma.user.findUnique({
-        where: { id: receiverUserId },
         select: { name: true, email: true, avatarUrl: true }
       });
 
@@ -185,8 +184,8 @@ export class TransferController {
 
       const safeAvatar = sanitizeAvatarUrl(retrieverAvatarUrl, retrieverName);
 
-      // Fire push notification to the sender — with retriever's avatar as the large icon
-      await PushNotificationService.sendToUser(
+      // Fire push notification to the sender asynchronously — do not block HTTP response
+      PushNotificationService.sendToUser(
         senderUserId,
         "Schedule Synced! 🎉",
         `${retrieverName || "A user"} just imported your Peer Sync schedule.`,

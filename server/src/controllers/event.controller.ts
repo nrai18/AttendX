@@ -75,6 +75,48 @@ export class EventController {
     }
   }
 
+  static async createEvent(req: AuthenticatedRequest, res: Response) {
+    const userId = req.user!.userId;
+    const { semesterId, events, title, date, eventType, description } = req.body;
+    try {
+      let semId = semesterId;
+      if (!semId) {
+        const { prisma } = require("../lib/prisma");
+        const activeSem = await prisma.semester.findFirst({ where: { userId, isActive: true }, select: { id: true } });
+        semId = activeSem?.id;
+      }
+      if (!semId) {
+        return res.status(400).json({ error: "Missing semesterId and no active semester found" });
+      }
+
+      if (events && Array.isArray(events)) {
+        const created = await EventService.saveWizardEvents(userId, semId, events);
+        await CacheService.invalidateUser(userId);
+        return res.status(201).json(created);
+      }
+
+      if (!title || !date) {
+        return res.status(400).json({ error: "Title and date are required" });
+      }
+
+      const singleEvent = {
+        title,
+        date: new Date(date),
+        eventType: eventType || "other",
+        description: description || null,
+        semesterId: semId,
+        userId,
+      };
+
+      const created = await EventService.saveWizardEvents(userId, semId, [singleEvent]);
+      await CacheService.invalidateUser(userId);
+      res.status(201).json(created[0] || created);
+    } catch (error: any) {
+      console.error("Create event failed:", error);
+      res.status(500).json({ error: error.message || "Failed to create event" });
+    }
+  }
+
   static async saveWizard(req: AuthenticatedRequest, res: Response) {
     const { semesterId, events } = req.body;
     if (!semesterId || !events) {
@@ -93,12 +135,18 @@ export class EventController {
   }
 
   static async getTodayStatus(req: AuthenticatedRequest, res: Response) {
-    const { semesterId, date } = req.query;
+    let { semesterId, date } = req.query as { semesterId?: string; date?: string };
+    const userId = req.user!.userId;
     if (!semesterId) {
-      return res.status(400).json({ error: "Missing semesterId" });
+      const activeSem = await CacheService.getOrSet<any>(userId, "semesters:active", () =>
+        prisma.semester.findFirst({ where: { userId, isActive: true } })
+      );
+      if (!activeSem) {
+        return res.json(null);
+      }
+      semesterId = activeSem.id;
     }
     try {
-      const userId = req.user!.userId;
       const status = await CacheService.getOrSet(
         userId,
         `events:todayStatus:${semesterId}:${date || "today"}`,

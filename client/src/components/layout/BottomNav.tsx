@@ -1,6 +1,6 @@
 import React, { useRef, useState, useCallback, useEffect, useMemo } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
-import { CalendarDays, Table, BookOpen, Settings, Calendar, LayoutDashboard, Sparkles, BarChart3 } from "lucide-react";
+import { CalendarDays, Table, BookOpen, Settings, Calendar, LayoutDashboard, Sparkles, BarChart3, GraduationCap } from "lucide-react";
 import { motion } from "framer-motion";
 import { cn } from "../../lib/utils";
 import { hapticSelection, hapticMedium } from "../../utils/haptics";
@@ -89,6 +89,16 @@ const dynamicSpecialItems = {
     rimClass: "via-[#74313A]/65 dark:via-[#EED3CF]/70",
     grabberClass: "bg-[#74313A]/45 dark:bg-[#EED3CF]/45",
   },
+  classrooms: {
+    label: "Classroom",
+    path: "/classrooms",
+    icon: GraduationCap,
+    pillClass:
+      "bg-neutral-950/20 dark:bg-white/15 border-neutral-300/60 dark:border-white/25 shadow-[0_4px_20px_rgba(0,0,0,0.15),inset_0_1px_1.5px_rgba(255,255,255,0.75)] dark:shadow-[0_4px_22px_rgba(255,255,255,0.20),inset_0_1px_1.5px_rgba(255,255,255,0.25)]",
+    textClass: "text-neutral-950 dark:text-white font-bold",
+    rimClass: "via-neutral-400/80 dark:via-white/80",
+    grabberClass: "bg-neutral-900/60 dark:bg-white/60",
+  },
 };
 
 export const BottomNav: React.FC = () => {
@@ -98,23 +108,25 @@ export const BottomNav: React.FC = () => {
   const isReports = location.pathname.startsWith("/report");
   const isSemester = location.pathname.startsWith("/semester");
   const isPredictive = location.pathname.startsWith("/predictive");
+  const isClassrooms = location.pathname.startsWith("/classrooms");
 
   const activeNavItems = useMemo(() => {
     if (isSemester) return [...navItems, dynamicSpecialItems.semester];
     if (isPredictive) return [...navItems, dynamicSpecialItems.predictive];
     if (isReports) return [...navItems, dynamicSpecialItems.reports];
+    if (isClassrooms) return [...navItems, dynamicSpecialItems.classrooms];
     return navItems;
-  }, [isSemester, isPredictive, isReports]);
+  }, [isSemester, isPredictive, isReports, isClassrooms]);
 
-  // Determine active index (including the single dynamic specialised pill when on /semester, /predictive, or /report)
+  // Determine active index (including the single dynamic specialised pill when on /semester, /predictive, /report, or /classrooms)
   const currentIndex = useMemo(() => {
-    if (isSemester || isPredictive || isReports) {
+    if (isSemester || isPredictive || isReports || isClassrooms) {
       return activeNavItems.length - 1;
     }
     return activeNavItems.findIndex((item) =>
       location.pathname.startsWith(item.path)
     );
-  }, [activeNavItems, isSemester, isPredictive, isReports, location.pathname]);
+  }, [activeNavItems, isSemester, isPredictive, isReports, isClassrooms, location.pathname]);
 
   // Real-time gesture scrubbing & hover preview state
   const containerRef = useRef<HTMLDivElement>(null);
@@ -201,8 +213,12 @@ export const BottomNav: React.FC = () => {
     const finalIdx = calculateIndexFromX(e.clientX);
 
     if (finalIdx !== -1 && activeNavItems[finalIdx]) {
-      // Lock optimisticIndex BEFORE clearing hoveredIndex so the pill settles in place with zero snap-back
-      setOptimisticIndex(finalIdx);
+      // If navigating from a dynamic 6th tab back to base tabs, don't lock optimistic index in 6-tab width
+      if ((isSemester || isPredictive || isReports || isClassrooms) && finalIdx < 5) {
+        setOptimisticIndex(null);
+      } else {
+        setOptimisticIndex(finalIdx);
+      }
       if (finalIdx !== currentIndex) {
         hapticMedium();
         navigate(activeNavItems[finalIdx].path);
@@ -233,7 +249,9 @@ export const BottomNav: React.FC = () => {
   };
 
   const navBg =
-    isReports || isPredictive
+    isClassrooms
+      ? "bg-white/95 dark:bg-[#08080a]/95 border-neutral-200 dark:border-white/10"
+      : isReports || isPredictive
       ? "bg-[#EED3CF]/80 dark:bg-[#1A090C]/85 border-[#EED3CF]/40 dark:border-[#74313A]/40"
       : isSemester
       ? "bg-card/85 dark:bg-[#121216]/85 border-border/40"
@@ -339,7 +357,11 @@ export const BottomNav: React.FC = () => {
                 to={item.path}
                 onClick={(e) => {
                   e.preventDefault();
-                  setOptimisticIndex(idx);
+                  if ((isSemester || isPredictive || isReports || isClassrooms) && idx < 5) {
+                    setOptimisticIndex(null);
+                  } else {
+                    setOptimisticIndex(idx);
+                  }
                   if (currentIndex !== idx) {
                     hapticSelection();
                     navigate(item.path);

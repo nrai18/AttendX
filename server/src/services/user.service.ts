@@ -2,6 +2,7 @@ import { prisma } from "../lib/prisma";
 import { TimetableService } from "./timetable.service";
 import bcrypt from "bcryptjs";
 import { EmailService } from "./email.service";
+import { CacheService } from "./cache.service";
 
 export class UserService { 
 
@@ -199,111 +200,115 @@ export class UserService {
   }
 
   static async getSessions(userId: string, sessionId?: string) {
-    let user: { autoTerminateMonths?: number | null } | null = null;
-    try {
-      user = await prisma.user.findUnique({ where: { id: userId }, select: { autoTerminateMonths: true } }) as any;
-    } catch (error) {}
+    // Non-blocking asynchronous garbage collection in the background
+    setImmediate(async () => {
+      try {
+        const user = await prisma.user.findUnique({ where: { id: userId }, select: { autoTerminateMonths: true } }) as any;
+        await prisma.refreshToken.deleteMany({
+          where: {
+            userId,
+            expiresAt: { lt: new Date() },
+            id: sessionId ? { not: sessionId } : undefined
+          }
+        });
 
-    // Passive Garbage Collection: Delete expired tokens first
-    await prisma.refreshToken.deleteMany({
-      where: {
-        userId,
-        expiresAt: { lt: new Date() },
-        id: sessionId ? { not: sessionId } : undefined
-      }
+        if (user?.autoTerminateMonths) {
+          const cutoffDate = new Date();
+          cutoffDate.setMonth(cutoffDate.getMonth() - user.autoTerminateMonths);
+          await prisma.refreshToken.deleteMany({
+            where: {
+              userId,
+              lastActive: { lt: cutoffDate },
+              id: sessionId ? { not: sessionId } : undefined
+            }
+          });
+        }
+      } catch (error) {}
     });
 
-    if (user?.autoTerminateMonths) {
-      const cutoffDate = new Date();
-      cutoffDate.setMonth(cutoffDate.getMonth() - user.autoTerminateMonths);
-      await prisma.refreshToken.deleteMany({
+    const rawSessions = await CacheService.getOrSet(userId, "user:sessions", async () => {
+      const now = new Date();
+      const sessions = await prisma.refreshToken.findMany({
         where: {
           userId,
-          lastActive: { lt: cutoffDate },
-          id: sessionId ? { not: sessionId } : undefined
+          expiresAt: { gt: now }
+        },
+        orderBy: { lastActive: "desc" },
+        select: {
+          id: true,
+          userAgent: true,
+          ipAddress: true,
+          location: true,
+          deviceType: true,
+          os: true,
+          browser: true,
+          lastActive: true,
+          createdAt: true
         }
       });
-    }
-    const sessions = await prisma.refreshToken.findMany({
-      where: { userId },
-      orderBy: { lastActive: "desc" },
-      select: {
-        id: true,
-        userAgent: true,
-        ipAddress: true,
-        location: true,
-        deviceType: true,
-        os: true,
-        browser: true,
-        lastActive: true,
-        createdAt: true
-      }
+
+      return sessions.map((s: any) => {
+        let { os, browser, deviceType, location } = s;
+
+        // Normalize stale "web" os value stored in old sessions
+        if (os === 'web') {
+          os = 'Browser';
+          browser = 'Browser';
+          deviceType = 'desktop';
+        }
+
+        // Normalize stale "Unknown OS" or null
+        if (!os || os === 'Unknown OS') {
+          os = 'Unknown Device';
+        }
+
+        // If location looks like a raw geoip dump with just country code or unknown, prefer showing nothing
+        if (location === 'Unknown Location' || location === ', ') {
+          location = null;
+        }
+
+        return {
+          ...s,
+          os,
+          browser,
+          deviceType,
+          location
+        };
+      });
     });
 
-    return sessions.map((s: any) => {
-      let { os, browser, deviceType, location } = s;
-
-      // Normalize stale "web" os value stored in old sessions
-      if (os === 'web') {
-        os = 'Browser';
-        browser = 'Browser';
-        deviceType = 'desktop';
-      }
-
-      // Normalize stale "Unknown OS" or null
-      if (!os || os === 'Unknown OS') {
-        os = 'Unknown Device';
-      }
-
-      // If location looks like a raw geoip dump with just country code or unknown, prefer showing nothing
-      if (location === 'Unknown Location' || location === ', ') {
-        location = null;
-      }
-
-      return {
-        ...s,
-        os,
-        browser,
-        deviceType,
-        location,
-        isCurrent: s.id === sessionId
-      };
-    });
+    return (rawSessions || []).map((s: any) => ({
+      ...s,
+      isCurrent: s.id === sessionId
+    }));
   }
 
   static async revokeSession(userId: string, sessionId: string) {
     await prisma.refreshToken.deleteMany({ where: { userId, id: sessionId } });
+    CacheService.del(userId, "user:sessions").catch(() => {});
     return { success: true };
   }
 
   static async revokeAllOtherSessions(userId: string, currentSessionId: string) {
     await prisma.refreshToken.deleteMany({ where: { userId, id: { not: currentSessionId } } });
+    CacheService.del(userId, "user:sessions").catch(() => {});
     return { success: true };
   }
 
   static async resetTimetable(userId: string) {
-    // 1. Detach attendance records from slots and overrides first so PostgreSQL RESTRICT foreign keys do not fail
-    // while preserving the user's historical attendance logs and subjects
-    await prisma.attendance.updateMany({
-      where: { userId },
-      data: {
-        timetableSlotId: null,
-        overrideId: null,
-      },
-    });
-
-    // 2. Clean up timetable overrides (extra classes, cancelled, rescheduled)
+    // 1. Clean up timetable overrides (extra classes, cancelled, rescheduled)
     await prisma.timetableOverride.deleteMany({
       where: { semester: { userId } }
     });
 
-    // 3. Hard-delete timetable slots so "Clear timetable schedule" cleanly removes the schedule
-    // without generating a phantom archived timetable version
-    await prisma.timetableSlot.deleteMany({
-      where: { semester: { userId } }
+    // 2. Soft-archive active timetable slots by setting validUntil = now
+    // This removes them from active schedule while preserving the archived timetable version
+    await prisma.timetableSlot.updateMany({
+      where: { semester: { userId }, validUntil: null },
+      data: { validUntil: new Date() }
     });
 
-    return { success: true, message: "Timetable schedule cleared successfully." };
+    return { success: true, message: "Timetable schedule cleared and archived successfully." };
   }
 
   static async resetEvents(userId: string) {
@@ -322,55 +327,61 @@ export class UserService {
     const fsPromises = require('fs/promises');
     const path = require('path');
 
-    // 1. Delete stored documents from filesystem
-    const docs = await prisma.storedDocument.findMany({ where: { userId } });
-    for (const doc of docs) {
+    // 1. Fetch document paths and trigger async filesystem unlinks concurrently
+    const docs = await prisma.storedDocument.findMany({ where: { userId }, select: { fileUrl: true } });
+    const unlinkPromises = docs.map((doc: any) => {
       if (doc.fileUrl && doc.fileUrl.startsWith('/uploads/')) {
-        try {
-          const filePath = path.join(process.cwd(), doc.fileUrl);
-          await fsPromises.unlink(filePath).catch((e: any) => {
-            if (e.code !== 'ENOENT') console.error("Failed to delete physical file during reset:", e);
-          });
-        } catch (err) {
-          console.error("Failed to delete file during reset:", doc.fileUrl, err);
-        }
+        const filePath = path.join(process.cwd(), doc.fileUrl);
+        return fsPromises.unlink(filePath).catch((e: any) => {
+          if (e.code !== 'ENOENT') console.error("Failed to delete physical file during reset:", e);
+        });
       }
-    }
-
-    // 2. Clean up in leaf-to-root order to prevent PostgreSQL foreign key constraint violations
-    await prisma.storedDocument.deleteMany({ where: { userId } });
-    await prisma.shareTransfer.deleteMany({ where: { senderUserId: userId } });
-    await prisma.export.deleteMany({ where: { userId } });
-    await prisma.attendance.deleteMany({ where: { userId } });
-    await prisma.assignmentCompletion.deleteMany({ where: { userId } });
-    await prisma.assignment.deleteMany({ where: { userId } });
-    await prisma.note.deleteMany({ where: { userId } });
-    await prisma.timetableOverride.deleteMany({ where: { semester: { userId } } });
-    await prisma.timetableSlot.deleteMany({ where: { semester: { userId } } });
-    await prisma.event.deleteMany({ where: { OR: [{ userId }, { semester: { userId } }] } });
-    await prisma.classroomMember.deleteMany({ where: { userId } });
-
-    // Clean up any assignments/notes in classrooms created by this user
-    try {
-      await prisma.assignment.deleteMany({ where: { classroom: { createdById: userId } } });
-      await prisma.note.deleteMany({ where: { classroom: { createdById: userId } } });
-      await prisma.classroom.deleteMany({ where: { createdById: userId } });
-    } catch (e) {}
-
-    await prisma.subject.deleteMany({ where: { userId } });
-    await prisma.semester.deleteMany({ where: { userId } });
-
-    // 3. Reset user onboarding checklist flags and target
-    await prisma.user.update({
-      where: { id: userId },
-      data: {
-        hasUsedVoiceMode: false,
-        hasUsedPredictive: false,
-        hasUsedPeerSync: false,
-        onboardingDismissed: false,
-        targetAttendance: 75,
-      }
+      return Promise.resolve();
     });
+
+    // Stage 1 (Parallel): Delete leaves & child rows that have foreign keys pointing to other tables
+    await Promise.all([
+      Promise.allSettled(unlinkPromises),
+      prisma.storedDocument.deleteMany({ where: { userId } }),
+      prisma.shareTransfer.deleteMany({ where: { senderUserId: userId } }),
+      prisma.export.deleteMany({ where: { userId } }),
+      prisma.attendance.deleteMany({ where: { userId } }),
+      prisma.assignmentCompletion.deleteMany({ where: { userId } }),
+      prisma.classroomMember.deleteMany({ where: { userId } }),
+    ]);
+
+    // Stage 2 (Parallel): Tables unblocked by Stage 1 (attendance & completions gone)
+    await Promise.all([
+      prisma.timetableOverride.deleteMany({ where: { semester: { userId } } }),
+      prisma.assignment.deleteMany({ where: { OR: [{ userId }, { classroom: { createdById: userId } }] } }),
+      prisma.note.deleteMany({ where: { OR: [{ userId }, { classroom: { createdById: userId } }] } }),
+      prisma.event.deleteMany({ where: { OR: [{ userId }, { semester: { userId } }] } }),
+    ]);
+
+    // Stage 3 (Parallel): Tables unblocked by Stage 2 (overrides, assignments, notes gone)
+    await Promise.all([
+      prisma.timetableSlot.deleteMany({ where: { semester: { userId } } }),
+      prisma.classroom.deleteMany({ where: { createdById: userId } }).catch(() => {}),
+    ]);
+
+    // Stage 4: Delete subjects (unblocked by timetableSlots, overrides, attendance)
+    await prisma.subject.deleteMany({ where: { userId } });
+
+    // Stage 5 (Parallel): Delete semesters, reset user flags, and invalidate caches
+    await Promise.all([
+      prisma.semester.deleteMany({ where: { userId } }),
+      prisma.user.update({
+        where: { id: userId },
+        data: {
+          hasUsedVoiceMode: false,
+          hasUsedPredictive: false,
+          hasUsedPeerSync: false,
+          onboardingDismissed: false,
+          targetAttendance: 75,
+        }
+      }),
+      CacheService.invalidateUser(userId),
+    ]);
 
     return { success: true, message: "All app data reset successfully." };
   }

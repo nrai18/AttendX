@@ -54,6 +54,37 @@ export class AttendanceController {
     res.status(200).json(record);
   }
 
+  static async markFullDay(req: AuthenticatedRequest, res: Response) {
+    const { date, status, remarks, semesterId } = req.body;
+    
+    if (!date || !status) {
+      return res.status(400).json({ message: "date and status are required" });
+    }
+
+    const validStatuses = ["PRESENT", "ABSENT", "OFF", "CLEAR", "NOT_MARKED"];
+    if (!validStatuses.includes(status.toUpperCase())) {
+      return res.status(400).json({ message: "Invalid status for full day marking" });
+    }
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return res.status(400).json({ message: "Invalid date format. Expected YYYY-MM-DD" });
+    }
+
+    if (remarks && String(remarks).length > 200) {
+      return res.status(400).json({ message: "Remarks cannot exceed 200 characters" });
+    }
+
+    const result = await AttendanceService.markFullDay(req.user!.userId, {
+      date,
+      status: status.toLowerCase(),
+      remarks: remarks?.trim() || undefined,
+      semesterId,
+    });
+
+    await CacheService.invalidateUser(req.user!.userId);
+    res.status(200).json(result);
+  }
+
   static async getSubjectStats(req: AuthenticatedRequest, res: Response) {
     const { semesterId } = req.query;
     const stats = await CacheService.getOrSet(

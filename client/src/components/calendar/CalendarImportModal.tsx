@@ -96,31 +96,19 @@ export const CalendarImportModal: React.FC<CalendarImportModalProps> = ({ isOpen
       return;
     }
     const startMs = Date.now();
+    const stepDurationMs = 3000;
     const timerInterval = setInterval(() => {
-      setElapsedTenths(Math.floor((Date.now() - startMs) / 100));
+      const elapsed = Date.now() - startMs;
+      setElapsedTenths(Math.floor(elapsed / 100));
+      const computedStep = Math.min(
+        CALENDAR_PARSE_STEPS.length - 1,
+        Math.floor(elapsed / stepDurationMs)
+      );
+      setParseStepIdx(computedStep);
     }, 100);
-
-    let stepTimeout: ReturnType<typeof setTimeout>;
-    const scheduleNextStep = (idx: number) => {
-      if (idx >= CALENDAR_PARSE_STEPS.length - 1) return;
-      const ratio = idx / (CALENDAR_PARSE_STEPS.length - 1);
-      const delay = Math.round(1800 * (1 + ratio * 1.8));
-      stepTimeout = setTimeout(() => {
-        setParseStepIdx((prev) => {
-          if (prev < CALENDAR_PARSE_STEPS.length - 1) {
-            const next = prev + 1;
-            scheduleNextStep(next);
-            return next;
-          }
-          return prev;
-        });
-      }, delay);
-    };
-    scheduleNextStep(0);
 
     return () => {
       clearInterval(timerInterval);
-      clearTimeout(stepTimeout);
     };
   }, [isParsing]);
 
@@ -382,8 +370,10 @@ export const CalendarImportModal: React.FC<CalendarImportModalProps> = ({ isOpen
                       idleLabel="Extract Events"
                       doneLabel="Data Finalized"
                       idleIcon={<Upload className="h-5 w-5 fill-current text-primary-foreground opacity-90" />}
-                      stepIntervalMs={1650}
+                      stepIntervalMs={3000}
                       steps={CALENDAR_PARSE_STEPS}
+                      activeStepIndex={parseStepIdx}
+                      elapsedTenths={elapsedTenths}
                     />
                   </div>
                 </div>

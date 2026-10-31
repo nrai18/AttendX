@@ -6,6 +6,7 @@ const router = Router();
 
 router.get("/me", authenticate, UserController.getMe);
 router.patch("/me", authenticate, UserController.updateMe);
+router.put("/me", authenticate, UserController.updateMe);
 router.delete("/me", authenticate, UserController.deleteAccount);
 router.get("/onboarding-status", authenticate, UserController.getOnboardingStatus);
 router.patch("/onboarding-status", authenticate, UserController.updateOnboardingStatus);

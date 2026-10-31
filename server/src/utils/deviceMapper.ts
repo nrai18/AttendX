@@ -86,7 +86,9 @@ export async function loadDeviceMapping(): Promise<void> {
   if (deviceMap.size > 0 || isLoading) return;
   isLoading = true;
   try {
-    const response = await fetch('https://storage.googleapis.com/play_public/supported_devices.csv');
+    const response = await fetch('https://storage.googleapis.com/play_public/supported_devices.csv', {
+      signal: AbortSignal.timeout(5000)
+    });
     const buffer = await response.arrayBuffer();
     const text = new TextDecoder('utf-16le').decode(buffer);
     

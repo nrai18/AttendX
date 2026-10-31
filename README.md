@@ -45,7 +45,6 @@
 ## 📖 Table of Contents
 - [✨ What is AttendX?](#-what-is-attendx)
 - [📱 Features Showcase & Tabs](#-features-showcase--tabs)
-- [📸 Screenshots & Visual Asset Index](#-screenshots--visual-asset-index)
 - [🧠 Predictive Attendance & Leave Simulation Engine](#-predictive-attendance--leave-simulation-engine)
 - [🚀 Over-The-Air (OTA) Release Pipeline](#-over-the-air-ota-release-pipeline)
 - [🔔 Local Notifications, Alarms & Do Not Disturb (DND)](#-local-notifications-alarms--do-not-disturb-dnd)
@@ -97,46 +96,10 @@ Whether dealing with shifting lecture halls, lab batches, unscheduled extra clas
 ---
 
 ### 3. ⚙️ Utilities, Device Sync & Hardware Control
-| PeerSync DataComm (`PeerSyncModal`) | Linked Devices (`LinkedDevices`) | DND & Auto-Ringer Silence | Edit Profile & Multi-Auth |
+| PeerSync DataComm (`PeerSyncModal`) | Linked Devices (`LinkedDevices`) | Hardware DND Status (`ringer.ts`) | Edit Profile & Multi-Auth |
 | :---: | :---: | :---: | :---: |
-| <img src="assets/screenshots/peer_sync.png" width="220" alt="PeerSync DataComm" onerror="this.src='https://placehold.co/220x440/0E0E12/48CAE4?text=PeerSync+Mirror';" /> | <img src="assets/screenshots/linked_devices.png" width="220" alt="Linked Devices" onerror="this.src='https://placehold.co/220x440/0E0E12/48CAE4?text=Linked+Devices';" /> | <img src="assets/screenshots/dnd_ringer.png" width="220" alt="DND Auto Ringer" onerror="this.src='https://placehold.co/220x440/0E0E12/48CAE4?text=DND+Ringer+Mode';" /> | <img src="assets/screenshots/edit_profile.png" width="220" alt="Edit Profile Modal" onerror="this.src='https://placehold.co/220x440/0E0E12/48CAE4?text=Edit+Profile';" /> |
+| <img src="assets/screenshots/peer_sync.png" width="220" alt="PeerSync DataComm" /> | <img src="assets/screenshots/linked_devices.png" width="220" alt="Linked Devices" /> | <img src="assets/screenshots/dnd_notification.png" width="220" alt="DND Notification Mode" /> | <img src="assets/screenshots/edit_profile.png" width="220" alt="Edit Profile Modal" /> |
 | **P2P Schedule Transfer**<br/>Share or receive structural timetables via 6-digit ephemeral TTL codes with a live countdown timer pill. | **Active Session Security**<br/>Inspect active logins across web and mobile. Remotely terminate compromised devices and set auto-logout policies. | **Hardware Ringer Policy**<br/>Requests Android notification policy access to automatically silence phone during lectures and restore volume on end. | **Flexible Dual Credentials**<br/>Users signed in via Google can set an account password for direct email/password login across all devices. |
-
----
-
-## 📸 Screenshots & Visual Asset Index
-
-All captures are stored in [`assets/screenshots/`](assets/screenshots/) and dynamically embedded across this documentation:
-
-| Filename | Status | Description |
-| :--- | :---: | :--- |
-| `today.png` | ✅ Loaded | **Today Page**: Active day agenda, date selector, held/off toggles, and attendance streak. |
-| `timetable.png` | ✅ Loaded | **Timetable Page**: Weekly timetable grid with lecture slots, classroom badges, and multi-slot merges. |
-| `subjects.png` | ✅ Loaded | **Subjects View**: Subject cards, percentage meters, and safe bunk calculations. |
-| `semester.png` | ✅ Loaded | **Semester Hub**: Active semester progress bar, academic milestones, and timeline. |
-| `calendar.png` | ✅ Loaded | **Academic Calendar**: Multi-day calendar view with holidays and semester events. |
-| `semester_countdown.png` | ✅ Loaded | **Milestone Countdowns**: Live countdown timers to exams and last teaching days. |
-| `predictive.png` | ✅ Loaded | **Predictive Forecast**: Leave margin forecast, target slider, and simulated future dates. |
-| `voice_mode.png` | ✅ Loaded | **Native Voice Mode**: Fullscreen liquid glass voice overlay with animated waveform/orb. |
-| `hands_free.png` | ✅ Loaded | **Hands-Free AI Loop**: Continuous listening with ElevenLabs voice synthesis. |
-| `ai_chatbot.png` | ✅ Loaded | **AI Copilot Chat**: Floating chatbot drawer with timetable assistance. |
-| `analytics.png` | ✅ Loaded | **Analytics Telemetry**: 3D liquid donut gauge, 7-day, and 30-day performance. |
-| `analytics_charts.png` | ✅ Loaded | **Analytics Charts**: Weekly performance trend spline and expected remaining classes charts. |
-| `peer_sync.png` | ✅ Loaded | **PeerSync Modal**: 6-digit ephemeral transfer code with live expiration progress bar. |
-| `linked_devices.png` | ✅ Loaded | **Linked Devices**: Active session security dashboard with device types, IPs, and remote revoke. |
-| `edit_profile.png` | ✅ Loaded | **Edit Profile**: User credentials, live avatar preview, and dual-auth controls. |
-| `monthly_report_mail.png` | ✅ Loaded | **Monthly Report Email**: Real email dispatch showing formatted attendance breakdown. |
-| `birthday_mail.png` | ✅ Loaded | **Birthday Greeting Email**: Personalized celebration email sent on student's birthday. |
-| `login_alert_mail.png` | ✅ Loaded | **Login Security Email**: Security notification on new IP/browser sign-in. |
-| `forgot_password_mail.png` | ✅ Loaded | **Password Reset Email**: Direct link and alert for password updates. |
-| `feedback_mail.png` | ✅ Loaded | **Feedback Receipt Email**: Automated confirmation email when filing bugs/feedback. |
-| `dnd_ringer.png` | ⏳ Tomorrow | **Do Not Disturb**: Settings card for automatic lecture silence. |
-| `notification_pre_class.png` | ⏳ Tomorrow | **Pre-Class Alert**: Android status bar notification 10m before class. |
-| `notification_summary.png` | ⏳ Tomorrow | **Done for the Day**: End-of-day summary notification. |
-| `notification_peer_sync.png` | ⏳ Tomorrow | **Peer Sync FCM**: "Schedule Synced! 🎉" notification with retriever avatar. |
-
-> [!TIP]
-> **Recommended Image Dimensions:** Standard mobile portrait screenshots (e.g., `1080 x 2340` or `1080 x 2400` px) or desktop browser screenshots in `.png` format.
 
 ---
 
@@ -213,6 +176,17 @@ During lecture hours, ringing phones interrupt classrooms. AttendX interfaces di
 2. When a lecture begins, AttendX automatically toggles the phone ringer to **Vibrate / Silent**.
 3. When the scheduled lecture period expires, AttendX restores the student's previous ringer mode.
 
+### 📱 Real Native Android Notifications Showcase
+| ⏰ Pre-Class Reminder | 🚶 Next-Class Heads-Up | 🏁 Done for the Day |
+| :---: | :---: | :---: |
+| <img src="assets/screenshots/upcoming_class_notification.png" width="300" alt="Upcoming Class Notification" /> | <img src="assets/screenshots/heads_up_notification.png" width="300" alt="Next-Class Heads-Up" /> | <img src="assets/screenshots/done_for_the_day_notification.png" width="300" alt="Done for the Day Notification" /> |
+| Automated reminder scheduled 5–15m prior to class with course name, code & venue. | Mid-lecture heads-up alerting which classroom and hall to walk to next. | Final dismissal summary displaying total attended lectures and attendance percentage. |
+
+| 🔕 Automatic Do Not Disturb | 📅 Academic Calendar Event | 📊 Weekly Academic Summary |
+| :---: | :---: | :---: |
+| <img src="assets/screenshots/dnd_notification.png" width="300" alt="Do Not Disturb Notification" /> | <img src="assets/screenshots/event_notification.png" width="300" alt="Academic Event Notification" /> | <img src="assets/screenshots/weekly_summary_notification.jpg" width="300" alt="Weekly Summary Notification" /> |
+| Hardware ringer muting status bar notification active during lecture hours. | High-priority reminder for institutional exams, holidays, and milestones. | Weekly attendance digest detailing progress, trends, and safe bunks. |
+
 ---
 
 ## 🎙️ ElevenLabs Ultra-Low Latency Voice Copilot
@@ -252,10 +226,15 @@ AttendX includes a transactional email system powered by the **Resend API** with
 | **Welcome Onboarding** | `Welcome to AttendX! 👋` | Getting started guide for newly registered students. |
 
 ### 💌 Real Email Deliveries Gallery
-| 📊 Monthly Report | 🎂 Birthday Greeting | 🔐 Login Security Alert | 🔑 Password Reset | 📝 Feedback Receipt |
-| :---: | :---: | :---: | :---: | :---: |
-| <img src="assets/screenshots/monthly_report_mail.png" width="180" alt="Monthly Attendance Report Email" /> | <img src="assets/screenshots/birthday_mail.png" width="180" alt="Birthday Greeting Email" /> | <img src="assets/screenshots/login_alert_mail.png" width="180" alt="New Device Login Security Email" /> | <img src="assets/screenshots/forgot_password_mail.png" width="180" alt="Password Reset Security Email" /> | <img src="assets/screenshots/feedback_mail.png" width="180" alt="Feedback Receipt Email" /> |
-| Automated monthly performance breakdown with subject attendance & safe bunks. | Celebratory birthday email dispatched at 9:00 AM on student's birthday. | Real-time security alert dispatched on new IP or browser login. | Password update confirmation with direct security links. | Confirmation receipt dispatched when student files feedback in chat. |
+| 👋 Welcome Onboarding | 📊 Monthly Report | 🎂 Birthday Greeting | 📝 Feedback Receipt |
+| :---: | :---: | :---: | :---: |
+| <img src="assets/screenshots/welcome_mail.png" width="220" alt="Welcome Onboarding Email" /> | <img src="assets/screenshots/monthly_report_mail.png" width="220" alt="Monthly Attendance Report Email" /> | <img src="assets/screenshots/birthday_mail.png" width="220" alt="Birthday Greeting Email" /> | <img src="assets/screenshots/feedback_mail.png" width="220" alt="Feedback Receipt Email" /> |
+| Getting started welcome guide dispatched to new users upon registration. | Automated monthly performance breakdown with subject attendance & safe bunks. | Celebratory birthday email dispatched at 9:00 AM on student's birthday. | Automated confirmation receipt dispatched when student files feedback in chat. |
+
+| 🔐 Login Security Alert | 🔑 Password Created | 🔄 Password Reset | 🗑️ Account Deletion |
+| :---: | :---: | :---: | :---: |
+| <img src="assets/screenshots/login_alert_mail.png" width="220" alt="New Device Login Security Email" /> | <img src="assets/screenshots/password_created_mail.png" width="220" alt="Password Created Confirmation Email" /> | <img src="assets/screenshots/forgot_password_mail.png" width="220" alt="Password Reset Security Email" /> | <img src="assets/screenshots/account_deletion_mail.png" width="220" alt="Account Deletion Receipt Email" /> |
+| Real-time security alert dispatched on new IP or browser login. | Confirmation email when a Google OAuth user creates an account password. | Direct password reset authorization link and security alert. | Permanent data erasure confirmation receipt following GDPR compliance. |
 
 ---
 

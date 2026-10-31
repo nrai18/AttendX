@@ -1,7 +1,21 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="dark">
   <head>
     <meta charset="UTF-8" />
+    <script>
+      (function() {
+        try {
+          var saved = localStorage.getItem("app_theme");
+          if (saved === "light") {
+            document.documentElement.classList.remove("dark");
+            document.documentElement.classList.add("light");
+          } else {
+            document.documentElement.classList.add("dark");
+            document.documentElement.classList.remove("light");
+          }
+        } catch (e) {}
+      })();
+    </script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     
     <!-- Primary SEO Meta Tags -->

@@ -51,8 +51,14 @@ export class CacheService {
     }
   }
 
+  private static buildKey(userId: string, specificKey: string): string {
+    const gen = this.userGenerations.get(userId) || 0;
+    return `cache:v3:${userId}:g${gen}:${specificKey}`;
+  }
+
   static async set(userId: string, specificKey: string, value: any): Promise<void> {
     if (value === undefined) return;
+    const fullKey = this.buildKey(userId, specificKey);
     // Never cache an empty weekday agenda in 24h Redis (prevents transient empty responses from sticking)
     if (specificKey.startsWith("agenda:") && Array.isArray(value) && value.length === 0) {
       const datePart = specificKey.slice("agenda:".length);
@@ -62,7 +68,26 @@ export class CacheService {
         return;
       }
     }
-    const fullKey = `cache:v2:${userId}:${specificKey}`;
+    // Never persist empty subjects in long-lived Redis; keep in short L1 only
+    if (specificKey.startsWith("subjects:") && Array.isArray(value) && value.length === 0) {
+      const now = Date.now();
+      this.l1Cache.set(fullKey, {
+        value,
+        freshUntil: now + 2000,
+        staleUntil: now + 2000,
+      });
+      return;
+    }
+    // Never persist empty timetable slots in long-lived Redis; keep in short L1 only (prevents sticky blank schedules)
+    if (specificKey.startsWith("timetable:") && Array.isArray(value) && value.length === 0) {
+      const now = Date.now();
+      this.l1Cache.set(fullKey, {
+        value,
+        freshUntil: now + 2000,
+        staleUntil: now + 2000,
+      });
+      return;
+    }
     const now = Date.now();
     this.l1Cache.set(fullKey, {
       value,
@@ -78,7 +103,7 @@ export class CacheService {
       if (serialized.length > this.MAX_REDIS_PAYLOAD_BYTES) return;
       Promise.all([
         this.withFastTimeout(redisClient.set(fullKey, serialized, 'EX', this.TTL), 1500),
-        this.withFastTimeout(redisClient.sadd(`user_keys:v2:${userId}`, fullKey), 1500),
+        this.withFastTimeout(redisClient.sadd(`user_keys:v3:${userId}`, fullKey), 1500),
       ]).catch(() => {});
     } catch {
       // Ignore serialization errors
@@ -86,7 +111,7 @@ export class CacheService {
   }
 
   static async getOrSet<T>(userId: string, specificKey: string, fetcher: () => Promise<T>): Promise<T> {
-    const fullKey = `cache:v2:${userId}:${specificKey}`;
+    const fullKey = this.buildKey(userId, specificKey);
     const l1 = this.l1Cache.get(fullKey);
     const now = Date.now();
     if (l1 && now < l1.staleUntil) {
@@ -159,10 +184,33 @@ export class CacheService {
     return fetchPromise;
   }
 
+  static async del(userId: string, specificKey: string): Promise<void> {
+    const gen = this.userGenerations.get(userId) || 0;
+    const v3Key = `cache:v3:${userId}:g${gen}:${specificKey}`;
+    const fullKey = `cache:v2:${userId}:${specificKey}`;
+    const legacyKey = `cache:${userId}:${specificKey}`;
+    this.l1Cache.delete(v3Key);
+    this.l1Cache.delete(fullKey);
+    this.l1Cache.delete(legacyKey);
+    this.pendingFetches.delete(v3Key);
+    this.pendingFetches.delete(fullKey);
+    this.pendingFetches.delete(legacyKey);
+
+    if (redisClient.status !== 'ready') return;
+    try {
+      await this.withFastTimeout(redisClient.del(v3Key, fullKey, legacyKey), 600);
+      await this.withFastTimeout(redisClient.srem(`user_keys:v3:${userId}`, v3Key), 600);
+      await this.withFastTimeout(redisClient.srem(`user_keys:v2:${userId}`, fullKey), 600);
+      await this.withFastTimeout(redisClient.srem(`user_keys:${userId}`, legacyKey), 600);
+    } catch {
+      // Ignore Redis network resets
+    }
+  }
+
   static async invalidateUser(userId: string): Promise<void> {
     // Bump generation and evict L1 + any in-flight fetches synchronously (0ms)
     this.userGenerations.set(userId, (this.userGenerations.get(userId) || 0) + 1);
-    const prefixes = [`cache:${userId}:`, `cache:v2:${userId}:`];
+    const prefixes = [`cache:${userId}:`, `cache:v2:${userId}:`, `cache:v3:${userId}:`];
     for (const key of this.l1Cache.keys()) {
       if (prefixes.some((p) => key.startsWith(p))) {
         this.l1Cache.delete(key);
@@ -187,18 +235,20 @@ export class CacheService {
           `rag_cache:${userId}`,
         ];
 
-        const [trackedV1, trackedV2] = await Promise.all([
+        const [trackedV1, trackedV2, trackedV3] = await Promise.all([
           this.withFastTimeout(redisClient.smembers(`user_keys:${userId}`), 600).catch(() => []),
           this.withFastTimeout(redisClient.smembers(`user_keys:v2:${userId}`), 600).catch(() => []),
+          this.withFastTimeout(redisClient.smembers(`user_keys:v3:${userId}`), 600).catch(() => []),
         ]);
         if (trackedV1 && trackedV1.length > 0) keysToDelete.push(...trackedV1);
         if (trackedV2 && trackedV2.length > 0) keysToDelete.push(...trackedV2);
+        if (trackedV3 && trackedV3.length > 0) keysToDelete.push(...trackedV3);
 
         const uniqueKeys = Array.from(new Set(keysToDelete));
         if (uniqueKeys.length > 0) {
           await this.withFastTimeout(redisClient.del(...uniqueKeys), 600);
         }
-        await this.withFastTimeout(redisClient.del(`user_keys:${userId}`, `user_keys:v2:${userId}`), 600);
+        await this.withFastTimeout(redisClient.del(`user_keys:${userId}`, `user_keys:v2:${userId}`, `user_keys:v3:${userId}`), 600);
       } catch {
         // Ignore Redis network resets during background cleanup
       }

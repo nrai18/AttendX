@@ -712,6 +712,47 @@ html.light body.theme-orbital {
   --color-border: hsl(0 0% 15%);
 }
 
+/* Theme: Classrooms Pure Matte Black (Nothing OS Stealth) */
+.theme-classrooms-black,
+html.light body.theme-classrooms-black {
+  --background: 0 0% 100%;
+  --color-background: hsl(0 0% 100%);
+  --foreground: 0 0% 9%;
+  --color-foreground: hsl(0 0% 9%);
+  --card: 0 0% 100%;
+  --color-card: hsl(0 0% 100%);
+  --card-foreground: 0 0% 9%;
+  --color-card-foreground: hsl(0 0% 9%);
+  --border: 0 0% 90%;
+  --color-border: hsl(0 0% 90%);
+}
+
+.dark .theme-classrooms-black,
+html.dark body.theme-classrooms-black {
+  --background: 0 0% 0%;
+  --color-background: hsl(0 0% 0%);
+  --foreground: 0 0% 98%;
+  --color-foreground: hsl(0 0% 98%);
+  --card: 0 0% 3%;
+  --color-card: #08080a;
+  --card-foreground: 0 0% 98%;
+  --color-card-foreground: hsl(0 0% 98%);
+  --border: 0 0% 14%;
+  --color-border: hsl(0 0% 14%);
+  --muted: 0 0% 7%;
+  --color-muted: hsl(0 0% 7%);
+  --muted-foreground: 0 0% 55%;
+  --color-muted-foreground: hsl(0 0% 55%);
+}
+
+body.theme-classrooms-black {
+  background-color: #000000 !important;
+}
+
+html.light body.theme-classrooms-black {
+  background-color: #ffffff !important;
+}
+
 /* Subjects Page Gradients */
 .bg-subjects-gradient {
   background: linear-gradient(135deg, #fbc2eb 0%, #e0c3fc 50%, #c2e9fb 100%);
@@ -779,12 +820,7 @@ html.light body.theme-orbital {
   background-attachment: fixed;
 }
 
-.theme-aether
-  *:not(aside):not(aside *):not(.chatbot-btn):not(.chatbot-btn *):not(.chatbot-window):not(.avatar-circle):not(.avatar-circle *):not(.bottom-nav-shell):not(.bottom-nav-shell *):not(
-    .chatbot-window *
-  ) {
-  border-radius: 0 !important;
-}
+
 
 .theme-aether .bg-card,
 .theme-aether .bg-card\/90,
@@ -1046,17 +1082,154 @@ html.light body.theme-orbital {
   scrollbar-width: none;
 }
 
-/* Smooth Theme Transition (Fast & Lag-Free) */
+/* --- Hardware-Accelerated Theme Transition (View Transitions API & Pure 60/120fps Ripple) --- */
+::view-transition-old(root) {
+  animation: 0.28s cubic-bezier(0.16, 1, 0.3, 1) both themeFadeOut;
+}
+::view-transition-new(root) {
+  animation: 0.28s cubic-bezier(0.16, 1, 0.3, 1) both themeFadeIn;
+}
+
+@keyframes themeFadeOut {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes themeFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* When circular ripple animation is active, pin old view and expand new view with 0 jank */
+html.theme-ripple-active::view-transition-old(root) {
+  animation: none !important;
+  opacity: 1 !important;
+  z-index: 1;
+}
+
+html.theme-ripple-active::view-transition-new(root) {
+  animation: none !important;
+  opacity: 1 !important;
+  mix-blend-mode: normal !important;
+  z-index: 999999;
+}
+
+/* Fallback for browsers without View Transitions API */
 .theme-transitioning,
 .theme-transitioning body,
-.theme-transitioning .bg-background,
-.theme-transitioning .bg-card,
-.theme-transitioning .bg-surface,
-.theme-transitioning .text-foreground,
-.theme-transitioning .border-border {
+.theme-transitioning header,
+.theme-transitioning aside,
+.theme-transitioning nav,
+.theme-transitioning main,
+.theme-transitioning [class*="bg-"],
+.theme-transitioning [class*="border-"],
+.theme-transitioning [class*="text-"] {
   transition:
-    background-color 0.15s ease-out,
-    border-color 0.15s ease-out,
-    color 0.15s ease-out !important;
+    background-color 0.24s cubic-bezier(0.16, 1, 0.3, 1),
+    border-color 0.24s cubic-bezier(0.16, 1, 0.3, 1),
+    color 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
   transition-delay: 0s !important;
 }
+
+/* --- Sonner Deluxe Toast & Action Buttons Styling --- */
+[data-sonner-toaster] {
+  font-family: var(--font-sans) !important;
+}
+
+[data-sonner-toast] {
+  border-radius: 1.25rem !important;
+  backdrop-filter: blur(20px) !important;
+  -webkit-backdrop-filter: blur(20px) !important;
+  box-shadow: 0 16px 36px -4px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.08) !important;
+  padding: 14px 16px !important;
+  gap: 12px !important;
+  animation: sonnerToastSpringDrop 0.38s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards !important;
+}
+
+@keyframes sonnerToastSpringDrop {
+  0% {
+    transform: perspective(600px) translateY(-28px) scale(0.92) rotateX(10deg);
+    opacity: 0;
+    filter: blur(4px);
+  }
+  60% {
+    transform: perspective(600px) translateY(3px) scale(1.01) rotateX(-2deg);
+    opacity: 1;
+    filter: blur(0px);
+  }
+  100% {
+    transform: perspective(600px) translateY(0) scale(1) rotateX(0deg);
+    opacity: 1;
+  }
+}
+
+/* --- Timetable Slot Cascading Raindrop Drop Physics --- */
+@keyframes rainDropSlot {
+  0% {
+    opacity: 0;
+    transform: perspective(800px) translateY(-90px) scaleY(1.22) scaleX(0.86) rotateX(16deg);
+    filter: blur(5px);
+  }
+  50% {
+    opacity: 0.95;
+    transform: perspective(800px) translateY(8px) scaleY(0.92) scaleX(1.05) rotateX(-5deg);
+    filter: blur(0px);
+    box-shadow: 0 14px 28px -4px rgba(59, 130, 246, 0.45);
+  }
+  75% {
+    transform: perspective(800px) translateY(-3px) scaleY(1.02) scaleX(0.98) rotateX(1.5deg);
+  }
+  100% {
+    opacity: 1;
+    transform: perspective(800px) translateY(0px) scale(1) rotateX(0deg);
+    filter: blur(0px);
+    box-shadow: none;
+  }
+}
+
+[data-sonner-toast] [data-button] {
+  border-radius: 0.75rem !important;
+  padding: 6px 14px !important;
+  font-size: 0.75rem !important;
+  font-weight: 700 !important;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  cursor: pointer !important;
+  background-color: hsl(var(--primary)) !important;
+  color: hsl(var(--primary-foreground)) !important;
+}
+
+[data-sonner-toast] [data-button]:hover {
+  filter: brightness(1.1) !important;
+  transform: translateY(-1px) !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25) !important;
+}
+
+[data-sonner-toast] [data-button]:active {
+  transform: scale(0.96) !important;
+}
+
+[data-sonner-toast] [data-cancel] {
+  border-radius: 0.75rem !important;
+  padding: 6px 12px !important;
+  font-size: 0.75rem !important;
+  font-weight: 600 !important;
+  transition: all 0.2s ease !important;
+  cursor: pointer !important;
+  background-color: hsl(var(--muted) / 0.7) !important;
+  color: hsl(var(--muted-foreground)) !important;
+  border: 1px solid hsl(var(--border) / 0.5) !important;
+}
+
+[data-sonner-toast] [data-cancel]:hover {
+  background-color: hsl(var(--muted)) !important;
+  color: hsl(var(--foreground)) !important;
+}
+

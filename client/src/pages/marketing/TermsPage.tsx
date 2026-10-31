@@ -1,14 +1,34 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { ArrowLeft } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
+import { useAuthStore } from '../../stores/authStore';
+import { useBackHandlerStore } from '../../stores/backHandlerStore';
 
 export function TermsPage() {
+  const navigate = useNavigate();
+  const { isAuthenticated } = useAuthStore();
+
+  const handleBack = () => {
+    if (window.history.length > 2) {
+      navigate(-1);
+    } else {
+      navigate(isAuthenticated ? "/today" : "/", { replace: true });
+    }
+  };
+
+  useEffect(() => {
+    const unregister = useBackHandlerStore.getState().register(() => {
+      handleBack();
+      return true;
+    });
+    return unregister;
+  }, [isAuthenticated, navigate]);
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-[#050505] text-slate-900 dark:text-slate-50 pb-24 selection:hidden">
       <header className="pt-8 pb-4 px-6 md:px-12 bg-slate-50 dark:bg-[#050505]/95 backdrop-blur-md sticky top-0 z-10 border-b border-slate-300 dark:border-[#333333] flex items-center gap-4">
-        <Link to="/" className="p-2 hover:bg-muted rounded-full transition-colors">
+        <button onClick={handleBack} className="p-2 hover:bg-muted rounded-full transition-colors cursor-pointer" aria-label="Go back">
           <ArrowLeft className="w-6 h-6" />
-        </Link>
+        </button>
         <h1 className="text-xl md:text-2xl font-bold">Terms of Service</h1>
       </header>
       

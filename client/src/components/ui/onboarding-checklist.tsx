@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronUp, ChevronRight, Check, X } from 'lucide-react';
+import { ChevronUp, ChevronRight, Check, X, Sparkles } from 'lucide-react';
 
 interface Step {
   id: number;
@@ -27,6 +27,7 @@ export const OnboardingChecklist: React.FC<ChecklistProps> = ({
   
   const completedCount = steps.filter(s => s.isCompleted).length;
   const totalSteps = steps.length;
+  const isAllComplete = totalSteps > 0 && completedCount === totalSteps;
   const springConfig = { type: "spring", stiffness: 300, damping: 30 } as const;
 
   return (
@@ -35,7 +36,11 @@ export const OnboardingChecklist: React.FC<ChecklistProps> = ({
         <motion.div
           layout
           transition={springConfig}
-          className="w-full lg:w-100 max-w-100 bg-[#F5F5F7] dark:bg-[#161616] border border-[#E5E5E5] dark:border-white/10 rounded-xl shadow-lg overflow-hidden"
+          className={`w-full lg:w-100 max-w-100 bg-[#F5F5F7] dark:bg-[#161616] border ${
+            isAllComplete
+              ? 'border-emerald-500/40 shadow-emerald-500/10'
+              : 'border-[#E5E5E5] dark:border-white/10'
+          } rounded-xl shadow-lg overflow-hidden transition-colors duration-300`}
         >
           {/* Header Section */}
           <div 
@@ -50,17 +55,24 @@ export const OnboardingChecklist: React.FC<ChecklistProps> = ({
                 <ChevronUp size={20} className="sm:hidden" />
                 <ChevronUp size={22} className="hidden sm:block" />
               </motion.div>
-              <span className="font-bold text-[#1A1A1A] dark:text-[#EDEDED] text-[14px] sm:text-[15px] truncate pr-1">
-                {title}
-              </span>
+              <div className="flex items-center gap-1.5 min-w-0">
+                <span className="font-bold text-[#1A1A1A] dark:text-[#EDEDED] text-[14px] sm:text-[15px] truncate pr-1">
+                  {title}
+                </span>
+                {isAllComplete && (
+                  <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full shrink-0">
+                    <Sparkles size={11} /> Complete
+                  </span>
+                )}
+              </div>
             </div>
 
-            <div className="flex items-center gap-2 sm:gap-3 shrink-0 ml-1">
-              <div className="flex gap-0.5 xs:gap-[3px]">
+            <div className="flex items-center gap-1.5 sm:gap-3 shrink-0 ml-1">
+              <div className="flex gap-0.5 xs:gap-[2.5px] sm:gap-[3px]">
                 {Array.from({ length: totalSteps }).map((_, i) => (
                   <div 
                     key={i} 
-                    className={`h-3.5 sm:h-4 w-4 sm:w-5 rounded-full transition-colors duration-500 ${
+                    className={`h-3 sm:h-4 w-2.5 xs:w-3 sm:w-4 rounded-full transition-colors duration-500 ${
                       i < completedCount 
                       ? 'bg-[#22C55E]' 
                       : 'bg-[#E5E5E7] dark:bg-[#2A2A2A]'
@@ -69,7 +81,9 @@ export const OnboardingChecklist: React.FC<ChecklistProps> = ({
                 ))}
               </div>
               
-              <span className="text-[12px] sm:text-[13px] font-bold text-[#71717A] dark:text-[#888] min-w-7 sm:min-w-7.5 text-right">
+              <span className={`text-[12px] sm:text-[13px] font-bold min-w-7 sm:min-w-7.5 text-right ${
+                isAllComplete ? 'text-emerald-600 dark:text-emerald-400' : 'text-[#71717A] dark:text-[#888]'
+              }`}>
                 {completedCount}/{totalSteps}
               </span>
 
@@ -89,6 +103,27 @@ export const OnboardingChecklist: React.FC<ChecklistProps> = ({
             </div>
           </div>
 
+          {/* Celebratory Banner when All Steps Completed */}
+          {isAllComplete && !isExpanded && (
+            <div className="px-3 pb-3 pt-0 flex items-center justify-between bg-emerald-500/5 border-t border-emerald-500/15">
+              <p className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400 truncate">
+                🎉 All {totalSteps} steps completed! You're fully set.
+              </p>
+              {onDismiss && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDismiss();
+                  }}
+                  className="text-[11px] font-bold text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 dark:hover:text-emerald-300 underline underline-offset-2 ml-2 shrink-0 cursor-pointer"
+                >
+                  Dismiss
+                </button>
+              )}
+            </div>
+          )}
+
           {/* Expanded Checklist Items */}
           <AnimatePresence>
             {isExpanded && (
@@ -99,8 +134,34 @@ export const OnboardingChecklist: React.FC<ChecklistProps> = ({
                 transition={springConfig}
                 className="border-t-[1.4px] border-[#E9E8EF] dark:border-white/5 bg-white dark:bg-[#1C1C1C]"
               >
+                {isAllComplete && (
+                  <div className="m-2 p-3 bg-emerald-500/10 border border-emerald-500/25 rounded-xl flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0 text-sm">
+                        🎉
+                      </div>
+                      <div className="text-left min-w-0">
+                        <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400">All {totalSteps} Steps Complete!</p>
+                        <p className="text-[11px] text-muted-foreground truncate">Your academic cockpit is fully unlocked.</p>
+                      </div>
+                    </div>
+                    {onDismiss && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onDismiss();
+                        }}
+                        className="text-xs font-bold bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white px-3 py-1.5 rounded-lg shadow-sm transition-all cursor-pointer shrink-0"
+                      >
+                        Finish & Dismiss
+                      </button>
+                    )}
+                  </div>
+                )}
+
                 <div className="p-1.5 sm:p-2 space-y-0.5 sm:y-1">
-                  {steps.map((step, index) => {
+                  {steps.map((step) => {
                     const firstUncompletedId = steps.find(s => !s.isCompleted)?.id;
                     const isActive = step.id === firstUncompletedId;
                     

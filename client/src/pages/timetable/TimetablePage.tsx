@@ -14,6 +14,7 @@ import { DeleteSlotModal } from "./DeleteSlotModal";
 import { ClearTimetableModal } from "./ClearTimetableModal";
 import { ArchiveTimetableModal } from "./ArchiveTimetableModal";
 import { SubjectReconciliationModal } from "../../components/subjects/SubjectReconciliationModal";
+import { SubjectModal } from "../../components/subjects/SubjectModal";
 import { Wand2, Calendar } from "lucide-react";
 import { DndContext, closestCenter, DragEndEvent, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
@@ -24,6 +25,9 @@ import { useBackHandlerStore } from "../../stores/backHandlerStore";
 import { useCacheStore } from "../../stores/cacheStore";
 import { useScrollLock } from "../../hooks/useScrollLock";
 import { hapticLight, hapticMedium, hapticHeavy, hapticSelection, hapticSuccess } from "../../utils/haptics";
+import { SoundFX } from "../../utils/soundEffects";
+import { triggerDynamicHUD } from "../../components/ui/dynamic-island-hud";
+import { confirmDeleteToast } from "../../components/ui/confirm-delete-toast";
 
 interface Subject {
   id: string;
@@ -110,6 +114,7 @@ export const TimetablePage = () => {
   const [endTime, setEndTime] = useState("10:00");
   const [room, setRoom] = useState("");
   const [slotType, setSlotType] = useState("lecture");
+  const [isSubjectModalOpen, setIsSubjectModalOpen] = useState(false);
 
   // Extra Class Form State
   const [isAddingExtra, setIsAddingExtra] = useState(false);
@@ -151,29 +156,21 @@ export const TimetablePage = () => {
       return;
     }
     const startMs = Date.now();
+    // Calibrated stage progression: each of the 14 stages is displayed for 3.0s.
+    // Driven purely by elapsed wall-clock time to eliminate React StrictMode timer-branching bugs.
+    const stepDurationMs = 3000;
     const timerInterval = setInterval(() => {
-      setOcrElapsedTenths(Math.floor((Date.now() - startMs) / 100));
+      const elapsed = Date.now() - startMs;
+      setOcrElapsedTenths(Math.floor(elapsed / 100));
+      const computedStep = Math.min(
+        TIMETABLE_OCR_STEPS.length - 1,
+        Math.floor(elapsed / stepDurationMs)
+      );
+      setOcrStepIdx(computedStep);
     }, 100);
-    let stepTimeout: ReturnType<typeof setTimeout>;
-    const scheduleNextStep = (idx: number) => {
-      if (idx >= TIMETABLE_OCR_STEPS.length - 1) return;
-      const ratio = idx / (TIMETABLE_OCR_STEPS.length - 1);
-      const delay = Math.round(1800 * (1 + ratio * 1.8));
-      stepTimeout = setTimeout(() => {
-        setOcrStepIdx((prev) => {
-          if (prev < TIMETABLE_OCR_STEPS.length - 1) {
-            const next = prev + 1;
-            scheduleNextStep(next);
-            return next;
-          }
-          return prev;
-        });
-      }, delay);
-    };
-    scheduleNextStep(0);
+
     return () => {
       clearInterval(timerInterval);
-      clearTimeout(stepTimeout);
     };
   }, [isUploading]);
 
@@ -187,15 +184,108 @@ export const TimetablePage = () => {
   const [isClearModalOpen, setIsClearModalOpen] = useState(false);
   const [isArchiveModalOpen, setIsArchiveModalOpen] = useState(false);
   const [isReconciliationOpen, setIsReconciliationOpen] = useState(false);
+  const [flutterDeletingSlotIds, setFlutterDeletingSlotIds] = useState<string[]>([]);
+  const [isClearingDomino, setIsClearingDomino] = useState(false);
+  const [isRainDropping, setIsRainDropping] = useState(false);
+  const [justDroppedSlotId, setJustDroppedSlotId] = useState<string | null>(null);
   const location = useLocation();
+
+  // ── Mobile Day-by-Day Animation Tour ─────────────────────────────────────
+  // On mobile only one day is visible at a time, so full-timetable clear / import
+  // animations flip through each day tab, scroll it into view, and play that day's
+  // slots before moving on — so the user actually sees every slot fall / rain in.
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+  const slotsRef = useRef<TimetableSlot[]>([]);
+  slotsRef.current = slots;
+  const sleepMs = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+  const isMobileViewport = () => typeof window !== "undefined" && window.innerWidth < 1024;
+  const MOBILE_DOMINO_OFFSET = 2; // extra stagger slots so tab flip + scroll settle before first tile falls
+  const MOBILE_RAIN_OFFSET = 6;
+
+  const focusMobileDay = (day: number) => {
+    setActiveTab(day);
+    requestAnimationFrame(() => {
+      const strip = document.getElementById("timetable-mobile-day-tabs");
+      const tab = document.getElementById(`timetable-day-tab-${day}`);
+      if (strip && tab) {
+        const left = tab.offsetLeft - strip.clientWidth / 2 + tab.clientWidth / 2;
+        strip.scrollTo({ left: Math.max(0, left), behavior: "smooth" });
+        strip.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    });
+  };
+
+  const getDaysWithSlots = (list: TimetableSlot[]) =>
+    DAYS.map((_, d) => d).filter((d) => list.some((s) => s.dayOfWeek === d));
+
+  const runMobileDominoTour = async (list: TimetableSlot[]) => {
+    const days = getDaysWithSlots(list);
+    for (let k = 0; k < days.length; k++) {
+      if (!isMountedRef.current) return;
+      const d = days[k];
+      const n = list.filter((s) => s.dayOfWeek === d).length;
+      focusMobileDay(d);
+      setIsClearingDomino(true);
+      const isLast = k === days.length - 1;
+      setTimeout(() => SoundFX.playDominoCascadeSound(n, isLast), MOBILE_DOMINO_OFFSET * 142);
+      await sleepMs(Math.round((0.15 + (n - 1 + MOBILE_DOMINO_OFFSET) * 0.142 + 1.1) * 1000) + 120);
+    }
+  };
+
+  const estimateMobileDominoTourMs = (list: TimetableSlot[]) =>
+    getDaysWithSlots(list).reduce((acc, d) => {
+      const n = list.filter((s) => s.dayOfWeek === d).length;
+      return acc + Math.round((0.15 + (n - 1 + MOBILE_DOMINO_OFFSET) * 0.142 + 1.1) * 1000) + 120;
+    }, 0);
+
+  // Plays the raindrop entrance for freshly imported/generated slots, then shows the HUD.
+  const playRainEntrance = async (hudLabel: string, slotList?: TimetableSlot[]) => {
+    if (!isMobileViewport()) {
+      const count = (slotList || slotsRef.current).length;
+      setIsRainDropping(true);
+      SoundFX.playRainDropCascadeSound(count, false);
+      const rainDurationMs = Math.min(count * 40 + 750, 2200);
+      setTimeout(() => triggerDynamicHUD({ type: "sparkle", label: hudLabel }), rainDurationMs);
+      setTimeout(() => setIsRainDropping(false), rainDurationMs + 400);
+      return;
+    }
+
+    await sleepMs(60); // let freshly set slots commit before reading them
+    const list = slotList && slotList.length > 0 ? slotList : slotsRef.current;
+    const days = getDaysWithSlots(list);
+    setIsRainDropping(true);
+    for (const d of days) {
+      if (!isMountedRef.current) return;
+      const n = list.filter((s) => s.dayOfWeek === d).length;
+      focusMobileDay(d);
+      SoundFX.playRainDropCascadeSound(n, true);
+      const lastDelay = Math.min((2 * (n - 1) + MOBILE_RAIN_OFFSET) * 0.04, 1.15);
+      await sleepMs(Math.round((lastDelay + 0.65) * 1000) + 300);
+    }
+    if (!isMountedRef.current) return;
+    setIsRainDropping(false);
+    const todayIdx = new Date().getDay() === 0 ? 6 : new Date().getDay() - 1;
+    focusMobileDay(todayIdx);
+    triggerDynamicHUD({ type: "sparkle", label: hudLabel });
+  };
 
   useEffect(() => {
     if (location.hash === "#add-class") {
-      setIsAdding(true);
+      if (subjects.length === 0) {
+        setIsSubjectModalOpen(true);
+      } else {
+        setIsAdding(true);
+      }
     } else if (location.hash === "#timetable-wizard") {
       setIsWizardOpen(true);
     }
-  }, [location.hash]);
+  }, [location.hash, subjects.length]);
   const [newSubjectIds, setNewSubjectIds] = useState<string[]>([]);
   const [existingSubjectIds, setExistingSubjectIds] = useState<string[]>([]);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -208,6 +298,7 @@ export const TimetablePage = () => {
       if (isReconciliationOpen) { setIsReconciliationOpen(false); return true; }
       if (isWizardOpen) { setIsWizardOpen(false); return true; }
       if (isCreateSemesterOpen) { setIsCreateSemesterOpen(false); return true; }
+      if (isSubjectModalOpen) { setIsSubjectModalOpen(false); return true; }
       if (isOcrModalOpen) { setIsOcrModalOpen(false); return true; }
       if (editingSlotId !== null) { setEditingSlotId(null); return true; }
       if (isAdding) { setIsAdding(false); return true; }
@@ -216,7 +307,7 @@ export const TimetablePage = () => {
       return false;
     });
     return () => unregister();
-  }, [isDeleteModalOpen, isClearModalOpen, isArchiveModalOpen, isReconciliationOpen, isWizardOpen, isCreateSemesterOpen, isOcrModalOpen, editingSlotId, isAdding, isAddingExtra, isSelectMode]);
+  }, [isDeleteModalOpen, isClearModalOpen, isArchiveModalOpen, isReconciliationOpen, isWizardOpen, isCreateSemesterOpen, isSubjectModalOpen, isOcrModalOpen, editingSlotId, isAdding, isAddingExtra, isSelectMode]);
 
   const fetchData = async () => {
     try {
@@ -260,15 +351,17 @@ export const TimetablePage = () => {
         endTime: normalizeTimeString(slot.endTime, "10:00")
       }));
 
-      setSlots(normalizedSlots);
+      // Never overwrite populated local slots with an empty response during a background refresh
+      setSlots((prev) => (normalizedSlots.length > 0 || prev.length === 0 ? normalizedSlots : prev));
       
       setCache('timetable', {
         activeSemester: semester,
         subjects: activeSubjects,
-        slots: normalizedSlots
+        slots: normalizedSlots.length > 0 ? normalizedSlots : slots
       });
       
       fetchStats();
+      return normalizedSlots;
     } catch (error) {
       console.error("Failed to fetch timetable data:", error);
       const cache = useCacheStore.getState().timetable;
@@ -340,6 +433,7 @@ export const TimetablePage = () => {
       return;
     }
     try {
+      let targetSlotId = editingSlotId;
       const payload = {
         semesterId: activeSemester.id,
         subjectId,
@@ -362,20 +456,35 @@ export const TimetablePage = () => {
           existingSlot.slotType.toLowerCase() === payload.slotType.toLowerCase()
         ) {
           resetForm();
-          resetForm();
           return;
         }
         await api.patch(`/timetable/slots/${editingSlotId}`, payload);
-        toast.success("Class slot updated");
       } else {
-        await api.post("/timetable/slots", payload);
-        toast.success("Class slot added");
+        const res = await api.post("/timetable/slots", payload);
+        if (res.data?.id) {
+          targetSlotId = res.data.id;
+        }
+        if (payload.dayOfWeek !== activeTab) {
+          setActiveTab(payload.dayOfWeek);
+        }
       }
       
-      hapticSuccess();
       resetForm();
-      fetchData();
+      await fetchData();
       window.dispatchEvent(new Event("attendance-updated"));
+
+      hapticSuccess();
+      SoundFX.playSnapPopSound();
+      triggerDynamicHUD({ type: "sparkle", label: editingSlotId ? "Slot Updated" : "Slot Added to Schedule" });
+
+      if (targetSlotId) {
+        setTimeout(() => {
+          const el = document.getElementById(`slot-card-${targetSlotId}`);
+          if (el) {
+            el.scrollIntoView({ behavior: "smooth", block: "center" });
+          }
+        }, 120);
+      }
     } catch (error) {
       console.error("Failed to save slot:", error);
       toast.error("Failed to save class slot");
@@ -401,23 +510,22 @@ export const TimetablePage = () => {
     reader.onload = async (event) => {
       try {
         const payload = JSON.parse(event.target?.result as string);
-        toast("Import Timetable", {
-          description: "Importing this timetable will replace scheduled classes in your active semester. Attendance records are safely preserved. Proceed?",
-          action: {
-            label: "Import",
-            onClick: async () => {
-              try {
-                await api.post(`/timetable/import/${activeSemester.id}`, payload);
-                fetchData();
-                window.dispatchEvent(new Event("attendance-updated"));
-                toast.success("Timetable imported successfully!");
-              } catch (err: any) {
-                console.error("Failed to import JSON:", err);
-                toast.error("Failed to import timetable: Invalid file format.");
-              }
+        confirmDeleteToast({
+          title: "Import Timetable",
+          description: "Importing this timetable will replace scheduled classes in your active semester. Attendance records are safely preserved.",
+          confirmLabel: "Import Timetable",
+          cancelLabel: "Cancel",
+          onConfirm: async () => {
+            try {
+              await api.post(`/timetable/import/${activeSemester.id}`, payload);
+              await fetchData();
+              window.dispatchEvent(new Event("attendance-updated"));
+              playRainEntrance("Timetable Imported!");
+            } catch (err: any) {
+              console.error("Failed to import JSON:", err);
+              toast.error("Failed to import timetable: Invalid file format.");
             }
-          },
-          cancel: { label: "Cancel", onClick: () => {} }
+          }
         });
       } catch (err: any) {
         console.error("Failed to parse JSON:", err);
@@ -430,9 +538,17 @@ export const TimetablePage = () => {
 
   const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
+    const activeSlotId = active.id as string;
+    
+    // Tactile magnetic snap feedback & acoustic drop settling physics
+    setJustDroppedSlotId(activeSlotId);
+    SoundFX.playSlotDropSound();
+    hapticMedium();
+    setTimeout(() => {
+      setJustDroppedSlotId((curr) => (curr === activeSlotId ? null : curr));
+    }, 600);
     
     if (over && active.id !== over.id) {
-      const activeSlotId = active.id as string;
       const overSlotId = over.id as string;
 
       // Optimistically swap the times in local state preserving exact durations
@@ -522,6 +638,7 @@ export const TimetablePage = () => {
 
   // Open delete dialog for a single slot
   const handleInitiateDeleteSingle = (slot: TimetableSlot) => {
+    SoundFX.warmUp();
     hapticHeavy();
     setSlotsPendingDelete([slot]);
     setIsDeleteModalOpen(true);
@@ -531,6 +648,7 @@ export const TimetablePage = () => {
   const handleInitiateDeleteSelected = () => {
     const selectedSlots = slots.filter((s) => selectedSlotIds.includes(s.id));
     if (selectedSlots.length === 0) return;
+    SoundFX.warmUp();
     hapticHeavy();
     setSlotsPendingDelete(selectedSlots);
     setIsDeleteModalOpen(true);
@@ -551,6 +669,26 @@ export const TimetablePage = () => {
     // Sort by start time
     const sorted = [s1, s2].sort((a, b) => a.startTime.localeCompare(b.startTime));
     const [first, second] = sorted;
+
+    const normEnd1 = normalizeTimeString(first.endTime, "00:00");
+    const normStart2 = normalizeTimeString(second.startTime, "00:00");
+
+    const [h1, m1] = normEnd1.split(":").map(Number);
+    const [h2, m2] = normStart2.split(":").map(Number);
+    const endMinutes1 = h1 * 60 + m1;
+    const startMinutes2 = h2 * 60 + m2;
+    const gapMinutes = startMinutes2 - endMinutes1;
+
+    // Consecutive Time Guard: Slots must be adjacent (0 to 15 min break) to prevent accidental multi-hour blocks
+    if (gapMinutes < 0) {
+      toast.error("Cannot merge: Selected slots overlap with each other.");
+      return;
+    }
+    if (gapMinutes > 15) {
+      const gapHoursStr = gapMinutes >= 60 ? `${Math.floor(gapMinutes / 60)}h ${gapMinutes % 60}m` : `${gapMinutes}m`;
+      toast.error(`Cannot merge non-adjacent slots: There is a ${gapHoursStr} gap between ${normEnd1} and ${normStart2}.`);
+      return;
+    }
     
     try {
       await Promise.all([
@@ -558,7 +696,7 @@ export const TimetablePage = () => {
         api.delete(`/timetable/slots/${second.id}`),
       ]);
       hapticSuccess();
-      toast.success("Class slots merged");
+      toast.success("Class slots merged successfully");
       setSelectedSlotIds([]);
       setIsSelectMode(false);
       fetchData();
@@ -581,66 +719,167 @@ export const TimetablePage = () => {
     const slotIds = slotsPendingDelete.map((s) => s.id);
     const distinctSubjectIds = Array.from(new Set(slotsPendingDelete.map((s) => s.subjectId)));
 
-    // Optimistic slot removal for instant visual feedback
-    if (scope === "this_day_only") {
-      setSlots((prev) => prev.filter((s) => !slotIds.includes(s.id)));
-    } else {
-      setSlots((prev) => prev.filter((s) => !distinctSubjectIds.includes(s.subjectId)));
-    }
+    // When deleting all occurrences of a subject, flutter all matching slots across current view
+    const targetFlutterIds =
+      scope === "all_occurrences"
+        ? slots.filter((s) => distinctSubjectIds.includes(s.subjectId)).map((s) => s.id)
+        : slotIds;
+
+    // Trigger 4.0s Origami Paper Crumble Deletion choreography
+    setFlutterDeletingSlotIds(targetFlutterIds);
     setSelectedSlotIds([]);
     setIsSelectMode(false);
+    hapticHeavy();
+    SoundFX.playPaperCrumpleSound();
+    triggerDynamicHUD({
+      type: "origami",
+      label: "Origami Paper Crumble",
+      subtitle:
+        slotsPendingDelete.length > 1
+          ? `${slotsPendingDelete.length} slots crumbled & compressed`
+          : `${slotsPendingDelete[0]?.subject?.name || "Lecture"} crumbled & compressed`,
+      durationMs: 4500,
+    });
 
-    try {
-      if (scope === "this_day_only") {
-        // Delete only the specific slots on this day
-        if (slotIds.length === 1) {
-          await api.delete(`/timetable/slots/${slotIds[0]}?preserveHistory=${preserveHistory}`);
-        } else {
-          await api.post("/timetable/slots/delete-batch", {
-            slotIds,
-            preserveHistory,
-          });
-        }
-      } else {
-        // Delete all weekly occurrences of the selected subjects in parallel
-        await Promise.all(
-          distinctSubjectIds.map((subjId) =>
-            api.delete(
-              `/timetable/semester/${activeSemester.id}/subject/${subjId}/slots?preserveHistory=${preserveHistory}`
-            )
-          )
-        );
+    setTimeout(async () => {
+      // 1. Immediately & synchronously filter out the deleted slots from local state & cache
+      // This unmounts them from the DOM BEFORE clearing the animation flags,
+      // guaranteeing they NEVER pop back or flash for a split second!
+      setSlots((prev) =>
+        prev.filter((s) => {
+          if (scope === "this_day_only") {
+            return !slotIds.includes(s.id);
+          } else {
+            return !distinctSubjectIds.includes(s.subjectId);
+          }
+        })
+      );
+      setFlutterDeletingSlotIds((prev) => prev.filter((id) => !targetFlutterIds.includes(id)));
+
+      // Update cache store so cached view doesn't flash old slots
+      const currentCache = useCacheStore.getState().timetable;
+      if (currentCache?.slots) {
+        useCacheStore.getState().setCache("timetable", {
+          ...currentCache,
+          slots: currentCache.slots.filter((s: any) =>
+            scope === "this_day_only"
+              ? !slotIds.includes(s.id)
+              : !distinctSubjectIds.includes(s.subjectId)
+          ),
+        });
       }
 
-      hapticHeavy();
-      toast.success(slotsPendingDelete.length > 1 ? "Class slots deleted" : "Class slot deleted");
-      fetchData();
-      window.dispatchEvent(new Event("attendance-updated"));
-    } catch (error) {
-      console.error("Failed to delete slot(s):", error);
-      toast.error("Failed to delete the selected lecture(s). Please try again.");
-      fetchData();
-    }
+      try {
+        if (scope === "this_day_only") {
+          // Delete only the specific slots on this day
+          if (slotIds.length === 1) {
+            await api.delete(`/timetable/slots/${slotIds[0]}?preserveHistory=${preserveHistory}`);
+          } else {
+            await api.post("/timetable/slots/delete-batch", {
+              slotIds,
+              preserveHistory,
+            });
+          }
+        } else {
+          // Delete all weekly occurrences of the selected subjects in parallel
+          await Promise.all(
+            distinctSubjectIds.map((subjId) =>
+              api.delete(
+                `/timetable/semester/${activeSemester.id}/subject/${subjId}/slots?preserveHistory=${preserveHistory}`
+              )
+            )
+          );
+        }
+
+        useCacheStore.getState().setCache("today", null);
+        useCacheStore.getState().setCache("insights", null);
+        fetchData();
+        window.dispatchEvent(new Event("timetable-updated"));
+        window.dispatchEvent(new Event("attendance-updated"));
+      } catch (error) {
+        console.error("Failed to delete slot(s):", error);
+        toast.error("Failed to delete the selected lecture(s). Please try again.");
+        fetchData();
+      }
+    }, 4000);
   };
 
   const handleSafeDeleteTimetable = () => {
+    SoundFX.warmUp();
     setIsClearModalOpen(true);
   };
 
   const handleConfirmClearAll = async () => {
     try {
       const targetSemId = activeSemester?.id || "active";
-      await api.delete(`/timetable/semester/${targetSemId}/safe`);
+      const slotsSnapshot = [...slotsRef.current];
+      const mobileTour = isMobileViewport() && slotsSnapshot.length > 0;
+      const mobileDaysCount = getDaysWithSlots(slotsSnapshot).length;
+      setIsClearModalOpen(false);
+      setSelectedSlotIds([]);
+      setIsSelectMode(false);
       hapticHeavy();
+      triggerDynamicHUD({
+        type: "origami",
+        label: "Cascading Schedule Clear",
+        subtitle: mobileTour
+          ? `Day-by-day domino wave • ${mobileDaysCount} day${mobileDaysCount === 1 ? "" : "s"} cleared`
+          : "24-domino wave • All timetable slots disintegrated",
+        durationMs: mobileTour ? Math.min(Math.max(estimateMobileDominoTourMs(slotsSnapshot), 4800), 15000) : 4800,
+      });
+
+      if (mobileTour) {
+        // Flip through each day tab, scroll it into view and topple that day's slots
+        await runMobileDominoTour(slotsSnapshot);
+        if (!isMountedRef.current) return;
+      } else {
+        setIsClearingDomino(true);
+        SoundFX.playDominoCascadeSound();
+
+        // Smoothly scroll down to slots container so user gets full screen of cascading slots
+        setTimeout(() => {
+          const slotsContainer =
+            document.getElementById("timetable-mobile-slots-container") ||
+            document.querySelector(".space-y-3");
+          if (slotsContainer) {
+            slotsContainer.scrollIntoView({ behavior: "smooth", block: "start" });
+          }
+        }, 30);
+
+        // Run 4.5s Domino Cascade Wave before removing slots
+        await sleepMs(4500);
+      }
+
       setSlots([]);
       setSelectedSlotIds([]);
       setIsSelectMode(false);
-      await fetchData();
-      window.dispatchEvent(new Event("attendance-updated"));
-      setToastMessage("Timetable schedule cleared successfully!");
-      setTimeout(() => setToastMessage(null), 4000);
+      setIsClearingDomino(false);
+      const currentCache = useCacheStore.getState().timetable;
+      if (currentCache) {
+        useCacheStore.getState().setCache("timetable", {
+          ...currentCache,
+          slots: [],
+        });
+      }
+      useCacheStore.getState().setCache("today", null);
+      useAttendanceStore.getState().invalidateInFlightStats();
+
+      try {
+        await api.delete(`/timetable/semester/${targetSemId}/safe`);
+        useCacheStore.getState().setCache(`archived_timetables_${targetSemId}`, null);
+        useCacheStore.getState().setCache("archived_timetables", null);
+        await fetchData();
+        window.dispatchEvent(new Event("attendance-updated"));
+        window.dispatchEvent(new Event("timetable-updated"));
+        setToastMessage("Timetable schedule cleared and archived successfully!");
+        setTimeout(() => setToastMessage(null), 4000);
+      } catch (error) {
+        console.error("Failed to clear timetable:", error);
+        toast.error("Failed to clear timetable. Please try again.");
+        fetchData();
+      }
     } catch (error) {
-      console.error("Failed to clear timetable:", error);
+      console.error("Failed to initiate clear timetable:", error);
       toast.error("Failed to clear timetable. Please try again.");
     }
   };
@@ -680,10 +919,32 @@ export const TimetablePage = () => {
         setIsOcrModalOpen(false);
         setIsWizardOpen(true);
       } else {
-        toast.success("Timetable imported successfully!");
         setIsOcrModalOpen(false);
-        fetchData();
+        let normalizedSlots: any[] = [];
+        if (res.data?.slots && Array.isArray(res.data.slots)) {
+          normalizedSlots = res.data.slots.map((slot: any) => ({
+            ...slot,
+            startTime: normalizeTimeString(slot.startTime, "09:00"),
+            endTime: normalizeTimeString(slot.endTime, "10:00")
+          }));
+          setSlots(normalizedSlots);
+        }
+
+        try {
+          const [semRes, subjRes] = await Promise.all([
+            api.get("/semesters/active"),
+            api.get("/subjects"),
+          ]);
+          if (semRes.data) setActiveSemester(semRes.data);
+          const rawSubjects = Array.isArray(subjRes.data) ? subjRes.data : (subjRes.data?.subjects || []);
+          const activeSubjects = rawSubjects.filter((s: any) => s.semesterId === (semRes.data?.id || activeSemester.id));
+          setSubjects(activeSubjects);
+        } catch (e) {
+          console.error("Failed to refresh subjects:", e);
+        }
+
         window.dispatchEvent(new Event("attendance-updated"));
+        playRainEntrance("Timetable Imported Successfully!", normalizedSlots);
       }
     } catch (error) {
       console.error("OCR Import failed:", error);
@@ -697,22 +958,65 @@ export const TimetablePage = () => {
 
   const handleGenerateTimetable = async (selections: any) => {
     if (!activeSemester || !wizardPayload) return;
+    
+    // 1. Instantly dismiss wizard modal for zero-latency tactile feedback
+    setIsWizardOpen(false);
+
+    // 2. Prepare optimistic preview slots so raindrop cascade launches at 0ms
+    const previewList = selections.filteredSlots || selections.rawSlots || wizardPayload.rawSlots || [];
+    const optimisticSlots: any[] = previewList.map((slot: any, idx: number) => ({
+      ...slot,
+      id: slot.id || `temp-slot-${idx}-${Date.now()}`,
+      startTime: normalizeTimeString(slot.startTime, "09:00"),
+      endTime: normalizeTimeString(slot.endTime, "10:00"),
+    }));
+    setSlots(optimisticSlots);
+    SoundFX.warmUp();
+    playRainEntrance("Timetable Generated & Saved!", optimisticSlots);
+
     try {
       const slotsToSave = selections.rawSlots || wizardPayload.rawSlots || [];
-      await api.post("/timetable/save-wizard", {
+      const res = await api.post("/timetable/save-wizard", {
         semesterId: activeSemester.id,
         selections,
         rawSlots: slotsToSave,
         startDate: uploadStartDate
       });
-      setIsWizardOpen(false);
       setWizardPayload(null);
-      toast.success("Timetable saved successfully!");
-      fetchData();
-      window.dispatchEvent(new Event("attendance-updated"));
+      
+      // Update with exact server-persisted slot IDs
+      if (res.data?.slots && Array.isArray(res.data.slots)) {
+        const persistedSlots = res.data.slots.map((slot: any) => ({
+          ...slot,
+          startTime: normalizeTimeString(slot.startTime, "09:00"),
+          endTime: normalizeTimeString(slot.endTime, "10:00")
+        }));
+        setSlots(persistedSlots);
+      }
+
+      // Refresh subjects, cache, and dispatch events asynchronously
+      (async () => {
+        try {
+          const [semRes, subjRes] = await Promise.all([
+            api.get("/semesters/active"),
+            api.get("/subjects"),
+          ]);
+          if (semRes.data) setActiveSemester(semRes.data);
+          const rawSubjects = Array.isArray(subjRes.data) ? subjRes.data : (subjRes.data?.subjects || []);
+          const activeSubjects = rawSubjects.filter((s: any) => s.semesterId === (semRes.data?.id || activeSemester.id));
+          setSubjects(activeSubjects);
+        } catch (e) {
+          console.error("Failed to refresh subjects:", e);
+        }
+
+        useCacheStore.getState().setCache("today", null);
+        useCacheStore.getState().setCache("insights", null);
+        window.dispatchEvent(new Event("timetable-updated"));
+        window.dispatchEvent(new Event("attendance-updated"));
+      })();
     } catch (error) {
       console.error("Failed to generate timetable:", error);
-      toast.error("Failed to generate timetable.");
+      toast.error("Failed to persist timetable changes to server.");
     }
   };
 
@@ -741,7 +1045,10 @@ export const TimetablePage = () => {
         <CreateSemesterModal
           isOpen={isCreateSemesterOpen}
           onClose={() => setIsCreateSemesterOpen(false)}
-          onSuccess={fetchData}
+          onSuccess={(newSem) => {
+            if (newSem) setActiveSemester(newSem);
+            fetchData();
+          }}
         />
       </div>
     );
@@ -818,7 +1125,10 @@ export const TimetablePage = () => {
               </button>
 
               <button
-                onClick={() => setIsClearModalOpen(true)}
+                onClick={() => {
+                  SoundFX.warmUp();
+                  setIsClearModalOpen(true);
+                }}
                 title="Clear Timetable Schedule"
                 className="flex items-center gap-2 bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-500/30 px-3 py-2 rounded-xl text-xs font-semibold transition-colors cursor-pointer"
               >
@@ -836,6 +1146,12 @@ export const TimetablePage = () => {
               
               <button
                 onClick={() => {
+                  if (subjects.length === 0) {
+                    hapticMedium();
+                    toast.info("Add a subject first before creating timetable slots.");
+                    setIsSubjectModalOpen(true);
+                    return;
+                  }
                   resetForm();
                   setIsAdding(true);
                   setDayOfWeek(activeTab);
@@ -857,12 +1173,12 @@ export const TimetablePage = () => {
 
 {/* OCR Modal */}
       {isOcrModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-white/40 dark:bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-card border border-border rounded-2xl w-full max-w-md overflow-hidden shadow-2xl max-h-[90vh] flex flex-col">
-            <div className="p-4 border-b border-border flex justify-between items-center shrink-0">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="bg-card border border-border/80 rounded-3xl w-full max-w-md overflow-hidden shadow-2xl max-h-[90vh] flex flex-col">
+            <div className="p-4 sm:p-5 border-b border-border/60 flex justify-between items-center shrink-0">
               <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
                 <ImageIcon className="w-5 h-5 text-blue-500" />
-                Upload Timetable (PDF / Image)
+                <span>Upload Timetable (PDF / Image)</span>
               </h2>
               <motion.button
                 type="button"
@@ -871,13 +1187,14 @@ export const TimetablePage = () => {
                 disabled={isUploading}
                 onClick={() => { hapticLight(); setIsOcrModalOpen(false); setSelectedImage(null); setImagePreview(null); }}
                 className="w-9 h-9 rounded-xl flex items-center justify-center bg-muted/40 hover:bg-rose-500/15 border border-border/60 hover:border-rose-500/35 text-muted-foreground hover:text-rose-500 shadow-sm transition-colors disabled:opacity-50 cursor-pointer group"
+                aria-label="Close"
               >
                 <X className="w-4 h-4 transition-transform duration-200 group-hover:rotate-90" />
               </motion.button>
             </div>
             
-            <div className="p-6 space-y-5 overflow-y-auto">
-              <div className="text-sm text-muted-foreground text-center">
+            <div className="p-4 sm:p-6 space-y-5 overflow-y-auto">
+              <div className="text-xs sm:text-sm text-muted-foreground text-center">
                 Upload your timetable PDF or Image file. We will extract all branch and semester schedules automatically!
               </div>
               
@@ -893,7 +1210,7 @@ export const TimetablePage = () => {
                     disabled={isUploading}
                     value={uploadStartDate}
                     onChange={(e) => setUploadStartDate(e.target.value)}
-                    className="flex h-11 w-full rounded-xl border border-input bg-background/50 px-3 py-2 text-sm ring-offset-background transition-all hover:bg-background shadow-sm disabled:opacity-50"
+                    className="flex h-11 w-full rounded-xl border border-input bg-background/50 px-3 py-2 text-sm ring-offset-background transition-all hover:bg-background shadow-sm disabled:opacity-50 [color-scheme:light] dark:[color-scheme:dark]"
                   />
                 </div>
                 
@@ -1019,12 +1336,16 @@ export const TimetablePage = () => {
                 <RunActionButton 
                   fullWidth
                   action={handleOcrUpload}
+                  onCancel={() => { setIsUploading(false); setSelectedImage(null); setImagePreview(null); }}
                   disabled={!selectedImage || isUploading}
+                  isRunning={isUploading}
                   idleLabel="Extract Schedule"
                   doneLabel="Wizard Ready"
                   idleIcon={<Upload className="h-5 w-5 fill-current text-primary-foreground opacity-90" />}
                   steps={TIMETABLE_OCR_STEPS}
-                  stepIntervalMs={1650}
+                  stepIntervalMs={3000}
+                  activeStepIndex={ocrStepIdx}
+                  elapsedTenths={ocrElapsedTenths}
                 />
               </div>
             </div>
@@ -1038,6 +1359,18 @@ export const TimetablePage = () => {
         onClose={() => setIsWizardOpen(false)}
         onGenerate={handleGenerateTimetable}
         setupPayload={wizardPayload}
+      />
+
+      {/* Create Subject Modal */}
+      <SubjectModal
+        isOpen={isSubjectModalOpen}
+        onClose={() => setIsSubjectModalOpen(false)}
+        onSuccess={async () => {
+          setIsSubjectModalOpen(false);
+          await fetchData();
+          setIsAdding(true);
+          setDayOfWeek(activeTab);
+        }}
       />
 
       {/* Delete Slot Confirmation Modal */}
@@ -1056,7 +1389,7 @@ export const TimetablePage = () => {
         <ArchiveTimetableModal
           isOpen={isArchiveModalOpen}
           onClose={() => setIsArchiveModalOpen(false)}
-          semesterId={activeSemester?.id}
+          semesterId={activeSemester?.id || "active"}
         />
 
         {/* Clear All Timetable Slots Modal */}
@@ -1091,14 +1424,26 @@ export const TimetablePage = () => {
               </select>
             </div>
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Subject</label>
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Subject</label>
+                <button
+                  type="button"
+                  onClick={() => setIsSubjectModalOpen(true)}
+                  className="text-xs font-bold text-primary hover:underline flex items-center gap-1 cursor-pointer"
+                >
+                  <Plus className="w-3 h-3" />
+                  <span>New Subject</span>
+                </button>
+              </div>
               <select
                 required
                 value={subjectId}
                 onChange={(e) => setSubjectId(e.target.value)}
                 className="w-full bg-background border border-border rounded-xl px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 text-sm"
               >
-                <option value="" className="bg-white text-black dark:bg-[#0a0a0a] dark:text-white">Select...</option>
+                <option value="" className="bg-white text-black dark:bg-[#0a0a0a] dark:text-white">
+                  {subjects.length === 0 ? "No subjects found — tap + New Subject" : "Select..."}
+                </option>
                 {subjects.map(sub => <option key={sub.id} value={sub.id} className="bg-white text-black dark:bg-[#0a0a0a] dark:text-white">{sub.name}</option>)}
               </select>
             </div>
@@ -1178,7 +1523,7 @@ export const TimetablePage = () => {
               ) : (
                 <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
                   <SortableContext items={daySlots.map(s => s.id)} strategy={verticalListSortingStrategy}>
-                    {daySlots.map(slot => (
+                    {daySlots.map((slot, slotIdx) => (
                       <SortableSlot 
                         key={slot.id} 
                         slot={slot} 
@@ -1187,7 +1532,13 @@ export const TimetablePage = () => {
                         isSelected={selectedSlotIds.includes(slot.id)}
                         onToggleSelect={handleToggleSelectSlot}
                         onEdit={handleEditSlot} 
-                        onDelete={handleInitiateDeleteSingle} 
+                        onDelete={handleInitiateDeleteSingle}
+                        isFluttering={flutterDeletingSlotIds.includes(slot.id)}
+                        isDominoFalling={isClearingDomino}
+                        dominoIndex={idx * 5 + slotIdx}
+                        isRainDropping={isRainDropping}
+                        rainIndex={idx * 6 + slotIdx}
+                        isJustDropped={justDroppedSlotId === slot.id}
                       />
                     ))}
                   </SortableContext>
@@ -1201,18 +1552,19 @@ export const TimetablePage = () => {
       {/* Mobile Daily View (hidden on desktop) */}
       <div className="block lg:hidden space-y-4">
         {/* Day Tabs */}
-        <div className="flex overflow-x-auto hide-scrollbar gap-2 pb-2 -mx-4 px-4 border-b border-[#27272A] mb-4">
+        <div id="timetable-mobile-day-tabs" className="flex overflow-x-auto hide-scrollbar gap-2 pb-2 -mx-4 px-4 border-b border-border/40 mb-4">
           {DAYS.map((day, idx) => (
             <button
               key={day}
+              id={`timetable-day-tab-${idx}`}
               onClick={() => {
                 hapticSelection();
                 setActiveTab(idx);
               }}
-              className={`whitespace-nowrap px-5 py-3 text-xs font-bold transition-all aether-mono ${
+              className={`whitespace-nowrap px-4 py-2 text-xs font-bold transition-all rounded-xl cursor-pointer ${
                 activeTab === idx 
-                  ? "bg-card text-foreground border-t border-l border-r border-border" 
-                  : "bg-transparent text-muted-foreground hover:text-foreground"
+                  ? "bg-primary text-primary-foreground shadow-md shadow-primary/20" 
+                  : "bg-muted/40 text-muted-foreground hover:text-foreground hover:bg-muted"
               }`}
             >
               {day}
@@ -1221,7 +1573,7 @@ export const TimetablePage = () => {
         </div>
 
         {/* Slots List for Selected Day */}
-        <div className="space-y-3">
+        <div id="timetable-mobile-slots-container" className="space-y-3 scroll-mt-20">
           {currentDaySlots.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 bg-card border border-border rounded-3xl shadow-sm">
               <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-3">
@@ -1232,7 +1584,7 @@ export const TimetablePage = () => {
           ) : (
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
               <SortableContext items={currentDaySlots.map(s => s.id)} strategy={verticalListSortingStrategy}>
-                {currentDaySlots.map(slot => (
+                {currentDaySlots.map((slot, slotIdx) => (
                   <SortableSlot 
                     key={slot.id} 
                     slot={slot} 
@@ -1240,7 +1592,13 @@ export const TimetablePage = () => {
                     isSelected={selectedSlotIds.includes(slot.id)}
                     onToggleSelect={handleToggleSelectSlot}
                     onEdit={handleEditSlot} 
-                    onDelete={handleInitiateDeleteSingle} 
+                    onDelete={handleInitiateDeleteSingle}
+                    isFluttering={flutterDeletingSlotIds.includes(slot.id)}
+                    isDominoFalling={isClearingDomino}
+                    dominoIndex={MOBILE_DOMINO_OFFSET + slotIdx}
+                    isRainDropping={isRainDropping}
+                    rainIndex={MOBILE_RAIN_OFFSET + slotIdx * 2}
+                    isJustDropped={justDroppedSlotId === slot.id}
                   />
                 ))}
               </SortableContext>

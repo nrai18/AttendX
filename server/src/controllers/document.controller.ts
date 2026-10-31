@@ -13,6 +13,16 @@ export class DocumentController {
         where: {
           userId: req.user.userId
         },
+        select: {
+          id: true,
+          userId: true,
+          name: true,
+          type: true,
+          fileUrl: true,
+          mimeType: true,
+          size: true,
+          createdAt: true,
+        },
         orderBy: {
           createdAt: 'desc'
         }
@@ -69,7 +79,8 @@ export class DocumentController {
       if (!req.user) return res.status(401).json({ message: 'Unauthorized' });
       
       const doc = await prisma.storedDocument.findUnique({
-        where: { id: (req.params.id as string) }
+        where: { id: (req.params.id as string) },
+        select: { id: true, userId: true, fileUrl: true }
       });
       
       if (!doc || doc.userId !== req.user.userId) {

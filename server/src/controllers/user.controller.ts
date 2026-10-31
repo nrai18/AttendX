@@ -38,9 +38,7 @@ export class UserController {
 
       const statusPayload = await CacheService.getOrSet(userId, "onboarding:status", async () => {
         const [activeSemester, user] = await Promise.all([
-          CacheService.getOrSet<any>(userId, "semesters:active", () =>
-            prisma.semester.findFirst({ where: { userId, isActive: true } })
-          ),
+          prisma.semester.findFirst({ where: { userId, isActive: true }, select: { id: true } }),
           CacheService.getOrSet<any>(userId, "user:record", () =>
             prisma.user.findUnique({ where: { id: userId } })
           ),
@@ -52,22 +50,26 @@ export class UserController {
         let hasCalendar = false;
         let hasAttendance = false;
 
+        const [firstAtt, attLoggedCache, soundConfigured] = await Promise.all([
+          prisma.attendance.findFirst({ where: { userId }, select: { id: true } }),
+          CacheService.getOrSet(userId, "pref:has_attendance", async () => false),
+          CacheService.getOrSet(userId, "pref:sound_effects", async () => false),
+        ]);
+        hasAttendance = !!firstAtt || Boolean(attLoggedCache);
+
         if (hasSemester) {
-          const [subCount, ttCount, evCount, attCount, totalUserAttCount] = await Promise.all([
-            prisma.subject.count({ where: { semesterId: activeSemester.id } }),
-            prisma.timetableSlot.count({ where: { semesterId: activeSemester.id } }),
-            prisma.event.count({ where: { semesterId: activeSemester.id } }),
-            prisma.attendance.count({ where: { userId, subject: { semesterId: activeSemester.id } } }),
-            prisma.attendance.count({ where: { userId } }),
+          const [firstSub, firstSlot, firstEv] = await Promise.all([
+            prisma.subject.findFirst({ where: { semesterId: activeSemester.id }, select: { id: true } }),
+            prisma.timetableSlot.findFirst({ where: { semesterId: activeSemester.id, validUntil: null }, select: { id: true } }),
+            prisma.event.findFirst({ where: { semesterId: activeSemester.id }, select: { id: true } }),
           ]);
 
-          hasSubjects = subCount > 0;
-          hasTimetable = ttCount > 0;
-          hasCalendar = evCount > 0;
-          hasAttendance = attCount > 0 || totalUserAttCount > 0;
+          hasSubjects = !!firstSub;
+          hasTimetable = !!firstSlot;
+          hasCalendar = !!firstEv;
         } else {
-          const totalUserAttCount = await prisma.attendance.count({ where: { userId } });
-          hasAttendance = totalUserAttCount > 0;
+          const anySub = await prisma.subject.findFirst({ where: { userId }, select: { id: true } });
+          hasSubjects = !!anySub;
         }
 
         return {
@@ -79,13 +81,15 @@ export class UserController {
           hasUsedVoiceMode: user?.hasUsedVoiceMode ?? false,
           hasUsedPredictive: user?.hasUsedPredictive ?? false,
           hasUsedPeerSync: user?.hasUsedPeerSync ?? false,
+          hasConfiguredSound: Boolean(soundConfigured),
           onboardingDismissed: user?.onboardingDismissed ?? false,
         };
       });
 
       res.status(200).json(statusPayload);
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      console.error("[UserController.updateOnboardingStatus] Failed to update onboarding status:", error);
+      res.status(500).json({ message: error.message || "Failed to update onboarding status" });
     }
   }
 
@@ -100,25 +104,40 @@ export class UserController {
       if (hasUsedPeerSync !== undefined) dataToUpdate.hasUsedPeerSync = !!hasUsedPeerSync;
       if (onboardingDismissed !== undefined) dataToUpdate.onboardingDismissed = !!onboardingDismissed;
 
+      if (step === "attendance" || step === "onboarding_attendance") {
+        await CacheService.set(userId, "pref:has_attendance", true);
+      }
       if (step === "voice_mode" || step === "onboarding_voice_mode") dataToUpdate.hasUsedVoiceMode = true;
       if (step === "predictive" || step === "onboarding_predictive") dataToUpdate.hasUsedPredictive = true;
       if (step === "peer_sync" || step === "onboarding_peer_sync") dataToUpdate.hasUsedPeerSync = true;
+      if (step === "sound_effects" || step === "onboarding_sound_effects") {
+        await CacheService.set(userId, "pref:sound_effects", true);
+      }
       if (step === "dismiss") dataToUpdate.onboardingDismissed = true;
 
-      if (Object.keys(dataToUpdate).length === 0) {
-        return res.status(200).json({ success: true });
+      let updatedUser: any = null;
+      if (Object.keys(dataToUpdate).length > 0) {
+        updatedUser = await prisma.user.update({
+          where: { id: userId },
+          data: dataToUpdate,
+          select: {
+            hasUsedVoiceMode: true,
+            hasUsedPredictive: true,
+            hasUsedPeerSync: true,
+            onboardingDismissed: true,
+          }
+        });
+      } else {
+        updatedUser = await prisma.user.findUnique({
+          where: { id: userId },
+          select: {
+            hasUsedVoiceMode: true,
+            hasUsedPredictive: true,
+            hasUsedPeerSync: true,
+            onboardingDismissed: true,
+          }
+        });
       }
-
-      const updatedUser = await prisma.user.update({
-        where: { id: userId },
-        data: dataToUpdate,
-        select: {
-          hasUsedVoiceMode: true,
-          hasUsedPredictive: true,
-          hasUsedPeerSync: true,
-          onboardingDismissed: true,
-        }
-      });
 
       // Invalidate onboarding and user record caches immediately so stale data is never served
       await Promise.all([
@@ -126,12 +145,22 @@ export class UserController {
         CacheService.del(userId, "user:record"),
       ]);
 
+      const [firstAtt, attLoggedCache, soundConfigured] = await Promise.all([
+        prisma.attendance.findFirst({ where: { userId }, select: { id: true } }),
+        CacheService.getOrSet(userId, "pref:has_attendance", async () => false),
+        CacheService.getOrSet(userId, "pref:sound_effects", async () => false),
+      ]);
+      const hasAttendance = !!firstAtt || Boolean(attLoggedCache);
+
       res.status(200).json({
         success: true,
-        ...updatedUser
+        ...updatedUser,
+        hasAttendance,
+        hasConfiguredSound: Boolean(soundConfigured),
       });
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      console.error("[UserController.updateOnboardingStatus] Failed to update onboarding status:", error);
+      res.status(500).json({ message: error.message || "Failed to update onboarding status" });
     }
   }
 
@@ -142,11 +171,24 @@ export class UserController {
       
       const { fcmToken, ...userData } = req.body;
       
-      if (fcmToken !== undefined && sessionId) {
+      if (fcmToken !== undefined) {
+        if (sessionId) {
           await prisma.refreshToken.update({
-          where: { id: sessionId },
-          data: { fcmToken: fcmToken === null ? null : fcmToken }
-        });
+            where: { id: sessionId },
+            data: { fcmToken: fcmToken === null ? null : fcmToken }
+          });
+        } else {
+          const latestSession = await prisma.refreshToken.findFirst({
+            where: { userId },
+            orderBy: { lastActive: 'desc' },
+          });
+          if (latestSession) {
+            await prisma.refreshToken.update({
+              where: { id: latestSession.id },
+              data: { fcmToken: fcmToken === null ? null : fcmToken }
+            });
+          }
+        }
       }
 
       if (Object.keys(userData).length > 0) {
@@ -228,7 +270,8 @@ export class UserController {
       const sessions = await UserService.getSessions(userId, sessionId);
       res.status(200).json(sessions);
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      console.error("[UserController.updateOnboardingStatus] Failed to update onboarding status:", error);
+      res.status(500).json({ message: error.message || "Failed to update onboarding status" });
     }
   }
 
@@ -253,11 +296,12 @@ export class UserController {
 
       if (!sessionIdToKeep) throw new Error("Current session missing");
       const { invalidateSessionCache } = require("../middleware/authenticate");
-      invalidateSessionCache(undefined, userId);
+      invalidateSessionCache(undefined, userId, sessionIdToKeep);
       const result = await UserService.revokeAllOtherSessions(userId, sessionIdToKeep);
       res.status(200).json(result);
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      console.error("[UserController.updateOnboardingStatus] Failed to update onboarding status:", error);
+      res.status(500).json({ message: error.message || "Failed to update onboarding status" });
     }
   }
 
@@ -270,7 +314,8 @@ export class UserController {
       const result = await UserService.revokeSession(userId, sessionId);
       res.status(200).json(result);
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      console.error("[UserController.updateOnboardingStatus] Failed to update onboarding status:", error);
+      res.status(500).json({ message: error.message || "Failed to update onboarding status" });
     }
   }
 }

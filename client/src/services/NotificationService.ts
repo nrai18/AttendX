@@ -10,6 +10,7 @@ import { useAuthStore } from '../stores/authStore';
 import { useCacheStore } from '../stores/cacheStore';
 import { api } from '../lib/api';
 import { toast } from 'sonner';
+import { triggerDynamicHUD } from '../components/ui/dynamic-island-hud';
 import { addMinutes, setHours, setMinutes, startOfDay, addDays, isSameDay } from 'date-fns';
 
 // ─────────────────────────────────────────────────────────
@@ -161,6 +162,10 @@ export function clampDateToMonth(year: number, monthIndex: number, targetDay: nu
   return new Date(year, monthIndex, clampedDay);
 }
 
+function toDeviceLocalDateTime(baseDate: Date, hour: number, minute: number): Date {
+  return new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate(), hour, minute, 0, 0);
+}
+
 /**
  * Pure calculation for academic summary dates across Daily, Weekly, Monthly, and Yearly frequencies.
  */
@@ -183,7 +188,7 @@ export function calculateNextSummaryDates(
 
   if (frequency.type === 'Daily') {
     for (let i = 0; i <= 7; i++) {
-      const candidate = setMinutes(setHours(addDays(today, i), summaryHour), summaryMinute);
+      const candidate = toDeviceLocalDateTime(addDays(today, i), summaryHour, summaryMinute);
       if (candidate.getTime() > now.getTime()) {
         results.push(candidate);
       }
@@ -199,13 +204,13 @@ export function calculateNextSummaryDates(
       firstTargetDay = addDays(firstTargetDay, 1);
     }
 
-    const todayCandidate = setMinutes(setHours(firstTargetDay, summaryHour), summaryMinute);
+    const todayCandidate = toDeviceLocalDateTime(firstTargetDay, summaryHour, summaryMinute);
     if (todayCandidate.getTime() <= now.getTime()) {
       firstTargetDay = addDays(firstTargetDay, 7);
     }
 
     for (let i = 0; i < 4; i++) {
-      const weeklyDate = setMinutes(setHours(addDays(firstTargetDay, i * 7), summaryHour), summaryMinute);
+      const weeklyDate = toDeviceLocalDateTime(addDays(firstTargetDay, i * 7), summaryHour, summaryMinute);
       results.push(weeklyDate);
     }
   } else if (frequency.type === 'Monthly') {
@@ -215,7 +220,7 @@ export function calculateNextSummaryDates(
     const currentMonth = now.getMonth();
 
     const currentMonthClamped = clampDateToMonth(currentYear, currentMonth, targetDay);
-    const currentCandidate = setMinutes(setHours(currentMonthClamped, summaryHour), summaryMinute);
+    const currentCandidate = toDeviceLocalDateTime(currentMonthClamped, summaryHour, summaryMinute);
 
     const startMonthOffset = currentCandidate.getTime() > now.getTime() ? 0 : 1;
 
@@ -225,7 +230,7 @@ export function calculateNextSummaryDates(
       const year = monthRef.getFullYear();
       const month = monthRef.getMonth();
       const clampedDate = clampDateToMonth(year, month, targetDay);
-      results.push(setMinutes(setHours(clampedDate, summaryHour), summaryMinute));
+      results.push(toDeviceLocalDateTime(clampedDate, summaryHour, summaryMinute));
     }
   } else if (frequency.type === 'Yearly') {
     const monthNames: Record<string, number> = {
@@ -238,12 +243,12 @@ export function calculateNextSummaryDates(
     const targetDay = 1;
     const currentYear = now.getFullYear();
     const clampedDate = clampDateToMonth(currentYear, targetMonth, targetDay);
-    const candidate = setMinutes(setHours(clampedDate, summaryHour), summaryMinute);
+    const candidate = toDeviceLocalDateTime(clampedDate, summaryHour, summaryMinute);
     if (candidate.getTime() > now.getTime()) {
       results.push(candidate);
     } else {
       const nextYearClamped = clampDateToMonth(currentYear + 1, targetMonth, targetDay);
-      results.push(setMinutes(setHours(nextYearClamped, summaryHour), summaryMinute));
+      results.push(toDeviceLocalDateTime(nextYearClamped, summaryHour, summaryMinute));
     }
   }
 
@@ -355,19 +360,43 @@ export class NotificationService {
 
       PushNotifications.addListener('pushNotificationReceived', (notification) => {
         console.log('[FCM] Push received in foreground: ', notification);
-        // Note: Capacitor's native PushNotificationsPlugin automatically renders the foreground notification banner
-        // via presentationOptions: ['badge', 'sound', 'alert'] in capacitor.config.ts.
-        // We do NOT call LocalNotifications.schedule here to prevent duplicate alert banners.
+        const data = notification.data || (notification as any)?.notification?.data || {};
+        const title = notification.title || 'Classroom Broadcast';
+        const body = notification.body || '';
+        const targetRoute = data.route || data.url || (data.type === 'classroom_announcement' && data.classroomId ? `/classrooms/${data.classroomId}` : data.type === 'classroom_deleted' ? '/classrooms' : null);
+
+        if (data.type === 'classroom_announcement') {
+          triggerDynamicHUD({
+            type: 'plane',
+            label: title,
+            subtitle: body,
+            durationMs: 5000,
+            route: targetRoute || undefined,
+          });
+        } else if (data.type === 'classroom_deleted') {
+          triggerDynamicHUD({
+            type: 'trash',
+            label: title,
+            subtitle: body,
+            durationMs: 5000,
+            route: '/classrooms',
+          });
+        }
       });
 
       PushNotifications.addListener('pushNotificationActionPerformed', (notification) => {
         console.log('[FCM] Push action performed: ', notification);
-        const data = notification.notification.data;
-        if (data && data.type === 'ota_update') {
+        const data = notification.notification?.data || (notification as any)?.data || {};
+        const targetRoute = data.route || data.url || (data.type === 'classroom_announcement' && data.classroomId ? `/classrooms/${data.classroomId}` : data.type === 'classroom_deleted' ? '/classrooms' : null);
+
+        if (data.type === 'ota_update') {
           // Tell the OTAUpdateModal to fetch the manifest and show itself
           window.dispatchEvent(new Event('check_ota_update'));
-        } else if (data && (data.route || data.url)) {
-          window.dispatchEvent(new CustomEvent('push_route', { detail: data.route || data.url }));
+        } else if (targetRoute) {
+          try {
+            sessionStorage.setItem('pending_push_route', targetRoute);
+          } catch (_) {}
+          window.dispatchEvent(new CustomEvent('push_route', { detail: targetRoute }));
         }
       });
     } catch (e) {
@@ -540,6 +569,8 @@ export class NotificationService {
             if (perm.display === 'granted') {
               this.autoScheduleFromTimetable().catch(() => {});
               this.scheduleAssignmentReminders().catch(() => {});
+              const activeFreq = useCacheStore.getState().reminderFrequency || { type: 'Daily' };
+              this.scheduleAcademicUpdates(activeFreq).catch(() => {});
             }
           } catch {}
         }
@@ -760,25 +791,29 @@ export class NotificationService {
       // Trigger native ringer plugin to silence and register native resurrection
       await mutePhone(endTime.getTime(), cleanClassName);
 
-      await LocalNotifications.schedule({
-        notifications: [
-          {
-            id: PINNED_MUTE_NOTIF_ID,
-            title: `Class in Session`,
-            body: `Phone is silenced until ${timeStr}`,
-            largeBody: `\uD83D\uDD15 Current Class: ${cleanClassName}\n\nYour phone has been muted via AttendX. It will restore to normal volume automatically at ${timeStr}, or you can unmute manually below.`,
-            summaryText: "Do Not Disturb Active",
-            smallIcon: "ic_stat_attendx",
-            largeIcon: "attendx_notification_icon",
-            iconColor: "#10B981", 
-            channelId: 'silent_mode',
-            ongoing: true,
-            autoCancel: false,
-            actionTypeId: 'CLASS_SILENT_ACTIONS',
-            schedule: { at: new Date(Date.now() + 1000), allowWhileIdle: true }
-          }
-        ]
-      });
+      // On native Android, mutePhone already registers the un-swipeable native pinned notification with FLAG_NO_CLEAR.
+      // We only schedule via Capacitor LocalNotifications if NOT on native platform (e.g. web environment fallback).
+      if (!Capacitor.isNativePlatform()) {
+        await LocalNotifications.schedule({
+          notifications: [
+            {
+              id: PINNED_MUTE_NOTIF_ID,
+              title: `Class in Session`,
+              body: `Phone is silenced until ${timeStr}`,
+              largeBody: `\uD83D\uDD15 Current Class: ${cleanClassName}\n\nYour phone has been muted via AttendX. It will restore to normal volume automatically at ${timeStr}, or you can unmute manually below.`,
+              summaryText: "Do Not Disturb Active",
+              smallIcon: "ic_stat_attendx",
+              largeIcon: "attendx_notification_icon",
+              iconColor: "#10B981", 
+              channelId: 'silent_mode',
+              ongoing: true,
+              autoCancel: false,
+              actionTypeId: 'CLASS_SILENT_ACTIONS',
+              schedule: { at: new Date(Date.now() + 1000), allowWhileIdle: true }
+            }
+          ]
+        });
+      }
 
       const timeUntilEnd = Math.min(Math.max(0, endTime.getTime() - Date.now()), 2147483647);
       if (timeUntilEnd > 0) {
@@ -1465,16 +1500,14 @@ export class NotificationService {
         await LocalNotifications.cancel({ notifications: toCancel.map(n => ({ id: Number(n.id) })) });
       }
 
-      if (!frequency || frequency.type === 'Never') return;
+      const cacheState = useCacheStore.getState();
+      const activeFreq = frequency || cacheState.reminderFrequency || { type: 'Weekly' };
+      if (!activeFreq || activeFreq.type === 'Never') return;
 
+      const memory = cacheState.frequencyMemory || {};
       const config = useNotificationStore.getState().config;
-      let targetTime = config?.summaryTime || "18:00";
-      if (frequency.type === 'Weekly') targetTime = config?.weeklySummaryTime || targetTime;
-      if (frequency.type === 'Monthly') targetTime = config?.monthlySummaryTime || targetTime;
-      if (frequency.type === 'Yearly') targetTime = config?.yearlySummaryTime || targetTime;
-
-      const scheduledDates = calculateNextSummaryDates(frequency, targetTime, new Date());
       const notificationsToSchedule = [];
+      const now = new Date();
 
       const allEvents = useAttendanceStore.getState().events || [];
       const subjects = useAttendanceStore.getState().subjects || [];
@@ -1483,16 +1516,67 @@ export class NotificationService {
       subjects.forEach(s => { attended += (s.attended || 0); total += (s.total || 0); });
       const overallPct = total === 0 ? 100 : Math.round((attended / total) * 100);
 
-      const cachedSlots: any[] = useCacheStore.getState().timetable?.slots || [];
+      const cachedSlots: any[] = cacheState.timetable?.slots || [];
 
-      for (let i = 0; i < scheduledDates.length; i++) {
-        const notifyDate = scheduledDates[i];
-        let id = ACADEMIC_UPDATES_START_ID + i;
-        let title = "Tomorrow's Briefing";
-        let body = "You have classes coming up tomorrow.";
-        let largeBody = "\uD83C\uDF92 Prepare for Tomorrow\n\nYou have classes scheduled. Tap to review your timetable, check for assignments, and pack your bag!";
+      const globalSummaryTime = config?.summaryTime || "18:00";
 
-        if (frequency.type === 'Daily') {
+      // 1. Weekly Summary: Scheduled ONLY if user has chosen Weekly
+      if (activeFreq.type === 'Weekly') {
+        const weeklyDay = activeFreq.subValue || memory.Weekly || 'Sun';
+        const weeklyDates = calculateNextSummaryDates({ type: 'Weekly', subValue: weeklyDay }, globalSummaryTime, now);
+
+        for (let i = 0; i < weeklyDates.length; i++) {
+          const notifyDate = weeklyDates[i];
+          const endOfWeekDay = addDays(notifyDate, -1);
+          const startOfWeekDay = addDays(endOfWeekDay, -6);
+          const weekEvents = allEvents.filter(e => {
+            if (!e.date) return false;
+            const start = parseLocalDate(e.date);
+            const end = e.endDate ? parseLocalDate(e.endDate) : start;
+            return start.getTime() <= endOfWeekDay.getTime() && end.getTime() >= startOfWeekDay.getTime();
+          });
+          let largeBody = "\uD83D\uDCC5 Weekly Review\n\nTake a look back at your attendance performance this week and plan ahead for the upcoming week.";
+          if (weekEvents.some(e => (e.eventType || e.type || "").toLowerCase() === "holiday" || (e.title || "").toLowerCase().includes("holiday"))) {
+            largeBody = "\uD83D\uDCC5 Weekly Review\n\nIt was a short week with some holidays! Check how your attendance was impacted and review your targets.";
+          }
+          notificationsToSchedule.push({
+            id: 8810 + i,
+            title: "Weekly Summary",
+            body: "Weekly Review: See how you did this past week!",
+            largeBody,
+            summaryText: "Academic Update",
+            smallIcon: "ic_stat_attendx",
+            largeIcon: "attendx_notification_icon",
+            iconColor: "#3B82F6",
+            channelId: "academic_briefings",
+            schedule: { at: notifyDate, allowWhileIdle: true }
+          });
+        }
+      } else if (activeFreq.type === 'Monthly') {
+        // 2. Monthly Summary: Scheduled ONLY if user has chosen Monthly
+        const monthlyDay = activeFreq.subValue || memory.Monthly || '1';
+        const monthlyDates = calculateNextSummaryDates({ type: 'Monthly', subValue: monthlyDay }, globalSummaryTime, now);
+
+        for (let i = 0; i < monthlyDates.length; i++) {
+          const notifyDate = monthlyDates[i];
+          notificationsToSchedule.push({
+            id: 8820 + i,
+            title: "Monthly Attendance Summary",
+            body: "Your monthly review is ready! See how well you did this month.",
+            largeBody: `\uD83D\uDCC8 Monthly Summary\n\nYour overall attendance is currently at ${overallPct}%. Tap to see your detailed breakdown and performance across all subjects.`,
+            summaryText: "Academic Update",
+            smallIcon: "ic_stat_attendx",
+            largeIcon: "attendx_notification_icon",
+            iconColor: "#3B82F6",
+            channelId: "academic_briefings",
+            schedule: { at: notifyDate, allowWhileIdle: true }
+          });
+        }
+      } else if (activeFreq.type === 'Daily') {
+        // 3. Daily Briefing: Scheduled ONLY if Daily is explicitly chosen
+        const dailyDates = calculateNextSummaryDates({ type: 'Daily' }, globalSummaryTime, now);
+        for (let i = 0; i < dailyDates.length; i++) {
+          const notifyDate = dailyDates[i];
           const isMorningBriefing = notifyDate.getHours() < 14;
           const targetDay = isMorningBriefing ? notifyDate : addDays(notifyDate, 1);
           const dayLabel = isMorningBriefing ? "Today" : "Tomorrow";
@@ -1516,6 +1600,10 @@ export class NotificationService {
           const targetSlots = cachedSlots.filter((s: any) => s.dayOfWeek === dbTargetDay);
           const targetHasClasses = targetSlots.length > 0 && !targetHolidayTitle;
 
+          let title = "Tomorrow's Briefing";
+          let body = "You have classes coming up tomorrow.";
+          let largeBody = "\uD83C\uDF92 Prepare for Tomorrow\n\nYou have classes scheduled. Tap to review your timetable, check for assignments, and pack your bag!";
+
           if (targetHolidayTitle) {
             title = `${dayLabel}: ${targetHolidayTitle}`;
             body = `No regular classes scheduled ${dayLabelLower} for ${targetHolidayTitle}. Enjoy your day off!`;
@@ -1529,46 +1617,38 @@ export class NotificationService {
             body = `You have ${targetSlots.length} class${targetSlots.length === 1 ? '' : 'es'} scheduled ${dayLabelLower}.`;
             largeBody = `\uD83C\uDF92 Prepare for ${dayLabel}\n\nYou have ${targetSlots.length} class${targetSlots.length === 1 ? '' : 'es'} scheduled ${dayLabelLower}. Tap to review your schedule!`;
           }
-        } else if (frequency.type === 'Weekly') {
-          id = 8810 + i;
-          title = "Weekly Summary";
-          body = "Weekly Review: See how you did this past week!";
-          const endOfWeekDay = addDays(notifyDate, -1);
-          const startOfWeekDay = addDays(endOfWeekDay, -6);
-          const weekEvents = allEvents.filter(e => {
-            if (!e.date) return false;
-            const start = parseLocalDate(e.date);
-            const end = e.endDate ? parseLocalDate(e.endDate) : start;
-            return start.getTime() <= endOfWeekDay.getTime() && end.getTime() >= startOfWeekDay.getTime();
-          });
-          largeBody = "\uD83D\uDCC5 Weekly Review\n\nTake a look back at your attendance performance this week and plan ahead for the upcoming week.";
-          if (weekEvents.some(e => (e.eventType || e.type || "").toLowerCase() === "holiday" || (e.title || "").toLowerCase().includes("holiday"))) {
-            largeBody = "\uD83D\uDCC5 Weekly Review\n\nIt was a short week with some holidays! Check how your attendance was impacted and review your targets.";
-          }
-        } else if (frequency.type === 'Monthly') {
-          id = 8820 + i;
-          title = "Monthly Attendance Summary";
-          body = "Your monthly review is ready! See how well you did this month.";
-          largeBody = `\uD83D\uDCC8 Monthly Summary\n\nYour overall attendance is currently at ${overallPct}%. Tap to see your detailed breakdown and performance across all subjects.`;
-        } else if (frequency.type === 'Yearly') {
-          id = 8830 + i;
-          title = "Yearly Attendance Summary";
-          body = "Your annual academic attendance recap is ready.";
-          largeBody = `\uD83C\uDF93 Yearly Summary\n\nYour overall cumulative attendance is at ${overallPct}%. Tap to review your attendance performance across all semesters.`;
-        }
 
-        notificationsToSchedule.push({
-          id,
-          title,
-          body,
-          largeBody,
-          summaryText: "Academic Update",
-          smallIcon: "ic_stat_attendx",
-          largeIcon: "attendx_notification_icon",
-          iconColor: "#3B82F6",
-          channelId: "academic_briefings",
-          schedule: { at: notifyDate, allowWhileIdle: true }
-        });
+          notificationsToSchedule.push({
+            id: ACADEMIC_UPDATES_START_ID + i,
+            title,
+            body,
+            largeBody,
+            summaryText: "Academic Update",
+            smallIcon: "ic_stat_attendx",
+            largeIcon: "attendx_notification_icon",
+            iconColor: "#3B82F6",
+            channelId: "academic_briefings",
+            schedule: { at: notifyDate, allowWhileIdle: true }
+          });
+        }
+      } else if (activeFreq.type === 'Yearly') {
+        // 4. Yearly Summary: Scheduled ONLY if Yearly is explicitly chosen
+        const yearlyMonth = activeFreq.subValue || memory.Yearly || 'Jan';
+        const yearlyDates = calculateNextSummaryDates({ type: 'Yearly', subValue: yearlyMonth }, globalSummaryTime, now);
+        if (yearlyDates.length > 0) {
+          notificationsToSchedule.push({
+            id: 8830,
+            title: "Yearly Attendance Summary",
+            body: "Your annual academic attendance recap is ready.",
+            largeBody: `\uD83C\uDF93 Yearly Summary\n\nYour overall cumulative attendance is at ${overallPct}%. Tap to review your attendance performance across all semesters.`,
+            summaryText: "Academic Update",
+            smallIcon: "ic_stat_attendx",
+            largeIcon: "attendx_notification_icon",
+            iconColor: "#3B82F6",
+            channelId: "academic_briefings",
+            schedule: { at: yearlyDates[0], allowWhileIdle: true }
+          });
+        }
       }
 
       if (notificationsToSchedule.length > 0) {
@@ -1604,6 +1684,44 @@ export class NotificationService {
       console.log("All local notifications and delivered alerts purged successfully.");
     } catch (e) {
       console.error("Failed to cancel all notifications:", e);
+    }
+  }
+
+  static async triggerTestAcademicSummaryNotification(): Promise<boolean> {
+    if (!Capacitor.isNativePlatform()) return false;
+    try {
+      let perm = await LocalNotifications.checkPermissions();
+      if (perm.display !== 'granted') {
+        perm = await LocalNotifications.requestPermissions();
+        if (perm.display !== 'granted') return false;
+      }
+
+      const subjects = useAttendanceStore.getState().subjects || [];
+      let attended = 0;
+      let total = 0;
+      subjects.forEach(s => { attended += (s.attended || 0); total += (s.total || 0); });
+      const overallPct = total === 0 ? 100 : Math.round((attended / total) * 100);
+
+      await LocalNotifications.schedule({
+        notifications: [
+          {
+            id: 8899,
+            title: "📊 Monthly Summary (Test)",
+            body: `Your monthly review is ready! Overall attendance is at ${overallPct}%.`,
+            largeBody: `📊 Monthly Summary\n\nYour notification channels and alarms are active! Your overall attendance is currently at ${overallPct}%. Tap to view your subjects.`,
+            summaryText: "Academic Update",
+            smallIcon: "ic_stat_attendx",
+            largeIcon: "attendx_notification_icon",
+            iconColor: "#3B82F6",
+            channelId: "academic_briefings",
+            schedule: { at: new Date(Date.now() + 1000), allowWhileIdle: true },
+          }
+        ]
+      });
+      return true;
+    } catch (e) {
+      console.error("Failed to trigger test academic notification:", e);
+      return false;
     }
   }
 

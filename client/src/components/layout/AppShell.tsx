@@ -49,23 +49,29 @@ export const AppShell: React.FC<AppShellProps> = ({ title, onAddClick }) => {
   }, [location.pathname]);
 
   useEffect(() => {
-    fetchStats().then(() => {
-      NotificationService.autoScheduleFromTimetable().catch(() => {});
-    });
+    fetchStats();
     const handleUpdate = () => {
-      fetchStats().then(() => {
-        NotificationService.autoScheduleFromTimetable().catch(() => {});
-      });
+      fetchStats();
     };
     
     const handlePushRoute = (e: any) => {
       if (e.detail) {
+        try {
+          sessionStorage.removeItem("pending_push_route");
+        } catch (_) {}
         navigate(e.detail);
       }
     };
     
     window.addEventListener("attendance-updated", handleUpdate);
     window.addEventListener("push_route", handlePushRoute);
+    try {
+      const pendingRoute = sessionStorage.getItem("pending_push_route");
+      if (pendingRoute) {
+        sessionStorage.removeItem("pending_push_route");
+        navigate(pendingRoute);
+      }
+    } catch (_) {}
     return () => {
       window.removeEventListener("attendance-updated", handleUpdate);
       window.removeEventListener("push_route", handlePushRoute);
@@ -80,10 +86,11 @@ export const AppShell: React.FC<AppShellProps> = ({ title, onAddClick }) => {
   const isTimetable = location.pathname.startsWith("/timetable");
   const isPredictive = location.pathname.startsWith("/predictive");
   const isCalendar = location.pathname.startsWith("/calendar");
+  const isClassrooms = location.pathname.startsWith("/classrooms");
 
   useLayoutEffect(() => {
     // Reset all dynamically applied page themes
-    document.body.classList.remove("theme-nova-green", "theme-terrascape", "theme-aether", "theme-frovia", "theme-orbital");
+    document.body.classList.remove("theme-nova-green", "theme-terrascape", "theme-aether", "theme-frovia", "theme-orbital", "theme-classrooms-black");
 
     if (isSettings) {
       document.body.classList.add("theme-nova-green");
@@ -95,15 +102,17 @@ export const AppShell: React.FC<AppShellProps> = ({ title, onAddClick }) => {
       document.body.classList.add("theme-frovia");
     } else if (isCalendar) {
       document.body.classList.add("theme-orbital");
+    } else if (isClassrooms) {
+      document.body.classList.add("theme-classrooms-black");
     }
 
     return () => {
-      document.body.classList.remove("theme-nova-green", "theme-terrascape", "theme-aether", "theme-frovia", "theme-orbital");
+      document.body.classList.remove("theme-nova-green", "theme-terrascape", "theme-aether", "theme-frovia", "theme-orbital", "theme-classrooms-black");
     };
-  }, [isSettings, isToday, isTimetable, isPredictive, isCalendar]);
+  }, [isSettings, isToday, isTimetable, isPredictive, isCalendar, isClassrooms]);
 
   return (
-    <div className={`min-h-screen ${isSemester ? "theme-peakpath bg-transparent" : isSettings ? "bg-transparent" : isReports ? "bg-[#FDF8F5] dark:bg-[#1A090C]" : "bg-transparent"} text-foreground flex flex-col md:flex-row antialiased ${isSettings || isSemester ? "selection:bg-primary text-primary-foreground" : "selection:bg-[#74313A] selection:text-white"}`}>
+    <div className={`min-h-screen ${isClassrooms ? "bg-white dark:bg-[#000000]" : isSemester ? "theme-peakpath bg-transparent" : isSettings ? "bg-transparent" : isReports ? "bg-[#FDF8F5] dark:bg-[#1A090C]" : "bg-transparent"} text-foreground flex flex-col md:flex-row antialiased ${isClassrooms ? "selection:bg-white selection:text-black" : isSettings || isSemester ? "selection:bg-primary text-primary-foreground" : "selection:bg-[#74313A] selection:text-white"}`}>
       {/* Sidebar for Desktop */}
       <Sidebar />
 

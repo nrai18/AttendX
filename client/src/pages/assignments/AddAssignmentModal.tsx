@@ -1,6 +1,9 @@
 import React, { useState } from "react";
 import { X, Calendar } from "lucide-react";
 import { useAssignmentStore } from "../../stores/assignmentStore";
+import { SoundFX } from "../../utils/soundEffects";
+import { triggerDynamicHUD } from "../../components/ui/dynamic-island-hud";
+import { hapticMedium } from "../../utils/haptics";
 
 export function AddAssignmentModal({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }) {
   const { addAssignment } = useAssignmentStore();
@@ -33,12 +36,20 @@ export function AddAssignmentModal({ isOpen, onClose }: { isOpen: boolean, onClo
     await addAssignment({
       title,
       description,
-      deadline: new Date(deadline).toISOString(),
+      deadline: (() => {
+        const d = new Date(deadline);
+        return !isNaN(d.getTime()) ? d.toISOString() : new Date().toISOString();
+      })(),
       priority,
     });
     // We should also trigger the scheduling
     const { NotificationService } = await import("../../services/NotificationService");
     await NotificationService.scheduleAssignmentReminders();
+    
+    // Tactile delight & audio feedback
+    SoundFX.playSnapPopSound();
+    hapticMedium();
+    triggerDynamicHUD({ type: "sparkle", label: "Assignment Scheduled" });
     
     setIsSubmitting(false);
     onClose();
@@ -62,7 +73,7 @@ export function AddAssignmentModal({ isOpen, onClose }: { isOpen: boolean, onClo
               value={title}
               onChange={e => setTitle(e.target.value)}
               className="w-full bg-slate-50 dark:bg-[#050505]/50 border-2 border-slate-300 dark:border-[#333333] rounded-none focus:border-[#E63946] focus:outline-none p-3 text-foreground placeholder:text-muted-foreground"
-              placeholder="e.g. Physics Lab Report"
+              placeholder="Enter assignment title..."
             />
           </div>
           <div>
@@ -71,7 +82,7 @@ export function AddAssignmentModal({ isOpen, onClose }: { isOpen: boolean, onClo
               value={description}
               onChange={e => setDescription(e.target.value)}
               className="w-full bg-slate-50 dark:bg-[#050505]/50 border-2 border-slate-300 dark:border-[#333333] rounded-none focus:border-[#E63946] focus:outline-none p-3 text-foreground placeholder:text-muted-foreground h-24"
-              placeholder="Details..."
+              placeholder="Description or notes (optional)..."
             />
           </div>
           <div>

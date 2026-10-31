@@ -13,6 +13,7 @@ const upload = multer({
 router.use(authenticate);
 
 router.get("/", EventController.getEvents);
+router.post("/", EventController.createEvent);
 router.post("/ocr-import", upload.single("file"), EventController.ocrImport);
 router.get("/import-rag/cache", CalendarRagController.getCache);
 router.delete("/import-rag/cache", CalendarRagController.clearCache);

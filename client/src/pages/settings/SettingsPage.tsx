@@ -23,7 +23,10 @@ import { TimedUndoAction } from "../../components/ui/timed-undo-action";
 import { EditProfile, ProfileData } from "../../components/ui/edit-profile";
 import { VolumetricRays } from "../../components/ui/volumetric-rays";
 import { LinkedDevicesModal } from "../../components/ui/linked-devices";
+import { confirmDeleteToast } from "../../components/ui/confirm-delete-toast";
 import { SemesterTransitionModal } from "../../components/semester/SemesterTransitionModal";
+import { SoundFX } from "../../utils/soundEffects";
+import { triggerDynamicHUD } from "../../components/ui/dynamic-island-hud";
 import {
   Settings,
   Target,
@@ -34,6 +37,8 @@ import {
   CheckCircle2,
   Moon,
   Sun,
+  Volume2,
+  VolumeX,
   Laptop,
   RefreshCw,
   ShieldAlert,
@@ -53,6 +58,7 @@ import {
   Users,
   Info,
   Send,
+  GraduationCap,
   Mail,
   Phone,
   HelpCircle,
@@ -62,7 +68,9 @@ import {
   Calendar,
   FileArchive,
   History,
+  Bell,
 } from "lucide-react";
+import { format, formatDistanceToNow } from "date-fns";
 
 import { useThemeStore } from "../../stores/themeStore";
 import {
@@ -74,76 +82,300 @@ import { OTAUpdateModal } from "../../components/common/OTAUpdateModal";
 import { downloadBlob } from "../../lib/download";
 import { FeedbackModal } from "../../components/support/FeedbackModal";
 import { ChangelogModal } from "../../components/settings/ChangelogModal";
-import { NotificationService } from "../../services/NotificationService";
+import { NotificationService, calculateNextSummaryDates } from "../../services/NotificationService";
 import { hapticSelection, hapticLight } from "../../utils/haptics";
 
 export const SettingsPage: React.FC = () => {
   const currentAppVersion = (Capacitor.isNativePlatform() ? localStorage.getItem("app_version") : null) || import.meta.env.VITE_APP_VERSION || "4.2.0";
   const location = useLocation();
+  const deletedDocIdsRef = useRef<Set<string>>(new Set());
 
   const renderDocuments = (type: string) => {
     // For backups, only show the most recent one (index 0 because it's sorted desc by createdAt on backend)
     const safeDocs = Array.isArray(storedDocuments) ? storedDocuments : [];
-    let docs = safeDocs.filter((d: any) => d && d.type === type);
+    let docs = safeDocs.filter((d: any) => d && d.type === type && (!deletedDocIdsRef.current.has(d.id) || shreddingDocId === d.id));
     if (type === "BACKUP" && docs.length > 0) {
       docs = [docs[0]];
     }
     
     if (docs.length === 0) return null;
+    const STRIP_COUNT = 12;
+    const strips = Array.from({ length: STRIP_COUNT }, (_, i) => i);
+
     return (
-      <div className="flex flex-col gap-2 w-full mt-3">
-        {docs.map((doc: any) => (
-          <div
-            key={doc.id}
-            className="flex items-center justify-between bg-muted/30 p-2 rounded-lg border border-border"
-          >
-            <span className="text-xs font-medium truncate max-w-[200px] text-foreground">
-              {doc.name}
-            </span>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={async () => {
-                  try {
-                    const res = await api.get(`/documents/${doc.id}/download`, { responseType: 'blob' });
-                    const blob = res.data instanceof Blob ? res.data : new Blob([res.data], { type: doc.mimeType });
-                    await downloadBlob(blob, doc.name);
-                  } catch (e) {
-                    console.error(e);
-                    toast.error("Failed to download document.");
-                  }
+      <div className="flex flex-col gap-3 w-full mt-3">
+        <style>{`
+          @keyframes shredderChassisTremor {
+            0% { transform: translate(0px, 0px) rotate(0deg); }
+            25% { transform: translate(-0.8px, 0.5px) rotate(-0.15deg); }
+            50% { transform: translate(0.6px, -0.6px) rotate(0.12deg); }
+            75% { transform: translate(-0.5px, -0.4px) rotate(-0.08deg); }
+            100% { transform: translate(0.7px, 0.4px) rotate(0.15deg); }
+          }
+          @keyframes shredCardFeedDown {
+            0% {
+              transform: translateY(0);
+              opacity: 1;
+              clip-path: inset(0 0 0% 0);
+            }
+            45% {
+              transform: translateY(12px);
+              opacity: 0.85;
+              clip-path: inset(0 0 50% 0);
+            }
+            85% {
+              transform: translateY(28px);
+              opacity: 0.3;
+              clip-path: inset(0 0 95% 0);
+            }
+            100% {
+              transform: translateY(36px);
+              opacity: 0;
+              clip-path: inset(0 0 100% 0);
+              visibility: hidden;
+            }
+          }
+          @keyframes shredRibbonGravityPhysics {
+            0% {
+              transform: perspective(700px) translateY(-14px) rotateX(0deg) rotateY(0deg) skewX(0deg);
+              opacity: 0;
+            }
+            12% {
+              opacity: 1;
+            }
+            40% {
+              transform: perspective(700px) translateY(18px) rotateY(var(--strip-roty)) skewX(var(--strip-skewx)) rotateZ(-2deg);
+            }
+            70% {
+              transform: perspective(700px) translateY(55px) rotateY(calc(var(--strip-roty) * -0.7)) skewX(calc(var(--strip-skewx) * -0.6)) rotateZ(3deg);
+              opacity: 0.95;
+              filter: blur(0px);
+            }
+            100% {
+              transform: perspective(700px) translateY(115px) rotateY(calc(var(--strip-roty) * 1.6)) skewX(calc(var(--strip-skewx) * 1.3)) rotateZ(6deg);
+              opacity: 0;
+              filter: blur(2.5px);
+            }
+          }
+          @keyframes shredLaserFlicker {
+            0%, 100% { opacity: 0.75; box-shadow: 0 0 8px #ef4444, 0 0 16px rgba(239,68,68,0.7); }
+            50% { opacity: 1; box-shadow: 0 0 14px #ff0033, 0 0 24px rgba(255,0,51,0.95); }
+          }
+          @keyframes shredChadDrift {
+            0% { transform: translateY(0) rotate(0deg) scale(1); opacity: 0.9; }
+            50% { transform: translateY(45px) translateX(var(--drift-x, 8px)) rotate(180deg) scale(0.8); opacity: 0.7; }
+            100% { transform: translateY(95px) translateX(calc(var(--drift-x, 8px) * 1.8)) rotate(360deg) scale(0.3); opacity: 0; }
+          }
+          @keyframes shredderContainerCollapse {
+            0%, 75% { max-height: 180px; opacity: 1; margin-bottom: 0.5rem; }
+            100% { max-height: 0px; opacity: 0; margin-bottom: 0px; padding: 0px; visibility: hidden; }
+          }
+        `}</style>
+        {docs.map((doc: any) => {
+          const isShredding = shreddingDocId === doc.id;
+
+          if (isShredding) {
+            return (
+              <div
+                key={doc.id}
+                className="relative w-full rounded-2xl overflow-visible pointer-events-none select-none my-1"
+                style={{
+                  minHeight: "68px",
+                  zIndex: 60,
+                  animation: "shredderContainerCollapse 2.4s cubic-bezier(0.4, 0, 0.2, 1) forwards",
                 }}
-                className="text-xs flex items-center gap-1 text-primary hover:underline cursor-pointer"
               >
-                <Download className="w-3.5 h-3.5" /> Download
-              </button>
-              <button
-                onClick={() => {
-                  toast("Delete Document", {
-                    description: "Are you sure you want to delete this document?",
-                    action: {
-                      label: "Delete",
-                      onClick: async () => {
-                        try {
-                          await api.delete(`/documents/${doc.id}`);
-                          const { data } = await api.get("/documents");
-                          setStoredDocuments(Array.isArray(data) ? data : (data?.documents || []));
-                          // Document removed from list in place
-                        } catch (e) {
-                          console.error(e);
-                          toast.error("Failed to delete document.");
-                        }
+                {/* 1. INDUSTRIAL MECHANICAL SHREDDER MOUTH CHASSIS */}
+                <div
+                  className="w-full bg-gradient-to-b from-zinc-900 via-zinc-950 to-black border border-rose-500/50 rounded-xl p-2 shadow-2xl relative overflow-hidden"
+                  style={{
+                    animation: "shredderChassisTremor 0.06s infinite alternate ease-in-out",
+                    boxShadow: "0 12px 30px -4px rgba(239, 68, 68, 0.4), inset 0 1px 1px rgba(255,255,255,0.15)",
+                  }}
+                >
+                  <div className="flex items-center justify-between pb-1.5 px-1">
+                    <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-rose-400 flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping inline-block" />
+                      Industrial Document Shredder
+                    </span>
+                    <span className="text-[10px] font-mono font-bold text-rose-300 tabular-nums">
+                      FEEDING • 2.4s
+                    </span>
+                  </div>
+
+                  {/* Shredder Aperture Slot with Laser Warning Line */}
+                  <div className="relative w-full h-3 bg-black/95 rounded-md overflow-hidden border border-white/10 shadow-inner flex items-center justify-center">
+                    {/* Laser Beam */}
+                    <div
+                      className="absolute inset-x-0 h-[2px] bg-rose-500"
+                      style={{ animation: "shredLaserFlicker 0.12s infinite alternate" }}
+                    />
+                    {/* Rotating Teeth Blades SVG Pattern */}
+                    <div
+                      className="absolute inset-0 opacity-40 mix-blend-screen"
+                      style={{
+                        backgroundImage: "repeating-linear-gradient(90deg, transparent 0px, transparent 4px, rgba(255,255,255,0.2) 4px, rgba(255,255,255,0.2) 8px)",
+                      }}
+                    />
+                  </div>
+                </div>
+
+                {/* 2. INTACT DOCUMENT CARD FEEDING DOWN INTO MOUTH */}
+                <div
+                  className="relative w-full mt-1"
+                  style={{
+                    animation: "shredCardFeedDown 0.95s cubic-bezier(0.35, 0, 0.25, 1) forwards",
+                  }}
+                >
+                  <div className="flex items-center justify-between bg-zinc-900/90 text-zinc-100 p-2.5 rounded-xl border border-rose-500/40 shadow-md">
+                    <span className="text-xs font-semibold truncate max-w-[240px] text-white">
+                      {doc.name}
+                    </span>
+                    <span className="text-[10px] font-mono font-bold text-rose-400 bg-rose-500/15 px-2 py-0.5 rounded-md border border-rose-500/30">
+                      SHREDDING
+                    </span>
+                  </div>
+                </div>
+
+                {/* 3. 12 VERTICAL PAPER RIBBON STRIPS EMERGING IN 3D PERSPECTIVE */}
+                <div
+                  className="absolute top-12 inset-x-0 flex w-full pointer-events-none"
+                  style={{ perspective: "900px", zIndex: 65 }}
+                >
+                  {strips.map((index) => {
+                    const centerDist = Math.abs(index - STRIP_COUNT / 2);
+                    const delayMs = centerDist * 32 + (index % 2) * 18;
+                    const rotY = (index % 2 === 0 ? 1 : -1) * (22 + (index % 3) * 6);
+                    const skewX = (index % 2 === 0 ? -1 : 1) * (7 + (index % 4) * 2);
+
+                    return (
+                      <div
+                        key={index}
+                        className="relative h-24 overflow-hidden"
+                        style={{
+                          width: `${100 / STRIP_COUNT}%`,
+                          transformOrigin: "top center",
+                          animation: `shredRibbonGravityPhysics 1.6s cubic-bezier(0.25, 1, 0.5, 1) ${delayMs}ms forwards`,
+                          backfaceVisibility: "hidden",
+                          // @ts-ignore
+                          "--strip-roty": `${rotY}deg`,
+                          // @ts-ignore
+                          "--strip-skewx": `${skewX}deg`,
+                        }}
+                      >
+                        {/* Horizontal clone of card content for seamless ribbon continuity */}
+                        <div
+                          className="absolute top-0 left-0"
+                          style={{
+                            width: `${STRIP_COUNT * 100}%`,
+                            transform: `translateX(-${index * (100 / STRIP_COUNT)}%)`,
+                          }}
+                        >
+                          <div className="flex items-center justify-between bg-zinc-800 text-zinc-200 p-2.5 rounded-md border-x border-dashed border-white/20 shadow-sm">
+                            <span className="text-xs font-semibold truncate max-w-[240px] text-white">
+                              {doc.name}
+                            </span>
+                            <span className="text-[10px] font-mono font-bold text-rose-300">
+                              SHRED
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* 4. FLOATING MICRO CONFETTI CHADS */}
+                <div className="absolute top-14 inset-x-4 h-24 pointer-events-none overflow-hidden">
+                  {[0, 1, 2, 3, 4, 5, 6, 7].map((chadIdx) => (
+                    <div
+                      key={chadIdx}
+                      className="absolute w-1.5 h-2 bg-rose-400/80 rounded-xs"
+                      style={{
+                        left: `${12 + chadIdx * 11}%`,
+                        animation: `shredChadDrift ${1.4 + (chadIdx % 3) * 0.3}s cubic-bezier(0.2, 0.8, 0.4, 1) ${chadIdx * 75}ms forwards`,
+                        // @ts-ignore
+                        "--drift-x": `${(chadIdx % 2 === 0 ? 1 : -1) * (10 + chadIdx * 3)}px`,
+                      }}
+                    />
+                  ))}
+                </div>
+              </div>
+            );
+          }
+
+          return (
+            <div
+              key={doc.id}
+              className="flex items-center justify-between bg-muted/30 p-2 rounded-lg border border-border transition-all hover:border-border/80"
+            >
+              <span className="text-xs font-medium truncate max-w-[200px] text-foreground">
+                {doc.name}
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      const res = await api.get(`/documents/${doc.id}/download`, { responseType: 'blob' });
+                      const blob = res.data instanceof Blob ? res.data : new Blob([res.data], { type: doc.mimeType });
+                      await downloadBlob(blob, doc.name);
+                    } catch (e) {
+                      console.error(e);
+                      toast.error("Failed to download document.");
+                    }
+                  }}
+                  className="text-xs flex items-center gap-1 text-primary hover:underline cursor-pointer"
+                >
+                  <Download className="w-3.5 h-3.5" /> Download
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    SoundFX.warmUp();
+                    confirmDeleteToast({
+                      title: "Delete Stored Document",
+                      description: "Are you sure you want to permanently delete this document?",
+                      itemName: doc.name,
+                      confirmLabel: "Delete Document",
+                      onConfirm: async () => {
+                        // 1. Play zero-latency authentic electric shredder audio suite immediately
+                        SoundFX.playShredderSound(2.4, 0.35);
+
+                        // 2. Trigger visual shredder animation
+                        setShreddingDocId(doc.id);
+
+                        // 3. Dynamic Island HUD fires only AFTER ribbons finish descent into the bin (at 2.1s)
+                        setTimeout(() => {
+                          triggerDynamicHUD({ type: "trash", label: "Document Shredded", durationMs: 3500 });
+                        }, 2100);
+
+                        // 4. Smooth local eviction at 2.4s so card never pops back
+                        setTimeout(async () => {
+                          deletedDocIdsRef.current.add(doc.id);
+                          setStoredDocuments((prev) => (Array.isArray(prev) ? prev.filter((d) => d.id !== doc.id && !deletedDocIdsRef.current.has(d.id)) : []));
+                          setShreddingDocId(null);
+                          try {
+                            await api.delete(`/documents/${doc.id}`);
+                            const { data } = await api.get("/documents");
+                            const freshDocs = Array.isArray(data) ? data : (data?.documents || []);
+                            setStoredDocuments(freshDocs.filter((d: any) => !deletedDocIdsRef.current.has(d.id)));
+                          } catch (e) {
+                            console.error(e);
+                            toast.error("Failed to delete document.");
+                          }
+                        }, 2400);
                       }
-                    },
-                    cancel: { label: "Cancel", onClick: () => {} }
-                  });
-                }}
-                className="text-xs flex items-center gap-1 text-rose-500 hover:text-rose-600 hover:underline cursor-pointer ml-2"
-              >
-                <X className="w-3.5 h-3.5" /> Delete
-              </button>
+                    });
+                  }}
+                  className="text-xs flex items-center gap-1 text-rose-500 hover:text-rose-600 hover:underline cursor-pointer ml-2"
+                >
+                  <X className="w-3.5 h-3.5" /> Delete
+                </button>
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     );
   };
@@ -175,6 +407,54 @@ export const SettingsPage: React.FC = () => {
   const { theme, setTheme } = useThemeStore();
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+
+  // Animation Sound Effects Toggle (Default: OFF)
+  const [soundEffectsEnabled, setSoundEffectsEnabled] = useState(() => SoundFX.isEnabled());
+
+  useEffect(() => {
+    const handleToggled = (e: any) => {
+      setSoundEffectsEnabled(e.detail?.enabled ?? SoundFX.isEnabled());
+    };
+    window.addEventListener("sound-effects-toggled", handleToggled);
+    return () => window.removeEventListener("sound-effects-toggled", handleToggled);
+  }, []);
+
+  useEffect(() => {
+    const secParam = searchParams.get("section") || searchParams.get("feature");
+    if (secParam === "sounds" || secParam === "sound-effects") {
+      setTimeout(() => {
+        const el = document.getElementById("setting-animation-sounds");
+        if (el) {
+          el.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+      }, 200);
+    }
+  }, [searchParams]);
+
+  const handleToggleSoundEffects = () => {
+    hapticSelection();
+    const nextVal = !soundEffectsEnabled;
+    SoundFX.setEnabled(nextVal);
+    setSoundEffectsEnabled(nextVal);
+    localStorage.setItem("onboarding_sound_effects", "true");
+    localStorage.setItem("attendx_sound_effects_configured", "true");
+    api.patch("/users/onboarding-status", { step: "sound_effects" }).catch(() => {});
+    window.dispatchEvent(new CustomEvent("onboarding-step-completed", { detail: { step: "sound_effects" } }));
+    if (nextVal) {
+      SoundFX.playSnapPopSound();
+      triggerDynamicHUD({
+        type: "sparkle",
+        label: "Animation Sounds Enabled",
+        subtitle: "Action sounds active (Muted in Voice Mode)",
+      });
+    } else {
+      triggerDynamicHUD({
+        type: "success",
+        label: "Animation Sounds Muted",
+        subtitle: "Default silent micro-physics",
+      });
+    }
+  };
 
   // App Info & Sub-Modal States (initialized synchronously from URL to prevent 2-render animation lag)
   const [showAppInfoModal, setShowAppInfoModal] = useState(() => initialSec === "app-info");
@@ -229,6 +509,7 @@ export const SettingsPage: React.FC = () => {
 
   // Stored Documents State
   const [storedDocuments, setStoredDocuments] = useState<any[]>([]);
+  const [shreddingDocId, setShreddingDocId] = useState<string | null>(null);
 
   // Dynamic Update Manifest
   const [updateManifest, setUpdateManifest] = useState<any>({
@@ -267,7 +548,8 @@ export const SettingsPage: React.FC = () => {
     const fetchDocs = async () => {
       try {
         const { data } = await api.get("/documents");
-        setStoredDocuments(Array.isArray(data) ? data : (data?.documents || []));
+        const freshDocs = Array.isArray(data) ? data : (data?.documents || []);
+        setStoredDocuments(freshDocs.filter((d: any) => !deletedDocIdsRef.current.has(d.id)));
       } catch (err) {
         console.error("Failed to fetch documents", err);
       }
@@ -347,9 +629,58 @@ export const SettingsPage: React.FC = () => {
   const { config: notifConfig, updateConfig } = useNotificationStore();
 
   useEffect(() => {
-    // Schedule updates whenever frequency or time changes
+    // Schedule updates whenever frequency, memory, or times change
     NotificationService.scheduleAcademicUpdates(reminderFrequency);
-  }, [reminderFrequency, notifConfig.summaryTime]);
+  }, [
+    reminderFrequency,
+    frequencyMemory,
+    notifConfig.summaryTime,
+    notifConfig.weeklySummaryTime,
+    notifConfig.monthlySummaryTime,
+    notifConfig.yearlySummaryTime,
+  ]);
+
+  const activeSummaryTime = notifConfig.summaryTime || "18:00";
+
+  const nextSummaryDate = React.useMemo(() => {
+    if (!reminderFrequency || reminderFrequency.type === 'Never') return null;
+    try {
+      const now = new Date();
+      const globalTime = notifConfig.summaryTime || "18:00";
+
+      if (reminderFrequency.type === 'Weekly') {
+        const weeklyDay = reminderFrequency.subValue || frequencyMemory?.Weekly || 'Sun';
+        const weeklyDates = calculateNextSummaryDates({ type: 'Weekly', subValue: weeklyDay }, globalTime, now);
+        return weeklyDates.length > 0 ? weeklyDates[0] : null;
+      }
+
+      if (reminderFrequency.type === 'Monthly') {
+        const monthlyDay = reminderFrequency.subValue || frequencyMemory?.Monthly || '1';
+        const monthlyDates = calculateNextSummaryDates({ type: 'Monthly', subValue: monthlyDay }, globalTime, now);
+        return monthlyDates.length > 0 ? monthlyDates[0] : null;
+      }
+
+      if (reminderFrequency.type === 'Daily') {
+        const dailyDates = calculateNextSummaryDates({ type: 'Daily' }, globalTime, now);
+        return dailyDates.length > 0 ? dailyDates[0] : null;
+      }
+
+      if (reminderFrequency.type === 'Yearly') {
+        const yearlyMonth = reminderFrequency.subValue || frequencyMemory?.Yearly || 'Jan';
+        const yearlyDates = calculateNextSummaryDates({ type: 'Yearly', subValue: yearlyMonth }, globalTime, now);
+        return yearlyDates.length > 0 ? yearlyDates[0] : null;
+      }
+
+      return null;
+    } catch {
+      return null;
+    }
+  }, [
+    reminderFrequency,
+    frequencyMemory,
+    notifConfig.summaryTime,
+  ]);
+
   // Reset Section Toggle
   const [enableReset, setEnableReset] = useState(false);
 
@@ -700,7 +1031,14 @@ export const SettingsPage: React.FC = () => {
             onClick: async () => {
               try {
                 await api.post(`/timetable/import/${activeSem.id}`, payload);
-                toast.success("Backup imported successfully!");
+                useCacheStore.getState().clearCache();
+                window.dispatchEvent(new CustomEvent("timetable-updated"));
+                triggerDynamicHUD({
+                  type: "sparkle",
+                  label: "Backup Imported Successfully",
+                  subtitle: "Schedule slots restored",
+                  durationMs: 4500,
+                });
               } catch (err) {
                 console.error(err);
                 toast.error("Failed to import backup.");
@@ -762,7 +1100,8 @@ export const SettingsPage: React.FC = () => {
       // Refresh documents after export
       try {
         const { data } = await api.get("/documents");
-        setStoredDocuments(Array.isArray(data) ? data : (data?.documents || []));
+        const freshDocs = Array.isArray(data) ? data : (data?.documents || []);
+        setStoredDocuments(freshDocs.filter((d: any) => !deletedDocIdsRef.current.has(d.id)));
       } catch (e) {}
     }
   };
@@ -773,6 +1112,16 @@ export const SettingsPage: React.FC = () => {
 
     // Reset input value so re-selecting the same file fires onChange
     e.target.value = "";
+
+    const isZip =
+      file.name.toLowerCase().endsWith(".zip") ||
+      file.type.includes("zip") ||
+      file.type === "application/octet-stream";
+
+    if (!isZip) {
+      toast.error("Please select a valid .zip archive file.");
+      return;
+    }
 
     toast("Are you sure? This will replace your active semester timetable, attendance, and events.", {
       action: {
@@ -797,16 +1146,24 @@ export const SettingsPage: React.FC = () => {
             useCacheStore.getState().clearCache();
             await useAttendanceStore.getState().fetchStats(true);
             window.dispatchEvent(new CustomEvent("attendance-updated"));
+            window.dispatchEvent(new CustomEvent("timetable-updated"));
+            window.dispatchEvent(new CustomEvent("events-updated"));
 
-            toast.success("Schedule, attendance, and events imported successfully!", { id: toastId });
+            triggerDynamicHUD({
+              type: "sparkle",
+              label: "ZIP Archive Imported Successfully",
+              subtitle: "Schedule, attendance, and events restored",
+              durationMs: 4500,
+            });
 
             // Refresh stored documents list
             try {
               const { data } = await api.get("/documents");
-              setStoredDocuments(Array.isArray(data) ? data : (data?.documents || []));
+              const freshDocs = Array.isArray(data) ? data : (data?.documents || []);
+              setStoredDocuments(freshDocs.filter((d: any) => !deletedDocIdsRef.current.has(d.id)));
             } catch (e) {}
 
-            setTimeout(() => (window.location.href = "/today"), 1200);
+            setTimeout(() => navigate("/today"), 800);
           } catch (err: any) {
             console.error("Failed to import ZIP", err);
             const msg = err.response?.data?.error || err.message || "Failed to import ZIP archive.";
@@ -824,6 +1181,9 @@ export const SettingsPage: React.FC = () => {
   // Trigger Resets
   const clearPersistedAttendanceAndSyncCaches = () => {
     useCacheStore.getState().clearCache();
+    useAttendanceStore.getState().invalidateInFlightStats();
+    useAttendanceStore.getState().fetchStats(true);
+    window.dispatchEvent(new Event("attendance-updated"));
     import("../../stores/offlineStore").then(({ useOfflineStore }) => useOfflineStore.getState().clearQueue()).catch(() => {});
     const partialKeys = [
       "attendx-attendance-cache",
@@ -852,13 +1212,19 @@ export const SettingsPage: React.FC = () => {
           subjectIds: selectedSubjectIds,
         });
         clearPersistedAttendanceAndSyncCaches();
-        toast.success("Attendance cleared for selected subjects!");
+        triggerDynamicHUD({
+          type: "trash",
+          label: "Subject Attendance Reset",
+          subtitle: "Selected subject logs cleared",
+        });
       } else if (resetModalType === "attendance") {
         await api.post("/users/reset-all-attendance");
         clearPersistedAttendanceAndSyncCaches();
-        toast.success(
-          "All attendance records and overrides deleted successfully!",
-        );
+        triggerDynamicHUD({
+          type: "trash",
+          label: "All Attendance Wiped",
+          subtitle: "Records and overrides deleted successfully",
+        });
       } else if (resetModalType === "timetable") {
         await api.post("/users/reset-timetable");
         clearPersistedAttendanceAndSyncCaches();
@@ -866,7 +1232,11 @@ export const SettingsPage: React.FC = () => {
         import("../../services/NotificationService")
           .then((m) => m.NotificationService.autoScheduleFromTimetable())
           .catch(() => {});
-        toast.success("Timetable schedule slots cleared successfully!");
+        triggerDynamicHUD({
+          type: "origami",
+          label: "Cascading Schedule Clear",
+          subtitle: "All weekly class slots removed",
+        });
       } else if (resetModalType === "events") {
         await api.post("/users/reset-events");
         clearPersistedAttendanceAndSyncCaches();
@@ -874,10 +1244,16 @@ export const SettingsPage: React.FC = () => {
         import("../../services/NotificationService")
           .then((m) => m.NotificationService.autoScheduleFromTimetable())
           .catch(() => {});
-        toast.success("Academic calendar events removed successfully!");
+        triggerDynamicHUD({
+          type: "trash",
+          label: "Calendar Events Removed",
+          subtitle: "Academic calendar and holidays cleared",
+        });
       } else if (resetModalType === "entire") {
         await api.post("/users/reset-data");
         useCacheStore.getState().clearCache();
+        useCacheStore.getState().setReminderFrequency({ type: 'Daily' });
+        useNotificationStore.getState().resetConfig();
 
         // Sync reset targetAttendance (75%) into persisted auth store so UI does not show stale criteria
         if (user && setUser) {
@@ -886,7 +1262,7 @@ export const SettingsPage: React.FC = () => {
         setTargetAttendance(75);
         setStoredDocuments([]);
 
-        // Wipe all local storage keys for attendance, API responses, assignments, and onboarding
+        // Wipe all local storage keys for attendance, API responses, assignments, notifications, and onboarding
         import("../../stores/offlineStore").then(({ useOfflineStore }) => useOfflineStore.getState().clearQueue()).catch(() => {});
         const keysToRemove = [
           "attendx-attendance-cache",
@@ -894,9 +1270,14 @@ export const SettingsPage: React.FC = () => {
           "attendx-assignments",
           "attendx-sync-storage",
           "attendx-offline-queue",
+          "attendx-notification-settings",
+          "attendx-global-cache",
+          "onboarding_attendance",
           "onboarding_voice_mode",
           "onboarding_predictive",
           "onboarding_peer_sync",
+          "onboarding_sound_effects",
+          "attendx_sound_effects_configured",
           "onboarding_dismissed",
         ];
         keysToRemove.forEach((k) => {
@@ -913,7 +1294,12 @@ export const SettingsPage: React.FC = () => {
           await m.NotificationService.cancelAll();
         } catch (e) {}
 
-        toast.success("App data reset successfully! Reloading...");
+        triggerDynamicHUD({
+          type: "trash",
+          label: "App Factory Reset",
+          subtitle: "All data cleared • Reloading...",
+          durationMs: 4500,
+        });
         setTimeout(() => {
           window.location.href = "/today";
         }, 1200);
@@ -969,7 +1355,7 @@ export const SettingsPage: React.FC = () => {
       />
       <input
         type="file"
-        accept=".zip,application/zip,application/x-zip-compressed,multipart/x-zip"
+        accept=".zip,application/zip,application/x-zip-compressed,multipart/x-zip,application/octet-stream,*/*"
         ref={csvInputRef}
         onChange={handleImportCSV}
         className="hidden"
@@ -1418,14 +1804,14 @@ export const SettingsPage: React.FC = () => {
             <div className="flex items-center gap-1 bg-muted p-1 rounded-xl">
               <button
                 type="button"
-                onClick={() => { hapticSelection(); setTheme("dark"); }}
+                onClick={(e) => { hapticSelection(); setTheme("dark", e); }}
                 className={`p-1.5 rounded-lg transition-all ${theme === "dark" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground"}`}
               >
                 <Moon className="w-4 h-4" />
               </button>
               <button
                 type="button"
-                onClick={() => { hapticSelection(); setTheme("light"); }}
+                onClick={(e) => { hapticSelection(); setTheme("light", e); }}
                 className={`p-1.5 rounded-lg transition-all ${theme === "light" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground"}`}
               >
                 <Sun className="w-4 h-4" />
@@ -1433,6 +1819,34 @@ export const SettingsPage: React.FC = () => {
 
             </div>
           </div>
+
+          {/* Animation & Micro-Physics Sounds (Default: OFF) */}
+          <div id="setting-animation-sounds" className="p-4 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className={`w-9 h-9 rounded-xl flex items-center justify-center transition-colors ${
+                soundEffectsEnabled ? "bg-amber-500/10 text-amber-500" : "bg-muted text-muted-foreground"
+              }`}>
+                {soundEffectsEnabled ? <Volume2 className="w-5 h-5" /> : <VolumeX className="w-5 h-5" />}
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-foreground">Animation Sounds</h3>
+                <p className="text-xs text-muted-foreground">
+                  {soundEffectsEnabled
+                    ? "Enabled • Action sound effects (Muted in Voice Mode)"
+                    : "Off by default • Silent UI actions & micro-physics"}
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={handleToggleSoundEffects}
+              className={`w-11 h-6 rounded-full transition-colors relative cursor-pointer ${soundEffectsEnabled ? 'bg-primary' : 'bg-muted'}`}
+            >
+              <div className={`w-5 h-5 bg-white rounded-full absolute top-0.5 transition-transform ${soundEffectsEnabled ? 'left-[22px]' : 'left-0.5'}`} />
+            </button>
+          </div>
+
+
         </div>
       </div>
 
@@ -1457,29 +1871,50 @@ export const SettingsPage: React.FC = () => {
               memory={frequencyMemory}
             />
           </div>
-          {['Weekly', 'Monthly', 'Yearly'].includes(reminderFrequency.type) && (
+          {reminderFrequency.type !== 'Never' && (
             <div className="w-full flex items-center justify-between p-4 mt-2 bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-black/5 dark:border-white/5">
               <div className="flex flex-col gap-0.5">
-                <span className="text-sm font-bold text-slate-900 dark:text-white">Summary Time</span>
-                <span className="text-xs text-slate-500 dark:text-slate-400">When to send reports</span>
+                <span className="text-sm font-bold text-slate-900 dark:text-white">
+                  {reminderFrequency.type === 'Daily' ? 'Briefing Time' : 'Summary Time'}
+                </span>
+                <span className="text-xs text-slate-500 dark:text-slate-400">
+                  {(() => {
+                    const parts = activeSummaryTime.split(':');
+                    const h = parseInt(parts[0], 10) || 0;
+                    const m = parseInt(parts[1], 10) || 0;
+                    const period = h >= 12 ? 'PM' : 'AM';
+                    const displayH = h % 12 === 0 ? 12 : h % 12;
+                    const displayM = String(m).padStart(2, '0');
+                    const extra = h < 5 ? ' (early morning)' : h < 12 ? ' (morning)' : h < 17 ? ' (afternoon)' : ' (evening)';
+                    return `${displayH}:${displayM} ${period}${extra}`;
+                  })()}
+                </span>
               </div>
               <input
                 type="time"
-                value={
-                  reminderFrequency.type === 'Weekly' ? (notifConfig.weeklySummaryTime || notifConfig.summaryTime || "18:00") :
-                  reminderFrequency.type === 'Monthly' ? (notifConfig.monthlySummaryTime || notifConfig.summaryTime || "18:00") :
-                  reminderFrequency.type === 'Yearly' ? (notifConfig.yearlySummaryTime || notifConfig.summaryTime || "18:00") :
-                  (notifConfig.summaryTime || "18:00")
-                }
+                value={activeSummaryTime}
                 onChange={(e) => {
                   hapticSelection();
-                  if (reminderFrequency.type === 'Weekly') updateConfig({ weeklySummaryTime: e.target.value });
-                  else if (reminderFrequency.type === 'Monthly') updateConfig({ monthlySummaryTime: e.target.value });
-                  else if (reminderFrequency.type === 'Yearly') updateConfig({ yearlySummaryTime: e.target.value });
-                  else updateConfig({ summaryTime: e.target.value });
+                  updateConfig({ summaryTime: e.target.value });
                 }}
                 className="bg-white dark:bg-black text-slate-900 dark:text-white text-sm font-semibold rounded-lg px-3 py-1.5 border border-black/10 dark:border-white/10 outline-none focus:ring-2 focus:ring-slate-900 dark:focus:ring-white cursor-pointer"
               />
+            </div>
+          )}
+
+          {nextSummaryDate && reminderFrequency.type !== 'Never' && (
+            <div className="flex items-center p-3.5 mt-2 bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-black/5 dark:border-white/5 gap-3">
+              <div className="w-8 h-8 rounded-lg bg-blue-500/10 text-blue-500 flex items-center justify-center shrink-0">
+                <Bell className="w-4 h-4" />
+              </div>
+              <div className="flex flex-col gap-0.5">
+                <span className="text-xs font-bold text-slate-900 dark:text-white">
+                  Next Scheduled Report
+                </span>
+                <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                  {format(nextSummaryDate, "EEE, d MMM yyyy 'at' h:mm a")} ({formatDistanceToNow(nextSummaryDate, { addSuffix: true })})
+                </span>
+              </div>
             </div>
           )}
         </div>
@@ -1698,6 +2133,34 @@ export const SettingsPage: React.FC = () => {
               </div>
             </div>
             <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
+          </button>
+
+          {/* Classrooms & Sections */}
+          <button
+            onClick={() => {
+
+              hapticSelection();
+              navigate("/classrooms");
+            }}
+            className="w-full text-left p-4 hover:bg-muted/50 transition-colors flex items-center justify-between cursor-pointer group"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+                <GraduationCap className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-foreground group-hover:text-emerald-500 transition-colors flex items-center gap-2">
+                  Classrooms & Sections
+                  <span className="text-[10px] font-mono font-bold uppercase px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/25">
+                    Batch Hub
+                  </span>
+                </h3>
+                <p className="text-xs text-muted-foreground">
+                  Synchronize batch timetables, lecture changes, and CR notices.
+                </p>
+              </div>
+            </div>
+            <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:translate-x-0.5 transition-transform shrink-0" />
           </button>
         </div>
       </div>

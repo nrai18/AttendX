@@ -6,6 +6,7 @@ export const PredictiveAttendancePage: React.FC = () => {
   useEffect(() => {
     localStorage.setItem("onboarding_predictive", "true");
     api.patch("/users/onboarding-status", { step: "predictive" }).catch(() => {});
+    window.dispatchEvent(new CustomEvent("onboarding-step-completed", { detail: { step: "predictive" } }));
   }, []);
 
   return (

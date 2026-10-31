@@ -3,7 +3,7 @@ import { format, addMonths, subMonths, startOfMonth, endOfMonth, startOfWeek, en
 import { ChevronLeft, ChevronRight, Upload, Calendar as CalendarIcon, Loader2, Sparkles, AlertTriangle, ListFilter, AlignLeft, CalendarDays, Timer, CheckCircle2, Plus, Trash2, Palmtree, GraduationCap } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { api } from "../../lib/api";
-import { hapticMedium } from "../../utils/haptics";
+import { hapticMedium, hapticHeavy } from "../../utils/haptics";
 import { EventWizardModal } from "./EventWizardModal";
 import { AddEventModal } from "./AddEventModal";
 import { CreateSemesterModal } from "../../components/semester/CreateSemesterModal";
@@ -18,6 +18,8 @@ import { useBackHandlerStore } from "../../stores/backHandlerStore";
 import { DiscreteTabs } from "../../components/ui/discrete-tabs";
 import { toast } from "sonner";
 import { TimedUndoAction } from "../../components/ui/timed-undo-action";
+import { SoundFX } from "../../utils/soundEffects";
+import { triggerDynamicHUD } from "../../components/ui/dynamic-island-hud";
 import { PeakpathRays } from "../../components/ui/peakpath-rays";
 import { ScrollToTopButton } from "../../components/common/ScrollToTopButton";
 
@@ -67,92 +69,7 @@ interface TrashTossAnim {
 }
 
 const playTrashWhooshSound = () => {
-  try {
-    const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-    if (!AudioCtx) return;
-    const ctx = new AudioCtx();
-    const now = ctx.currentTime;
-
-    // 1. Multi-burst paper crumple rustles while card folds (0.0s - 1.15s)
-    const rustleTimes = [0.02, 0.28, 0.56, 0.85];
-    rustleTimes.forEach((offset, idx) => {
-      const bufferSize = Math.floor(ctx.sampleRate * 0.22);
-      const noiseBuffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
-      const output = noiseBuffer.getChannelData(0);
-      for (let i = 0; i < bufferSize; i++) {
-        output[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufferSize * 0.45));
-      }
-      const noise = ctx.createBufferSource();
-      noise.buffer = noiseBuffer;
-      const noiseFilter = ctx.createBiquadFilter();
-      noiseFilter.type = "bandpass";
-      noiseFilter.frequency.setValueAtTime(1100 + idx * 240, now + offset);
-      noiseFilter.Q.setValueAtTime(1.4, now + offset);
-      const noiseGain = ctx.createGain();
-      noiseGain.gain.setValueAtTime(0.16, now + offset);
-      noiseGain.gain.exponentialRampToValueAtTime(0.001, now + offset + 0.21);
-      noise.connect(noiseFilter);
-      noiseFilter.connect(noiseGain);
-      noiseGain.connect(ctx.destination);
-      noise.start(now + offset);
-    });
-
-    // 2. Long parabolic arc aerodynamic whoosh (1.15s - 3.10s)
-    const whooshDuration = 1.95;
-    const whooshBufferSize = Math.floor(ctx.sampleRate * whooshDuration);
-    const whooshBuffer = ctx.createBuffer(1, whooshBufferSize, ctx.sampleRate);
-    const wData = whooshBuffer.getChannelData(0);
-    for (let i = 0; i < whooshBufferSize; i++) {
-      wData[i] = Math.random() * 2 - 1;
-    }
-    const whooshSource = ctx.createBufferSource();
-    whooshSource.buffer = whooshBuffer;
-    const whooshFilter = ctx.createBiquadFilter();
-    whooshFilter.type = "bandpass";
-    whooshFilter.frequency.setValueAtTime(320, now + 1.15);
-    whooshFilter.frequency.exponentialRampToValueAtTime(920, now + 2.05);
-    whooshFilter.frequency.exponentialRampToValueAtTime(150, now + 3.08);
-    whooshFilter.Q.setValueAtTime(3.0, now + 1.15);
-    const whooshGain = ctx.createGain();
-    whooshGain.gain.setValueAtTime(0.005, now + 1.15);
-    whooshGain.gain.linearRampToValueAtTime(0.22, now + 2.05);
-    whooshGain.gain.exponentialRampToValueAtTime(0.001, now + 3.10);
-    whooshSource.connect(whooshFilter);
-    whooshFilter.connect(whooshGain);
-    whooshGain.connect(ctx.destination);
-    whooshSource.start(now + 1.15);
-
-    // 3. Trash bag catch thud + confirmation pop chime (3.10s - 3.65s)
-    const osc = ctx.createOscillator();
-    const thudGain = ctx.createGain();
-    osc.type = "triangle";
-    osc.frequency.setValueAtTime(165, now + 3.10);
-    osc.frequency.exponentialRampToValueAtTime(42, now + 3.48);
-    thudGain.gain.setValueAtTime(0.32, now + 3.10);
-    thudGain.gain.exponentialRampToValueAtTime(0.001, now + 3.50);
-    osc.connect(thudGain);
-    thudGain.connect(ctx.destination);
-    osc.start(now + 3.10);
-    osc.stop(now + 3.52);
-
-    const popOsc = ctx.createOscillator();
-    const popGain = ctx.createGain();
-    popOsc.type = "sine";
-    popOsc.frequency.setValueAtTime(520, now + 3.25);
-    popOsc.frequency.exponentialRampToValueAtTime(880, now + 3.52);
-    popGain.gain.setValueAtTime(0.14, now + 3.25);
-    popGain.gain.exponentialRampToValueAtTime(0.001, now + 3.58);
-    popOsc.connect(popGain);
-    popGain.connect(ctx.destination);
-    popOsc.start(now + 3.25);
-    popOsc.stop(now + 3.60);
-
-    setTimeout(() => {
-      ctx.close().catch(() => {});
-    }, 4700);
-  } catch {
-    // Ignore audio context errors if blocked by browser autoplay policy
-  }
+  SoundFX.playTrashGulpSound();
 };
 
 const resolveInitialActiveSemester = (userObj: any): Semester | null => {
@@ -243,6 +160,7 @@ export const SemesterHubPage = () => {
   const [isCreateSemesterOpen, setIsCreateSemesterOpen] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [isTransitionModalOpen, setIsTransitionModalOpen] = useState(false);
+  const [isClearingDomino, setIsClearingDomino] = useState(false);
 
   const setEventCardRef = useCallback((id: string, el: HTMLDivElement | null) => {
     if (el) {
@@ -363,6 +281,7 @@ export const SemesterHubPage = () => {
         fetchedEvents = normalizeEventsList(eventsRes.data);
       } else {
         setActiveSemester(null);
+        useAttendanceStore.setState({ activeSemesterId: null, hasActiveSemester: false, events: [] });
       }
       setEvents(fetchedEvents);
       
@@ -379,6 +298,7 @@ export const SemesterHubPage = () => {
         setActiveSemester(fallbackSem);
       } else {
         setActiveSemester(null);
+        useAttendanceStore.setState({ activeSemesterId: null, hasActiveSemester: false, events: [] });
       }
       const cache = useCacheStore.getState().semester;
       setEvents(normalizeEventsList(cache?.events?.length ? cache.events : (attendanceState.events as any) || []));
@@ -420,10 +340,12 @@ export const SemesterHubPage = () => {
     };
     window.addEventListener("attendance-updated", handleUpdate);
     window.addEventListener("events-updated", handleUpdate);
+    window.addEventListener("semester-updated", handleUpdate);
     return () => {
       if (debounceTimer) clearTimeout(debounceTimer);
       window.removeEventListener("attendance-updated", handleUpdate);
       window.removeEventListener("events-updated", handleUpdate);
+      window.removeEventListener("semester-updated", handleUpdate);
     };
   }, []);
 
@@ -474,8 +396,10 @@ export const SemesterHubPage = () => {
         activeSemester,
         events: next,
       });
+      useAttendanceStore.setState({ events: next as any });
       return next;
     });
+    window.dispatchEvent(new CustomEvent("events-updated"));
     scrollToAndHighlightEvent(normalized.id);
   }, [activeSemester, setCache, scrollToAndHighlightEvent]);
 
@@ -491,8 +415,10 @@ export const SemesterHubPage = () => {
           activeSemester,
           events: next,
         });
+        useAttendanceStore.setState({ events: next as any });
         return next;
       });
+      window.dispatchEvent(new CustomEvent("events-updated"));
       setHighlightedEventId((curr) => (curr === tempId ? realEvt.id : curr));
       setTimeout(() => {
         const el = eventCardRefs.current.get(realEvt.id);
@@ -537,11 +463,11 @@ export const SemesterHubPage = () => {
       }
       fetchCalendar(true);
       useAttendanceStore.getState().fetchStats(true).catch(() => {});
-      toast.success("Calendar imported successfully!", {
-        action: {
-          label: "View Calendar",
-          onClick: () => window.location.href = "/calendar?promptSync=true",
-        }
+      SoundFX.playSnapPopSound();
+      triggerDynamicHUD({
+        type: "sparkle",
+        label: "Calendar Events Imported",
+        subtitle: `${selectedEvents.length} events added`,
       });
     } catch (error) {
       console.error("Failed to save events:", error);
@@ -550,19 +476,86 @@ export const SemesterHubPage = () => {
   };
 
   const handleClearEvents = async () => {
+    if (events.length === 0) return;
     try {
-      setEvents([]);
-      await api.post(`/events/clear?target=all&semesterId=${activeSemester?.id || ''}`);
-      toast.success("Calendar events cleared");
-      useCacheStore.getState().setCache("calendar", null);
-      Promise.all([
-        fetchData(),
-        fetchCalendar(true),
-        useAttendanceStore.getState().fetchStats(true),
-      ]).catch(() => {});
+      // 1. Switch to timeline tab if not already on timeline or events so cards are mounted
+      if (activeTab !== "timeline" && activeTab !== "events") {
+        setActiveTab("timeline");
+      }
+
+      setIsClearingDomino(true);
+      hapticHeavy();
+      SoundFX.playDominoCascadeSound();
+      triggerDynamicHUD({
+        type: "trash",
+        label: "Cascading Calendar Disintegration...",
+        durationMs: 4800,
+      });
+
+      // 2. Smoothly scroll to the optimal height so the user gets a full screen of domino cards
+      const triggerOptimalScroll = () => {
+        const container =
+          document.getElementById("semester-journey-cards") ||
+          document.getElementById("semester-timeline-container") ||
+          document.getElementById("semester-events-list-container") ||
+          document.querySelector("[data-event-card]");
+
+        if (container) {
+          container.scrollIntoView({ behavior: "smooth", block: "start" });
+          const rect = container.getBoundingClientRect();
+          const scrollTop = window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop;
+          const targetY = Math.max(0, rect.top + scrollTop - 72);
+          window.scrollTo({ top: targetY, behavior: "smooth" });
+        }
+      };
+
+      setTimeout(triggerOptimalScroll, activeTab !== "timeline" && activeTab !== "events" ? 50 : 20);
+
+      // 3. Dynamic camera tracking down the cascade wave for long event lists
+      if (events.length > 5) {
+        setTimeout(() => {
+          const cards = document.querySelectorAll("[data-event-card]");
+          const midCard = cards[Math.min(cards.length - 1, 6)];
+          if (midCard) {
+            midCard.scrollIntoView({ behavior: "smooth", block: "center" });
+          }
+        }, 1200);
+      }
+
+      if (events.length > 10) {
+        setTimeout(() => {
+          const cards = document.querySelectorAll("[data-event-card]");
+          const endCard = cards[cards.length - 1];
+          if (endCard) {
+            endCard.scrollIntoView({ behavior: "smooth", block: "end" });
+          }
+        }, 2200);
+      }
+
+      // Run 4.5s Domino Cascade Wave across all timeline & event cards
+      setTimeout(async () => {
+        try {
+          await api.post(`/events/clear?target=all&semesterId=${activeSemester?.id || ''}`);
+          setEvents([]);
+          setIsClearingDomino(false);
+          useCacheStore.getState().setCache("calendar", null);
+          Promise.all([
+            fetchData(),
+            fetchCalendar(true),
+            useAttendanceStore.getState().fetchStats(true),
+          ]).catch(() => {});
+          triggerDynamicHUD({ type: "trash", label: "Calendar Events Cleared" });
+        } catch (error) {
+          console.error("Failed to clear events:", error);
+          toast.error("Failed to clear events.");
+          setIsClearingDomino(false);
+          fetchData();
+        }
+      }, 4500);
     } catch (error) {
-      console.error("Failed to clear events:", error);
+      console.error("Failed to initiate clear events:", error);
       toast.error("Failed to clear events.");
+      setIsClearingDomino(false);
     }
   };
 
@@ -570,11 +563,16 @@ export const SemesterHubPage = () => {
     event: AppEvent,
     e?: React.MouseEvent<HTMLButtonElement>
   ) => {
+    if (e) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
     const previousEvents = events;
+    SoundFX.warmUp();
     hapticMedium();
-    playTrashWhooshSound();
+    SoundFX.playTrashGulpSound();
 
-    // Measure card position for the burst + parabolic flight into trash bag animation
+    // Measure card position for the smooth parabolic flight into large trash can
     let startX = typeof window !== "undefined" ? window.innerWidth / 2 : 200;
     let startY = typeof window !== "undefined" ? window.innerHeight / 2 : 300;
     const cardEl =
@@ -596,6 +594,7 @@ export const SemesterHubPage = () => {
       startY,
     });
 
+    // Remove from background list at 4.0s right as the trash can descends so the UI reflows gracefully
     setTimeout(() => {
       setEvents((prev) => {
         const next = prev.filter((item) => item.id !== event.id);
@@ -604,14 +603,27 @@ export const SemesterHubPage = () => {
           activeSemester,
           events: next,
         });
+        useAttendanceStore.setState({ events: next as any });
         return next;
       });
+      window.dispatchEvent(new CustomEvent("events-updated"));
       setCrumblingEventId((curr) => (curr === event.id ? null : curr));
-    }, 1200);
+    }, 4000);
 
+    // Dynamic HUD triggers right when card plunges into the trash can mouth (2.40s)
+    setTimeout(() => {
+      triggerDynamicHUD({
+        title: "Event Discarded",
+        subtitle: event.title,
+        type: "trash",
+        durationMs: 4500,
+      });
+    }, 2400);
+
+    // Complete 4.5-second cinematic animation cycle
     setTimeout(() => {
       setTrashTossAnim((curr) => (curr?.event.id === event.id ? null : curr));
-    }, 4650);
+    }, 4500);
 
     try {
       await api.delete(`/events/${event.id}`);
@@ -764,6 +776,14 @@ export const SemesterHubPage = () => {
 
   return (
     <>
+      <style>{`
+        @keyframes calendarCascadeFall {
+          0% { transform: perspective(800px) rotateX(0deg) translateY(0) scale(1); opacity: 1; }
+          40% { transform: perspective(800px) rotateX(45deg) translateY(18px) scale(0.95); opacity: 0.85; filter: blur(0.5px); }
+          70% { transform: perspective(800px) rotateX(75deg) translateY(38px) scale(0.85); opacity: 0.5; filter: blur(2px); }
+          100% { transform: perspective(800px) rotateX(90deg) translateY(65px) scale(0.6); opacity: 0; filter: blur(4px); visibility: hidden; }
+        }
+      `}</style>
       <PeakpathRays />
       <ScrollToTopButton />
       <div className="p-4 md:p-8 w-full mx-auto pb-24 md:pb-8 flex flex-col min-h-full space-y-6 overflow-x-hidden">
@@ -1014,41 +1034,41 @@ export const SemesterHubPage = () => {
             {calendarData?.stats && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-auto">
                 <div className="bg-card rounded-2xl overflow-hidden border border-border shadow-xs">
-                  <div className="grid grid-cols-5 p-4 text-center divide-x divide-border">
-                    <div>
-                      <div className="text-lg font-bold text-foreground mb-0.5">{calendarData.stats.days.not_marked}</div>
-                      <div className="flex items-center justify-center gap-1.5">
-                        <div className="w-1.5 h-1.5 rounded-full bg-zinc-500" />
-                        <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider hidden sm:inline">None</span>
-                        <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider sm:hidden">No</span>
+                  <div className="grid grid-cols-5 p-2.5 sm:p-4 text-center divide-x divide-border">
+                    <div className="px-0.5 sm:px-1">
+                      <div className="text-base sm:text-lg font-bold text-foreground mb-0.5">{calendarData.stats.days.not_marked}</div>
+                      <div className="flex items-center justify-center gap-1">
+                        <div className="w-1.5 h-1.5 rounded-full bg-zinc-500 shrink-0" />
+                        <span className="text-[9px] sm:text-[10px] text-muted-foreground font-medium uppercase tracking-normal sm:tracking-wider hidden sm:inline truncate">None</span>
+                        <span className="text-[9px] sm:text-[10px] text-muted-foreground font-medium uppercase tracking-normal sm:tracking-wider sm:hidden truncate">No</span>
                       </div>
                     </div>
-                    <div>
-                      <div className="text-lg font-bold text-foreground mb-0.5">{calendarData.stats.days.off}</div>
-                      <div className="flex items-center justify-center gap-1.5">
-                        <div className="w-1.5 h-1.5 rounded-full bg-yellow-500" />
-                        <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Off</span>
+                    <div className="px-0.5 sm:px-1">
+                      <div className="text-base sm:text-lg font-bold text-foreground mb-0.5">{calendarData.stats.days.off}</div>
+                      <div className="flex items-center justify-center gap-1">
+                        <div className="w-1.5 h-1.5 rounded-full bg-yellow-500 shrink-0" />
+                        <span className="text-[9px] sm:text-[10px] text-muted-foreground font-medium uppercase tracking-normal sm:tracking-wider truncate">Off</span>
                       </div>
                     </div>
-                    <div>
-                      <div className="text-lg font-bold text-foreground mb-0.5">{calendarData.stats.days.missed}</div>
-                      <div className="flex items-center justify-center gap-1.5">
-                        <div className="w-1.5 h-1.5 rounded-full bg-rose-500" />
-                        <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Missed</span>
+                    <div className="px-0.5 sm:px-1">
+                      <div className="text-base sm:text-lg font-bold text-foreground mb-0.5">{calendarData.stats.days.missed}</div>
+                      <div className="flex items-center justify-center gap-1">
+                        <div className="w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0" />
+                        <span className="text-[9px] sm:text-[10px] text-muted-foreground font-medium uppercase tracking-normal sm:tracking-wider truncate">Missed</span>
                       </div>
                     </div>
-                    <div>
-                      <div className="text-lg font-bold text-foreground mb-0.5">{calendarData.stats.days.attended}</div>
-                      <div className="flex items-center justify-center gap-1.5">
-                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                        <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Attended</span>
+                    <div className="px-0.5 sm:px-1">
+                      <div className="text-base sm:text-lg font-bold text-foreground mb-0.5">{calendarData.stats.days.attended}</div>
+                      <div className="flex items-center justify-center gap-1">
+                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+                        <span className="text-[9px] sm:text-[10px] text-muted-foreground font-medium uppercase tracking-normal sm:tracking-wider truncate">Attended</span>
                       </div>
                     </div>
-                    <div>
-                      <div className="text-lg font-bold text-foreground mb-0.5">{calendarData.stats.days.mixed}</div>
-                      <div className="flex items-center justify-center gap-1.5">
-                        <div className="w-1.5 h-1.5 rounded-full bg-primary" />
-                        <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Mixed</span>
+                    <div className="px-0.5 sm:px-1">
+                      <div className="text-base sm:text-lg font-bold text-foreground mb-0.5">{calendarData.stats.days.mixed}</div>
+                      <div className="flex items-center justify-center gap-1">
+                        <div className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />
+                        <span className="text-[9px] sm:text-[10px] text-muted-foreground font-medium uppercase tracking-normal sm:tracking-wider truncate">Mixed</span>
                       </div>
                     </div>
                   </div>
@@ -1058,26 +1078,26 @@ export const SemesterHubPage = () => {
                 </div>
 
                 <div className="bg-card rounded-2xl overflow-hidden border border-border shadow-xs">
-                  <div className="grid grid-cols-5 p-4 text-center divide-x divide-border">
-                    <div>
-                      <div className="text-lg font-bold text-foreground mb-0.5">{calendarData.stats.lectures.off}</div>
-                      <div className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Off</div>
+                  <div className="grid grid-cols-5 p-2.5 sm:p-4 text-center divide-x divide-border">
+                    <div className="px-0.5 sm:px-1">
+                      <div className="text-base sm:text-lg font-bold text-foreground mb-0.5">{calendarData.stats.lectures.off}</div>
+                      <div className="text-[9px] sm:text-[10px] text-muted-foreground font-medium uppercase tracking-normal sm:tracking-wider truncate">Off</div>
                     </div>
-                    <div>
-                      <div className="text-lg font-bold text-foreground mb-0.5">{calendarData.stats.lectures.missed}</div>
-                      <div className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Missed</div>
+                    <div className="px-0.5 sm:px-1">
+                      <div className="text-base sm:text-lg font-bold text-foreground mb-0.5">{calendarData.stats.lectures.missed}</div>
+                      <div className="text-[9px] sm:text-[10px] text-muted-foreground font-medium uppercase tracking-normal sm:tracking-wider truncate">Missed</div>
                     </div>
-                    <div>
-                      <div className="text-lg font-bold text-foreground mb-0.5">{calendarData.stats.lectures.attended}</div>
-                      <div className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Attended</div>
+                    <div className="px-0.5 sm:px-1">
+                      <div className="text-base sm:text-lg font-bold text-foreground mb-0.5">{calendarData.stats.lectures.attended}</div>
+                      <div className="text-[9px] sm:text-[10px] text-muted-foreground font-medium uppercase tracking-normal sm:tracking-wider truncate">Attended</div>
                     </div>
-                    <div>
-                      <div className="text-lg font-bold text-foreground mb-0.5">{calendarData.stats.lectures.total}</div>
-                      <div className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Total</div>
+                    <div className="px-0.5 sm:px-1">
+                      <div className="text-base sm:text-lg font-bold text-foreground mb-0.5">{calendarData.stats.lectures.total}</div>
+                      <div className="text-[9px] sm:text-[10px] text-muted-foreground font-medium uppercase tracking-normal sm:tracking-wider truncate">Total</div>
                     </div>
-                    <div>
-                      <div className="text-lg font-bold text-foreground mb-0.5">{(calendarData?.stats?.lectures?.percentage ?? 0).toFixed(0)}%</div>
-                      <div className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Percent</div>
+                    <div className="px-0.5 sm:px-1">
+                      <div className="text-base sm:text-lg font-bold text-foreground mb-0.5">{(calendarData?.stats?.lectures?.percentage ?? 0).toFixed(0)}%</div>
+                      <div className="text-[9px] sm:text-[10px] text-muted-foreground font-medium uppercase tracking-normal sm:tracking-wider truncate">Percent</div>
                     </div>
                   </div>
                   <div className="bg-black/[0.03] dark:bg-white/[0.03] text-center py-2 text-xs font-semibold text-foreground/50 uppercase tracking-widest border-t border-border/50">
@@ -1090,10 +1110,10 @@ export const SemesterHubPage = () => {
         )}
 
           {activeTab === "timeline" && (
-            <div className="max-w-2xl mx-auto py-8">
+            <div id="semester-timeline-container" className="max-w-2xl mx-auto py-8 scroll-mt-20">
               <h2 className="text-xl font-bold text-foreground mb-8">Semester Journey</h2>
-              <div className="space-y-0 relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px before:h-full before:w-0.5 before:bg-border">
-                {events.map((event) => {
+              <div id="semester-journey-cards" className="space-y-0 relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px before:h-full before:w-0.5 before:bg-border scroll-mt-20">
+                {events.map((event, idx) => {
                   const isPast = isAfter(today, parseLocalDate(event.endDate || event.date));
                   const isCurrent = isSameDay(today, parseLocalDate(event.date)) || (event.endDate && today >= parseLocalDate(event.date) && today <= parseLocalDate(event.endDate));
                   const isHighlighted = highlightedEventId === event.id;
@@ -1109,19 +1129,23 @@ export const SemesterHubPage = () => {
                         }
                       }}
                       data-event-card
+                      style={isClearingDomino ? {
+                        transformOrigin: "top center",
+                        animation: `calendarCascadeFall 1.15s cubic-bezier(0.25, 1, 0.5, 1) ${0.35 + Math.min(idx * 0.08, 2.5)}s forwards`,
+                        pointerEvents: "none",
+                      } : undefined}
                       animate={
                         isCrumbling
                           ? {
-                              scale: [1, 1.05, 0.94, 1.03, 0.62, 0.18],
-                              rotate: [0, -3, 4, -7, 14, -24],
-                              opacity: [1, 1, 1, 0.95, 0.75, 0],
-                              filter: ["blur(0px)", "blur(0px)", "blur(0px)", "blur(1px)", "blur(2px)", "blur(4px)"],
+                              scale: [1, 0.96, 0.90, 0.75, 0],
+                              opacity: [1, 0.85, 0.60, 0.25, 0],
+                              filter: ["blur(0px)", "blur(0.5px)", "blur(1px)", "blur(2px)", "blur(4px)"],
                             }
                           : isHighlighted
                           ? { scale: [0.96, 1.02, 1], y: [8, -2, 0] }
                           : { scale: 1, rotate: 0, opacity: 1, y: 0, filter: "blur(0px)" }
                       }
-                      transition={{ duration: isCrumbling ? 1.18 : 0.38, ease: "easeInOut" }}
+                      transition={{ duration: isCrumbling ? 2.40 : 0.38, ease: [0.22, 1, 0.36, 1] }}
                       className="relative flex items-center mb-8 group"
                     >
                       <div className={`flex items-center justify-center w-10 h-10 rounded-full border-4 border-background z-10 shrink-0 transition-transform duration-300 ${
@@ -1206,8 +1230,8 @@ export const SemesterHubPage = () => {
         )}
 
         {activeTab === "events" && (
-          <div className="space-y-4">
-            {events.map(event => {
+          <div id="semester-events-list-container" className="space-y-4 scroll-mt-20">
+            {events.map((event, idx) => {
               const isHighlighted = highlightedEventId === event.id;
               const isCrumbling = crumblingEventId === event.id;
               return (
@@ -1215,19 +1239,23 @@ export const SemesterHubPage = () => {
                   key={event.id}
                   ref={(el) => setEventCardRef(event.id, el)}
                   data-event-card
+                  style={isClearingDomino ? {
+                    transformOrigin: "top center",
+                    animation: `calendarCascadeFall 1.15s cubic-bezier(0.25, 1, 0.5, 1) ${0.35 + Math.min(idx * 0.08, 2.5)}s forwards`,
+                    pointerEvents: "none",
+                  } : undefined}
                   animate={
                     isCrumbling
                       ? {
-                          scale: [1, 1.04, 0.94, 1.03, 0.62, 0.18],
-                          rotate: [0, -3, 4, -7, 14, -22],
-                          opacity: [1, 1, 1, 0.95, 0.75, 0],
-                          filter: ["blur(0px)", "blur(0px)", "blur(0px)", "blur(1px)", "blur(2px)", "blur(4px)"],
+                          scale: [1, 0.96, 0.90, 0.75, 0],
+                          opacity: [1, 0.85, 0.60, 0.25, 0],
+                          filter: ["blur(0px)", "blur(0.5px)", "blur(1px)", "blur(2px)", "blur(4px)"],
                         }
                       : isHighlighted
                       ? { scale: [0.96, 1.02, 1], y: [8, -2, 0] }
                       : { scale: 1, rotate: 0, opacity: 1, y: 0, filter: "blur(0px)" }
                   }
-                  transition={{ duration: isCrumbling ? 1.18 : 0.38, ease: "easeInOut" }}
+                  transition={{ duration: isCrumbling ? 2.40 : 0.38, ease: [0.22, 1, 0.36, 1] }}
                   className={`flex flex-col sm:flex-row sm:items-center justify-between p-5 border rounded-2xl gap-3 transition-all duration-300 ${
                     isCrumbling
                       ? "bg-rose-500/20 border-rose-500 ring-2 ring-rose-500/70 shadow-[0_0_35px_rgba(244,63,94,0.45)]"
@@ -1282,7 +1310,7 @@ export const SemesterHubPage = () => {
 
       </div>
 
-      {/* 4.6-Second Burst + Parabolic Whoosh Into Trash Bag Deletion Stage */}
+      {/* Snappy 1.5-Second Burst + Parabolic Whoosh Into Trash Bag Deletion Stage */}
       <AnimatePresence>
         {trashTossAnim && (() => {
           const targetX = typeof window !== "undefined" ? window.innerWidth / 2 : 200;
@@ -1303,7 +1331,7 @@ export const SemesterHubPage = () => {
             };
           });
 
-          const arcTrailSteps = [0, 1, 2, 3, 4, 5];
+          const arcTrailSteps = [0, 1, 2, 3];
 
           const rimSparks = Array.from({ length: 14 }, (_, idx) => {
             const angle = -Math.PI * 0.1 - (idx / 13) * Math.PI * 0.8;
@@ -1321,7 +1349,7 @@ export const SemesterHubPage = () => {
               key={trashTossAnim.key}
               className="fixed inset-0 z-[130] pointer-events-none overflow-hidden"
             >
-              {/* 1. Origin Radial Burst Shards (0.30s -> 1.45s as card crumples) */}
+              {/* 1. Origin Radial Burst Shards (0.0s -> 0.85s instant burst on tap) */}
               {burstParticles.map((p) => (
                 <motion.div
                   key={`burst-${p.id}`}
@@ -1333,13 +1361,13 @@ export const SemesterHubPage = () => {
                     opacity: [0, 1, 0],
                     rotate: [0, 140, 300],
                   }}
-                  transition={{ delay: 0.3, duration: 1.15, ease: "easeOut" }}
+                  transition={{ delay: 0, duration: 0.85, ease: "easeOut" }}
                   style={{ backgroundColor: p.color }}
                   className="fixed top-0 left-0 w-3 h-3 rounded-sm shadow-[0_0_14px_currentColor]"
                 />
               ))}
 
-              {/* 2. Glowing Parabolic Arc Trail Sparks (1.05s -> 3.10s) */}
+              {/* 2. Glowing Parabolic Arc Trail Sparks (0.5s -> 2.4s) */}
               {arcTrailSteps.map((stepIdx) => (
                 <motion.div
                   key={`trail-${stepIdx}`}
@@ -1363,8 +1391,8 @@ export const SemesterHubPage = () => {
                     opacity: [0, 0.75, 0.85, 0.6, 0],
                   }}
                   transition={{
-                    delay: 1.05 + (stepIdx + 1) * 0.09,
-                    duration: 1.95,
+                    delay: 0.45 + stepIdx * 0.22,
+                    duration: 1.80,
                     times: [0, 0.26, 0.52, 0.78, 1],
                     ease: "easeInOut",
                   }}
@@ -1372,110 +1400,120 @@ export const SemesterHubPage = () => {
                 />
               ))}
 
-              {/* 3. Crumpled Event Card Projectile Flying in 2.05s Parabolic Whoosh Arc (1.05s -> 3.10s) */}
+              {/* 3. Smooth Parabolic Tumbling Card into Dustbin (0.0s -> 2.40s flight) */}
               <motion.div
-                initial={{ x: startX - 96, y: startY - 26, scale: 0, rotate: 0, opacity: 0 }}
+                initial={{ x: startX - 84, y: startY - 22, scale: 0.95, rotate: 0, opacity: 1 }}
                 animate={{
                   x: [
-                    startX - 96,
-                    startX - 96,
-                    startX * 0.7 + targetX * 0.3 - 86,
-                    midX - 78,
-                    startX * 0.25 + targetX * 0.75 - 64,
-                    targetX - 36,
+                    startX - 84,
+                    startX - 84,
+                    startX * 0.7 + targetX * 0.3 - 60,
+                    midX - 40,
+                    startX * 0.25 + targetX * 0.75 - 25,
+                    targetX - 22,
                   ],
                   y: [
-                    startY - 26,
-                    startY - 34,
-                    peakY + 25,
-                    peakY - 35,
-                    peakY + 45,
-                    targetY - 16,
+                    startY - 22,
+                    startY - 55,
+                    peakY - 30,
+                    peakY + 5,
+                    peakY + 70,
+                    targetY - 55,
                   ],
-                  scale: [0, 1.08, 0.98, 0.88, 0.62, 0.16],
-                  rotate: [0, -14, 45, 220, 460, 720],
-                  opacity: [0, 1, 1, 1, 1, 0],
+                  scale: [1, 1.15, 1.12, 0.92, 0.45, 0.05],
+                  rotate: [0, -10, 80, 240, 480, 680],
+                  opacity: [1, 1, 1, 1, 0.95, 0],
                 }}
                 transition={{
-                  delay: 0.92,
-                  duration: 2.18,
-                  times: [0, 0.12, 0.36, 0.6, 0.84, 1],
-                  ease: "easeInOut",
+                  delay: 0,
+                  duration: 2.40,
+                  times: [0, 0.20, 0.42, 0.65, 0.88, 1],
+                  ease: [0.22, 1, 0.36, 1],
                 }}
-                className="fixed top-0 left-0 w-48 px-4 py-2.5 rounded-2xl bg-gradient-to-br from-rose-500 via-red-500 to-orange-500 border-2 border-white/60 text-white shadow-[0_18px_42px_rgba(244,63,94,0.7)] backdrop-blur-md flex items-center gap-2.5"
+                className="fixed top-0 left-0 w-44 px-3.5 py-2.5 rounded-2xl bg-gradient-to-br from-rose-500 via-red-500 to-orange-500 border-2 border-white/80 text-white shadow-[0_20px_50px_rgba(244,63,94,0.75)] backdrop-blur-md flex items-center gap-2.5 z-[140]"
               >
                 <div className="w-6 h-6 rounded-lg bg-white/20 flex items-center justify-center shrink-0">
                   <Trash2 className="w-4 h-4 text-white" />
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="text-[9px] font-black uppercase tracking-widest text-white/80">
-                    Crumpling & Tossing
+                    Discarding
                   </div>
                   <div className="text-xs font-black truncate">{trashTossAnim.event.title}</div>
                 </div>
               </motion.div>
 
-              {/* 4. Trash Bag / Bin Catcher at Bottom Center (0.0s -> 4.60s total 4.6s stage) */}
+              {/* 4. Large Premium Trash Can at Bottom Center (0.0s -> 4.5s stage) */}
               <motion.div
-                initial={{ x: targetX - 64, y: targetY + 120, scale: 0.3, opacity: 0 }}
+                initial={{ x: targetX - 72, y: targetY + 220, scale: 0.5, opacity: 0 }}
                 animate={{
-                  x: targetX - 64,
+                  x: targetX - 72,
                   y: [
-                    targetY + 120,
-                    targetY - 46,
-                    targetY - 52,
-                    targetY - 46,
-                    targetY - 26,
-                    targetY - 54,
-                    targetY - 46,
-                    targetY + 130,
+                    targetY + 220,
+                    targetY - 60,
+                    targetY - 60,
+                    targetY - 45,
+                    targetY - 65,
+                    targetY - 60,
+                    targetY + 240,
                   ],
-                  scaleX: [0.5, 1.04, 1.12, 1.08, 1.38, 0.88, 1.02, 0.4],
-                  scaleY: [0.5, 1.0, 0.94, 0.98, 0.7, 1.2, 1.0, 0.4],
-                  rotate: [0, 0, -4, 4, 0, -3, 0, 0],
-                  opacity: [0, 1, 1, 1, 1, 1, 1, 0],
+                  scaleX: [0.6, 1.0, 1.0, 1.32, 0.94, 1.0, 0.4],
+                  scaleY: [0.6, 1.0, 1.0, 0.72, 1.16, 1.0, 0.4],
+                  opacity: [0, 1, 1, 1, 1, 1, 0],
                 }}
                 transition={{
-                  duration: 4.6,
-                  times: [0, 0.12, 0.36, 0.62, 0.68, 0.76, 0.91, 1],
+                  duration: 4.5,
+                  times: [0, 0.12, 0.52, 0.56, 0.62, 0.84, 1],
                   ease: "easeInOut",
                 }}
-                className="fixed top-0 left-0 w-32 flex flex-col items-center"
+                className="fixed top-0 left-0 w-36 flex flex-col items-center z-[135]"
               >
-                {/* Bag Gulp Rim Fireworks when projectile lands at t=3.10s */}
+                {/* Catch Rim Fireworks when card enters mouth at t=2.40s */}
                 {rimSparks.map((s) => (
                   <motion.div
                     key={`rim-${s.id}`}
-                    initial={{ x: 0, y: 10, scale: 0, opacity: 0 }}
+                    initial={{ x: 0, y: 12, scale: 0, opacity: 0 }}
                     animate={{
-                      x: [0, s.dx * 0.7, s.dx],
-                      y: [10, s.dy * 0.8, s.dy + 16],
-                      scale: [0, 1.4, 0],
+                      x: [0, s.dx * 0.85, s.dx * 1.2],
+                      y: [12, s.dy * 0.9, s.dy + 14],
+                      scale: [0, 1.6, 0],
                       opacity: [0, 1, 0],
                     }}
-                    transition={{ delay: 3.06, duration: 0.95, ease: "easeOut" }}
+                    transition={{ delay: 2.40, duration: 0.65, ease: "easeOut" }}
                     style={{ backgroundColor: s.color }}
-                    className="absolute top-0 w-2.5 h-2.5 rounded-full shadow-[0_0_12px_currentColor]"
+                    className="absolute top-0 w-2.5 h-2.5 rounded-full shadow-[0_0_14px_currentColor]"
                   />
                 ))}
 
-                {/* Stylized Animated Trash Bag */}
-                <div className="relative w-20 h-20 rounded-[28px] bg-gradient-to-b from-zinc-800 via-zinc-900 to-zinc-950 border-2 border-rose-500/75 shadow-[0_18px_45px_rgba(244,63,94,0.55)] flex flex-col items-center justify-center">
-                  {/* Glowing Mouth Rim */}
-                  <div className="-mt-3 w-14 h-3.5 rounded-t-full bg-gradient-to-r from-rose-500 via-orange-400 to-rose-500 border border-white/35 shadow-[0_0_16px_rgba(244,63,94,0.8)]" />
+                {/* Large Stylized Animated Trash Can (w-36 h-40) */}
+                <div className="relative w-36 h-40 rounded-[32px] bg-gradient-to-b from-zinc-800 via-zinc-900 to-black border-2 border-rose-500/80 shadow-[0_24px_60px_rgba(244,63,94,0.65)] flex flex-col items-center justify-center p-3">
+                  {/* Wide Glowing Open Mouth Rim */}
+                  <div className="-mt-7 w-28 h-5 rounded-t-full bg-gradient-to-r from-rose-500 via-amber-400 to-rose-500 border border-white/40 shadow-[0_0_24px_rgba(244,63,94,0.95)] flex items-center justify-center">
+                    <div className="w-20 h-2 bg-black/60 rounded-full" />
+                  </div>
+
                   {/* Golden Drawstring Tie */}
-                  <div className="w-10 h-1.5 bg-amber-400 rounded-full my-1 shadow-[0_0_10px_rgba(251,191,36,0.8)]" />
-                  <Trash2 className="w-8 h-8 text-rose-400 mt-0.5" />
+                  <div className="w-16 h-2 bg-gradient-to-r from-amber-400 via-yellow-300 to-amber-500 rounded-full my-2 shadow-[0_0_14px_rgba(251,191,36,0.9)]" />
+
+                  {/* 3D Vertical Ribs */}
+                  <div className="flex gap-2.5 my-1 opacity-25">
+                    <div className="w-1.5 h-12 bg-white rounded-full" />
+                    <div className="w-1.5 h-12 bg-white rounded-full" />
+                    <div className="w-1.5 h-12 bg-white rounded-full" />
+                  </div>
+
+                  {/* Large Icon */}
+                  <Trash2 className="w-12 h-12 text-rose-400 -mt-11 drop-shadow-[0_4px_12px_rgba(244,63,94,0.8)]" />
                 </div>
 
-                {/* Status Pill Under Bag (Waiting -> Tossed!) */}
+                {/* Status Pill Under Bag */}
                 <motion.div
                   initial={{ opacity: 0, y: 6 }}
                   animate={{ opacity: [0, 1, 1, 0], y: [6, 0, 0, -4] }}
-                  transition={{ duration: 4.5, times: [0, 0.1, 0.92, 1] }}
-                  className="mt-2 px-3.5 py-1 rounded-full bg-gradient-to-r from-rose-600 to-orange-500 text-white text-[10px] font-black uppercase tracking-wider shadow-[0_8px_20px_rgba(244,63,94,0.5)] border border-white/25 whitespace-nowrap"
+                  transition={{ delay: 2.45, duration: 1.4, times: [0, 0.15, 0.85, 1] }}
+                  className="mt-2.5 px-4 py-1.5 rounded-full bg-gradient-to-r from-rose-600 via-red-600 to-orange-500 text-white text-[11px] font-black uppercase tracking-wider shadow-[0_10px_25px_rgba(244,63,94,0.6)] border border-white/30 whitespace-nowrap"
                 >
-                  🗑️ Tossing "{trashTossAnim.event.title.slice(0, 18)}{trashTossAnim.event.title.length > 18 ? "…" : ""}"
+                  🗑️ Discarded "{trashTossAnim.event.title.slice(0, 18)}{trashTossAnim.event.title.length > 18 ? "…" : ""}"
                 </motion.div>
               </motion.div>
             </div>
@@ -1502,7 +1540,10 @@ export const SemesterHubPage = () => {
       <CreateSemesterModal
         isOpen={isCreateSemesterOpen}
         onClose={() => setIsCreateSemesterOpen(false)}
-        onSuccess={fetchData}
+        onSuccess={(newSem) => {
+          if (newSem) setActiveSemester(newSem);
+          fetchData();
+        }}
       />
 
       <SemesterTransitionModal

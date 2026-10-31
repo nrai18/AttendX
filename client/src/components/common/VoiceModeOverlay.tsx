@@ -4,8 +4,10 @@ import { App } from '@capacitor/app';
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Mic, MicOff, Volume2, VolumeX, X, Menu, Settings, Globe, ChevronLeft, ChevronRight, Square } from "lucide-react";
-import { NativeVoiceService } from "../../services/NativeVoiceService";
+import { NativeVoiceService, isVoiceBreakoutCommand } from "../../services/NativeVoiceService";
 import { useBackHandlerStore } from "../../stores/backHandlerStore";
+import { api } from "../../lib/api";
+import { maskProfanity } from "../../utils/profanityMask";
 
 interface VoiceModeOverlayProps {
   isOpen: boolean;
@@ -25,59 +27,132 @@ const VISUAL_FILLER_PHRASES = [
   "Processing..."
 ];
 
-const CinematicText = ({ text, startTime, durationMs, isDone }: { text: string, startTime: number, durationMs: number, isDone?: boolean }) => {
-  const [elapsed, setElapsed] = useState(0);
+const CinematicText = React.memo(({ text, startTime, durationMs, isDone }: { text: string, startTime: number, durationMs: number, isDone?: boolean }) => {
+  const words = useMemo(() => text.split(/\s+/).filter(Boolean), [text]);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const activeIndexRef = useRef(0);
   const containerRef = useRef<HTMLDivElement>(null);
   const activeWordRef = useRef<HTMLSpanElement>(null);
+  const lastScrolledLineRef = useRef<number>(-1);
 
   useEffect(() => {
-    let frameId: number;
-    const update = () => {
-      setElapsed(Date.now() - startTime);
-      frameId = requestAnimationFrame(update);
-    };
-    frameId = requestAnimationFrame(update);
-    return () => cancelAnimationFrame(frameId);
-  }, [startTime]);
-
-  const words = useMemo(() => text.split(/\s+/), [text]);
-  const activeIndex = isDone 
-    ? words.length
-    : durationMs > 0 
-      ? Math.min(words.length - 1, Math.floor((elapsed / durationMs) * words.length))
-      : Math.floor((elapsed / 1000) * 2.3);
-
-  useEffect(() => {
-    if (activeWordRef.current) {
-      activeWordRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    if (isDone) {
+      activeIndexRef.current = words.length;
+      setActiveIndex(words.length);
+      return;
     }
-  }, [activeIndex]);
+
+    if (startTime <= 0 || words.length === 0) {
+      activeIndexRef.current = 0;
+      setActiveIndex(0);
+      return;
+    }
+
+    let timerId: any;
+    const checkProgress = () => {
+      const now = Date.now();
+      const elapsed = Math.max(0, now - startTime);
+      const progress = durationMs > 0 ? Math.min(1, elapsed / durationMs) : (elapsed / 1000) * 2.3;
+      const targetIndex = Math.min(words.length - 1, Math.floor(progress * words.length));
+
+      // CRITICAL OPTIMIZATION: Only update React state when word actually changes (~3-4 times/sec instead of 120 FPS RAF)
+      if (targetIndex !== activeIndexRef.current) {
+        activeIndexRef.current = targetIndex;
+        setActiveIndex(targetIndex);
+      }
+    };
+
+    timerId = setInterval(checkProgress, 25);
+    checkProgress();
+
+    return () => clearInterval(timerId);
+  }, [startTime, durationMs, words.length, isDone]);
+
+  // Smooth container-only scrolling when a word wraps to a new line (zero window jitter)
+  useEffect(() => {
+    if (!containerRef.current || !activeWordRef.current || isDone) return;
+    const container = containerRef.current;
+    const wordEl = activeWordRef.current;
+    const offsetTop = wordEl.offsetTop;
+
+    if (Math.abs(offsetTop - lastScrolledLineRef.current) > 12) {
+      lastScrolledLineRef.current = offsetTop;
+      const targetScroll = Math.max(0, offsetTop - container.clientHeight / 2 + wordEl.clientHeight / 2);
+      container.scrollTo({ top: targetScroll, behavior: 'smooth' });
+    }
+  }, [activeIndex, isDone]);
 
   return (
-    <div ref={containerRef} className="max-h-[180px] md:max-h-[260px] overflow-y-auto w-full px-4 scroll-smooth relative">
-      <div className="py-[60px] flex flex-wrap justify-center content-center gap-x-[0.35em] gap-y-2">
+    <div 
+      ref={containerRef} 
+      className="max-h-[180px] md:max-h-[260px] overflow-y-auto w-full px-4 relative overscroll-contain"
+      style={{ WebkitOverflowScrolling: "touch" }}
+    >
+      <div className="py-10 flex flex-wrap justify-center content-center gap-x-[0.35em] gap-y-2">
         {words.map((word, i) => {
           const isPast = i < activeIndex;
-          const isCurrent = i === activeIndex;
+          const isCurrent = i === activeIndex && !isDone;
           
           return (
             <span
               key={i}
               ref={isCurrent ? activeWordRef : null}
-              className={`text-2xl md:text-3xl lg:text-4xl font-semibold tracking-tight transition-all duration-300 ${
-                isCurrent ? "text-white opacity-100 scale-105 drop-shadow-[0_0_12px_rgba(255,255,255,0.8)]" :
-                isPast ? "text-white/70 opacity-100" :
-                "text-white/20 opacity-40"
+              className={`inline-flex items-center text-2xl md:text-3xl lg:text-4xl font-semibold tracking-tight transition-colors duration-150 ${
+                isCurrent 
+                  ? "text-white opacity-100 font-bold" 
+                  : isPast || isDone 
+                  ? "text-white/85 opacity-100" 
+                  : "text-white/20 opacity-30"
               }`}
             >
-              {word}
+              <span>{word}</span>
+              {/* Streaming cursor travelling hand-in-hand with active speech */}
+              {isCurrent && (
+                <span className="inline-block w-[3px] h-[0.85em] ml-1.5 bg-white rounded-full align-middle animate-pulse shadow-[0_0_8px_rgba(255,255,255,0.95)]" />
+              )}
             </span>
           );
         })}
       </div>
     </div>
   );
-};
+});
+
+// Hardware-accelerated memoized Orb to prevent unneeded re-renders on transcript / syllable updates
+const AnimatedVoiceOrb = React.memo(({ uiState }: { uiState: string }) => {
+  return (
+    <div className="relative flex items-center justify-center w-64 h-64 mt-8 will-change-transform">
+      {/* Ambient Glow */}
+      <motion.div
+        animate={{
+          scale: uiState === "LISTENING" ? [1, 1.2, 1] : uiState === "SPEAKING" ? [1, 1.35, 1.1, 1.25, 1] : uiState === "PROCESSING" ? [1, 1.1, 1] : [1, 1.05, 1],
+          opacity: uiState === "LISTENING" ? [0.3, 0.6, 0.3] : uiState === "SPEAKING" ? [0.4, 0.75, 0.4] : [0.2, 0.4, 0.2]
+        }}
+        transition={{ repeat: Infinity, duration: uiState === "SPEAKING" ? 1.5 : 2, ease: "easeInOut" }}
+        className={`absolute w-64 h-64 rounded-full mix-blend-screen bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] transform-gpu ${
+          uiState === "LISTENING" ? "from-white/40 via-white/10 to-transparent" : uiState === "SPEAKING" ? "from-pink-500/50 via-pink-500/10 to-transparent" : uiState === "PROCESSING" ? "from-cyan-500/30 via-cyan-500/5 to-transparent" : "from-white/10 to-transparent"
+        }`}
+      />
+      
+      {/* Core Solid Orb */}
+      <motion.div
+        animate={{
+          scale: uiState === "LISTENING" ? [1, 1.05, 1] : uiState === "SPEAKING" ? [1, 1.12, 0.96, 1.05, 1] : uiState === "PROCESSING" ? [1, 1.06, 1] : [1, 1.02, 1],
+        }}
+        transition={{ repeat: Infinity, duration: uiState === "SPEAKING" ? 1.2 : 2, ease: "easeInOut" }}
+        className={`relative z-10 w-36 h-36 sm:w-44 sm:h-44 rounded-full shadow-2xl transition-colors duration-500 transform-gpu bg-gradient-to-tr ${
+          uiState === "LISTENING" 
+            ? "from-gray-100 to-white shadow-white/40" 
+            : uiState === "SPEAKING" 
+            ? "from-pink-300 via-rose-400 to-white shadow-pink-500/50" 
+            : uiState === "PROCESSING" 
+            ? "from-cyan-100 to-cyan-300 shadow-cyan-500/40" 
+            : "from-gray-300 to-gray-400 shadow-white/20"
+        }`}
+      />
+    </div>
+  );
+});
 
 export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
   isOpen,
@@ -96,6 +171,10 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [speechDuration, setSpeechDuration] = useState(0);
   const [speechStartTime, setSpeechStartTime] = useState(0);
+
+  const cleanedResponseText = useMemo(() => {
+    return NativeVoiceService.cleanTextForSpeech(lastResponse);
+  }, [lastResponse]);
 
   // Handle hardware back button to close overlay
   useEffect(() => {
@@ -278,9 +357,7 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
   };
 
   const checkVoiceBreakout = (text: string) => {
-    const norm = text.trim().toLowerCase().replace(/[.,!?;:]/g, "");
-    const breakoutWords = ["stop", "cancel", "stop conversation", "goodbye", "exit", "quit"];
-    if (breakoutWords.includes(norm)) {
+    if (isVoiceBreakoutCommand(text)) {
       handleClose();
       return true;
     }
@@ -288,13 +365,40 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
   };
   
   useEffect(() => { voiceEnabledRef.current = voiceEnabled; }, [voiceEnabled]);
-  useEffect(() => { isListeningRef.current = isListening; }, [isListening]);
+  useEffect(() => { 
+    isListeningRef.current = isListening; 
+    if (typeof window !== "undefined") {
+      (window as any).__attendx_ai_listening = isListening;
+    }
+  }, [isListening]);
   
-  useEffect(() => { isSpeakingRef.current = isSpeaking; }, [isSpeaking]);
+  useEffect(() => { 
+    isSpeakingRef.current = isSpeaking; 
+    if (typeof window !== "undefined") {
+      (window as any).__attendx_ai_speaking = isSpeaking;
+    }
+  }, [isSpeaking]);
   useEffect(() => { isProcessingRef.current = isProcessing; }, [isProcessing]);
 
   useEffect(() => {
     isOpenRef.current = isOpen;
+    if (typeof window !== "undefined") {
+      (window as any).__attendx_voice_mode_active = isOpen;
+    }
+    if (isOpen) {
+      try {
+        localStorage.setItem("onboarding_voice_mode", "true");
+        api.patch("/users/onboarding-status", { step: "voice_mode" }).catch(() => {});
+        window.dispatchEvent(new CustomEvent("onboarding-step-completed", { detail: { step: "voice_mode" } }));
+      } catch {}
+    }
+    return () => {
+      if (typeof window !== "undefined") {
+        (window as any).__attendx_voice_mode_active = false;
+        (window as any).__attendx_ai_listening = false;
+        (window as any).__attendx_ai_speaking = false;
+      }
+    };
   }, [isOpen]);
 
   // Stop all active voice operations on unmount
@@ -311,6 +415,7 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
       clearTimeout(silenceTimeoutRef.current);
       silenceTimeoutRef.current = null;
     }
+    NativeVoiceService.stopSpeaking();
     NativeVoiceService.stopContinuousLoop();
     onClose();
     setIsSpeaking(false);
@@ -486,10 +591,21 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
       silenceTimeoutRef.current = null;
     }
 
-    const query = currentTranscript.trim();
-    if (checkVoiceBreakout(query)) {
+    const rawQuery = currentTranscript.trim();
+    if (checkVoiceBreakout(rawQuery)) {
       return;
     }
+    
+    // Normalize common speech splits (e.g. "time table" -> "timetable")
+    const query = rawQuery
+      .replace(/\btime\s+table\b/gi, "timetable")
+      .replace(/\bpeer\s*[- ]?sync\b/gi, "peer-sync")
+      .replace(/\bclass\s+room(s)?\b/gi, "classroom$1")
+      .replace(/\bmid\s+sem(ester)?\b/gi, "midsem")
+      .replace(/\bend\s+sem(ester)?\b/gi, "endsem")
+      .replace(/\battend\s+x\b/gi, "attendx")
+      .replace(/\bdark\s+theme\b/gi, "dark mode")
+      .replace(/\blight\s+theme\b/gi, "light mode");
     
     // On native, we must stop the mic to avoid feedback loops and crashes.
     // IMPORTANT: Only pause the mic session — do NOT kill the continuous loop flag
@@ -557,7 +673,7 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
   // Auto-submit after silence or when manually stopped
   useEffect(() => {
     if (transcript.trim() && !isProcessing && !isSpeaking) {
-      const delay = isListening ? 5000 : 700;
+      const delay = isListening ? 1200 : 500;
       const timer = setTimeout(() => {
         handleProcessVoiceInput();
       }, delay);
@@ -662,14 +778,14 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
             
             {/* Dynamic Transcript Area (above orb for visibility) */}
             <div className="w-full max-w-2xl px-8 text-center min-h-[100px] flex items-end justify-center z-10">
-               <AnimatePresence mode="wait">
+               <AnimatePresence>
                   {uiState === "LISTENING" && transcript ? (
                     <motion.p key="transcript" initial={{opacity:0, y: 10}} animate={{opacity:1, y: 0}} exit={{opacity:0}} className="text-2xl font-medium text-white/90 italic">
-                      "{transcript}<span className="animate-pulse inline-block ml-[2px] font-light">|</span>"
+                      "{maskProfanity(transcript)}<span className="animate-pulse inline-block ml-[2px] font-light">|</span>"
                     </motion.p>
                   ) : uiState === "PROCESSING" ? (
                      <motion.div key="processing" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} className="flex flex-col items-center gap-3">
-                        <p className="text-sm text-white/50 italic">Heard: "{transcript}"</p>
+                        <p className="text-sm text-white/50 italic">Heard: "{maskProfanity(transcript)}"</p>
                         <p className="text-xl text-white/80 animate-pulse">{lastResponse}</p>
                      </motion.div>
                    ) : uiState === "SPEAKING" || (uiState === "LISTENING" && !transcript && lastResponse) ? (
@@ -681,7 +797,7 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
                         className="w-full flex items-center justify-center"
                       >
                         <CinematicText 
-                          text={NativeVoiceService.cleanTextForSpeech(lastResponse)} 
+                          text={cleanedResponseText} 
                           startTime={speechStartTime} 
                           durationMs={speechDuration}
                           isDone={uiState !== "SPEAKING"}
@@ -695,37 +811,8 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
                </AnimatePresence>
             </div>
 
-            {/* The Animated ChatGPT-style Orb (Restored Beautiful Gradients) */}
-            <div className="relative flex items-center justify-center w-64 h-64 mt-12">
-               {/* Ambient Glow */}
-               <motion.div
-                  animate={{
-                    scale: uiState === "LISTENING" ? [1, 1.2, 1] : uiState === "SPEAKING" ? [1, 1.4, 1.1, 1.3, 1] : uiState === "PROCESSING" ? [1, 1.1, 1] : [1, 1.05, 1],
-                    opacity: uiState === "LISTENING" ? [0.3, 0.6, 0.3] : uiState === "SPEAKING" ? [0.4, 0.8, 0.4] : [0.2, 0.4, 0.2]
-                  }}
-                  transition={{ repeat: Infinity, duration: uiState === "SPEAKING" ? 1.5 : 2, ease: "easeInOut" }}
-                  className={`absolute w-64 h-64 rounded-full mix-blend-screen bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] ${
-                    uiState === "LISTENING" ? "from-white/40 via-white/10 to-transparent" : uiState === "SPEAKING" ? "from-pink-500/50 via-pink-500/10 to-transparent" : uiState === "PROCESSING" ? "from-cyan-500/30 via-cyan-500/5 to-transparent" : "from-white/10 to-transparent"
-                  }`}
-               />
-               
-               {/* Core Solid Orb */}
-               <motion.div
-                  animate={{
-                    scale: uiState === "LISTENING" ? [1, 1.05, 1] : uiState === "SPEAKING" ? [1, 1.15, 0.95, 1.05, 1] : uiState === "PROCESSING" ? [1, 1.08, 1] : [1, 1.02, 1],
-                  }}
-                  transition={{ repeat: Infinity, duration: uiState === "SPEAKING" ? 1.2 : 2, ease: "easeInOut" }}
-                  className={`relative z-10 w-36 h-36 sm:w-44 sm:h-44 rounded-full shadow-2xl transition-colors duration-700 bg-gradient-to-tr ${
-                    uiState === "LISTENING" 
-                      ? "from-gray-100 to-white shadow-white/40" 
-                      : uiState === "SPEAKING" 
-                      ? "from-pink-300 via-rose-400 to-white shadow-pink-500/50" 
-                      : uiState === "PROCESSING" 
-                      ? "from-cyan-100 to-cyan-300 shadow-cyan-500/40" 
-                      : "from-gray-300 to-gray-400 shadow-white/20"
-                  }`}
-               />
-            </div>
+            {/* The Animated ChatGPT-style Orb (Restored Beautiful Gradients & GPU Accelerated) */}
+            <AnimatedVoiceOrb uiState={uiState} />
 
             {/* Pending Action Confirmation Buttons */}
             <AnimatePresence>

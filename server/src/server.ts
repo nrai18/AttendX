@@ -23,27 +23,23 @@ process.on("uncaughtException", (err: Error) => {
 });
 
 async function bootstrap() {
-  // Checkpoint 2: Post-Firebase Init
-  MemoryMonitor.log("Post-Firebase Init");
-
-  // Checkpoint 3: Post-DeviceMapper Init (bounded, <0.01MB)
-  await loadDeviceMapping();
-  MemoryMonitor.log("Post-DeviceMapper Init");
-
-  // Checkpoint 4: Post-Gemini Warmup
-  CustomMlCopilotService.warmup();
-  MemoryMonitor.log("Post-Gemini Warmup");
-
-  // Checkpoint 5: Post-Cron Init
-  CronService.init();
-  MemoryMonitor.log("Post-Cron Init");
-
-  // Start Express HTTP server & setup graceful shutdown
+  // Start Express HTTP server immediately so port 3000 is open in < 300ms!
   const server = await startServer();
   MemoryMonitor.log("Server Listening");
 
   // Attach graceful shutdown hooks
   MemoryMonitor.setupGracefulShutdown(server);
+
+  // Background non-blocking warmups (Gemini, DeviceMapper, Cron)
+  CustomMlCopilotService.warmup();
+  MemoryMonitor.log("Post-Gemini Warmup");
+
+  CronService.init();
+  MemoryMonitor.log("Post-Cron Init");
+
+  loadDeviceMapping().catch((err) => {
+    console.warn("[DeviceMapper] Background load skipped:", err?.message || err);
+  });
 
   // Start periodic 5-minute memory monitoring
   MemoryMonitor.startPeriodicLogging();

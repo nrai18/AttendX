@@ -1,20 +1,25 @@
 import React, { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
+import { useNavigate } from "react-router-dom";
 import { api } from "../../lib/api";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 import { useSyncStore } from "../../stores/syncStore";
 import { useAttendanceStore } from "../../stores/attendanceStore";
+import { useCacheStore } from "../../stores/cacheStore";
 import { startOfWeek, endOfWeek, subDays, startOfMonth, endOfMonth, format } from "date-fns";
 import { ScheduleDate } from "../ui/schedule-date";
 import { FeedbackAction } from "../ui/feedback-action";
 import { ChevronDown, ShieldCheck, DownloadCloud, Database, CheckCircle2, RefreshCw } from "lucide-react";
 import { RunActionButton } from "../ui/run-action-button";
+import { triggerDynamicHUD } from "../ui/dynamic-island-hud";
+import { SoundFX } from "../../utils/soundEffects";
 type SyncMode = "SEND" | "RECEIVE";
 type ContextType = "FULL_EXPORT" | "TIMETABLE_CALENDAR" | "SCHEDULE_STATUS";
 type DateRangePreset = "This Week" | "Last 7 Days" | "Current Month" | "Full Semester" | "Custom Range";
 
 export const PeerSyncModal = () => {
+  const navigate = useNavigate();
   const [mode, setMode] = useState<SyncMode>("RECEIVE");
   const [inputCode, setInputCode] = useState<string>("");
   const [loading, setLoading] = useState(false);
@@ -38,8 +43,11 @@ export const PeerSyncModal = () => {
   const [remainingTime, setRemainingTime] = useState<number>(0);
 
   useEffect(() => {
-    localStorage.setItem("onboarding_peer_sync", "true");
-    api.patch("/users/onboarding-status", { step: "peer_sync" }).catch(() => {});
+    if (localStorage.getItem("onboarding_peer_sync") !== "true") {
+      localStorage.setItem("onboarding_peer_sync", "true");
+      api.patch("/users/onboarding-status", { step: "peer_sync" }).catch(() => {});
+      window.dispatchEvent(new CustomEvent("onboarding-step-completed", { detail: { step: "peer_sync" } }));
+    }
   }, []);
 
   useEffect(() => {
@@ -131,12 +139,18 @@ export const PeerSyncModal = () => {
     if (!activeSemesterId) return toast.error("No active semester found to import into.");
     
     setLoading(true);
+    setSyncError(null);
     try {
       const res = await api.post("/transfer/retrieve", { code: inputCode });
       setReviewData(res.data);
+      SoundFX.playSnapPopSound();
+      triggerDynamicHUD({
+        type: "sparkle",
+        label: "Peer Sync Code Retrieved",
+        subtitle: `Ready to mirror schedule (${res.data?.senderName || "Peer"})`,
+      });
     } catch (error: any) {
       const msg = error.response?.data?.error || error.response?.data?.message || "Failed to retrieve schedule.";
-      setSyncError(msg);
       setSyncError(msg);
     } finally {
       setLoading(false);
@@ -147,8 +161,25 @@ export const PeerSyncModal = () => {
     if (!reviewData || !activeSemesterId) return;
     setLoading(true);
     try {
-      await api.post(`/timetable/import/${activeSemesterId}`, reviewData.payload);
-      await useAttendanceStore.getState().fetchStats();
+      await api.post(`/timetable/import/${activeSemesterId}`, reviewData.payload, { timeout: 180000 });
+      
+      // Invalidate all caches so that today, timetable, subjects, and stats update immediately
+      const cacheState = useCacheStore.getState();
+      cacheState.setCache("today", null);
+      cacheState.setCache("timetable", null);
+      cacheState.setCache("calendar", null);
+      cacheState.setCache("attendance", null);
+      cacheState.setCache("semester", null);
+      
+      // Dispatch reactivity events across active pages
+      window.dispatchEvent(new CustomEvent("timetable-updated"));
+      window.dispatchEvent(new CustomEvent("attendance-updated"));
+      window.dispatchEvent(new CustomEvent("semester-updated"));
+      window.dispatchEvent(new CustomEvent("today-updated"));
+
+      // Invalidate in-flight stats lock and reset cooldown so fresh stats are immediately fetched
+      useAttendanceStore.getState().invalidateInFlightStats();
+      useAttendanceStore.getState().fetchStats(true).catch(() => {});
 
       // Fire push notification to the sender AFTER import succeeds (single, deduplicated).
       // The _syncToken encodes sender identity + retriever avatar for the notification image.
@@ -156,9 +187,15 @@ export const PeerSyncModal = () => {
         api.post("/transfer/confirm-sync", { _syncToken: reviewData._syncToken }).catch(function() {});
       }
 
-      toast.success("Schedule mirrored successfully!");
+      SoundFX.playSnapPopSound();
+      triggerDynamicHUD({
+        type: "sparkle",
+        label: "Schedule Mirrored Successfully!",
+      });
       setInputCode("");
       setReviewData(null);
+      setSyncError(null);
+      navigate("/timetable");
     } catch (error: any) {
       const msg = error.response?.data?.error || error.response?.data?.message || "Failed to import schedule.";
       setSyncError(msg);

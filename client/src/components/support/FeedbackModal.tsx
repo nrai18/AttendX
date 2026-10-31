@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { X, Upload, Mail, Lightbulb, Bug } from "lucide-react";
 import { toast } from "sonner";
 import { api, getRecentApiErrors } from "../../lib/api";
-import { getLogs } from "../../lib/logger";
+import { getLogs, getErrorLogs } from "../../lib/logger";
 import { useAuthStore } from "../../stores/authStore";
 import { useHardwareBack } from "../../hooks/useHardwareBack";
 import { useScrollLock } from "../../hooks/useScrollLock";
@@ -18,18 +18,35 @@ interface FeedbackModalProps {
   defaultTab?: "issue" | "improvement";
 }
 
-const resolveCategory = (cat?: string): string => {
-  if (!cat) return "Timetable Error";
-  const valid = ["Timetable Error", "Attendance Sync", "Notifications", "Peer Sync", "UI Bug", "Performance", "Other"];
-  const exact = valid.find((c) => c.toLowerCase() === cat.toLowerCase());
-  if (exact) return exact;
-  if (/ui|design|layout|button|filter|screen|css|look/i.test(cat)) return "UI Bug";
-  if (/sync|peer/i.test(cat)) return "Peer Sync";
-  if (/notification|alarm|sound|ringer/i.test(cat)) return "Notifications";
-  if (/timetable|schedule|slot|class/i.test(cat)) return "Timetable Error";
-  if (/attend|mark|present|absent/i.test(cat)) return "Attendance Sync";
-  if (/slow|lag|freeze|crash|perform/i.test(cat)) return "Performance";
-  return "Other";
+export const resolveCategory = (cat?: string, errorDetails?: any, pathname?: string): string => {
+  const currentPath = pathname || (typeof window !== "undefined" ? window.location.pathname : "");
+  const text = `${cat || ""} ${currentPath} ${errorDetails?.message || ""} ${errorDetails?.stack || ""}`.toLowerCase();
+
+  // If a specific non-generic category was passed, validate it
+  if (cat && cat !== "UI Bug" && cat !== "Timetable Error" && cat !== "Other") {
+    const valid = ["Timetable Error", "Attendance Sync", "Notifications", "Peer Sync", "UI Bug", "Performance", "Other"];
+    const exact = valid.find((c) => c.toLowerCase() === cat.toLowerCase());
+    if (exact) return exact;
+  }
+
+  // 1. Contextual keywords from error message, function name, or active route
+  if (/notification|alarm|ringer|fcm|push|dnd|sound|academic/i.test(text)) return "Notifications";
+  if (/timetable|schedule|slot|class|merge|import-ocr/i.test(text)) return "Timetable Error";
+  if (/attendance|mark|present|absent|today|calendar|holiday|override|subject/i.test(text)) return "Attendance Sync";
+  if (/peer|sync|transfer|p2p|socket|device/i.test(text)) return "Peer Sync";
+  if (/timeout|slow|lag|freeze|crash|perform|memory|quota/i.test(text)) return "Performance";
+
+  // 2. Route path fallback
+  if (currentPath.includes("/timetable")) return "Timetable Error";
+  if (currentPath.includes("/attendance") || currentPath.includes("/today") || currentPath.includes("/calendar") || currentPath.includes("/subjects")) {
+    return "Attendance Sync";
+  }
+  if (currentPath.includes("/peer") || currentPath.includes("/transfer")) return "Peer Sync";
+
+  // 3. UI/CSS/rendering bugs
+  if (/ui|design|layout|button|filter|screen|css|look|render|hook|undefined|not defined/i.test(text)) return "UI Bug";
+
+  return "UI Bug";
 };
 
 export const FeedbackModal: React.FC<FeedbackModalProps> = ({
@@ -47,7 +64,7 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({
   const [tab, setTab] = useState<"issue" | "improvement">(defaultTab);
 
   // Issue state
-  const [selectedQuestion, setSelectedQuestion] = useState(() => resolveCategory(defaultIssue));
+  const [selectedQuestion, setSelectedQuestion] = useState(() => resolveCategory(defaultIssue, errorDetails));
   const [frequency, setFrequency] = useState("Just once");
   const [issueDescription, setIssueDescription] = useState(
     () => defaultDescription || (errorDetails?.message ? `App Error: ${errorDetails.message}` : "")
@@ -63,7 +80,7 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({
   useEffect(() => {
     if (isOpen) {
       if (defaultTab) setTab(defaultTab);
-      if (defaultIssue) setSelectedQuestion(resolveCategory(defaultIssue));
+      if (defaultIssue || errorDetails) setSelectedQuestion(resolveCategory(defaultIssue, errorDetails));
       if (defaultDescription) {
         setIssueDescription(defaultDescription);
         setImprovementDescription(defaultDescription);
@@ -102,17 +119,28 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({
       setIsSubmitting(true);
       let deviceLogs = null;
       if (tab === "issue" && attachLogs) {
+        // Sanitize localStorage: strip sensitive JWT tokens, passwords, and private secrets
+        const sanitizedStorage: Record<string, any> = {};
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key && !/token|secret|password|auth_state/i.test(key)) {
+            const val = localStorage.getItem(key);
+            sanitizedStorage[key] = val && val.length > 500 ? `${val.slice(0, 500)}... (truncated)` : val;
+          }
+        }
+
         deviceLogs = {
           userAgent: navigator.userAgent,
           platform: navigator.platform,
-          localStorage: { ...localStorage },
-          errorDetails: errorDetails || null,
-          recentApiErrors: getRecentApiErrors(),
-          consoleLogs: getLogs(),
-          email,
-          windowSize: `${window.innerWidth}x${window.innerHeight}`,
           url: window.location.href,
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
+          errorDetails: errorDetails || null,
+          recentErrors: getErrorLogs(), // Clean, focused ERROR and WARN logs
+          recentApiErrors: getRecentApiErrors(), // Failed HTTP network calls
+          consoleLogs: getLogs().slice(-25), // Breadcrumb trail
+          sanitizedStorage,
+          windowSize: `${window.innerWidth}x${window.innerHeight}`,
+          email,
         };
       }
 
@@ -145,52 +173,52 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({
             exit={{ opacity: 0 }}
             transition={{ duration: 0.16, ease: "easeOut" }}
             onClick={!isSubmitting ? onClose : undefined}
-            className="fixed inset-0 z-0 bg-white/60 dark:bg-black/60 backdrop-blur-sm will-change-[opacity]"
+            className="fixed inset-0 z-0 bg-black/75 backdrop-blur-md will-change-[opacity]"
           />
           <motion.div
             initial={{ y: 28, opacity: 0, scale: 0.97 }}
             animate={{ y: 0, opacity: 1, scale: 1 }}
             exit={{ y: 24, opacity: 0, scale: 0.97 }}
             transition={{ type: "spring", damping: 28, stiffness: 380, mass: 0.8 }}
-            className="w-full sm:max-w-lg bg-white/40 dark:bg-black/60 backdrop-blur-3xl border border-border rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[90vh] overflow-y-auto relative z-10 pointer-events-auto will-change-transform overscroll-contain"
+            className="w-full sm:max-w-lg bg-card text-card-foreground border border-border/80 rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[90vh] overflow-y-auto relative z-10 pointer-events-auto will-change-transform overscroll-contain"
           >
             {/* Header */}
-            <div className="flex justify-between items-center px-6 pt-6 pb-4">
+            <div className="flex justify-between items-center px-4 sm:px-6 pt-5 sm:pt-6 pb-3 sm:pb-4">
               <h2 className="text-xl font-bold text-foreground">Send feedback</h2>
-              <button onClick={onClose} className="p-2 bg-muted/50 hover:bg-muted text-muted-foreground rounded-full cursor-pointer transition-colors">
+              <button onClick={onClose} className="p-2 bg-muted/60 hover:bg-muted text-muted-foreground hover:text-foreground rounded-full cursor-pointer transition-colors" aria-label="Close">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             {/* Tabs */}
-            <div className="flex gap-3 px-6 pb-5">
+            <div className="flex gap-2.5 sm:gap-3 px-4 sm:px-6 pb-4 sm:pb-5">
               <button
                 type="button"
                 onClick={() => setTab("issue")}
-                className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl border text-sm font-semibold transition-all cursor-pointer ${
+                className={`flex-1 flex items-center justify-center gap-2 py-2.5 sm:py-3 rounded-2xl border text-xs sm:text-sm font-semibold transition-all cursor-pointer ${
                   tab === "issue"
                     ? "bg-rose-500/10 border-rose-500/40 text-rose-500"
                     : "bg-muted/40 border-border text-muted-foreground hover:bg-muted"
                 }`}
               >
-                <Bug className="w-4 h-4" />
-                Report an issue
+                <Bug className="w-4 h-4 shrink-0" />
+                <span>Report an issue</span>
               </button>
               <button
                 type="button"
                 onClick={() => setTab("improvement")}
-                className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl border text-sm font-semibold transition-all cursor-pointer ${
+                className={`flex-1 flex items-center justify-center gap-2 py-2.5 sm:py-3 rounded-2xl border text-xs sm:text-sm font-semibold transition-all cursor-pointer ${
                   tab === "improvement"
                     ? "bg-amber-500/10 border-amber-500/40 text-amber-500"
                     : "bg-muted/40 border-border text-muted-foreground hover:bg-muted"
                 }`}
               >
-                <Lightbulb className="w-4 h-4" />
-                Improvement
+                <Lightbulb className="w-4 h-4 shrink-0" />
+                <span>Improvement</span>
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="px-6 pb-28 sm:pb-6 space-y-5">
+            <form onSubmit={handleSubmit} className="px-4 sm:px-6 pb-28 sm:pb-6 space-y-4 sm:space-y-5">
 
               {/* ── ISSUE FORM ───────────────────────────── */}
               {tab === "issue" && (
@@ -219,7 +247,7 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({
                       How often does this happen? <span className="text-rose-500">*</span>
                     </label>
                     <div className="flex flex-wrap gap-2">
-                      {["Just once", "1–2 times/week", "3–5 times/week", "Daily"].map((f) => (
+                      {["Just once", "1-2 times/week", "3-5 times/week", "Daily"].map((f) => (
                         <button
                           key={f} type="button" onClick={() => setFrequency(f)}
                           className={`px-4 py-1.5 rounded-full text-xs font-medium border transition-colors cursor-pointer ${
@@ -276,7 +304,7 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({
                 </>
               )}
 
-              {/* ── IMPROVEMENT FORM ─────────────────────── */}
+              {/* ── IMPROVEMENT FORM ──────────────────────── */}
               {tab === "improvement" && (
                 <>
                   <div className="space-y-1.5">
@@ -312,9 +340,10 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({
                     />
                   </div>
 
-                  <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3">
+                  <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 flex items-start gap-2">
+                    <Lightbulb className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
                     <p className="text-xs text-amber-600 dark:text-amber-400 leading-relaxed">
-                      💡 Good suggestions get prioritised in the next release. The more detail you provide, the better!
+                      Good suggestions get prioritised in the next release. The more detail you provide, the better!
                     </p>
                   </div>
                 </>

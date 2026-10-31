@@ -89,9 +89,14 @@ export const useAuthStore = create<AuthState>()(
         }
 
         import('./offlineStore').then(({ useOfflineStore }) => useOfflineStore.getState().clearQueue()).catch(() => {});
+        import('./cacheStore').then(({ useCacheStore }) => useCacheStore.getState().clearCache()).catch(() => {});
+        import('./notificationStore').then(({ useNotificationStore }) => useNotificationStore.getState().resetConfig()).catch(() => {});
+        import('./attendanceStore').then(({ useAttendanceStore }) => useAttendanceStore.getState().resetAttendanceStore()).catch(() => {});
         const keysToRemove = [
           'attendx-auth',
           'attendx-attendance-cache',
+          'attendx-global-cache',
+          'attendx-notification-settings',
           'attendx-api-cache',
           'attendx-assignments',
           'attendx-sync-storage',
@@ -123,9 +128,7 @@ export const useAuthStore = create<AuthState>()(
         });
         
         if (wasAuthenticated) {
-          setTimeout(() => {
-            window.location.href = "/";
-          }, 100);
+          window.location.replace("/");
         }
       },
 

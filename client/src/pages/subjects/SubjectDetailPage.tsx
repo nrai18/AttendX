@@ -18,13 +18,16 @@ import {
   AlertTriangle,
   Loader2,
   ChevronDown,
-  Sparkles
+  Sparkles,
+  MessageSquare
 } from "lucide-react";
 import { api } from "../../lib/api";
 import { triggerAttendancePopup } from "../../stores/animationPopupStore";
 import { useAttendanceStore } from "../../stores/attendanceStore";
 import { useAuthStore } from "../../stores/authStore";
 import { useBackHandlerStore } from "../../stores/backHandlerStore";
+import { toast } from "sonner";
+import { hapticSelection, hapticSuccess } from "../../utils/haptics";
 
 interface AttendanceLogItem {
   id: string;
@@ -87,6 +90,45 @@ export const SubjectDetailPage = () => {
 
   // Edit Mode Toggle
   const [isEditMode, setIsEditMode] = useState(false);
+
+  // Remark Modal State
+  const [selectedRemarkLog, setSelectedRemarkLog] = useState<{ item: AttendanceLogItem; status: string } | null>(null);
+  const [remarkInput, setRemarkInput] = useState<string>("");
+  const [isSavingRemark, setIsSavingRemark] = useState<boolean>(false);
+
+  const getContextualRemarkChips = (status: string) => {
+    switch (status) {
+      case "off":
+        return [
+          "Class Cancelled",
+          "Bunk",
+          "Holiday",
+          "Dept Meeting",
+          "College Fest",
+          "Weather / Rain",
+        ];
+      case "present":
+      case "attended":
+        return [
+          "Regular Class",
+          "Proxy",
+          "Extra Class",
+          "Guest Lecture",
+        ];
+      case "absent":
+      case "missed":
+      default:
+        return [
+          "Bunk",
+          "Overslept",
+          "Medical / Sick",
+          "Home",
+          "Personal",
+          "College OD",
+          "Exam Prep",
+        ];
+    }
+  };
 
   // Active Tab: Logs vs Simulator (for single subject)
   const [activeTab, setActiveTab] = useState<"logs" | "simulator">("logs");
@@ -316,6 +358,7 @@ export const SubjectDetailPage = () => {
         timetableSlotId: item.timetableSlotId,
         overrideId: item.overrideId,
         attendanceId: item.id || (item as any).attendanceId,
+        remarks: item.remarks || undefined,
       });
 
       fetchLogsData(true);
@@ -324,6 +367,96 @@ export const SubjectDetailPage = () => {
     } catch (error) {
       console.error("Failed to update attendance:", error);
       fetchLogsData();
+    }
+  };
+
+  const getLogItemKey = (item: AttendanceLogItem) => {
+    return item.id || `${item.subjectId}_${item.date}_${item.timetableSlotId || item.overrideId || "slot"}`;
+  };
+
+  const handleOpenRemarkModal = (item: AttendanceLogItem) => {
+    hapticSelection();
+    setSelectedRemarkLog({ item, status: item.status || "present" });
+    setRemarkInput(item.remarks || "");
+  };
+
+  const handleSaveRemark = async () => {
+    if (!selectedRemarkLog) return;
+    const finalRemark = remarkInput.trim() || null;
+    setIsSavingRemark(true);
+    try {
+      const item = selectedRemarkLog.item;
+      const statusToSave = selectedRemarkLog.status === "not_marked" ? "not_marked" : selectedRemarkLog.status;
+
+      await api.post("/attendance/mark", {
+        subjectId: item.subjectId,
+        date: item.date,
+        status: statusToSave,
+        timetableSlotId: item.timetableSlotId,
+        overrideId: item.overrideId,
+        attendanceId: item.id || (item as any).attendanceId,
+        remarks: finalRemark,
+      });
+
+      const itemKey = getLogItemKey(item);
+      setLogs((prev) =>
+        prev.map((l) => (getLogItemKey(l) === itemKey ? { ...l, remarks: finalRemark } : l))
+      );
+
+      toast.success(finalRemark ? "Remark saved" : "Remark cleared");
+      hapticSuccess();
+      setSelectedRemarkLog(null);
+      setRemarkInput("");
+
+      useAttendanceStore.getState().fetchStats(true);
+      useCacheStore.getState().setCache("calendar", {});
+      useCacheStore.getState().setCache("today", {});
+      window.dispatchEvent(new CustomEvent("attendance-updated", { detail: { source: "subject-detail-page" } }));
+    } catch (err) {
+      console.error("Failed to save remark:", err);
+      toast.error("Failed to save remark");
+    } finally {
+      setIsSavingRemark(false);
+    }
+  };
+
+  const handleRemoveRemarkOnly = async () => {
+    if (!selectedRemarkLog) return;
+    setRemarkInput("");
+    setIsSavingRemark(true);
+    try {
+      const item = selectedRemarkLog.item;
+      const statusToSave = selectedRemarkLog.status === "not_marked" ? "not_marked" : selectedRemarkLog.status;
+
+      await api.post("/attendance/mark", {
+        subjectId: item.subjectId,
+        date: item.date,
+        status: statusToSave,
+        timetableSlotId: item.timetableSlotId,
+        overrideId: item.overrideId,
+        attendanceId: item.id || (item as any).attendanceId,
+        remarks: null,
+      });
+
+      const itemKey = getLogItemKey(item);
+      setLogs((prev) =>
+        prev.map((l) => (getLogItemKey(l) === itemKey ? { ...l, remarks: null } : l))
+      );
+
+      toast.success("Remark removed");
+      hapticSuccess();
+      setSelectedRemarkLog(null);
+      setRemarkInput("");
+
+      useAttendanceStore.getState().fetchStats(true);
+      useCacheStore.getState().setCache("calendar", {});
+      useCacheStore.getState().setCache("today", {});
+      window.dispatchEvent(new CustomEvent("attendance-updated", { detail: { source: "subject-detail-page" } }));
+    } catch (err) {
+      console.error("Failed to remove remark:", err);
+      toast.error("Failed to remove remark");
+    } finally {
+      setIsSavingRemark(false);
     }
   };
 
@@ -829,15 +962,42 @@ export const SubjectDetailPage = () => {
                               </div>
                               
                               {/* Log Remarks Context */}
-                              {item.remarks && (
-                                <div className="mt-1 bg-muted/40 border border-border/60 rounded-xl px-3 py-2 flex items-start gap-2">
-                                  <span className="text-[10px] uppercase font-bold text-muted-foreground shrink-0 mt-0.5 opacity-70">
-                                    Remark:
-                                  </span>
-                                  <span className="text-xs text-foreground/80 leading-relaxed italic">
-                                    {item.remarks}
-                                  </span>
-                                </div>
+                              {item.remarks ? (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleOpenRemarkModal(item);
+                                  }}
+                                  className="mt-1.5 bg-muted/40 hover:bg-muted/70 border border-border/60 hover:border-primary/40 rounded-xl px-3 py-2 flex items-start justify-between gap-2 transition-all cursor-pointer text-left group w-full"
+                                  title="Click to edit or remove remark"
+                                >
+                                  <div className="flex items-start gap-2 min-w-0 flex-1">
+                                    <MessageSquare className="w-3.5 h-3.5 text-primary shrink-0 mt-0.5" />
+                                    <div className="flex-1 min-w-0">
+                                      <span className="text-[10px] uppercase font-bold text-muted-foreground mr-1.5 opacity-70">
+                                        Remark:
+                                      </span>
+                                      <span className="text-xs text-foreground/90 font-medium leading-relaxed italic truncate">
+                                        {item.remarks}
+                                      </span>
+                                    </div>
+                                  </div>
+                                  <Pencil className="w-3 h-3 text-muted-foreground opacity-40 group-hover:opacity-100 group-hover:text-primary shrink-0 mt-0.5 transition-opacity" />
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleOpenRemarkModal(item);
+                                  }}
+                                  className="mt-1.5 text-xs text-muted-foreground/70 hover:text-primary border border-dashed border-border/60 hover:border-primary/40 hover:bg-primary/5 rounded-xl px-2.5 py-1 flex items-center gap-1.5 transition-all cursor-pointer w-fit"
+                                  title="Add a remark (Bunk reason, teacher absent, proxy, etc.)"
+                                >
+                                  <MessageSquare className="w-3 h-3 text-muted-foreground/60 group-hover:text-primary shrink-0" />
+                                  <span className="text-[11px] font-medium">+ Add Remark</span>
+                                </button>
                               )}
                             </div>
                           </div>
@@ -987,6 +1147,79 @@ export const SubjectDetailPage = () => {
           )}
         </button>
       </div>
+
+      {/* Contextual Remark Modal */}
+      {selectedRemarkLog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="bg-card border border-border/80 rounded-3xl p-4 sm:p-6 w-full max-w-md shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+            <h3 className="text-lg font-bold text-foreground flex items-center gap-2">
+              <MessageSquare className="w-5 h-5 text-primary shrink-0" />
+              <span>Class Remark & Reason</span>
+            </h3>
+            <p className="text-xs text-muted-foreground">
+              Class on <span className="font-semibold text-foreground">{selectedRemarkLog.item.dateFormatted || selectedRemarkLog.item.date}</span> (Status: <span className="font-bold uppercase text-primary">{selectedRemarkLog.status}</span>).
+              Tag why you missed, if class was cancelled, or if it was a bunk.
+            </p>
+            <div>
+              <label className="text-xs font-semibold text-muted-foreground mb-1 block">Remark / Reason</label>
+              <input
+                type="text"
+                value={remarkInput}
+                onChange={(e) => setRemarkInput(e.target.value)}
+                className="w-full px-3.5 py-2.5 bg-muted/50 border border-border rounded-xl text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary/50 transition-all"
+                autoFocus
+              />
+              <div className="flex flex-wrap gap-1.5 mt-2.5 max-h-32 overflow-y-auto pr-1">
+                {getContextualRemarkChips(selectedRemarkLog.status).map((tag) => (
+                  <button
+                    key={tag}
+                    type="button"
+                    onClick={() => setRemarkInput(tag)}
+                    className={`px-2.5 py-1 rounded-lg text-xs border transition-colors font-semibold cursor-pointer whitespace-nowrap ${
+                      remarkInput === tag
+                        ? "bg-primary text-primary-foreground border-primary"
+                        : "bg-primary/10 border-primary/20 hover:bg-primary/20 text-primary"
+                    }`}
+                  >
+                    + {tag}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="flex items-center justify-between gap-2 pt-2 border-t border-border/40">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSelectedRemarkLog(null)}
+                  disabled={isSavingRemark}
+                  className="px-3.5 py-2 rounded-xl text-xs font-semibold text-muted-foreground hover:bg-muted transition-colors cursor-pointer text-center"
+                >
+                  Cancel
+                </button>
+                {selectedRemarkLog.item.remarks && (
+                  <button
+                    type="button"
+                    onClick={handleRemoveRemarkOnly}
+                    disabled={isSavingRemark}
+                    className="px-3 py-2 rounded-xl text-xs font-semibold text-rose-500 hover:bg-rose-500/10 transition-colors cursor-pointer text-center"
+                  >
+                    Remove Remark
+                  </button>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={handleSaveRemark}
+                disabled={isSavingRemark}
+                className="px-5 py-2.5 bg-primary text-primary-foreground rounded-xl text-xs font-bold hover:bg-primary/90 transition-all shadow-md shadow-primary/20 cursor-pointer text-center flex items-center gap-1.5"
+              >
+                {isSavingRemark && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                <span>Save Remark</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
     </div>
   );

@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import { prisma } from "../lib/prisma";
 import { CacheService } from "./cache.service";
 import { isSameHoliday } from "../utils/holidayUtils";
@@ -114,8 +115,11 @@ export class EventService {
       eventsByDay.set(dateKey, list);
     }
 
-    // Save the user confirmed events, avoiding duplicates by title and date
-    const createdEvents = [];
+    // Save the user confirmed events, avoiding duplicates by title and date with batch createMany
+    const createdEvents: any[] = [];
+    const eventsToInsert: any[] = [];
+    const updatePromises: Promise<any>[] = [];
+
     for (const evt of events) {
       // Normalize field aliases — older exports used description/type, newer use title/eventType
       const evtTitle: string = (evt.title || evt.description || "Event").trim();
@@ -170,11 +174,12 @@ export class EventService {
       const exactMatch = sameDayEvents.find(e => e.title.toLowerCase().trim() === evtTitle.toLowerCase().trim());
       if (exactMatch) {
         if (evt.endDate && (!exactMatch.endDate || new Date(evt.endDate).getTime() !== new Date(exactMatch.endDate).getTime())) {
-          const updated = await prisma.event.update({ where: { id: exactMatch.id }, data: { endDate: new Date(evt.endDate) } });
-          createdEvents.push(updated);
-        } else {
-          createdEvents.push(exactMatch);
+          exactMatch.endDate = new Date(evt.endDate);
+          updatePromises.push(
+            prisma.event.update({ where: { id: exactMatch.id }, data: { endDate: new Date(evt.endDate) } })
+          );
         }
+        createdEvents.push(exactMatch);
         continue;
       }
 
@@ -189,17 +194,25 @@ export class EventService {
           // If the incoming event is from the Academic Calendar (e.g. "Dussehra (Vijay Dashmi)")
           // and existing is a central holiday (e.g. "Dussehra"), upgrade the existing entry with the official academic title
           if (!isHolidayList && matchingHoliday.isHolidayList) {
-            const updated = await prisma.event.update({
-              where: { id: matchingHoliday.id },
-              data: {
-                title: evtTitle,
-                eventType: mappedType,
-                endDate: evt.endDate ? new Date(evt.endDate) : matchingHoliday.endDate,
-                isHolidayList: false,
-                isHoliday: true
-              }
-            });
-            createdEvents.push(updated);
+            matchingHoliday.title = evtTitle;
+            matchingHoliday.eventType = mappedType;
+            matchingHoliday.endDate = evt.endDate ? new Date(evt.endDate) : matchingHoliday.endDate;
+            matchingHoliday.isHolidayList = false;
+            matchingHoliday.isHoliday = true;
+
+            updatePromises.push(
+              prisma.event.update({
+                where: { id: matchingHoliday.id },
+                data: {
+                  title: evtTitle,
+                  eventType: mappedType,
+                  endDate: matchingHoliday.endDate,
+                  isHolidayList: false,
+                  isHoliday: true
+                }
+              })
+            );
+            createdEvents.push(matchingHoliday);
             continue;
           } else {
             createdEvents.push(matchingHoliday);
@@ -208,23 +221,38 @@ export class EventService {
         }
       }
 
-      const created = await prisma.event.create({
-        data: {
-          userId,
-          semesterId,
-          title: evtTitle,
-          eventType: mappedType,
-          date: evtDate,
-          endDate: evt.endDate ? new Date(evt.endDate) : null,
-          allDay: evt.allDay !== false,
-          isHoliday,
-          isHolidayList
-        }
-      });
-      sameDayEvents.push(created);
+      const newEventObj: any = {
+        id: crypto.randomUUID(),
+        userId,
+        semesterId,
+        title: evtTitle,
+        eventType: mappedType,
+        date: evtDate,
+        endDate: evt.endDate ? new Date(evt.endDate) : null,
+        allDay: evt.allDay !== false,
+        isHoliday,
+        isHolidayList,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
+
+      sameDayEvents.push(newEventObj);
       eventsByDay.set(dateKey, sameDayEvents);
-      createdEvents.push(created);
+      eventsToInsert.push(newEventObj);
+      createdEvents.push(newEventObj);
     }
+
+    // Execute all updates and the batch insert concurrently
+    const operations: Promise<any>[] = [...updatePromises];
+    if (eventsToInsert.length > 0) {
+      operations.push(prisma.event.createMany({ data: eventsToInsert, skipDuplicates: true }));
+    }
+    if (operations.length > 0) {
+      await Promise.all(operations);
+    }
+
+    CacheService.del(userId, "onboarding:status").catch(() => {});
+
     return createdEvents;
   }
 
@@ -328,8 +356,10 @@ export class EventService {
       baseWhere.isHolidayList = false;
     }
 
-    return prisma.event.deleteMany({
+    const res = await prisma.event.deleteMany({
       where: baseWhere
     });
+    CacheService.del(userId, "onboarding:status").catch(() => {});
+    return res;
   }
 }

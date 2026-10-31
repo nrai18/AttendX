@@ -12,6 +12,8 @@ export interface SubjectStat {
   code: string;
   colorHex?: string;
   attended: number;
+  missed?: number;
+  off?: number;
   total: number;
   percentage: number;
   target?: number;
@@ -64,7 +66,8 @@ let lastStatsCompletedAt = 0;
 if (typeof window !== "undefined") {
   window.addEventListener("attendance-updated", () => {
     fetchStatsSeq += 1;
-    inFlightStatsPromise = null;
+    // Reset cache cooldown so subsequent fetchStats runs freshly without being blocked,
+    // while preserving any actively in-flight promise to prevent concurrent duplicate queries.
     lastStatsCompletedAt = 0;
   });
 }
@@ -206,11 +209,17 @@ export const useAttendanceStore = create<AttendanceState>()(
           let totalClasses = 0;
 
           const subjects: SubjectStat[] = rawSubjects.map((sub: any) => {
-            const att = sub.attended || 0;
-            const tot = sub.total || 0;
+            const att = Number(sub.attended) || 0;
+            const tot = Number(sub.total) || 0;
+            const missed = typeof sub.missed === "number" && !isNaN(sub.missed)
+              ? sub.missed
+              : Math.max(0, tot - att);
+            const off = typeof sub.off === "number" && !isNaN(sub.off)
+              ? sub.off
+              : 0;
             totalAttended += att;
             totalClasses += tot;
-            const pct = tot > 0 ? (att / tot) * 100 : (sub.percentage || 0);
+            const pct = tot > 0 ? (att / tot) * 100 : (Number(sub.percentage) || 0);
             return {
               id: sub.id || sub.subjectId || "",
               subjectId: sub.id || sub.subjectId || "",
@@ -218,6 +227,8 @@ export const useAttendanceStore = create<AttendanceState>()(
               code: sub.code || sub.subjectCode || "",
               colorHex: sub.colorHex,
               attended: att,
+              missed,
+              off,
               total: tot,
               percentage: Number(pct.toFixed(1)),
               target: sub.target,
@@ -315,6 +326,11 @@ export const useAttendanceStore = create<AttendanceState>()(
           import("../services/NotificationService")
             .then(({ NotificationService }) => {
               NotificationService.autoScheduleFromTimetable().catch(() => {});
+              NotificationService.scheduleAssignmentReminders().catch(() => {});
+              import("./cacheStore").then(({ useCacheStore }) => {
+                const activeFreq = useCacheStore.getState().reminderFrequency || { type: 'Daily' };
+                NotificationService.scheduleAcademicUpdates(activeFreq).catch(() => {});
+              }).catch(() => {});
             })
             .catch(() => {});
         } catch (error) {

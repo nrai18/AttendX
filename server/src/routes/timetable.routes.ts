@@ -12,9 +12,12 @@ const upload = multer({
 router.use(authenticate);
 
 router.get("/:semesterId", TimetableController.getTimetable);
-  router.get("/semester/:semesterId/archived", TimetableController.getArchivedTimetables);
+router.get("/semester/:semesterId/archived", TimetableController.getArchivedTimetables);
+router.delete("/semester/:semesterId/archived/:versionId", TimetableController.deleteArchivedVersion);
+router.delete("/semester/:semesterId/archived", TimetableController.deleteAllArchivedVersions);
 router.post("/slots", TimetableController.createSlot);
 router.patch("/slots/:id", TimetableController.updateSlot);
+router.put("/slots/:id", TimetableController.updateSlot);
 router.post("/slots/swap", TimetableController.swapSlots);
 router.post("/days/swap", TimetableController.swapDays);
 router.post("/days/shift", TimetableController.shiftDay);

@@ -6,6 +6,8 @@ import { toast } from "sonner";
 import { useScrollLock } from "../../hooks/useScrollLock";
 import { useCacheStore } from "../../stores/cacheStore";
 import { useAttendanceStore } from "../../stores/attendanceStore";
+import { triggerDynamicHUD } from "../../components/ui/dynamic-island-hud";
+import { SoundFX } from "../../utils/soundEffects";
 
 interface AddEventModalProps {
   isOpen: boolean;
@@ -68,7 +70,12 @@ export function AddEventModal({
     setDate(format(new Date(), "yyyy-MM-dd"));
     onClose();
     onOptimisticAdd?.(optimisticEvent);
-    toast.success("Event added!");
+    SoundFX.playSnapPopSound();
+    triggerDynamicHUD({
+      type: "sparkle",
+      label: "Event Added",
+      subtitle: optimisticEvent.title,
+    });
 
     try {
       const res = await api.post("/events/save-wizard", {
@@ -153,7 +160,7 @@ export function AddEventModal({
                   type="date"
                   value={date}
                   onChange={e => setDate(e.target.value)}
-                  className="w-full bg-muted/50 border border-border rounded-xl pl-10 pr-4 py-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all [color-scheme:dark]"
+                  className="w-full bg-muted/50 border border-border rounded-xl pl-10 pr-4 py-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all [color-scheme:light] dark:[color-scheme:dark]"
                 />
               </div>
             </div>
@@ -167,7 +174,7 @@ export function AddEventModal({
                   min={date}
                   value={endDate}
                   onChange={e => setEndDate(e.target.value)}
-                  className="w-full bg-muted/50 border border-border rounded-xl pl-10 pr-4 py-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all [color-scheme:dark]"
+                  className="w-full bg-muted/50 border border-border rounded-xl pl-10 pr-4 py-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all [color-scheme:light] dark:[color-scheme:dark]"
                 />
               </div>
               <p className="text-[10px] text-muted-foreground ml-1">Leave empty for a single-day event.</p>

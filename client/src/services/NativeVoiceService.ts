@@ -2,6 +2,7 @@ import { Capacitor, CapacitorHttp } from '@capacitor/core';
 import { Filesystem, Directory } from '@capacitor/filesystem';
 import { App } from '@capacitor/app';
 import { SpeechRecognition } from '@capgo/capacitor-speech-recognition';
+import { maskProfanity } from "../utils/profanityMask";
 import { TextToSpeech } from '@capacitor-community/text-to-speech';
 import { VoiceRecorder } from 'capacitor-voice-recorder';
 import { api } from '../lib/api.ts';
@@ -31,7 +32,50 @@ export interface VoiceSpeakOptions {
   listenOptions?: VoiceListenOptions;
 }
 
+/**
+ * Detects voice breakout commands across Voice Overlay and Hands-Free mode.
+ * Handles single words ("stop", "exit"), repeated commands ("stop stop conversation"),
+ * conversational closing phrases ("listening thankyou stop", "thankyou stop", "listening thank you stop stop conversation"),
+ * and polite exits ("thank you stop", "thank you goodbye").
+ */
+export const isVoiceBreakoutCommand = (text: string): boolean => {
+  if (!text || typeof text !== 'string') return false;
+  const norm = text.trim().toLowerCase().replace(/[.,!?;:'"()-]/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!norm) return false;
+
+  // 1. Direct single keywords
+  const singleKeywords = ['stop', 'cancel', 'exit', 'quit', 'goodbye', 'bye', 'cya', 'abort'];
+  if (singleKeywords.includes(norm)) return true;
+
+  // 2. Exact or compound phrases containing stop/conversation
+  // e.g., "stop stop", "stop stop conversation", "stop conversation", "stop listening", "stop talking", "stop voice", "stop hands free"
+  if (/^(?:please\s+)?stop(?:\s+stop)?(?:\s+(?:the\s+)?(?:conversation|listening|talking|mode|voice|hands\s*free))?$/i.test(norm)) return true;
+  if (/^stop\s+stop$/i.test(norm)) return true;
+  if (/^(?:just\s+)?(?:shut\s+up|be\s+quiet|end\s+conversation|close\s+voice|exit\s+mode)$/i.test(norm)) return true;
+
+  // 3. Listening + stop / thank you combinations
+  // e.g., "listening thankyou stop", "listening thankyou stop stop conversation", "listening thank you stop", "listening stop"
+  if (/^listening\s+(?:thank\s*you|thanks)?\s*stop(?:\s+stop)?(?:\s+conversation)?$/i.test(norm)) return true;
+  if (/^listening\s+(?:stop|stop\s+conversation|stop\s+stop\s+conversation|exit|quit|cancel)$/i.test(norm)) return true;
+
+  // 4. Thank you + stop combinations
+  // e.g., "thankyou stop", "thank you stop", "thank you stop stop conversation", "thank you stop conversation"
+  if (/^(?:thank\s*you|thanks)\s*,?\s*stop(?:\s+stop)?(?:\s+conversation)?$/i.test(norm)) return true;
+  if (/^(?:thank\s*you|thanks)\s*,?\s*(?:goodbye|bye|bye\s+bye|exit|cancel|close|that'?s\s+all|done)$/i.test(norm)) return true;
+
+  // 5. Ending or standalone with "stop stop conversation" or "stop conversation"
+  if (/\b(?:stop\s+stop\s+conversation|stop\s+conversation|stop\s+listening|stop\s+talking)\b/i.test(norm)) return true;
+
+  // 6. Optional prefix like "ok stop stop conversation", "okay thankyou stop"
+  if (/^(?:ok|okay|hey|alright|attendx|assistant)\s+(?:stop|stop\s+stop|listening\s+thank\s*you\s+stop|thank\s*you\s+stop)/i.test(norm)) {
+    return isVoiceBreakoutCommand(norm.replace(/^(?:ok|okay|hey|alright|attendx|assistant)\s+/i, ''));
+  }
+
+  return false;
+};
+
 export class NativeVoiceService {
+  static isBreakoutCommand = isVoiceBreakoutCommand;
   private static isListeningState = false;
   private static isSpeakingState = false;
   private static isLoopActive = false;
@@ -62,6 +106,13 @@ export class NativeVoiceService {
    */
   static isContinuousLoop(): boolean {
     return this.isLoopActive;
+  }
+
+  /**
+   * Check whether any voice interaction (speaking, listening, or hands-free loop) is active.
+   */
+  static isVoiceModeActive(): boolean {
+    return this.isListeningState || this.isSpeakingState || this.isLoopActive;
   }
 
   /**
@@ -172,6 +223,14 @@ export class NativeVoiceService {
       clearTimeout(this.cooldownTimeoutId);
       this.cooldownTimeoutId = null;
     }
+
+    try {
+      localStorage.setItem("onboarding_voice_mode", "true");
+      api.patch("/users/onboarding-status", { step: "voice_mode" }).catch(() => {});
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("onboarding-step-completed", { detail: { step: "voice_mode" } }));
+      }
+    } catch {}
 
     // Audio clash prevention: stop assistant speech first to avoid capturing output audio
     await this.stopSpeaking();
@@ -293,8 +352,9 @@ export class NativeVoiceService {
               currentTranscript += event.results[i][0].transcript;
             }
             if (currentTranscript) {
-              options.onPartialResult?.(currentTranscript);
-              options.onFinalResult?.(currentTranscript);
+              const safeTranscript = maskProfanity(currentTranscript);
+              options.onPartialResult?.(safeTranscript);
+              options.onFinalResult?.(safeTranscript);
             }
           };
 
@@ -413,6 +473,14 @@ export class NativeVoiceService {
       clearTimeout(this.cooldownTimeoutId);
       this.cooldownTimeoutId = null;
     }
+
+    try {
+      localStorage.setItem("onboarding_voice_mode", "true");
+      api.patch("/users/onboarding-status", { step: "voice_mode" }).catch(() => {});
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("onboarding-step-completed", { detail: { step: "voice_mode" } }));
+      }
+    } catch {}
 
     // Requirement R2 (Echo Prevention): strictly await stopListening BEFORE any audio playback begins
     await this.stopListening();

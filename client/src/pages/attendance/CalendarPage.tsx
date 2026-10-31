@@ -747,16 +747,24 @@ export const CalendarPage = () => {
                     {dayDetails.length > 0 && (
                       <div className="flex flex-col gap-1.5 mt-1">
                         {dayDetails.map((detail, idx) => (
-                          <div key={idx} className="flex items-center justify-between text-xs">
-                            <span className="text-muted-foreground truncate pr-2 flex-1">{detail.subjectName}</span>
-                            <span className={`font-bold shrink-0 ${
-                              detail.status === "present" ? "text-emerald-500" :
-                              detail.status === "absent" ? "text-rose-500" :
-                              detail.status === "off" ? "text-yellow-500" :
-                              "text-blue-500"
-                            }`}>
-                              {detail.status === "present" ? "Present" : detail.status === "absent" ? "Absent" : detail.status === "off" ? "Off" : detail.status}
-                            </span>
+                          <div key={idx} className="flex flex-col gap-0.5 text-xs py-0.5 border-b border-border/20 last:border-b-0">
+                            <div className="flex items-center justify-between">
+                              <span className="text-muted-foreground truncate pr-2 flex-1 font-medium">{detail.subjectName}</span>
+                              <span className={`font-bold shrink-0 ${
+                                detail.status === "present" ? "text-emerald-500" :
+                                detail.status === "absent" ? "text-rose-500" :
+                                detail.status === "off" ? "text-amber-500" :
+                                "text-blue-500"
+                              }`}>
+                                {detail.status === "present" ? "Present" : detail.status === "absent" ? "Absent" : detail.status === "off" ? "Off" : detail.status}
+                              </span>
+                            </div>
+                            {detail.remarks && (
+                              <div className="flex items-center gap-1 text-[10px] text-primary bg-primary/10 px-1.5 py-0.5 rounded-md truncate max-w-full">
+                                <MessageSquare className="w-2.5 h-2.5 shrink-0 text-primary" />
+                                <span className="truncate italic font-medium">{detail.remarks}</span>
+                              </div>
+                            )}
                           </div>
                         ))}
                       </div>
@@ -934,18 +942,26 @@ export const CalendarPage = () => {
                       <div className="flex flex-col gap-2">
                         <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Classes</h4>
                         {dayDetails.map((detail, idx) => (
-                          <div key={idx} className="flex items-center justify-between text-sm bg-muted/30 p-2.5 rounded-xl border border-border">
-                            <span className="text-foreground font-medium truncate pr-2 flex-1">{detail.subjectName}</span>
-                            <span className={`font-bold shrink-0 ${
-                              detail.status === "present" ? "text-emerald-500" :
-                              detail.status === "absent" ? "text-rose-500" :
-                              detail.status === "off" ? "text-yellow-500" :
-                              "text-blue-500"
-                            }`}>
-                              {detail.status === "present" ? "Present" :
-                               detail.status === "absent" ? "Absent" :
-                               detail.status === "off" ? "Off" : (detail.status === "not_marked" ? "Not Marked" : detail.status.charAt(0).toUpperCase() + detail.status.slice(1))}
-                            </span>
+                          <div key={idx} className="flex flex-col gap-1.5 text-sm bg-muted/30 p-2.5 rounded-xl border border-border">
+                            <div className="flex items-center justify-between">
+                              <span className="text-foreground font-medium truncate pr-2 flex-1">{detail.subjectName}</span>
+                              <span className={`font-bold shrink-0 ${
+                                detail.status === "present" ? "text-emerald-500" :
+                                detail.status === "absent" ? "text-rose-500" :
+                                detail.status === "off" ? "text-amber-500" :
+                                "text-blue-500"
+                              }`}>
+                                {detail.status === "present" ? "Present" :
+                                 detail.status === "absent" ? "Absent" :
+                                 detail.status === "off" ? "Off" : (detail.status === "not_marked" ? "Not Marked" : detail.status.charAt(0).toUpperCase() + detail.status.slice(1))}
+                              </span>
+                            </div>
+                            {detail.remarks && (
+                              <div className="flex items-center gap-1.5 text-xs text-primary bg-primary/10 px-2 py-1 rounded-lg border border-primary/20">
+                                <MessageSquare className="w-3.5 h-3.5 shrink-0 text-primary" />
+                                <span className="font-semibold italic">{detail.remarks}</span>
+                              </div>
+                            )}
                           </div>
                         ))}
                       </div>

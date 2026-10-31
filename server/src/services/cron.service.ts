@@ -78,6 +78,9 @@ export class CronService {
       }
     }, { timezone: 'Asia/Kolkata' });
 
+    // NOTE: Expired peer sync share transfers are cleaned up lazily on-demand in TransferController (retrieve/send)
+    // to allow Neon Postgres to auto-suspend when inactive rather than waking the database every 15 minutes.
+
     console.log('[CronService] Initialized scheduled jobs (Timezone: IST).');
   }
 }

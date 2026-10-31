@@ -1,5 +1,5 @@
 import React, { Component, ErrorInfo, ReactNode } from "react";
-import { FeedbackModal } from "../support/FeedbackModal";
+import { FeedbackModal, resolveCategory } from "../support/FeedbackModal";
 import { Toaster } from "sonner";
 
 interface Props {
@@ -70,12 +70,21 @@ export class ErrorBoundary extends Component<Props, State> {
           <FeedbackModal
             isOpen={this.state.isFeedbackOpen}
             onClose={() => this.setState({ isFeedbackOpen: false })}
-            defaultIssue="UI Bug"
+            defaultIssue={resolveCategory(
+              "",
+              {
+                message: this.state.error?.message,
+                name: this.state.error?.name,
+                stack: this.state.error?.stack
+              },
+              typeof window !== "undefined" ? window.location.pathname : ""
+            )}
             errorDetails={{
               consoleErrors: this.errorLog,
               message: this.state.error?.message,
               name: this.state.error?.name,
-              stack: this.state.error?.stack
+              stack: this.state.error?.stack,
+              path: typeof window !== "undefined" ? window.location.pathname : ""
             }}
           />
           <Toaster 

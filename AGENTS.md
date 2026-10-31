@@ -9,11 +9,13 @@ Whenever writing backend or frontend code referencing Gemini Developer API model
 ## Android Build Workflow
 - **APK Output Location**: Whenever you successfully compile or build the Android APK, you MUST automatically copy the resulting  app-debug.apk to C:\Users\Raina\OneDrive\Desktop\AttendX.apk. Do not make the user manually retrieve it from the build folders.
 
-## OTA Release Workflow (Preventing Downgrade Loops)
-Whenever preparing a new major update or before compiling a final APK, you MUST synchronize the OTA versions to prevent the app from fetching older web assets from the server:
-1. **Frontend**: Bump the default `localVersion` fallback inside `client/src/App.tsx`.
-2. **Backend**: Update the `latestVersion` string and append the changelog in `server/src/controllers/system.controller.ts`.
-3. **Package**: Run `npm run build` in the `client` directory, then run `node zip_dist.cjs` in the `server` directory to bundle the latest frontend code into `server/uploads/update.zip`.
+## Final App Version & OTA Release Workflow (Strict Invariant)
+- **FINAL APP VERSION LOCKED AT v4.3.0**: `v4.3.0` is the permanent and final app version for AttendX. **NO VERSION BUMPS AHEAD.** Never bump or increment versions in `client/src/App.tsx`, `client/package.json`, or `server/src/controllers/system.controller.ts` above `v4.3.0`.
+- **Append to v4.3.0**: All new features, visual polish, bug fixes, and architectural adjustments MUST be appended directly under the `v4.3.0` changelog entry in `server/src/controllers/system.controller.ts`.
+- **Release Packaging**: Whenever updating the app:
+  1. Ensure `localVersion` in `client/src/App.tsx` and `latestVersion` in `server/src/controllers/system.controller.ts` remain strictly `"4.3.0"`.
+  2. Append new updates to the `v4.3.0` entry in `server/src/controllers/system.controller.ts`.
+  3. Run `npm run build` in the `client` directory, sync capacitor with `npx cap copy android`, then run `node zip_dist.cjs` in the `server` directory to bundle the latest frontend code into `server/uploads/update.zip`.
 
 ## Anti-Slop Design Invariants
 Never generate UI that uses the following AI default tropes:
@@ -52,10 +54,13 @@ When designing, updating, or overhauling the UI of a specific page:
 ## Intelligent Changelog & OTA Notes (Nothing OS Style)
 1. **Running Documentation:** Do not wait until an OTA deployment to write the changelog. Maintain a highly descriptive, running log of all implemented features, UX improvements, and bug fixes in `dev_log.md` as you work.
 2. **Categorization:** Group changelog entries logically into headers such as **New Features**, **Visual Enhancements**, **Architecture & Performance**, and **General Improvements and Bug Fixes.
-3. **Emoji Logic:** Every bullet point MUST start with a single, highly relevant emoji that dictates the nature of the change (e.g., ?? for ML tools, ??? for voice plugins, ?? for theming, ?? for offline handling, ?? for performance/timeouts). DO NOT spam unrelated emojis.
+3. **Emoji Logic:** Every bullet point MUST start with a single, highly relevant emoji that dictates the nature of the change (e.g., 🤖 for ML tools, 🎙️ for voice plugins, 🎨 for theming, 📶 for offline handling, ⚡ for performance/timeouts). DO NOT spam unrelated emojis.
 4. **Descriptive Depth:** Write clean, descriptive, and user-facing benefits (e.g., 'Introduced Native Voice Mode with Capacitor plugins, offering seamless hands-free interaction without overlapping audio.'). Avoid empty marketing buzzwords.
 
-
- 
- 8 .   * * A B S O L U T E   U I   &   F I X   P R E S E R V A T I O N : * *   N e v e r   b r e a k   t h e   U I   o r   r e m o v e   f i x e s   t h a t   h a v e   a l r e a d y   b e e n   i m p l e m e n t e d !   I f   y o u   ( o r   y o u r   s u b a g e n t s )   a r e   m o d i f y i n g   a   c o m p o n e n t   t o   u p d a t e   l o g i c ,   y o u   M U S T   r i g o r o u s l y   p r e s e r v e   e v e r y   e x i s t i n g   g r a d i e n t ,   a n i m a t i o n ,   c o n d i t i o n a l   r e n d e r ,   a n d   c u s t o m   s t y l i n g .   Y o u   a r e   s t r i c t l y   f o r b i d d e n   f r o m   r e v e r t i n g   o r   w i p i n g   o u t   p r e v i o u s   a r c h i t e c t u r a l   o r   v i s u a l   f i x e s   j u s t   b e c a u s e   t h e y   w e r e   m i s s i n g   i n   a n   o l d e r   c o n t e x t .  
- 
+8. **ABSOLUTE UI & FIX PRESERVATION:** Never break the UI or remove fixes that have already been implemented! If you (or your subagents) are modifying a component to update logic, you MUST rigorously preserve every existing gradient, animation, conditional render, and custom styling. You are strictly forbidden from reverting or wiping out previous architectural or visual fixes just because they were missing in an older context.
+9. **PERMANENT ANIMATION & SOUND LOCK (DO NOT MODIFY):** The animations and Web Audio synthesizers for:
+   - **Subject Addition & Deletion** (4-shard crystal card fracture, 3D butterfly flapping metamorphosis, PowerPoint S-curve flight path, and crystal snap/chime audio)
+   - **Event Creation & Deletion** in Semester Overview / Calendar (paper-aeroplane glider, delete confirmation toasts, and associated audio choreography)
+   - **Document Shredder Deletion** in Settings (12-strip vertical ribbon paper physics, vibrating industrial chassis, counter-rotating blade teeth, crimson warning laser, drifting confetti chads, and zero-latency electric shredder audio synthesizer)
+   - **Linked Devices Revocation & Session Whoosh** in Settings / Security (3D perspective aerodynamic whoosh flight trajectory `@keyframes sessionWhooshTrajectory` and zero-latency aerodynamic wind sweep audio synthesizer `SoundFX.playWhooshSound`)
+   are **LOCKED and FINAL**. Do not modify, re-tune, replace, or alter these visual animations or sound synthesizers under any circumstances.

@@ -56,7 +56,7 @@ Return a JSON array of objects following this exact schema. Do not output anythi
           responseMimeType: "application/json",
           temperature: 0.1,
           thinkingConfig: {
-            thinkingLevel: 'MINIMAL'
+            thinkingBudget: 0
           }
         }
       });

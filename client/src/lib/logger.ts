@@ -68,3 +68,7 @@ export function initLogger() {
 export function getLogs() {
   return [...logHistory];
 }
+
+export function getErrorLogs() {
+  return logHistory.filter(l => l.level === 'ERROR' || l.level === 'WARN');
+}

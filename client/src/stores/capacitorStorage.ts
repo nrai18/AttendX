@@ -1,4 +1,4 @@
-﻿import { Preferences } from "@capacitor/preferences";
+import { Preferences } from "@capacitor/preferences";
 
 export const capacitorStorage = {
   getItem: async (name: string): Promise<string | null> => {

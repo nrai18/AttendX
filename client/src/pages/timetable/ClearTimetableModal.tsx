@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Trash2, AlertTriangle, ShieldCheck, Loader2, X } from "lucide-react";
 import { useScrollLock } from "../../hooks/useScrollLock";
+import { SoundFX } from "../../utils/soundEffects";
 
 interface ClearTimetableModalProps {
   isOpen: boolean;
@@ -34,6 +35,7 @@ export const ClearTimetableModal: React.FC<ClearTimetableModalProps> = ({
   if (!isOpen) return null;
 
   const handleClear = async () => {
+    SoundFX.warmUp();
     setIsClearing(true);
     try {
       await onConfirm();

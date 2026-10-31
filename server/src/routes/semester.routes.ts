@@ -13,6 +13,7 @@ router.post("/transition", SemesterController.transition);
 router.post("/notify-transition", SemesterController.notifyTransition);
 router.post("/", SemesterController.create);
 router.patch("/:id/activate", SemesterController.activate);
+router.post("/:id/activate", SemesterController.activate);
 router.delete("/:id", SemesterController.remove);
 
 export default router;

@@ -39,6 +39,7 @@ client/android/captures/
 *.aab
 
 # Scripts & Scratch Files
+scratch/
 dev_log.md
 ai_slop.md
 plan.*.md

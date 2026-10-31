@@ -27,15 +27,13 @@ export const TopBar: React.FC<TopBarProps> = ({
   const isToday = location.pathname.startsWith("/today");
   const isTimetable = location.pathname.startsWith("/timetable");
   const isPredictive = location.pathname.startsWith("/predictive");
+  const isClassrooms = location.pathname.startsWith("/classrooms");
   
   const [isLoggingOut, setIsLoggingOut] = React.useState(false);
   const handleLogout = async () => {
     hapticWarning();
     setIsLoggingOut(true);
-    try {
-      await api.post("/auth/logout");
-    } catch (e) {}
-    logout();
+    await logout();
   };
   
   const { overallPercentage, hasActiveSemester } = useAttendanceStore();
@@ -43,15 +41,23 @@ export const TopBar: React.FC<TopBarProps> = ({
   const { theme, toggleTheme } = useThemeStore();
 
   // Route-specific styling
-  const headerBg = isReports || isPredictive ? "bg-[#EED3CF]/80 dark:bg-[#1A090C]/80 border-[#74313A]/20 dark:border-[#EED3CF]/20" : (isSemester || isSettings || isToday || isTimetable || isSubjects) ? "bg-transparent border-border/30" : "bg-background/80 border-border";
+  const headerBg = isClassrooms
+    ? "bg-white/90 dark:bg-[#000000]/90 border-neutral-200 dark:border-white/[0.08]"
+    : isReports || isPredictive 
+    ? "bg-[#EED3CF]/80 dark:bg-[#1A090C]/80 border-[#74313A]/20 dark:border-[#EED3CF]/20" 
+    : (isSemester || isSettings || isToday || isTimetable || isSubjects) 
+    ? "bg-transparent border-border/30" 
+    : "bg-background/80 border-border";
   const positionClass = "sticky top-0";
-  const textColor = (isReports || isPredictive) ? "text-[#111827] dark:text-[#FDF8F5]" : isSubjects ? "text-foreground dark:text-white" : "text-foreground";
-  const mutedTextColor = (isReports || isPredictive) ? "text-[#74313A]/60 dark:text-[#EED3CF]/60" : isSubjects ? "text-muted-foreground dark:text-white/80" : "text-muted-foreground";
-  const hoverBg = (isReports || isPredictive) ? "hover:bg-[#74313A]/5 dark:hover:bg-[#EED3CF]/5" : "hover:bg-muted/80";
-  const hoverText = (isReports || isPredictive) ? "hover:text-[#74313A] dark:hover:text-[#EED3CF]" : isSubjects ? "hover:text-foreground dark:hover:text-white" : "hover:text-foreground";
+  const textColor = isClassrooms ? "text-neutral-900 dark:text-white" : (isReports || isPredictive) ? "text-[#111827] dark:text-[#FDF8F5]" : isSubjects ? "text-foreground dark:text-white" : "text-foreground";
+  const mutedTextColor = isClassrooms ? "text-neutral-500 dark:text-neutral-400" : (isReports || isPredictive) ? "text-[#74313A]/60 dark:text-[#EED3CF]/60" : isSubjects ? "text-muted-foreground dark:text-white/80" : "text-muted-foreground";
+  const hoverBg = isClassrooms ? "hover:bg-neutral-100 dark:hover:bg-white/5" : (isReports || isPredictive) ? "hover:bg-[#74313A]/5 dark:hover:bg-[#EED3CF]/5" : "hover:bg-muted/80";
+  const hoverText = isClassrooms ? "hover:text-black dark:hover:text-white" : (isReports || isPredictive) ? "hover:text-[#74313A] dark:hover:text-[#EED3CF]" : isSubjects ? "hover:text-foreground dark:hover:text-white" : "hover:text-foreground";
 
   // Badge styling
-  const badgeBg = isReports 
+  const badgeBg = isClassrooms
+    ? "bg-neutral-100 dark:bg-white/5 border-neutral-200 dark:border-white/[0.08]"
+    : isReports 
     ? "bg-[#74313A]/5 dark:bg-[#EED3CF]/5 border-[#74313A]/10 dark:border-[#EED3CF]/10" 
     : "bg-muted/60 border-border";
   
@@ -90,7 +96,10 @@ export const TopBar: React.FC<TopBarProps> = ({
           <Button
             variant="ghost"
             size="icon"
-            onClick={toggleTheme}
+            onClick={(e) => {
+              hapticLight();
+              toggleTheme(e);
+            }}
             className={`w-9 h-9 rounded-xl ${mutedTextColor} ${hoverText} ${hoverBg} cursor-pointer transition-colors active:scale-95`}
             title={`Current: ${theme} theme. Click to toggle.`}
           >

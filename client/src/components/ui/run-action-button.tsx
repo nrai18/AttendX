@@ -101,6 +101,9 @@ export interface RunActionButtonProps {
   isAi?: boolean;
   subLabel?: string;
   className?: string;
+  isRunning?: boolean;
+  activeStepIndex?: number;
+  elapsedTenths?: number;
 }
 
 export function RunActionButton({
@@ -114,16 +117,29 @@ export function RunActionButton({
   widths = { idle: 160, running: 260, done: 160 },
   fullWidth = false,
   height = 48,
-  stepIntervalMs = 1650,
+  stepIntervalMs = 3000,
   showTimer = true,
   isAi = false,
   subLabel,
   className,
+  isRunning,
+  activeStepIndex,
+  elapsedTenths: passedElapsedTenths,
 }: RunActionButtonProps) {
   const [status, setStatus] = useState<"idle" | "running" | "done">("idle");
   const [currentStep, setCurrentStep] = useState(0);
-  const [elapsedTenths, setElapsedTenths] = useState(0);
+  const [internalElapsedTenths, setInternalElapsedTenths] = useState(0);
   const abortControllerRef = React.useRef<AbortController | null>(null);
+  const actionRef = React.useRef(action);
+
+  useEffect(() => {
+    actionRef.current = action;
+  }, [action]);
+
+  const activeStep =
+    activeStepIndex !== undefined
+      ? Math.min(steps.length - 1, Math.max(0, activeStepIndex))
+      : currentStep;
 
   const reset = () => {
     if (abortControllerRef.current) {
@@ -132,7 +148,7 @@ export function RunActionButton({
     }
     setStatus("idle");
     setCurrentStep(0);
-    setElapsedTenths(0);
+    setInternalElapsedTenths(0);
   };
 
   const handleCancel = (e: React.MouseEvent) => {
@@ -150,13 +166,13 @@ export function RunActionButton({
     if (disabled || status === "running") return;
     setStatus("running");
     setCurrentStep(0);
-    setElapsedTenths(0);
+    setInternalElapsedTenths(0);
 
-    if (action) {
+    if (actionRef.current) {
       const controller = new AbortController();
       abortControllerRef.current = controller;
       try {
-        await action(controller.signal);
+        await actionRef.current(controller.signal);
         if (!controller.signal.aborted) {
           setStatus("done");
           setTimeout(() => {
@@ -173,53 +189,44 @@ export function RunActionButton({
     }
   };
 
-  // Adaptive step progression — progresses cleanly through all steps
-  // and stays locked on the final step without looping backwards.
+  // Adaptive step progression (3 to 4 seconds per stage)
+  // Progresses cleanly through all steps and locks on final step until resolution.
   useEffect(() => {
-    if (status !== "running") return;
+    if (status !== "running" || activeStepIndex !== undefined) return;
 
     let timeoutId: ReturnType<typeof setTimeout>;
     const scheduleNext = (stepIdx: number) => {
-      // If we've reached the last step, do NOT schedule further steps.
-      // Lock on final step and let live timer run until action resolves.
+      // If we've reached the last step, lock on final step and let live timer run
       if (stepIdx >= steps.length - 1) {
-        if (!action) {
+        if (!actionRef.current) {
           setStatus("done");
           setTimeout(() => setStatus("idle"), 2500);
         }
         return;
       }
 
-      const ratio = steps.length > 1 ? stepIdx / (steps.length - 1) : 0;
-      const adaptiveDelay = action
-        ? Math.round(stepIntervalMs * (1 + ratio * 1.8))
-        : stepIntervalMs;
+      const delay = stepIntervalMs > 0 ? stepIntervalMs : 3000;
 
       timeoutId = setTimeout(() => {
-        setCurrentStep((prev) => {
-          if (prev < steps.length - 1) {
-            const next = prev + 1;
-            scheduleNext(next);
-            return next;
-          }
-          return prev;
-        });
-      }, adaptiveDelay);
+        const next = stepIdx + 1;
+        setCurrentStep(next);
+        scheduleNext(next);
+      }, delay);
     };
 
     scheduleNext(0);
     return () => clearTimeout(timeoutId);
-  }, [status, steps.length, action, stepIntervalMs]);
+  }, [status, steps.length, stepIntervalMs, activeStepIndex]);
 
   // High-frequency 100ms elapsed timer so user always sees live activity
   useEffect(() => {
-    if (status !== "running" || !showTimer) return;
+    if (status !== "running" || !showTimer || passedElapsedTenths !== undefined) return;
     const startMs = Date.now();
     const timer = setInterval(() => {
-      setElapsedTenths(Math.floor((Date.now() - startMs) / 100));
+      setInternalElapsedTenths(Math.floor((Date.now() - startMs) / 100));
     }, 100);
     return () => clearInterval(timer);
-  }, [status, showTimer]);
+  }, [status, showTimer, passedElapsedTenths]);
 
   useEffect(() => {
     return () => {
@@ -229,11 +236,24 @@ export function RunActionButton({
     };
   }, []);
 
-  const formattedTime = `${(elapsedTenths / 10).toFixed(1)}s`;
+  const effectiveElapsedTenths =
+    passedElapsedTenths !== undefined ? passedElapsedTenths : internalElapsedTenths;
+  const formattedTime = `${(effectiveElapsedTenths / 10).toFixed(1)}s`;
   const progressPercent =
     steps.length > 1
-      ? Math.min(96, Math.round(((currentStep + 1) / steps.length) * 100))
+      ? Math.min(96, Math.round(((activeStep + 1) / steps.length) * 100))
       : 75;
+
+  const effectiveStatus: "idle" | "running" | "done" =
+    status === "done"
+      ? "done"
+      : isRunning !== undefined
+        ? isRunning
+          ? "running"
+          : "idle"
+        : status === "running" || (activeStepIndex !== undefined && activeStepIndex >= 0)
+          ? "running"
+          : "idle";
 
   const effectiveWidths = fullWidth
     ? { idle: "100%", running: "100%", done: "100%" }
@@ -243,21 +263,21 @@ export function RunActionButton({
     <div className={`flex items-center justify-center min-w-0 max-w-full ${fullWidth ? "w-full" : ""} ${className || ""}`}>
       <motion.div
         initial={false}
-        animate={{ width: effectiveWidths[status] }}
+        animate={{ width: effectiveWidths[effectiveStatus] }}
         transition={spring}
         style={{
-          width: effectiveWidths[status],
+          width: effectiveWidths[effectiveStatus],
           maxWidth: "100%",
           height: typeof height === "number" ? `${height}px` : height,
         }}
         className={`relative flex items-center justify-between overflow-hidden rounded-2xl shadow-xs transition-colors ${
-          status === "running"
+          effectiveStatus === "running"
             ? "border border-primary/40 dark:border-primary/30 bg-primary/5 dark:bg-primary/10"
             : "border border-transparent"
-        } ${disabled && status === "idle" ? "opacity-50 pointer-events-none" : ""}`}
+        } ${disabled && effectiveStatus === "idle" ? "opacity-50 pointer-events-none" : ""}`}
       >
         <AnimatePresence mode="popLayout" initial={false}>
-          {status === "idle" && (
+          {effectiveStatus === "idle" && (
             <motion.button
               key="btn-start"
               type="button"
@@ -272,7 +292,7 @@ export function RunActionButton({
             </motion.button>
           )}
 
-          {status === "running" && (
+          {effectiveStatus === "running" && (
             <motion.div
               key="running"
               initial={{ opacity: 0, scale: 0.96 }}
@@ -285,7 +305,7 @@ export function RunActionButton({
               <div className="flex items-center gap-2 min-w-0 flex-1 overflow-hidden">
                 <AnimatePresence mode="popLayout">
                   <motion.div
-                    key={currentStep}
+                    key={activeStep}
                     initial={{ opacity: 0, scale: 0.4, rotate: -15 }}
                     animate={{ opacity: 1, scale: 1, rotate: 0 }}
                     exit={{ opacity: 0, scale: 0.4, rotate: 15 }}
@@ -293,27 +313,29 @@ export function RunActionButton({
                     className="relative flex items-center justify-center shrink-0 w-5 h-5"
                   >
                     <span className="absolute inset-0 rounded-full bg-primary/20 animate-ping" />
-                    {React.createElement(steps[currentStep]?.icon || Zap, {
+                    {React.createElement(steps[activeStep]?.icon || Zap, {
                       className: "relative w-3.5 h-3.5 text-primary shrink-0",
                     })}
                   </motion.div>
                 </AnimatePresence>
 
                 <div className="flex flex-col min-w-0 flex-1 overflow-hidden">
-                  <AnimatePresence mode="popLayout" initial={false}>
-                    <motion.span
-                      key={steps[currentStep]?.label || currentStep}
-                      initial={{ y: 5, opacity: 0 }}
-                      animate={{ y: 0, opacity: 1 }}
-                      exit={{ y: -5, opacity: 0 }}
-                      transition={{ duration: 0.18 }}
-                      className="text-xs font-bold text-foreground truncate leading-tight"
-                    >
-                      {steps[currentStep]?.label || "Processing..."}
-                    </motion.span>
-                  </AnimatePresence>
+                  <div className="relative h-4 w-full overflow-hidden">
+                    <AnimatePresence mode="wait" initial={false}>
+                      <motion.span
+                        key={steps[activeStep]?.label || activeStep}
+                        initial={{ y: 6, opacity: 0 }}
+                        animate={{ y: 0, opacity: 1 }}
+                        exit={{ y: -6, opacity: 0 }}
+                        transition={{ duration: 0.12, ease: "easeOut" }}
+                        className="absolute inset-0 flex items-center text-xs font-bold text-foreground truncate leading-tight w-full pointer-events-none select-none"
+                      >
+                        {steps[activeStep]?.label || "Processing..."}
+                      </motion.span>
+                    </AnimatePresence>
+                  </div>
                   <span className="text-[10px] font-medium text-muted-foreground leading-tight truncate">
-                    Step {currentStep + 1} of {steps.length} • {subLabel || (isAi ? "AI active" : "In progress")}
+                    Step {activeStep + 1} of {steps.length} • {subLabel || (isAi ? "AI active" : "In progress")}
                   </span>
                 </div>
               </div>
@@ -349,7 +371,7 @@ export function RunActionButton({
             </motion.div>
           )}
 
-          {status === "done" && (
+          {effectiveStatus === "done" && (
             <motion.button
               key="done"
               type="button"
