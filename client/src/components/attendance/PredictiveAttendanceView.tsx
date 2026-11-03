@@ -96,7 +96,8 @@ export const PredictiveAttendanceView: React.FC<PredictiveAttendanceViewProps> =
     setIsAiLoading(true);
     try {
       const cacheState = useCacheStore.getState();
-      if (!force && cacheState.insights) {
+      const isStaleCachedInsight = Boolean(cacheState.insights && JSON.stringify(cacheState.insights).includes("At 100.0%, this is your lowest subject"));
+      if (!force && cacheState.insights && !isStaleCachedInsight) {
          setAiInsights(cacheState.insights);
       }
       
@@ -114,7 +115,7 @@ export const PredictiveAttendanceView: React.FC<PredictiveAttendanceViewProps> =
         return;
       }
 
-      const res = await api.get(`/attendance/insights${force ? '?force=true' : ''}`);
+      const res = await api.get(`/attendance/insights${force || isStaleCachedInsight ? '?force=true' : ''}`);
       setAiInsights(res.data);
       useCacheStore.getState().setCache('insights', res.data);
     } catch (e) {
@@ -382,7 +383,7 @@ export const PredictiveAttendanceView: React.FC<PredictiveAttendanceViewProps> =
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5 px-1">
                   <div className="space-y-3">
-                    <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-widest">Key Absence Reasons</span>
+                    <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-widest">Key Behavioral Insights</span>
                     <ul className="space-y-2.5">
                       {aiInsights.keyReasons.map((reason: string, i: number) => (
                         <li key={i} className="flex items-start gap-2.5 text-xs text-slate-900 dark:text-slate-100 font-medium">
@@ -393,7 +394,7 @@ export const PredictiveAttendanceView: React.FC<PredictiveAttendanceViewProps> =
                     </ul>
                   </div>
                   <div className="space-y-3">
-                    <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-widest">Vulnerable Timings</span>
+                    <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-widest">Schedule & Subject Vulnerability</span>
                     <ul className="space-y-2.5">
                       {aiInsights.vulnerableTimings.map((timing: string, i: number) => (
                         <li key={i} className="flex items-start gap-2.5 text-xs text-slate-900 dark:text-slate-100 font-medium">
@@ -453,17 +454,17 @@ export const PredictiveAttendanceView: React.FC<PredictiveAttendanceViewProps> =
                   <Zap className="w-5 h-5 text-amber-600 dark:text-amber-500 shrink-0" />
                 )}
                 <h3 className={`text-sm font-bold ${isOverallOnTrack ? 'text-emerald-950 dark:text-emerald-50' : 'text-amber-950 dark:text-amber-50'}`}>
-                  {isOverallOnTrack ? "Goal Achieved Buffer" : "Action Required"}
+                  {isOverallOnTrack ? "Planned Leave Buffer" : "Action Required"}
                 </h3>
               </div>
 
               {isOverallOnTrack ? (
                 <p className="text-xs text-emerald-800 dark:text-emerald-200/70 font-medium leading-relaxed">
-                  Great job! You are currently above your <span className="font-bold text-emerald-950 dark:text-emerald-50">{globalTarget}%</span> target. You can safely miss up to{" "}
+                  Great job! You are currently above your <span className="font-bold text-emerald-950 dark:text-emerald-50">{globalTarget}%</span> target. You have a flexible buffer of up to{" "}
                   <span className="font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-500/20 dark:bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-500/30 dark:border-emerald-500/20">
-                    {overallSafeMisses} consecutive class{overallSafeMisses !== 1 ? "es" : ""}
+                    {overallSafeMisses} planned leave{overallSafeMisses !== 1 ? "s" : ""}
                   </span>{" "}
-                  without dropping below {globalTarget}%.
+                  (for vacations, trips, extra rest, or exam prep) without dropping below {globalTarget}%.
                 </p>
               ) : (
                 <p className="text-xs text-amber-800 dark:text-amber-200/70 font-medium leading-relaxed">

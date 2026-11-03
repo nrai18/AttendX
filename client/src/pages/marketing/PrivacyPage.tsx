@@ -1,18 +1,24 @@
 import React, { useEffect } from 'react';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Shield, Lock, Bell, Mic, VolumeX, MapPin, Database } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { useAuthStore } from '../../stores/authStore';
+import { isUserAuthenticated } from '../../stores/authStore';
 import { useBackHandlerStore } from '../../stores/backHandlerStore';
 
 export function PrivacyPage() {
   const navigate = useNavigate();
-  const { isAuthenticated } = useAuthStore();
 
   const handleBack = () => {
-    if (window.history.length > 2) {
+    const isAuth = isUserAuthenticated();
+    const hasInternalHistory = Boolean(
+      window.history.state &&
+      typeof window.history.state.idx === 'number' &&
+      window.history.state.idx > 0
+    );
+    if (hasInternalHistory) {
       navigate(-1);
     } else {
-      navigate(isAuthenticated ? "/today" : "/", { replace: true });
+      // Deterministic fallback for cold-boot or memory-evicted instances
+      navigate(isAuth ? "/settings" : "/", { replace: true });
     }
   };
 
@@ -22,91 +28,117 @@ export function PrivacyPage() {
       return true;
     });
     return unregister;
-  }, [isAuthenticated, navigate]);
+  }, [navigate]);
+
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-[#050505] text-slate-900 dark:text-slate-50 pb-24 selection:hidden">
       <header className="pt-8 pb-4 px-6 md:px-12 bg-slate-50 dark:bg-[#050505]/95 backdrop-blur-md sticky top-0 z-10 border-b border-slate-300 dark:border-[#333333] flex items-center gap-4">
-        <button onClick={handleBack} className="p-2 hover:bg-muted rounded-full transition-colors cursor-pointer" aria-label="Go back">
+        <button
+          onClick={handleBack}
+          className="p-2 hover:bg-muted rounded-full transition-colors cursor-pointer"
+          aria-label="Go back"
+        >
           <ArrowLeft className="w-6 h-6" />
         </button>
-        <h1 className="text-xl md:text-2xl font-bold">Privacy Policy</h1>
+        <div className="flex items-center gap-2.5">
+          <Shield className="w-5 h-5 text-emerald-500" />
+          <h1 className="text-xl md:text-2xl font-bold">Privacy Policy</h1>
+        </div>
       </header>
-      
+
       <main className="max-w-4xl mx-auto px-6 md:px-12 py-12 prose prose-invert prose-violet">
-        <p className="text-slate-600 dark:text-slate-50/60 text-sm">Last updated: September 03, 2026</p>
-        
+        <p className="text-slate-600 dark:text-slate-50/60 text-sm">Last updated: November 03, 2026</p>
+
         <p className="lead text-lg mt-6">
-          At <strong>AttendX</strong>, we believe your academic data is entirely yours. Our fundamental principle is: <strong>Your data is safe, secure, and never sold.</strong> 
+          At <strong>AttendX</strong>, we believe your academic data is entirely yours. Our foundational promise is: <strong>Your data is private, cryptographically secured, and never monetized or sold.</strong>
         </p>
         <p>
-          This Privacy Policy explains exactly what data we collect across our Website and Mobile Application, why we collect it, and how we protect it.
+          This Privacy Policy outlines how AttendX collects, safeguards, and processes data across our Web application (https://www.attendx.tech) and Android mobile builds (v4.3.0).
         </p>
 
-        <h2 className="text-2xl font-bold mt-10 mb-4 text-[#E63946]">1. Information We Collect</h2>
-        <p>To provide you with a seamless attendance tracking experience across web and mobile, we collect the following types of information:</p>
-        
-        <h3 className="text-xl font-semibold mt-6 mb-2">A. Account & Identity Information</h3>
+        <h2 className="text-2xl font-bold mt-10 mb-4 text-[#E63946] flex items-center gap-2">
+          <Database className="w-5 h-5 inline text-[#E63946]" /> 1. Information We Collect & Why
+        </h2>
+        <p>To deliver an intelligent, offline-first attendance companion across web and Android, we collect and process the following information:</p>
+
+        <h3 className="text-xl font-semibold mt-6 mb-2">A. Account & Authentication Credentials</h3>
         <ul className="list-disc pl-6 space-y-2 text-slate-600 dark:text-slate-50/60">
-          <li><strong>What we collect:</strong> Your name, email address (specifically @iiitu.ac.in or @gmail.com), encrypted passwords, and your profile picture (either generated or retrieved via Google OAuth).</li>
-          <li><strong>Why we need it:</strong> To authenticate you securely, create your account, and personalize your dashboard.</li>
+          <li><strong>What we collect:</strong> Your name, official university email (@iiitu.ac.in) or Google account address, encrypted passwords, and profile picture avatar.</li>
+          <li><strong>Why we need it:</strong> To create and authenticate your account securely, identify your student profile, and personalize your timetable view.</li>
         </ul>
 
-        <h3 className="text-xl font-semibold mt-6 mb-2">B. Academic & App Data</h3>
+        <h3 className="text-xl font-semibold mt-6 mb-2">B. Academic & Timetable Data</h3>
         <ul className="list-disc pl-6 space-y-2 text-slate-600 dark:text-slate-50/60">
-          <li><strong>What we collect:</strong> Your subjects, timetable, attendance logs (present, absent, cancelled), assignments, deadlines, and reminder preferences.</li>
-          <li><strong>Why we need it:</strong> This is the core of AttendX. We use this data strictly to calculate your attendance percentages, alert you before you drop below the 75% threshold, and manage your academic schedule.</li>
+          <li><strong>What we collect:</strong> Course subjects, timetable lecture/lab slots, room numbers, attendance records (attended, missed, cancelled, extra classes), assignments, and custom calendar milestones.</li>
+          <li><strong>Why we need it:</strong> This is the functional core of AttendX. Data is processed locally and in our PostgreSQL database to calculate attendance percentages, compute bunk runway cushions, and alert you before falling below 75%.</li>
         </ul>
 
-        <h3 className="text-xl font-semibold mt-6 mb-2">C. Device, Security & Session Data</h3>
+        <h3 className="text-xl font-semibold mt-6 mb-2 flex items-center gap-2">
+          <MapPin className="w-4 h-4 inline text-amber-500" /> C. Device Sessions & Location Data
+        </h3>
         <ul className="list-disc pl-6 space-y-2 text-slate-600 dark:text-slate-50/60">
-          <li><strong>What we collect:</strong> IP addresses, operating system, browser type, device identifiers, and timezones.</li>
-          <li><strong>Why we need it:</strong> To provide the <strong>"Active Sessions"</strong> security feature. This allows you to see exactly which laptops or phones are logged into your account and lets you remotely revoke access if you leave your account logged in on a public lab computer.</li>
+          <li><strong>What we collect:</strong> IP address, device model (e.g., Nothing Phone, Pixel, Windows Chrome), operating system, browser version, and approximate location coordinates when permission is explicitly granted.</li>
+          <li><strong>Why we need it:</strong> Powers the <strong>Linked Devices & Active Sessions</strong> security hub. Labeling sessions by city (e.g., "Delhi, India") allows you to verify active logins and remotely terminate unauthorized sessions on shared university lab computers. <em>AttendX never continuously tracks or stores background location routes.</em></li>
         </ul>
 
-        <h3 className="text-xl font-semibold mt-6 mb-2">D. Location Data (Mobile App)</h3>
+        <h3 className="text-xl font-semibold mt-6 mb-2 flex items-center gap-2">
+          <Mic className="w-4 h-4 inline text-purple-500" /> D. Voice Mode & Microphone Input
+        </h3>
         <ul className="list-disc pl-6 space-y-2 text-slate-600 dark:text-slate-50/60">
-          <li><strong>What we collect:</strong> Approximate location data (if permissions are granted on the mobile app) or timezone-based location inference on the web.</li>
-          <li><strong>Why we need it:</strong> We use this strictly to label your Active Sessions (e.g., "Logged in from Delhi, India") so you can easily recognize your own logins and spot suspicious activity. We do not track your continuous physical movements.</li>
+          <li><strong>What we collect:</strong> Transient spoken audio processed on-device during active Voice Mode or hands-free copilot interactions.</li>
+          <li><strong>Why we need it:</strong> To transcribe conversational student queries (e.g., "Can I bunk Digital Comm?", "What's my next class?"). Microphone access is only requested upon tapping Voice Mode. <em>Audio recordings are never stored on persistent storage or used to train public models.</em></li>
         </ul>
 
-        <h2 className="text-2xl font-bold mt-10 mb-4 text-[#E63946]">2. How We Use Your Information</h2>
-        <p>We do not sell, rent, or trade your personal information. Your data is used exclusively to:</p>
+        <h3 className="text-xl font-semibold mt-6 mb-2 flex items-center gap-2">
+          <VolumeX className="w-4 h-4 inline text-rose-500" /> E. Do Not Disturb (DND) & Audio Management
+        </h3>
+        <ul className="list-disc pl-6 space-y-2 text-slate-600 dark:text-slate-50/60">
+          <li><strong>Permissions used:</strong> <code>ACCESS_NOTIFICATION_POLICY</code> and <code>MODIFY_AUDIO_SETTINGS</code>.</li>
+          <li><strong>Why we need it:</strong> To automatically silence your mobile phone's ringer during active class lectures and automatically restore previous ringer volume when the period ends. No other system audio settings are modified.</li>
+        </ul>
+
+        <h2 className="text-2xl font-bold mt-10 mb-4 text-[#E63946] flex items-center gap-2">
+          <Bell className="w-5 h-5 inline text-[#E63946]" /> 2. Notifications & Communications
+        </h2>
+        <p>AttendX provides notifications exclusively designed to keep your academic schedule on track:</p>
         <ol className="list-decimal pl-6 space-y-2 text-slate-600 dark:text-slate-50/60">
-          <li>Provide, operate, and maintain the AttendX platform.</li>
-          <li>Send you automated weekly attendance summary reports via email.</li>
-          <li>Send push notifications to your mobile device for upcoming classes, pending assignments, or low attendance warnings.</li>
-          <li>Protect your account from unauthorized access.</li>
+          <li><strong>Class Heads-Up Reminders:</strong> Local device alarms scheduled 5, 10, or 15 minutes before your class begins with classroom location tags.</li>
+          <li><strong>Multi-Frequency Academic Summaries:</strong> Daily Briefings, Weekly Reviews, Monthly Summaries, and Yearly Wrap-ups delivered at your independently configured delivery times.</li>
+          <li><strong>Section Broadcasts:</strong> Urgent lecture room changes and Class Representative announcements pushed via Firebase Cloud Messaging (FCM) strictly to enrolled peers of your classroom section.</li>
+          <li><strong>Opt-Out:</strong> All notification channels and email summaries can be toggled on or off at any time in Settings.</li>
         </ol>
 
-        <h2 className="text-2xl font-bold mt-10 mb-4 text-[#E63946]">3. How We Protect Your Data</h2>
-        <p>Your data security is our highest priority:</p>
+        <h2 className="text-2xl font-bold mt-10 mb-4 text-[#E63946] flex items-center gap-2">
+          <Lock className="w-5 h-5 inline text-[#E63946]" /> 3. Data Protection & Cryptography
+        </h2>
         <ul className="list-disc pl-6 space-y-2 text-slate-600 dark:text-slate-50/60">
-          <li><strong>Password Encryption:</strong> We never store plain-text passwords. All passwords are cryptographically hashed using industry-standard <code>bcrypt</code>.</li>
-          <li><strong>Secure Sessions:</strong> We use secure JSON Web Tokens (JWT) to authenticate your devices, meaning your credentials are not continuously passed over the network.</li>
-          <li><strong>Isolated Data:</strong> Your academic data is isolated to your account and cannot be viewed by other students.</li>
+          <li><strong>Password Security:</strong> Passwords are never stored in plain text. They are salted and cryptographically hashed with industry-standard <code>bcrypt</code>.</li>
+          <li><strong>Encrypted Transport:</strong> All API communication between mobile/web clients and our backend is strictly encrypted via TLS 1.3 / HTTPS.</li>
+          <li><strong>Offline-First Sandbox:</strong> Offline caches and exported ZIP archives reside in your private device application sandbox and cache directories.</li>
         </ul>
 
-        <h2 className="text-2xl font-bold mt-10 mb-4 text-[#E63946]">4. Third-Party Services</h2>
-        <p>We use a select few trusted third-party services to keep AttendX running:</p>
+        <h2 className="text-2xl font-bold mt-10 mb-4 text-[#E63946]">4. Third-Party Infrastructure</h2>
+        <p>AttendX relies on minimal, enterprise-grade cloud infrastructure to deliver services:</p>
         <ul className="list-disc pl-6 space-y-2 text-slate-600 dark:text-slate-50/60">
-          <li><strong>Google:</strong> For users who choose to log in via Google OAuth.</li>
-          <li><strong>Email Providers:</strong> To reliably deliver your password reset links and weekly summary reports.</li>
-          <li><strong>Capacitor/Firebase:</strong> To deliver push notifications reliably to your Android device.</li>
-        </ul>
-        <p className="mt-4">These providers only receive the absolute minimum data required to perform their specific function.</p>
-
-        <h2 className="text-2xl font-bold mt-10 mb-4 text-[#E63946]">5. Data Retention and Deletion</h2>
-        <p>We keep your data only as long as you have an active account with AttendX.</p>
-        <ul className="list-disc pl-6 space-y-2 text-slate-600 dark:text-slate-50/60">
-          <li><strong>Your Rights:</strong> You have complete control over your data. You can request a full deletion of your account, attendance logs, and personal information at any time by contacting us. Upon request, your data will be permanently wiped from our databases.</li>
+          <li><strong>Google OAuth:</strong> For secure one-tap Google single sign-on.</li>
+          <li><strong>Firebase Cloud Messaging (Google FCM):</strong> For real-time notification dispatch to Android devices.</li>
+          <li><strong>Neon PostgreSQL:</strong> Encrypted serverless database hosting student records with automatic connection pooling.</li>
+          <li><strong>Resend:</strong> Secure transactional delivery for verification codes, password resets, and academic summaries.</li>
         </ul>
 
-        <h2 className="text-2xl font-bold mt-10 mb-4 text-[#E63946]">6. Contact Us</h2>
-        <p>If you have any questions or concerns about your privacy, or if you wish to delete your data, please contact the developer:</p>
+        <h2 className="text-2xl font-bold mt-10 mb-4 text-[#E63946]">5. Data Ownership & Deletion Rights</h2>
+        <p>You maintain full ownership of your data at all times:</p>
+        <ul className="list-disc pl-6 space-y-2 text-slate-600 dark:text-slate-50/60">
+          <li><strong>Export:</strong> Download your entire semester dataset into a portable ZIP archive containing structured CSV files at any time via Settings.</li>
+          <li><strong>Account Deletion:</strong> You may wipe individual subjects, clear semester logs, or request complete account erasure. Upon account deletion, all sessions, timetable records, and user identifiers are permanently purged from our database.</li>
+        </ul>
+
+        <h2 className="text-2xl font-bold mt-10 mb-4 text-[#E63946]">6. Developer Contact</h2>
+        <p>If you have any questions regarding this Privacy Policy or wish to request data deletion, contact us:</p>
         <ul className="list-disc pl-6 space-y-2 text-slate-600 dark:text-slate-50/60">
           <li><strong>Email:</strong> support@mail.attendx.tech</li>
           <li><strong>Phone:</strong> +91 80764 08958</li>
-          <li><strong>GitHub:</strong> <a href="https://github.com/nrai18/AttendX" className="text-[#E63946] hover:underline">github.com/nrai18/AttendX</a></li>
+          <li><strong>Repository:</strong> <a href="https://github.com/nrai18/AttendX" className="text-[#E63946] hover:underline" target="_blank" rel="noreferrer">github.com/nrai18/AttendX</a></li>
         </ul>
       </main>
     </div>

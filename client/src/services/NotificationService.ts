@@ -299,8 +299,80 @@ export class NotificationService {
     });
   }
 
+  private static pushListenersRegistered = false;
+
+  private static setupPushListeners() {
+    if (!Capacitor.isNativePlatform() || this.pushListenersRegistered) return;
+    this.pushListenersRegistered = true;
+
+    PushNotifications.addListener('registration', async (token) => {
+      console.log('[FCM] Push registration success, token: ' + token.value);
+      localStorage.setItem('fcm_token', token.value);
+      try {
+        if (useAuthStore.getState().isAuthenticated) {
+          await api.patch('/users/me', { fcmToken: token.value });
+          console.log('[FCM] Successfully synced FCM token to backend.');
+        }
+      } catch (error) {
+        console.error('[FCM] Failed to sync FCM token to backend (will retry on login):', error);
+      }
+    });
+
+    PushNotifications.addListener('registrationError', (error: any) => {
+      console.error('[FCM] Error on registration: ' + JSON.stringify(error));
+    });
+
+    PushNotifications.addListener('pushNotificationReceived', (notification) => {
+      console.log('[FCM] Push received in foreground: ', notification);
+      const data = notification.data || (notification as any)?.notification?.data || {};
+      const title = notification.title || 'Classroom Broadcast';
+      const body = notification.body || '';
+      const targetRoute = data.route || data.url || (data.type === 'classroom_announcement' && data.classroomId ? `/classrooms/${data.classroomId}` : data.type === 'classroom_deleted' ? '/classrooms' : null);
+
+      if (data.type === 'classroom_announcement') {
+        triggerDynamicHUD({
+          type: 'plane',
+          label: title,
+          subtitle: body,
+          durationMs: 5000,
+          route: targetRoute || undefined,
+        });
+      } else if (data.type === 'classroom_deleted') {
+        triggerDynamicHUD({
+          type: 'trash',
+          label: title,
+          subtitle: body,
+          durationMs: 5000,
+          route: '/classrooms',
+        });
+      }
+    });
+
+    PushNotifications.addListener('pushNotificationActionPerformed', (notification) => {
+      console.log('[FCM] Push action performed: ', notification);
+      const data = notification.notification?.data || (notification as any)?.data || {};
+      const targetRoute = data.route || data.url || (data.type === 'classroom_announcement' && data.classroomId ? `/classrooms/${data.classroomId}` : data.type === 'classroom_deleted' ? '/classrooms' : null);
+
+      if (data.type === 'ota_update') {
+        window.dispatchEvent(new Event('check_ota_update'));
+      } else if (targetRoute) {
+        try {
+          sessionStorage.setItem('pending_push_route', targetRoute);
+        } catch (_) {}
+        window.dispatchEvent(new CustomEvent('push_route', { detail: targetRoute }));
+      }
+    });
+  }
+
   static async checkPermissions(): Promise<'prompt' | 'prompt-with-rationale' | 'granted' | 'denied'> {
-    if (!Capacitor.isNativePlatform()) return 'granted';
+    if (!Capacitor.isNativePlatform()) {
+      if (typeof window !== 'undefined' && 'Notification' in window) {
+        if (Notification.permission === 'granted') return 'granted';
+        if (Notification.permission === 'denied') return 'denied';
+        return 'prompt';
+      }
+      return 'granted';
+    }
     try {
       const perm = await LocalNotifications.checkPermissions();
       return perm.display;
@@ -310,13 +382,29 @@ export class NotificationService {
   }
 
   static async requestPermissions(): Promise<boolean> {
-    if (!Capacitor.isNativePlatform()) return true;
+    if (!Capacitor.isNativePlatform()) {
+      if (typeof window !== 'undefined' && 'Notification' in window) {
+        try {
+          const res = await Notification.requestPermission();
+          return res === 'granted';
+        } catch {
+          return false;
+        }
+      }
+      return true;
+    }
     try {
       let perm = await LocalNotifications.checkPermissions();
       if (perm.display !== 'granted') {
         perm = await LocalNotifications.requestPermissions();
       }
-      return perm.display === 'granted';
+      const isGranted = perm.display === 'granted';
+      if (isGranted) {
+        await this.registerPushNotifications();
+        await this.syncFcmToken();
+        this.scheduleAllProactiveNotifications().catch(() => {});
+      }
+      return isGranted;
     } catch (e) {
       console.warn("Failed to request notification permissions:", e);
       return false;
@@ -327,6 +415,7 @@ export class NotificationService {
     if (!Capacitor.isNativePlatform()) return;
 
     try {
+      this.setupPushListeners();
       let permStatus = await PushNotifications.checkPermissions();
 
       if (permStatus.receive === 'prompt') {
@@ -414,7 +503,8 @@ export class NotificationService {
         console.error('[FCM] Failed to sync FCM token:', error);
       }
     } else {
-      console.warn('[FCM] Token is null at login. Requesting registration again to force sync.');
+      this.setupPushListeners();
+      console.log('[FCM] Token is null at sync. Re-registering push to force token emission.');
       if (Capacitor.isNativePlatform()) {
         import('@capacitor/push-notifications').then(({ PushNotifications }) => {
           PushNotifications.register().catch(() => {});
@@ -567,10 +657,9 @@ export class NotificationService {
           try {
             const perm = await LocalNotifications.checkPermissions();
             if (perm.display === 'granted') {
-              this.autoScheduleFromTimetable().catch(() => {});
-              this.scheduleAssignmentReminders().catch(() => {});
-              const activeFreq = useCacheStore.getState().reminderFrequency || { type: 'Daily' };
-              this.scheduleAcademicUpdates(activeFreq).catch(() => {});
+              await this.registerPushNotifications();
+              await this.syncFcmToken();
+              await this.scheduleAllProactiveNotifications();
             }
           } catch {}
         }
@@ -906,6 +995,35 @@ export class NotificationService {
     }
   }
 
+  /**
+   * Proactively checks permissions, onboarding/semester state, timetable slots,
+   * events, and summary preferences, and schedules ALL notifications (classes, events,
+   * and all 4 academic summaries) without waiting for the user to open any specific page.
+   */
+  static async scheduleAllProactiveNotifications(force: boolean = false): Promise<void> {
+    if (!Capacitor.isNativePlatform()) return;
+
+    try {
+      // 1. Prior check: Check notification permissions
+      const perm = await this.checkPermissions();
+      if (perm !== 'granted') {
+        return;
+      }
+
+      // 2. Schedule Timetable Classes & Semester Events (does prior checks for semester, slots, and events)
+      await this.autoScheduleFromTimetable();
+
+      // 3. Schedule All Academic Summaries (Daily, Weekly, Monthly, Yearly)
+      const activeFreq = useCacheStore.getState().reminderFrequency || { type: 'Daily' };
+      await this.scheduleAcademicUpdates(activeFreq);
+
+      // 4. Schedule Assignment Reminders
+      await this.scheduleAssignmentReminders();
+    } catch (e) {
+      console.warn("NotificationService: scheduleAllProactiveNotifications error:", e);
+    }
+  }
+
   static async autoScheduleFromTimetable(): Promise<void> {
     if (!Capacitor.isNativePlatform()) return;
 
@@ -952,33 +1070,50 @@ export class NotificationService {
       console.log("Auto-scheduling local notifications for upcoming classes and events...");
 
       let rawSlots: any = useCacheStore.getState().timetable?.slots;
-      if (!rawSlots) {
-        try {
-          const res = await api.get(`/timetable/${activeSemesterId}`);
-          rawSlots = res.data;
-        } catch (e) {
-          console.error("Failed to fetch timetable for auto-scheduling", e);
-        }
-      }
-      const slots: any[] = Array.isArray(rawSlots) ? rawSlots : (rawSlots?.slots || []);
-      if (slots.length === 0) return;
-
       let events = useAttendanceStore.getState().events || [];
-      if (events.length === 0) {
-        try {
-          const evRes = await api.get(`/events?semesterId=${activeSemesterId}`);
-          if (Array.isArray(evRes.data)) {
-            events = evRes.data.map((ev: any) => ({
-              title: ev.title || "Event",
-              type: ev.eventType || "academic",
-              date: ev.date ? ev.date.split('T')[0] + "T00:00:00" : "",
-              endDate: ev.endDate ? ev.endDate.split('T')[0] + "T00:00:00" : undefined
-            }));
-            useAttendanceStore.setState({ events });
-          }
-        } catch (e) {}
+
+      // Concurrently fetch slots and events if missing in memory so neither blocks the other
+      const prefetchTasks: Promise<any>[] = [];
+      if (!rawSlots || rawSlots.length === 0) {
+        prefetchTasks.push(
+          api.get(`/timetable/${activeSemesterId}`)
+            .then(res => {
+              rawSlots = res.data;
+              const slotsArr = Array.isArray(rawSlots) ? rawSlots : (rawSlots?.slots || []);
+              if (slotsArr.length > 0) {
+                useCacheStore.getState().setTimetable({ slots: slotsArr });
+              }
+            })
+            .catch(e => console.warn("Failed to fetch timetable for auto-scheduling", e))
+        );
       }
+      if (events.length === 0) {
+        prefetchTasks.push(
+          api.get(`/events?semesterId=${activeSemesterId}`)
+            .then(evRes => {
+              if (Array.isArray(evRes.data)) {
+                events = evRes.data.map((ev: any) => ({
+                  title: ev.title || "Event",
+                  type: ev.eventType || "academic",
+                  date: ev.date ? ev.date.split('T')[0] + "T00:00:00" : "",
+                  endDate: ev.endDate ? ev.endDate.split('T')[0] + "T00:00:00" : undefined
+                }));
+                useAttendanceStore.setState({ events });
+              }
+            })
+            .catch(() => {})
+        );
+      }
+
+      if (prefetchTasks.length > 0) {
+        await Promise.allSettled(prefetchTasks);
+      }
+
+      const slots: any[] = Array.isArray(rawSlots) ? rawSlots : (rawSlots?.slots || []);
       const allEvents = [...events];
+
+      // If both slots and events are completely empty, nothing to schedule
+      if (slots.length === 0 && allEvents.length === 0) return;
       
       const pending = await LocalNotifications.getPending();
       const toCancel = pending.notifications.filter(n => isManagedTimetableNotificationId(Number(n.id)));
@@ -994,7 +1129,7 @@ export class NotificationService {
       const reminderOffset = (config && typeof config.classReminderOffset === 'number') ? config.classReminderOffset : 10;
       const user = useAuthStore.getState().user;
 
-      for (let i = 0; i < 7; i++) {
+      for (let i = 0; i < 14; i++) {
         const currentDay = addDays(today, i);
         
         // Note: Self Birthday notifications are dispatched as official FCM Push Notifications from the backend at 8:00 AM IST.
@@ -1021,10 +1156,12 @@ export class NotificationService {
               specialMessage = "Restricted Holiday today.";
             }
           } else if (
-            typeLower === 'exam' || 
+            (!lowerTitle.includes('break') && !lowerTitle.includes('vacation')) && (
+              typeLower === 'exam' || 
             lowerTitle.includes('midsem') || lowerTitle.includes('mid sem') || lowerTitle.includes('mid-sem') || lowerTitle.includes('midterm') || lowerTitle.includes('mid term') ||
             lowerTitle.includes('endsem') || lowerTitle.includes('end sem') || lowerTitle.includes('end-sem') ||
             lowerTitle.includes('exam')
+          )
           ) {
             eventCancelsClasses = true;
             specialMessage = "All the best for your exams!";
@@ -1088,7 +1225,7 @@ export class NotificationService {
           }
         }
 
-        if (isClassOff) {
+        if (isClassOff || i >= 7 || slots.length === 0) {
           continue; 
         }
 
@@ -1509,146 +1646,173 @@ export class NotificationService {
       const notificationsToSchedule = [];
       const now = new Date();
 
-      const allEvents = useAttendanceStore.getState().events || [];
+      let allEvents = useAttendanceStore.getState().events || [];
       const subjects = useAttendanceStore.getState().subjects || [];
       let attended = 0;
       let total = 0;
       subjects.forEach(s => { attended += (s.attended || 0); total += (s.total || 0); });
       const overallPct = total === 0 ? 100 : Math.round((attended / total) * 100);
 
-      const cachedSlots: any[] = cacheState.timetable?.slots || [];
+            let cachedSlots: any[] = cacheState.timetable?.slots || [];
 
-      const globalSummaryTime = config?.summaryTime || "18:00";
-
-      // 1. Weekly Summary: Scheduled ONLY if user has chosen Weekly
-      if (activeFreq.type === 'Weekly') {
-        const weeklyDay = activeFreq.subValue || memory.Weekly || 'Sun';
-        const weeklyDates = calculateNextSummaryDates({ type: 'Weekly', subValue: weeklyDay }, globalSummaryTime, now);
-
-        for (let i = 0; i < weeklyDates.length; i++) {
-          const notifyDate = weeklyDates[i];
-          const endOfWeekDay = addDays(notifyDate, -1);
-          const startOfWeekDay = addDays(endOfWeekDay, -6);
-          const weekEvents = allEvents.filter(e => {
-            if (!e.date) return false;
-            const start = parseLocalDate(e.date);
-            const end = e.endDate ? parseLocalDate(e.endDate) : start;
-            return start.getTime() <= endOfWeekDay.getTime() && end.getTime() >= startOfWeekDay.getTime();
-          });
-          let largeBody = "\uD83D\uDCC5 Weekly Review\n\nTake a look back at your attendance performance this week and plan ahead for the upcoming week.";
-          if (weekEvents.some(e => (e.eventType || e.type || "").toLowerCase() === "holiday" || (e.title || "").toLowerCase().includes("holiday"))) {
-            largeBody = "\uD83D\uDCC5 Weekly Review\n\nIt was a short week with some holidays! Check how your attendance was impacted and review your targets.";
+      // Proactively fetch events and slots if missing in memory so summaries have full context
+      const activeSemId = useAttendanceStore.getState().activeSemesterId || cacheState.semester?.activeSemester?.id;
+      if (activeSemId && (allEvents.length === 0 || cachedSlots.length === 0)) {
+        try {
+          const [evSettled, ttSettled] = await Promise.allSettled([
+            allEvents.length === 0 ? api.get(`/events?semesterId=${activeSemId}`) : Promise.resolve(null),
+            cachedSlots.length === 0 ? api.get(`/timetable/${activeSemId}`) : Promise.resolve(null),
+          ]);
+          if (evSettled.status === 'fulfilled' && evSettled.value?.data && Array.isArray(evSettled.value.data)) {
+            allEvents = evSettled.value.data.map((ev: any) => ({
+              title: ev.title || "Event",
+              type: ev.eventType || "academic",
+              date: ev.date ? ev.date.split('T')[0] + "T00:00:00" : "",
+              endDate: ev.endDate ? ev.endDate.split('T')[0] + "T00:00:00" : undefined
+            }));
+            useAttendanceStore.setState({ events: allEvents });
           }
-          notificationsToSchedule.push({
-            id: 8810 + i,
-            title: "Weekly Summary",
-            body: "Weekly Review: See how you did this past week!",
-            largeBody,
-            summaryText: "Academic Update",
-            smallIcon: "ic_stat_attendx",
-            largeIcon: "attendx_notification_icon",
-            iconColor: "#3B82F6",
-            channelId: "academic_briefings",
-            schedule: { at: notifyDate, allowWhileIdle: true }
-          });
-        }
-      } else if (activeFreq.type === 'Monthly') {
-        // 2. Monthly Summary: Scheduled ONLY if user has chosen Monthly
-        const monthlyDay = activeFreq.subValue || memory.Monthly || '1';
-        const monthlyDates = calculateNextSummaryDates({ type: 'Monthly', subValue: monthlyDay }, globalSummaryTime, now);
-
-        for (let i = 0; i < monthlyDates.length; i++) {
-          const notifyDate = monthlyDates[i];
-          notificationsToSchedule.push({
-            id: 8820 + i,
-            title: "Monthly Attendance Summary",
-            body: "Your monthly review is ready! See how well you did this month.",
-            largeBody: `\uD83D\uDCC8 Monthly Summary\n\nYour overall attendance is currently at ${overallPct}%. Tap to see your detailed breakdown and performance across all subjects.`,
-            summaryText: "Academic Update",
-            smallIcon: "ic_stat_attendx",
-            largeIcon: "attendx_notification_icon",
-            iconColor: "#3B82F6",
-            channelId: "academic_briefings",
-            schedule: { at: notifyDate, allowWhileIdle: true }
-          });
-        }
-      } else if (activeFreq.type === 'Daily') {
-        // 3. Daily Briefing: Scheduled ONLY if Daily is explicitly chosen
-        const dailyDates = calculateNextSummaryDates({ type: 'Daily' }, globalSummaryTime, now);
-        for (let i = 0; i < dailyDates.length; i++) {
-          const notifyDate = dailyDates[i];
-          const isMorningBriefing = notifyDate.getHours() < 14;
-          const targetDay = isMorningBriefing ? notifyDate : addDays(notifyDate, 1);
-          const dayLabel = isMorningBriefing ? "Today" : "Tomorrow";
-          const dayLabelPossessive = isMorningBriefing ? "Today's" : "Tomorrow's";
-          const dayLabelLower = isMorningBriefing ? "today" : "tomorrow";
-
-          const targetEvents = allEvents.filter(e => isEventActiveOnDate(e, targetDay));
-          let targetHolidayTitle: string | null = null;
-          for (const e of targetEvents) {
-            const lowerTitle = (e.title || "").toLowerCase();
-            const typeLower = (e.type || e.eventType || "").toLowerCase();
-            if (typeLower === 'holiday' || typeLower === 'exam' || lowerTitle.includes('holiday') || lowerTitle.includes('break') || lowerTitle.includes('vacation')) {
-              if (typeLower !== 'restricted' && typeLower !== 'restricted_holiday' && !lowerTitle.includes('restricted')) {
-                targetHolidayTitle = e.title;
-                break;
-              }
+          if (ttSettled.status === 'fulfilled' && ttSettled.value?.data) {
+            const raw = Array.isArray(ttSettled.value.data) ? ttSettled.value.data : (ttSettled.value.data?.slots || []);
+            if (raw.length > 0) {
+              cachedSlots = raw;
+              useCacheStore.getState().setTimetable({ slots: raw });
             }
           }
+        } catch (_) {}
+      }
 
-          let dbTargetDay = targetDay.getDay() === 0 ? 6 : targetDay.getDay() - 1;
-          const targetSlots = cachedSlots.filter((s: any) => s.dayOfWeek === dbTargetDay);
-          const targetHasClasses = targetSlots.length > 0 && !targetHolidayTitle;
+      // Independent, distinct delivery times for each summary tier
+      const dailyTime = config?.dailySummaryTime || config?.summaryTime || "18:00";
+      const weeklyTime = config?.weeklySummaryTime || "18:00";
+      const monthlyTime = config?.monthlySummaryTime || "19:00";
+      const yearlyTime = config?.yearlySummaryTime || "20:00";
 
-          let title = "Tomorrow's Briefing";
-          let body = "You have classes coming up tomorrow.";
-          let largeBody = "\uD83C\uDF92 Prepare for Tomorrow\n\nYou have classes scheduled. Tap to review your timetable, check for assignments, and pack your bag!";
+      // 1. Daily Academic Briefings: scheduled for the next 7 days at dailyTime
+      const dailyDates = calculateNextSummaryDates({ type: 'Daily' }, dailyTime, now);
+      for (let i = 0; i < dailyDates.length; i++) {
+        const notifyDate = dailyDates[i];
+        const isMorningBriefing = notifyDate.getHours() < 14;
+        const targetDay = isMorningBriefing ? notifyDate : addDays(notifyDate, 1);
+        const dayLabel = isMorningBriefing ? "Today" : "Tomorrow";
+        const dayLabelPossessive = isMorningBriefing ? "Today's" : "Tomorrow's";
+        const dayLabelLower = isMorningBriefing ? "today" : "tomorrow";
 
-          if (targetHolidayTitle) {
-            title = `${dayLabel}: ${targetHolidayTitle}`;
-            body = `No regular classes scheduled ${dayLabelLower} for ${targetHolidayTitle}. Enjoy your day off!`;
-            largeBody = `\u2728 ${dayLabelPossessive} Briefing\n\n${dayLabel} is ${targetHolidayTitle}! No regular classes are scheduled. Enjoy your day!`;
-          } else if (!targetHasClasses) {
-            title = `${dayLabelPossessive} Briefing: Day Off`;
-            body = `No classes scheduled for ${dayLabelLower}. Take some time to relax or catch up on studies!`;
-            largeBody = `\uD83C\uDF92 ${dayLabelPossessive} Briefing\n\nYou have no classes scheduled for ${dayLabelLower}. Enjoy your day off or review your coursework!`;
-          } else {
-            title = `${dayLabelPossessive} Briefing`;
-            body = `You have ${targetSlots.length} class${targetSlots.length === 1 ? '' : 'es'} scheduled ${dayLabelLower}.`;
-            largeBody = `\uD83C\uDF92 Prepare for ${dayLabel}\n\nYou have ${targetSlots.length} class${targetSlots.length === 1 ? '' : 'es'} scheduled ${dayLabelLower}. Tap to review your schedule!`;
+        const targetEvents = allEvents.filter(e => isEventActiveOnDate(e, targetDay));
+        let targetHolidayTitle: string | null = null;
+        for (const e of targetEvents) {
+          const lowerTitle = (e.title || "").toLowerCase();
+          const typeLower = (e.type || e.eventType || "").toLowerCase();
+          if (typeLower === 'holiday' || typeLower === 'exam' || lowerTitle.includes('holiday') || lowerTitle.includes('break') || lowerTitle.includes('vacation')) {
+            if (typeLower !== 'restricted' && typeLower !== 'restricted_holiday' && !lowerTitle.includes('restricted')) {
+              targetHolidayTitle = e.title;
+              break;
+            }
           }
+        }
 
-          notificationsToSchedule.push({
-            id: ACADEMIC_UPDATES_START_ID + i,
-            title,
-            body,
-            largeBody,
-            summaryText: "Academic Update",
-            smallIcon: "ic_stat_attendx",
-            largeIcon: "attendx_notification_icon",
-            iconColor: "#3B82F6",
-            channelId: "academic_briefings",
-            schedule: { at: notifyDate, allowWhileIdle: true }
-          });
+        let dbTargetDay = targetDay.getDay() === 0 ? 6 : targetDay.getDay() - 1;
+        const targetSlots = cachedSlots.filter((s: any) => s.dayOfWeek === dbTargetDay);
+        const targetHasClasses = targetSlots.length > 0 && !targetHolidayTitle;
+
+        let title = "Tomorrow's Briefing";
+        let body = "You have classes coming up tomorrow.";
+        let largeBody = "🎒 Prepare for Tomorrow\n\nYou have classes scheduled. Tap to review your timetable, check for assignments, and pack your bag!";
+
+        if (targetHolidayTitle) {
+          title = `${dayLabel}: ${targetHolidayTitle}`;
+          body = `No regular classes scheduled ${dayLabelLower} for ${targetHolidayTitle}. Enjoy your day off!`;
+          largeBody = `✨ ${dayLabelPossessive} Briefing\n\n${dayLabel} is ${targetHolidayTitle}! No regular classes are scheduled. Enjoy your day!`;
+        } else if (!targetHasClasses) {
+          title = `${dayLabelPossessive} Briefing: Day Off`;
+          body = `No classes scheduled for ${dayLabelLower}. Take some time to relax or catch up on studies!`;
+          largeBody = `🎒 ${dayLabelPossessive} Briefing\n\nYou have no classes scheduled for ${dayLabelLower}. Enjoy your day off or review your coursework!`;
+        } else {
+          title = `${dayLabelPossessive} Briefing`;
+          body = `You have ${targetSlots.length} class${targetSlots.length === 1 ? '' : 'es'} scheduled ${dayLabelLower}.`;
+          largeBody = `🎒 Prepare for ${dayLabel}\n\nYou have ${targetSlots.length} class${targetSlots.length === 1 ? '' : 'es'} scheduled ${dayLabelLower}. Tap to review your schedule!`;
         }
-      } else if (activeFreq.type === 'Yearly') {
-        // 4. Yearly Summary: Scheduled ONLY if Yearly is explicitly chosen
-        const yearlyMonth = activeFreq.subValue || memory.Yearly || 'Jan';
-        const yearlyDates = calculateNextSummaryDates({ type: 'Yearly', subValue: yearlyMonth }, globalSummaryTime, now);
-        if (yearlyDates.length > 0) {
-          notificationsToSchedule.push({
-            id: 8830,
-            title: "Yearly Attendance Summary",
-            body: "Your annual academic attendance recap is ready.",
-            largeBody: `\uD83C\uDF93 Yearly Summary\n\nYour overall cumulative attendance is at ${overallPct}%. Tap to review your attendance performance across all semesters.`,
-            summaryText: "Academic Update",
-            smallIcon: "ic_stat_attendx",
-            largeIcon: "attendx_notification_icon",
-            iconColor: "#3B82F6",
-            channelId: "academic_briefings",
-            schedule: { at: yearlyDates[0], allowWhileIdle: true }
-          });
+
+        notificationsToSchedule.push({
+          id: ACADEMIC_UPDATES_START_ID + i,
+          title,
+          body,
+          largeBody,
+          summaryText: "Academic Briefing",
+          smallIcon: "ic_stat_attendx",
+          largeIcon: "attendx_notification_icon",
+          iconColor: "#3B82F6",
+          channelId: "academic_briefings",
+          schedule: { at: notifyDate, allowWhileIdle: true }
+        });
+      }
+
+      // 2. Weekly Academic Review: scheduled for the next 4 weeks at weeklyTime on chosen weekly day
+      const weeklyDay = memory.Weekly || (activeFreq.type === 'Weekly' ? activeFreq.subValue : 'Sun') || 'Sun';
+      const weeklyDates = calculateNextSummaryDates({ type: 'Weekly', subValue: weeklyDay }, weeklyTime, now);
+      for (let i = 0; i < weeklyDates.length; i++) {
+        const notifyDate = weeklyDates[i];
+        const endOfWeekDay = addDays(notifyDate, -1);
+        const startOfWeekDay = addDays(endOfWeekDay, -6);
+        const weekEvents = allEvents.filter(e => {
+          if (!e.date) return false;
+          const start = parseLocalDate(e.date);
+          const end = e.endDate ? parseLocalDate(e.endDate) : start;
+          return start.getTime() <= endOfWeekDay.getTime() && end.getTime() >= startOfWeekDay.getTime();
+        });
+        let largeBody = "📅 Weekly Review\n\nTake a look back at your attendance performance this week and plan ahead for the upcoming week.";
+        if (weekEvents.some(e => (e.eventType || e.type || "").toLowerCase() === "holiday" || (e.title || "").toLowerCase().includes("holiday"))) {
+          largeBody = "📅 Weekly Review\n\nIt was a short week with some holidays! Check how your attendance was impacted and review your targets.";
         }
+        notificationsToSchedule.push({
+          id: 8810 + i,
+          title: "Weekly Summary",
+          body: "Weekly Review: See how you did this past week!",
+          largeBody,
+          summaryText: "Weekly Review",
+          smallIcon: "ic_stat_attendx",
+          largeIcon: "attendx_notification_icon",
+          iconColor: "#8B5CF6",
+          channelId: "academic_briefings",
+          schedule: { at: notifyDate, allowWhileIdle: true }
+        });
+      }
+
+      // 3. Monthly Attendance Summary: scheduled for the next 3 months at monthlyTime on chosen monthly day
+      const monthlyDay = memory.Monthly || (activeFreq.type === 'Monthly' ? activeFreq.subValue : '1') || '1';
+      const monthlyDates = calculateNextSummaryDates({ type: 'Monthly', subValue: monthlyDay }, monthlyTime, now);
+      for (let i = 0; i < monthlyDates.length; i++) {
+        const notifyDate = monthlyDates[i];
+        notificationsToSchedule.push({
+          id: 8820 + i,
+          title: "Monthly Attendance Summary",
+          body: "Your monthly review is ready! See how well you did this month.",
+          largeBody: `📈 Monthly Summary\n\nYour overall attendance is currently at ${overallPct}%. Tap to see your detailed breakdown and performance across all subjects.`,
+          summaryText: "Monthly Summary",
+          smallIcon: "ic_stat_attendx",
+          largeIcon: "attendx_notification_icon",
+          iconColor: "#EC4899",
+          channelId: "academic_briefings",
+          schedule: { at: notifyDate, allowWhileIdle: true }
+        });
+      }
+
+      // 4. Yearly Attendance Wrap-up: scheduled at yearlyTime on chosen yearly month
+      const yearlyMonth = memory.Yearly || (activeFreq.type === 'Yearly' ? activeFreq.subValue : 'Jan') || 'Jan';
+      const yearlyDates = calculateNextSummaryDates({ type: 'Yearly', subValue: yearlyMonth }, yearlyTime, now);
+      if (yearlyDates.length > 0) {
+        notificationsToSchedule.push({
+          id: 8830,
+          title: "Yearly Attendance Summary",
+          body: "Your annual academic attendance recap is ready.",
+          largeBody: `🎓 Yearly Summary\n\nYour overall cumulative attendance is at ${overallPct}%. Tap to review your attendance performance across all semesters.`,
+          summaryText: "Yearly Wrap-up",
+          smallIcon: "ic_stat_attendx",
+          largeIcon: "attendx_notification_icon",
+          iconColor: "#F59E0B",
+          channelId: "academic_briefings",
+          schedule: { at: yearlyDates[0], allowWhileIdle: true }
+        });
       }
 
       if (notificationsToSchedule.length > 0) {

@@ -195,7 +195,7 @@ const isTransientConnectionError = (dbError: any): boolean => {
   );
 };
 
-const DB_RETRY_DELAYS_MS = [400, 1200, 2500];
+const DB_RETRY_DELAYS_MS = [500, 1500];
 
 let realPrisma: any = null;
 if (process.env.DATABASE_URL && process.env.DATABASE_URL.trim().length > 0) {
@@ -216,8 +216,10 @@ if (process.env.DATABASE_URL && process.env.DATABASE_URL.trim().length > 0) {
       keepAliveInitialDelayMillis: 3000,
       min: 0,
       max: 20,
-      idleTimeoutMillis: 30000,
-      connectionTimeoutMillis: 8000,
+      idleTimeoutMillis: 60000,
+      connectionTimeoutMillis: 5000,
+      statement_timeout: 7000,
+      query_timeout: 7000,
       maxUses: 500,
     });
     pool.on("error", (err) => {

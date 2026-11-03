@@ -5,6 +5,7 @@ import { parse } from "csv-parse/sync";
 import { Prisma } from "@prisma/client";
 import { FailureLogRecorder } from "../utils/failureLogRecorder";
 import { CacheService } from "./cache.service";
+import { AttendanceService } from "./attendance.service";
 
 export interface ExportDataOptions {
   deviceLogs?: any;
@@ -84,44 +85,206 @@ function parseDateAsUtc(dateStr: string): Date {
   return new Date();
 }
 
+function toIsoDateStr(val: any): string {
+  if (!val) return "";
+  if (val instanceof Date) return val.toISOString().split("T")[0];
+  const str = String(val);
+  if (str.length >= 10 && /^\d{4}-\d{2}-\d{2}/.test(str)) return str.slice(0, 10);
+  const d = new Date(val);
+  return !isNaN(d.getTime()) ? d.toISOString().split("T")[0] : "";
+}
+
 export class DataService {
   static async exportData(userId: string, options?: ExportDataOptions): Promise<Buffer> {
-    const activeSem = await prisma.semester.findFirst({
-      where: { userId, isActive: true },
-    });
+    const activeSem = await CacheService.getOrSet(
+      userId,
+      "semesters:active",
+      () =>
+        prisma.semester.findFirst({
+          where: { userId, isActive: true },
+        })
+    );
     if (!activeSem && !options?.forTicket) {
       throw new Error("No active semester found. Please create or activate a semester first.");
     }
 
-    // Fetch all relational datasets in parallel to minimize network roundtrips
-    const [subjects, slots, logs, events] = activeSem
-      ? await Promise.all([
+    // Reuse the singleflight L1/L2 cached datasets already warmed by AttendanceService (0ms DB hit!)
+    let subjects: any[] = [];
+    let slots: any[] = [];
+    let logs: any[] = [];
+    let events: any[] = [];
+
+    if (activeSem) {
+      const [rawSubjects, rawOverrides, rawEvents] = await Promise.all([
+        CacheService.getOrSet(userId, `subjects:full:${activeSem.id}`, () =>
           prisma.subject.findMany({
-            where: { semesterId: activeSem.id },
-            include: { attendance: true },
-            orderBy: { name: 'asc' },
-          }),
-          prisma.timetableSlot.findMany({
+            where: { userId, semesterId: activeSem.id },
+            include: {
+              attendance: true,
+              semester: true,
+              timetableSlots: true,
+            },
+          })
+        ),
+        CacheService.getOrSet(userId, `overrides:all:${activeSem.id}`, () =>
+          prisma.timetableOverride.findMany({
             where: { semesterId: activeSem.id },
             include: { subject: true },
-            orderBy: [{ dayOfWeek: 'asc' }, { startTime: 'asc' }],
-          }),
-          prisma.attendance.findMany({
-            where: { subject: { semesterId: activeSem.id } },
-            include: { subject: true, timetableSlot: true, override: true },
-            orderBy: [{ date: 'asc' }, { createdAt: 'asc' }],
-          }),
+          })
+        ),
+        CacheService.getOrSet(userId, `events:all:${activeSem.id}`, () =>
           prisma.event.findMany({
-            where: { semesterId: activeSem.id },
-            orderBy: { date: 'asc' },
-          }),
-        ])
-      : [[], [], [], []];
+            where: {
+              userId,
+              OR: [{ semesterId: activeSem.id }, { semesterId: null }],
+            },
+          })
+        ),
+      ]);
+
+      subjects = [...(rawSubjects || [])].sort((a: any, b: any) =>
+        String(a.name || "").localeCompare(String(b.name || ""))
+      );
+
+      slots = subjects
+        .flatMap((sub: any) =>
+          (sub.timetableSlots || []).map((slot: any) => ({
+            ...slot,
+            subject: sub,
+          }))
+        )
+        .sort(
+          (a: any, b: any) =>
+            (a.dayOfWeek ?? 0) - (b.dayOfWeek ?? 0) ||
+            String(a.startTime || "").localeCompare(String(b.startTime || ""))
+        );
+
+      const slotById = new Map<string, any>(slots.map((s: any) => [s.id, s]));
+      const overrideById = new Map<string, any>(
+        (rawOverrides || []).map((o: any) => [o.id, o])
+      );
+
+      logs = subjects
+        .flatMap((sub: any) =>
+          (sub.attendance || []).map((att: any) => {
+            const dateStr = toIsoDateStr(att.date);
+            const attDayOfWeek = (parseDateAsUtc(dateStr).getUTCDay() + 6) % 7;
+            const timetableSlot = att.timetableSlotId
+              ? slotById.get(att.timetableSlotId) || null
+              : null;
+            const override = att.overrideId
+              ? overrideById.get(att.overrideId) || null
+              : null;
+
+            const hasArchivedSemesterVersionOnDate = slots.some((s: any) => {
+              if (!s.validUntil) return false;
+              const fromKey = toIsoDateStr(s.validFrom);
+              const untilKey = toIsoDateStr(s.validUntil);
+              return (!fromKey || fromKey <= dateStr) && untilKey >= dateStr;
+            });
+
+            const activeWeekdaySlotsOnDate = (sub.timetableSlots || []).filter((s: any) => {
+              if (s.dayOfWeek !== attDayOfWeek) return false;
+              const fromKey = toIsoDateStr(s.validFrom);
+              const untilKey = s.validUntil ? toIsoDateStr(s.validUntil) : null;
+              if (fromKey && fromKey > dateStr) return false;
+              if (untilKey && untilKey < dateStr) return false;
+              if (hasArchivedSemesterVersionOnDate && !s.validUntil) return false;
+              return true;
+            });
+
+            let isExtraClass =
+              Boolean(att.overrideId) ||
+              override?.overrideType === "extra_class" ||
+              activeWeekdaySlotsOnDate.length === 0;
+
+            let resolvedStart = "00:00";
+            let resolvedEnd = "00:00";
+
+            if (timetableSlot) {
+              resolvedStart = normalizeTimeStr(timetableSlot.startTime);
+              resolvedEnd = normalizeTimeStr(timetableSlot.endTime);
+              const slotFrom = toIsoDateStr(timetableSlot.validFrom);
+              const slotUntil = timetableSlot.validUntil ? toIsoDateStr(timetableSlot.validUntil) : null;
+              if (
+                timetableSlot.dayOfWeek !== attDayOfWeek ||
+                (slotFrom && slotFrom > dateStr) ||
+                (slotUntil && slotUntil < dateStr) ||
+                (hasArchivedSemesterVersionOnDate && !timetableSlot.validUntil)
+              ) {
+                isExtraClass = true;
+              }
+            }
+
+            if (override) {
+              if (override.startTime) resolvedStart = normalizeTimeStr(override.startTime);
+              if (override.endTime) resolvedEnd = normalizeTimeStr(override.endTime);
+            }
+
+            if (resolvedStart === "00:00" && sub.timetableSlots && sub.timetableSlots.length > 0) {
+              const bestSlot = AttendanceService.findBestSlotForDate(
+                sub.timetableSlots,
+                sub.id,
+                attDayOfWeek,
+                dateStr,
+                att.timetableSlotId
+              );
+              if (bestSlot) {
+                resolvedStart = normalizeTimeStr(bestSlot.startTime);
+                resolvedEnd = normalizeTimeStr(bestSlot.endTime);
+              }
+            }
+
+            if (resolvedStart !== "00:00" && (!resolvedEnd || resolvedEnd === "00:00")) {
+              resolvedEnd = AttendanceService.computeEndTimeFromStart(
+                resolvedStart,
+                AttendanceService.inferSlotTypeFromSubject(sub)
+              );
+            }
+
+            return {
+              ...att,
+              subject: sub,
+              timetableSlot,
+              override,
+              resolvedStart,
+              resolvedEnd,
+              isExtraClass,
+              scheduledSlotCountOnDate: activeWeekdaySlotsOnDate.length,
+            };
+          })
+        )
+        .sort((a: any, b: any) => {
+          const dateDiff = new Date(a.date).getTime() - new Date(b.date).getTime();
+          if (dateDiff !== 0) return dateDiff;
+          const timeA = a.resolvedStart && a.resolvedStart !== "00:00" ? a.resolvedStart : "99:99";
+          const timeB = b.resolvedStart && b.resolvedStart !== "00:00" ? b.resolvedStart : "99:99";
+          if (timeA !== timeB) return timeA.localeCompare(timeB);
+          return new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime();
+        });
+
+      events = [...(rawEvents || [])]
+        .filter((e: any) => e.semesterId === activeSem.id)
+        .sort(
+          (a: any, b: any) =>
+            new Date(a.date).getTime() - new Date(b.date).getTime()
+        );
+    }
+
+    const logsBySubjectId = new Map<string, any[]>();
+    logs.forEach((log: any) => {
+      const sid = log.subjectId || log.subject?.id;
+      if (!sid) return;
+      const arr = logsBySubjectId.get(sid);
+      if (arr) arr.push(log);
+      else logsBySubjectId.set(sid, [log]);
+    });
 
     // Generate subject_stats.csv
     const subjectStatsRows = subjects.map((sub: any, idx: number) => {
       let attended = 0, missed = 0, off = 0;
-      sub.attendance.forEach((log: any) => {
+      const subLogs = logsBySubjectId.get(sub.id) || sub.attendance || [];
+      subLogs.forEach((log: any) => {
         if (log.status === "present" || log.status === "medical" || log.status === "od") attended++;
         else if (log.status === "absent") missed++;
         else if (log.status === "off" || log.status === "cancelled") off++;
@@ -165,8 +328,8 @@ export class DataService {
         "Timing": `${normStart} - ${normEnd}`,
         "Room": slot.room || "",
         "Type": slot.slotType === "practical" ? "Practical" : (slot.slotType === "tutorial" ? "Tutorial" : "Lecture"),
-        "Valid From": slot.validFrom ? slot.validFrom.toISOString().split('T')[0] : "",
-        "Valid Until": slot.validUntil ? slot.validUntil.toISOString().split('T')[0] : ""
+        "Valid From": toIsoDateStr(slot.validFrom),
+        "Valid Until": toIsoDateStr(slot.validUntil)
       };
     });
 
@@ -176,7 +339,7 @@ export class DataService {
     const subjectDailyCounts = new Map<string, number>();
 
     const logRows = logs.map((log: any, idx: number) => {
-      const rawDate = log.date.toISOString().split("T")[0];
+      const rawDate = toIsoDateStr(log.date);
       if (rawDate !== currentDate) {
         currentDate = rawDate;
         logLectureNo = 1;
@@ -199,16 +362,23 @@ export class DataService {
       else if (log.status === "od") attStatus = "OD";
 
       let slotTimeStr = "";
-      if (log.timetableSlot) {
+      if (log.resolvedStart && log.resolvedStart !== "00:00") {
+        slotTimeStr = `${log.resolvedStart} - ${log.resolvedEnd || log.resolvedStart}`;
+      } else if (log.timetableSlot) {
         slotTimeStr = `${normalizeTimeStr(log.timetableSlot.startTime)} - ${normalizeTimeStr(log.timetableSlot.endTime)}`;
       } else if (log.override && log.override.startTime) {
         slotTimeStr = `${normalizeTimeStr(log.override.startTime)} - ${normalizeTimeStr(log.override.endTime || log.override.startTime)}`;
       }
 
+      const isExtra =
+        Boolean(log.isExtraClass) ||
+        Boolean(log.overrideId) ||
+        (typeof log.scheduledSlotCountOnDate === "number" && subCount > log.scheduledSlotCountOnDate);
+
       return {
         "Sr. No.": idx + 1,
         "Date": dateStr,
-        "Type": log.overrideId ? "Extra" : "Slot",
+        "Type": isExtra ? "Extra" : "Slot",
         "Lecture No.": logLectureNo,
         "Subject Lecture No.": subCount,
         "Slot Time": slotTimeStr,
@@ -217,7 +387,7 @@ export class DataService {
         "Att Modified": "",
         "Miss Modified": "",
         "Off Modified": "",
-        "Override Reason": log.override?.reason || "",
+        "Override Reason": log.override?.reason || (isExtra ? "Extra Class" : ""),
         "Remarks": log.remarks || ""
       };
     });
@@ -228,8 +398,8 @@ export class DataService {
         "Sr. No.": idx + 1,
         "Title": event.title,
         "Description": event.description || "",
-        "Date": event.date.toISOString().split("T")[0],
-        "End Date": event.endDate ? event.endDate.toISOString().split("T")[0] : event.date.toISOString().split("T")[0],
+        "Date": toIsoDateStr(event.date),
+        "End Date": event.endDate ? toIsoDateStr(event.endDate) : toIsoDateStr(event.date),
         "Type": event.eventType,
         "All Day": event.allDay ? "Yes" : "No",
         "Is Holiday": event.isHoliday ? "Yes" : "No",
@@ -249,8 +419,8 @@ export class DataService {
     if (activeSem) {
       const semesterMeta = {
         name: activeSem.name,
-        startDate: activeSem.startDate.toISOString().split("T")[0],
-        endDate: activeSem.endDate.toISOString().split("T")[0],
+        startDate: toIsoDateStr(activeSem.startDate),
+        endDate: toIsoDateStr(activeSem.endDate),
       };
       zip.addFile("semester.json", Buffer.from(JSON.stringify(semesterMeta, null, 2), "utf8"));
     }
@@ -618,7 +788,32 @@ export class DataService {
           else if (attStr === "attended" || attStr === "present") status = "present";
 
           const typeStr = (row["Type"] || "").trim().toLowerCase();
-          const isOverride = typeStr === "extra" || typeStr === "override";
+          const dayOfWeek = (dateObj.getUTCDay() + 6) % 7; // Monday = 0
+
+          const hasArchivedVersionOnDate = createdSlots.some(
+            (s) => s.validUntil !== null && s.validFrom <= dateObj && s.validUntil >= dateObj
+          );
+
+          // All slots on this day in the timetable version active on dateObj, sorted chronologically
+          const allDaySlots = createdSlots
+            .filter(
+              (s) =>
+                s.dayOfWeek === dayOfWeek &&
+                s.validFrom <= dateObj &&
+                (!s.validUntil || s.validUntil >= dateObj) &&
+                (!hasArchivedVersionOnDate || s.validUntil !== null)
+            )
+            .sort((a, b) => a.startTime.localeCompare(b.startTime));
+
+          // Matching slots for this specific subject in the timetable version active on dateObj
+          const matchingSlots = allDaySlots.filter((s) => s.subjectId === subId);
+          const hasUnusedRegularSlot = matchingSlots.some((s) => !usedOnDate.has(s.id));
+
+          // Treat as Extra class if explicitly marked OR if this subject had no unused regular slot in the active/archived timetable for dateObj
+          const isOverride =
+            typeStr === "extra" ||
+            typeStr === "override" ||
+            (createdSlots.length > 0 && !hasUnusedRegularSlot);
 
           let overrideId: string | null = null;
           let matchedSlotId: string | null = null;
@@ -631,6 +826,14 @@ export class DataService {
               const parts = timingRaw.split("-");
               ovStartTime = normalizeTimeStr(parts[0].trim());
               ovEndTime = normalizeTimeStr(parts[1].trim());
+            } else {
+              const fallbackSlot =
+                createdSlots.find((s) => s.subjectId === subId && s.dayOfWeek === dayOfWeek) ||
+                createdSlots.find((s) => s.subjectId === subId);
+              if (fallbackSlot) {
+                ovStartTime = fallbackSlot.startTime;
+                ovEndTime = fallbackSlot.endTime;
+              }
             }
 
             const ov = await tx.timetableOverride.create({
@@ -641,30 +844,11 @@ export class DataService {
                 subjectId: subId,
                 startTime: ovStartTime,
                 endTime: ovEndTime,
-                reason: row["Override Reason"]?.trim() || row["Remarks"]?.trim() || "Imported extra class",
+                reason: row["Override Reason"]?.trim() || row["Remarks"]?.trim() || "Extra Class",
               },
             });
             overrideId = ov.id;
           } else {
-            const dayOfWeek = (dateObj.getUTCDay() + 6) % 7; // Monday = 0
-            
-            // All slots on this day sorted chronologically
-            const allDaySlots = createdSlots
-              .filter(
-                (s) =>
-                  s.dayOfWeek === dayOfWeek &&
-                  s.validFrom <= dateObj &&
-                  (!s.validUntil || s.validUntil >= dateObj)
-              )
-              .sort((a, b) => a.startTime.localeCompare(b.startTime));
-
-            // Matching slots for this specific subject
-            let matchingSlots = allDaySlots.filter((s) => s.subjectId === subId);
-            if (matchingSlots.length === 0) {
-              matchingSlots = createdSlots
-                .filter((s) => s.subjectId === subId && s.dayOfWeek === dayOfWeek)
-                .sort((a, b) => a.startTime.localeCompare(b.startTime));
-            }
 
             // Strategy 1: Exact slot timing match if available
             const timingRaw = (row["Slot Time"] || row["Timing"] || "").trim();

@@ -199,7 +199,7 @@ export class UserService {
     return { ...rest, hasPassword: !!passwordHash };
   }
 
-  static async getSessions(userId: string, sessionId?: string) {
+  static async getSessions(userId: string, sessionId?: string, req?: any) {
     // Non-blocking asynchronous garbage collection in the background
     setImmediate(async () => {
       try {
@@ -277,7 +277,79 @@ export class UserService {
       });
     });
 
-    return (rawSessions || []).map((s: any) => ({
+    const sessionsList = [...(rawSessions || [])];
+
+    // Live-refresh current device location when GPS coordinates or a changed IP are present
+    if (sessionId && req) {
+      const currentIdx = sessionsList.findIndex((s: any) => s.id === sessionId);
+      const currentSession = currentIdx !== -1 ? sessionsList[currentIdx] : null;
+      const hasGpsHeaders = Boolean(req.headers?.["x-attendx-lat"] && req.headers?.["x-attendx-lon"]);
+      const realOsHeader = typeof req.headers?.["x-attendx-real-os"] === "string" ? req.headers["x-attendx-real-os"].trim() : "";
+      const osOutOfSync = Boolean(
+        currentSession &&
+        (realOsHeader === "Windows" || realOsHeader === "macOS" || realOsHeader === "Linux") &&
+        currentSession.os !== realOsHeader
+      );
+      const forwarded = req.headers?.["x-forwarded-for"];
+      const reqIp = (typeof forwarded === "string" ? forwarded.split(",")[0].trim() : req.ip) || null;
+      const isPrivateOrLocalIp =
+        !reqIp ||
+        reqIp === "127.0.0.1" ||
+        reqIp === "::1" ||
+        reqIp.startsWith("192.168.") ||
+        reqIp.startsWith("10.") ||
+        reqIp.startsWith("172.16.");
+      const ipChanged = Boolean(!isPrivateOrLocalIp && currentSession && reqIp !== currentSession.ipAddress);
+
+      if (hasGpsHeaders || ipChanged || osOutOfSync || (currentSession && !currentSession.location && !isPrivateOrLocalIp)) {
+        try {
+          const { getDeviceDetails } = require("../utils/device");
+          const fresh = await getDeviceDetails(req);
+          const freshLoc = fresh?.location;
+          const isValidLoc =
+            freshLoc &&
+            freshLoc !== "Unknown Location" &&
+            freshLoc !== "Local Network" &&
+            !freshLoc.includes("Asia");
+
+          const nextLoc = isValidLoc ? freshLoc : currentSession?.location;
+          const nextOs = osOutOfSync ? realOsHeader : currentSession?.os;
+          const nextDeviceType = osOutOfSync ? "desktop" : currentSession?.deviceType;
+          const nextBrowser = osOutOfSync && fresh?.browser ? fresh.browser : currentSession?.browser;
+          const nextUa = osOutOfSync && fresh?.userAgent ? fresh.userAgent : currentSession?.userAgent;
+
+          if (currentSession && (nextLoc !== currentSession.location || osOutOfSync)) {
+            sessionsList[currentIdx] = {
+              ...currentSession,
+              location: nextLoc,
+              os: nextOs,
+              deviceType: nextDeviceType,
+              browser: nextBrowser,
+              userAgent: nextUa,
+              ipAddress: fresh.ipAddress || currentSession.ipAddress,
+              lastActive: new Date(),
+            };
+            prisma.refreshToken
+              .update({
+                where: { id: sessionId },
+                data: {
+                  location: nextLoc,
+                  os: nextOs,
+                  deviceType: nextDeviceType,
+                  browser: nextBrowser,
+                  userAgent: nextUa,
+                  ipAddress: fresh.ipAddress || currentSession.ipAddress,
+                  lastActive: new Date(),
+                },
+              })
+              .then(() => CacheService.del(userId, "user:sessions"))
+              .catch(() => {});
+          }
+        } catch {}
+      }
+    }
+
+    return sessionsList.map((s: any) => ({
       ...s,
       isCurrent: s.id === sessionId
     }));

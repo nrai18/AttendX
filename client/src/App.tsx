@@ -11,6 +11,8 @@ import { LoginPage } from "./pages/auth/LoginPage";
 import { SignupPage } from "./pages/auth/SignupPage";
 import { NotificationService } from "./services/NotificationService";
 import { NativeVoiceService } from "./services/NativeVoiceService";
+import { WidgetBridgeService } from "./services/WidgetBridgeService";
+import { useAttendanceStore } from "./stores/attendanceStore";
 import { SubjectsPage } from "./pages/subjects/SubjectsPage";
 import { SubjectDetailPage } from "./pages/subjects/SubjectDetailPage";
 import { TimetablePage } from "./pages/timetable/TimetablePage";
@@ -215,22 +217,9 @@ export function App() {
         }
 
         try {
-          await NotificationService.autoScheduleFromTimetable();
+          await NotificationService.scheduleAllProactiveNotifications();
         } catch (e) {
-          console.error("Failed to auto-schedule timetable notifications", e);
-        }
-
-        try {
-          await NotificationService.scheduleAssignmentReminders();
-        } catch (e) {
-          console.error("Failed to schedule assignment reminders", e);
-        }
-
-        try {
-          const reminderFreq = useCacheStore.getState().reminderFrequency || { type: 'Daily' };
-          NotificationService.scheduleAcademicUpdates(reminderFreq).catch(console.error);
-        } catch (e) {
-          console.error("Failed to schedule academic updates", e);
+          console.error("Failed to schedule proactive notifications on launch", e);
         }
 
         // Instant Copilot Warmup ping to ensure 0-latency chat on start (silent)
@@ -259,12 +248,52 @@ export function App() {
   useEffect(() => {
     if (isAuthenticated && hydrated) {
       NotificationService.syncFcmToken();
-      NotificationService.autoScheduleFromTimetable().catch(console.error);
-      NotificationService.scheduleAssignmentReminders().catch(console.error);
-      const reminderFreq = useCacheStore.getState().reminderFrequency || { type: 'Daily' };
-      NotificationService.scheduleAcademicUpdates(reminderFreq).catch(console.error);
+      NotificationService.scheduleAllProactiveNotifications().catch(console.error);
     }
   }, [isAuthenticated, hydrated]);
+
+  // Global listeners to automatically re-schedule notifications when timetable, events, or semester update
+  useEffect(() => {
+    const handleReSchedule = () => {
+      NotificationService.scheduleAllProactiveNotifications().catch(() => {});
+    };
+    window.addEventListener("timetable-updated", handleReSchedule);
+    window.addEventListener("events-updated", handleReSchedule);
+    window.addEventListener("semester-transitioned", handleReSchedule);
+    return () => {
+      window.removeEventListener("timetable-updated", handleReSchedule);
+      window.removeEventListener("events-updated", handleReSchedule);
+      window.removeEventListener("semester-transitioned", handleReSchedule);
+    };
+  }, []);
+
+  // Global listener to sync Android Home Screen Widgets whenever attendance, timetable, or semester updates
+  useEffect(() => {
+    const syncWidgets = () => {
+      const state = useAttendanceStore.getState();
+      const cache = useCacheStore.getState();
+      const today = new Date();
+      const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+      const todayCache = cache.today?.[todayStr];
+
+      WidgetBridgeService.syncFromAppState({
+        agenda: todayCache?.agenda || [],
+        overallPercentage: state.overallPercentage,
+        subjects: state.subjects,
+        todayStatus: todayCache?.todayStatus,
+      });
+    };
+
+    syncWidgets();
+    window.addEventListener("attendance-updated", syncWidgets);
+    window.addEventListener("timetable-updated", syncWidgets);
+    window.addEventListener("semester-updated", syncWidgets);
+    return () => {
+      window.removeEventListener("attendance-updated", syncWidgets);
+      window.removeEventListener("timetable-updated", syncWidgets);
+      window.removeEventListener("semester-updated", syncWidgets);
+    };
+  }, []);
 
   return (
     <ErrorBoundary>

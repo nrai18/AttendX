@@ -1067,24 +1067,24 @@ export const SubjectsPage = () => {
             onClick={() => navigate("/semester")}
             className="bg-white/60 dark:bg-black/30 backdrop-blur-md border border-white/60 dark:border-white/10 hover:border-white/80 dark:hover:border-white/40 rounded-xl p-3 flex items-center gap-3 cursor-pointer transition-all active:scale-[0.98]"
           >
-            <div className="p-2 rounded-lg bg-indigo-500/10 text-indigo-500">
+            <div className="p-2 rounded-lg bg-amber-500/20 text-amber-700 dark:bg-[#FFD700]/20 dark:text-[#FFD700] ring-1 ring-amber-500/30 dark:ring-[#FFD700]/35 shadow-sm">
               <LayoutDashboard className="w-5 h-5" />
             </div>
             <div>
-              <p className="text-sm font-semibold text-foreground leading-tight">Semester</p>
-              <p className="text-[10px] text-muted-foreground">Overview</p>
+              <p className="text-sm font-bold text-foreground dark:text-white leading-tight">Semester</p>
+              <p className="text-[10px] font-medium text-foreground/70 dark:text-white/75">Overview</p>
             </div>
           </div>
           <div 
             onClick={() => navigate("/predictive")}
             className="bg-white/60 dark:bg-black/30 backdrop-blur-md border border-white/60 dark:border-white/10 hover:border-white/80 dark:hover:border-white/40 rounded-xl p-3 flex items-center gap-3 cursor-pointer transition-all active:scale-[0.98]"
           >
-            <div className="p-2 rounded-lg bg-purple-500/10 text-purple-500">
+            <div className="p-2 rounded-lg bg-emerald-500/20 text-emerald-700 dark:bg-emerald-400/20 dark:text-emerald-300 ring-1 ring-emerald-500/30 dark:ring-emerald-400/35 shadow-sm">
               <Sparkles className="w-5 h-5" />
             </div>
             <div>
-              <p className="text-sm font-semibold text-foreground leading-tight">Forecast</p>
-              <p className="text-[10px] text-muted-foreground">Predictive</p>
+              <p className="text-sm font-bold text-foreground dark:text-white leading-tight">Forecast</p>
+              <p className="text-[10px] font-medium text-foreground/70 dark:text-white/75">Predictive</p>
             </div>
           </div>
         </div>

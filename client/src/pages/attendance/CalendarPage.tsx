@@ -18,9 +18,112 @@ import { hapticSelection } from "../../utils/haptics";
 
 interface DayDetail {
   id: string;
+  subjectId?: string;
   subjectName: string;
+  startTime?: string;
+  endTime?: string;
+  isExtra?: boolean;
   status: string; // "present" | "absent" | "medical" | "od" | "off"
   remarks: string | null;
+}
+
+function sortDayDetailsChronologically(items: DayDetail[], dateStr: string): DayDetail[] {
+  if (!items || items.length <= 1) return items || [];
+  try {
+    const cacheState = useCacheStore.getState();
+    const ttStore = cacheState.timetable;
+    const activeSlots: any[] = Array.isArray(ttStore) ? ttStore : (ttStore?.slots || []);
+    const semId =
+      (!Array.isArray(ttStore) && ttStore?.activeSemester?.id) ||
+      cacheState.semester?.activeSemester?.id ||
+      useAttendanceStore.getState().activeSemesterId;
+    const archivedVersions: any[] =
+      (!Array.isArray(ttStore) && ttStore?.archivedSlots) ||
+      (semId && (cacheState as any)[`archived_timetables_${semId}`]) ||
+      cacheState.archived_timetables ||
+      [];
+    const archivedSlots: any[] = archivedVersions.flatMap((v: any) => v?.slots || []);
+    const allSlots = [...archivedSlots, ...activeSlots];
+
+    const todayAgenda: any[] = cacheState.today?.[dateStr]?.agenda || [];
+    const allLogs: any[] =
+      cacheState.subject_logs?.["all"]?.logs ||
+      useAttendanceStore.getState().historyLogs ||
+      [];
+    const dateLogs = allLogs.filter((l: any) => String(l.date || "").slice(0, 10) === dateStr);
+
+    const d = new Date(dateStr + "T00:00:00");
+    const jsDay = d.getDay();
+    const dbDay = jsDay === 0 ? 6 : jsDay - 1;
+
+    const resolveStartTime = (item: DayDetail): string => {
+      if (item.startTime && item.startTime !== "00:00") return item.startTime;
+      const normName = String(item.subjectName || "").trim().toLowerCase();
+
+      // 1. Check cached TodayPage agenda for this exact date
+      const matchAgenda = todayAgenda.find(
+        (a: any) =>
+          (item.subjectId && a.subject?.id === item.subjectId) ||
+          String(a.subject?.name || a.subjectName || "").trim().toLowerCase() === normName
+      );
+      if (matchAgenda?.startTime && matchAgenda.startTime !== "00:00") {
+        return matchAgenda.startTime;
+      }
+
+      // 2. Check cached attendance logs for this exact date
+      const matchLog = dateLogs.find(
+        (l: any) =>
+          (item.subjectId && l.subjectId === item.subjectId) ||
+          String(l.subjectName || l.subject?.name || l.subject || "").trim().toLowerCase() === normName
+      );
+      if (matchLog?.startTime && matchLog.startTime !== "00:00") {
+        return matchLog.startTime;
+      }
+
+      // 3. Match against version-sorted timetable slots (archived versions valid on dateStr before active versions)
+      const subjectSlots = allSlots.filter(
+        (s: any) =>
+          (item.subjectId && s.subjectId === item.subjectId) ||
+          String(s.subject?.name || s.subjectName || "").trim().toLowerCase() === normName
+      );
+      if (subjectSlots.length === 0) return "99:99";
+
+      const sortedSubjectSlots = [...subjectSlots].sort((a: any, b: any) => {
+        const aUntil = a.validUntil ? String(a.validUntil).slice(0, 10) : null;
+        const bUntil = b.validUntil ? String(b.validUntil).slice(0, 10) : null;
+        const aValidOnDate = !aUntil || aUntil >= dateStr;
+        const bValidOnDate = !bUntil || bUntil >= dateStr;
+        if (aValidOnDate !== bValidOnDate) return aValidOnDate ? -1 : 1;
+        if (aUntil && bUntil && aUntil !== bUntil) return aUntil.localeCompare(bUntil);
+        if (aUntil && !bUntil) return -1;
+        if (!aUntil && bUntil) return 1;
+        const aFrom = a.validFrom ? String(a.validFrom).slice(0, 10) : "0000-00-00";
+        const bFrom = b.validFrom ? String(b.validFrom).slice(0, 10) : "0000-00-00";
+        return aFrom.localeCompare(bFrom);
+      });
+
+      const matchSlot =
+        sortedSubjectSlots.find(
+          (s: any) =>
+            s.dayOfWeek === dbDay &&
+            (!s.validFrom || String(s.validFrom).slice(0, 10) <= dateStr) &&
+            (!s.validUntil || String(s.validUntil).slice(0, 10) >= dateStr)
+        ) ||
+        sortedSubjectSlots.find(
+          (s: any) =>
+            s.dayOfWeek === dbDay &&
+            (!s.validUntil || String(s.validUntil).slice(0, 10) >= dateStr)
+        ) ||
+        sortedSubjectSlots.find((s: any) => s.dayOfWeek === dbDay) ||
+        sortedSubjectSlots[0];
+
+      return matchSlot?.startTime && matchSlot.startTime !== "00:00" ? matchSlot.startTime : "99:99";
+    };
+
+    return [...items].sort((a, b) => resolveStartTime(a).localeCompare(resolveStartTime(b)));
+  } catch {
+    return items;
+  }
 }
 
 interface CalendarEvent {
@@ -223,12 +326,16 @@ export const CalendarPage = () => {
             });
 
         if (dayLogs.length > 0) {
-          details[dateStr] = dayLogs.map((l: any, idx: number) => ({
+          const mappedDayLogs: DayDetail[] = dayLogs.map((l: any, idx: number) => ({
             id: l.id || `${dateStr}-${idx}`,
+            subjectId: l.subjectId,
             subjectName: l.subjectName || l.subject?.name || l.subject || "Subject",
+            startTime: l.startTime || "00:00",
+            endTime: l.endTime || "00:00",
             status: String(l.status || "not_marked").toLowerCase(),
             remarks: l.remarks || null,
           }));
+          details[dateStr] = sortDayDetailsChronologically(mappedDayLogs, dateStr);
         }
 
         let status = "off";
@@ -316,8 +423,14 @@ export const CalendarPage = () => {
     const monthStr = format(currentDate, "yyyy-MM");
     try {
       const latestCalendarCache = useCacheStore.getState().calendar;
-      if (latestCalendarCache && latestCalendarCache[monthStr]) {
-        setData(latestCalendarCache[monthStr]);
+      const cachedMonth = latestCalendarCache?.[monthStr];
+      const cachedDetailsLists = cachedMonth?.details ? Object.values(cachedMonth.details) as any[] : [];
+      const isCachedMonthMissingStartTimes =
+        cachedDetailsLists.length > 0 &&
+        cachedDetailsLists.some((arr: any) => Array.isArray(arr) && arr.length > 0 && !arr[0]?.startTime);
+
+      if (cachedMonth) {
+        setData(cachedMonth);
         setIsLoading(false);
       } else {
         const instantPreview = buildLocalMonthPreview(monthStr);
@@ -328,8 +441,27 @@ export const CalendarPage = () => {
           setIsLoading(true);
         }
       }
+
+      // Ensure archived timetables are cached so historical month previews resolve archived slot startTimes accurately
+      const cacheState = useCacheStore.getState();
+      if (!cacheState.archived_timetables || !Array.isArray(cacheState.archived_timetables) || cacheState.archived_timetables.length === 0) {
+        const semId =
+          cacheState.semester?.activeSemester?.id ||
+          (cacheState.timetable as any)?.activeSemester?.id ||
+          useAttendanceStore.getState().activeSemesterId ||
+          "active";
+        api
+          .get(`/timetable/semester/${semId}/archived`)
+          .then((archRes) => {
+            if (Array.isArray(archRes.data) && archRes.data.length > 0) {
+              useCacheStore.getState().setCache("archived_timetables", archRes.data);
+            }
+          })
+          .catch(() => {});
+      }
       
-      const res = await api.get(`/attendance/calendar?month=${monthStr}${force ? '&force=true' : ''}`, {
+      const shouldForce = force || isCachedMonthMissingStartTimes;
+      const res = await api.get(`/attendance/calendar?month=${monthStr}${shouldForce ? '&force=true' : ''}`, {
         signal: controller.signal
       });
       let d = typeof res.data === 'string' ? { days: [], insights: [], events: [], isComplete: false, completionPercentage: 0, requiredClassesToTarget: 0, canBunk: false } : res.data;
@@ -655,7 +787,7 @@ export const CalendarPage = () => {
       </div>
 
       <div 
-        className="grid grid-cols-7 gap-y-4 text-center mb-6"
+        className="grid grid-cols-7 gap-x-1.5 sm:gap-x-2.5 gap-y-3 sm:gap-y-4 text-center mb-6"
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
@@ -669,7 +801,7 @@ export const CalendarPage = () => {
           const status = days[dateKey];
           const isCurrentMonth = isSameMonth(d, currentDate);
           const isToday = isSameDay(d, new Date());
-          const dayDetails = details[dateKey] || [];
+          const dayDetails = sortDayDetailsChronologically(details[dateKey] || [], dateKey);
           const dayEvents = events[dateKey] || [];
           const dedupedDayEvents = deduplicateCalendarEvents(dayEvents).sort(
             (a, b) => getEventOptimumStyle(a).priority - getEventOptimumStyle(b).priority
@@ -689,7 +821,7 @@ export const CalendarPage = () => {
                       navigate(`/today?date=${dateKey}`);
                     }
                   }}
-                  className={`flex flex-col items-center justify-center relative w-12 h-14 hover:bg-muted/60 rounded-2xl transition-all cursor-pointer group ${animBorder}`}
+                  className={`flex flex-col items-center justify-center relative w-full max-w-[38px] sm:max-w-[52px] h-12 sm:h-14 hover:bg-muted/60 rounded-xl sm:rounded-2xl transition-all cursor-pointer group ring-inset ${animBorder}`}
                 >
                   <div className={`w-8 h-8 flex items-center justify-center rounded-full text-sm font-medium transition-transform group-hover:scale-110 ${
                     isToday ? "bg-primary text-primary-foreground font-bold shadow-md shadow-primary/20" : "text-foreground"
@@ -748,8 +880,15 @@ export const CalendarPage = () => {
                       <div className="flex flex-col gap-1.5 mt-1">
                         {dayDetails.map((detail, idx) => (
                           <div key={idx} className="flex flex-col gap-0.5 text-xs py-0.5 border-b border-border/20 last:border-b-0">
-                            <div className="flex items-center justify-between">
-                              <span className="text-muted-foreground truncate pr-2 flex-1 font-medium">{detail.subjectName}</span>
+                            <div className="flex items-center justify-between gap-1.5">
+                              <span className="text-muted-foreground truncate pr-1 flex-1 font-medium flex items-center gap-1">
+                                <span className="truncate">{detail.subjectName}</span>
+                                {detail.isExtra && (
+                                  <span className="bg-amber-500/20 text-amber-500 border border-amber-500/30 text-[9px] font-extrabold px-1.5 py-0.2 rounded-full uppercase tracking-wider shrink-0">
+                                    Extra
+                                  </span>
+                                )}
+                              </span>
                               <span className={`font-bold shrink-0 ${
                                 detail.status === "present" ? "text-emerald-500" :
                                 detail.status === "absent" ? "text-rose-500" :
@@ -779,7 +918,7 @@ export const CalendarPage = () => {
                   </div>
                 </button>
               ) : (
-                <div className="w-12 h-14" />
+                <div className="w-full max-w-[38px] sm:max-w-[52px] h-12 sm:h-14" />
               )}
             </div>
           );
@@ -897,7 +1036,7 @@ export const CalendarPage = () => {
               
               {/* Agenda Content */}
               {(() => {
-                const dayDetails = data?.details?.[selectedMobileDate] || [];
+                const dayDetails = sortDayDetailsChronologically(data?.details?.[selectedMobileDate] || [], selectedMobileDate);
                 const dayEvents = data?.events?.[selectedMobileDate] || [];
                 const status = data?.days?.[selectedMobileDate] || "not_marked";
                 
@@ -943,8 +1082,15 @@ export const CalendarPage = () => {
                         <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Classes</h4>
                         {dayDetails.map((detail, idx) => (
                           <div key={idx} className="flex flex-col gap-1.5 text-sm bg-muted/30 p-2.5 rounded-xl border border-border">
-                            <div className="flex items-center justify-between">
-                              <span className="text-foreground font-medium truncate pr-2 flex-1">{detail.subjectName}</span>
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-foreground font-medium truncate pr-2 flex-1 flex items-center gap-1.5">
+                                <span className="truncate">{detail.subjectName}</span>
+                                {detail.isExtra && (
+                                  <span className="bg-amber-500/20 text-amber-500 border border-amber-500/30 text-[10px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wider shrink-0">
+                                    Extra
+                                  </span>
+                                )}
+                              </span>
                               <span className={`font-bold shrink-0 ${
                                 detail.status === "present" ? "text-emerald-500" :
                                 detail.status === "absent" ? "text-rose-500" :

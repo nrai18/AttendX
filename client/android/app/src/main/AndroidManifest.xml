@@ -64,6 +64,31 @@
                 <action android:name="android.intent.action.QUICKBOOT_POWERON" />
             </intent-filter>
         </receiver>
+        <!-- Home Screen Widget: Today 4x2 + Log -->
+        <receiver
+            android:name=".TodayWidgetProvider"
+            android:label="@string/widget_today_label"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_today_info" />
+        </receiver>
+
+        <!-- Home Screen Widget: Next Class 1x2 Glance -->
+        <receiver
+            android:name=".NextClassWidgetProvider"
+            android:label="@string/widget_next_class_label"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_next_class_info" />
+        </receiver>
     </application>
 
     <!-- Permissions -->

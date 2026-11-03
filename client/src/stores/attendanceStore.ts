@@ -322,15 +322,10 @@ export const useAttendanceStore = create<AttendanceState>()(
 
           lastStatsCompletedAt = Date.now();
 
-          // Auto-schedule timetable notifications once active semester and slots are loaded
+          // Proactively schedule all notifications (classes, events, all summaries) once active semester and stats are loaded
           import("../services/NotificationService")
             .then(({ NotificationService }) => {
-              NotificationService.autoScheduleFromTimetable().catch(() => {});
-              NotificationService.scheduleAssignmentReminders().catch(() => {});
-              import("./cacheStore").then(({ useCacheStore }) => {
-                const activeFreq = useCacheStore.getState().reminderFrequency || { type: 'Daily' };
-                NotificationService.scheduleAcademicUpdates(activeFreq).catch(() => {});
-              }).catch(() => {});
+              NotificationService.scheduleAllProactiveNotifications().catch(() => {});
             })
             .catch(() => {});
         } catch (error) {

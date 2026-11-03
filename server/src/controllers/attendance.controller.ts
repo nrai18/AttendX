@@ -14,7 +14,7 @@ export class AttendanceController {
 
     const agenda = await CacheService.getOrSet(
       req.user!.userId,
-      `agenda:${date}`,
+      `agenda:v4:${date}`,
       () => AttendanceService.getTodayAgenda(req.user!.userId, date)
     );
     res.json(agenda);
@@ -123,13 +123,13 @@ export class AttendanceController {
       const userId = req.user!.userId;
       if (force === "true") {
         const freshCalendar = await AttendanceService.getMonthlyCalendar(userId, month);
-        CacheService.set(userId, `calendar:${month}`, freshCalendar).catch(() => {});
+        CacheService.set(userId, `calendar:v4:${month}`, freshCalendar).catch(() => {});
         return res.json(freshCalendar);
       }
 
       const calendar = await CacheService.getOrSet(
         userId,
-        `calendar:${month}`,
+        `calendar:v4:${month}`,
         () => AttendanceService.getMonthlyCalendar(userId, month)
       );
       res.json(calendar);
@@ -144,7 +144,7 @@ export class AttendanceController {
     try {
       const logsData = await CacheService.getOrSet(
         req.user!.userId,
-        `logs:${subjectId || 'all'}:${semesterId || 'all'}`,
+        `logs:v4:${subjectId || 'all'}:${semesterId || 'all'}`,
         () => AttendanceService.getAttendanceLogs(req.user!.userId, {
           subjectId: subjectId as string | undefined,
           semesterId: semesterId as string | undefined,
@@ -169,7 +169,7 @@ export class AttendanceController {
       try {
         insights = await CacheService.getOrSet(
           req.user!.userId,
-          `predictive_insights`,
+          `predictive_insights_v2`,
           async () => {
             const data = await PredictiveRagService.generateInsights(req.user!.userId);
             // PredictiveRagService swallows errors and returns a fake object, so detect it!
@@ -178,14 +178,14 @@ export class AttendanceController {
             }
             // Save a long-lived backup that survives cache invalidations (non-blocking so Redis WAN timeouts never stall response)
             if (redisClient.status === "ready") {
-              redisClient.set(`backup:predictive_insights:${req.user!.userId}`, JSON.stringify(data)).catch(() => {});
+              redisClient.set(`backup:predictive_insights_v2:${req.user!.userId}`, JSON.stringify(data)).catch(() => {});
             }
             return data;
           }
         );
       } catch (error: any) {
         console.error("Primary predictive insights fetch failed, attempting fallback:", error.message);
-        const backupData = await redisClient.get(`backup:predictive_insights:${req.user!.userId}`);
+        const backupData = await redisClient.get(`backup:predictive_insights_v2:${req.user!.userId}`);
         if (backupData) {
           insights = JSON.parse(backupData);
         } else {

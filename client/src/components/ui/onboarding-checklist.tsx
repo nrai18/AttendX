@@ -32,11 +32,11 @@ export const OnboardingChecklist: React.FC<ChecklistProps> = ({
 
   return (
     <div className={theme === 'dark' ? 'dark' : ''}>
-      <div className="min-h-full bg-transparent flex flex-col items-center justify-center p-4 xs:p-6 sm:p-10 space-y-12 relative transition-colors duration-500">
+      <div className="w-full flex flex-col items-center justify-center p-0 relative transition-colors duration-300">
         <motion.div
           layout
           transition={springConfig}
-          className={`w-full lg:w-100 max-w-100 bg-[#F5F5F7] dark:bg-[#161616] border ${
+          className={`w-full max-w-md bg-[#F5F5F7] dark:bg-[#161616] border ${
             isAllComplete
               ? 'border-emerald-500/40 shadow-emerald-500/10'
               : 'border-[#E5E5E5] dark:border-white/10'
@@ -45,44 +45,46 @@ export const OnboardingChecklist: React.FC<ChecklistProps> = ({
           {/* Header Section */}
           <div 
             onClick={() => setIsExpanded(!isExpanded)} 
-            className="p-3 sm:p-3.5 flex items-center justify-between cursor-pointer select-none"
+            className="p-3 sm:p-3.5 flex items-center justify-between gap-2 cursor-pointer select-none"
           >
-            <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+            {/* Left: Chevron + Title + Complete Status Pill */}
+            <div className="flex items-center gap-2 sm:gap-2.5 min-w-0 flex-1">
               <motion.div
                 animate={{ rotate: isExpanded ? 0 : 180 }}
-                className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center text-[#A1A1A1] shrink-0"
+                className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center text-[#A1A1A1] hover:text-[#1A1A1A] dark:hover:text-[#EDEDED] shrink-0"
               >
-                <ChevronUp size={20} className="sm:hidden" />
-                <ChevronUp size={22} className="hidden sm:block" />
+                <ChevronUp size={18} className="sm:hidden" />
+                <ChevronUp size={20} className="hidden sm:block" />
               </motion.div>
-              <div className="flex items-center gap-1.5 min-w-0">
-                <span className="font-bold text-[#1A1A1A] dark:text-[#EDEDED] text-[14px] sm:text-[15px] truncate pr-1">
+              <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+                <span className="font-bold text-[#1A1A1A] dark:text-[#EDEDED] text-[13px] sm:text-[14px] truncate">
                   {title}
                 </span>
                 {isAllComplete && (
-                  <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full shrink-0">
-                    <Sparkles size={11} /> Complete
+                  <span className="inline-flex items-center gap-1 text-[10px] sm:text-[11px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full shrink-0">
+                    <Sparkles size={10} className="text-emerald-500" /> Complete
                   </span>
                 )}
               </div>
             </div>
 
-            <div className="flex items-center gap-1.5 sm:gap-3 shrink-0 ml-1">
-              <div className="flex gap-0.5 xs:gap-[2.5px] sm:gap-[3px]">
+            {/* Right: Step Indicator Micro-Dots + Counter + Close X */}
+            <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
+              <div className={`items-center gap-1 ${isAllComplete ? 'hidden sm:flex' : 'flex'}`}>
                 {Array.from({ length: totalSteps }).map((_, i) => (
                   <div 
                     key={i} 
-                    className={`h-3 sm:h-4 w-2.5 xs:w-3 sm:w-4 rounded-full transition-colors duration-500 ${
+                    className={`h-2.5 sm:h-3 w-1.5 sm:w-2 rounded-full transition-colors duration-300 ${
                       i < completedCount 
-                      ? 'bg-[#22C55E]' 
-                      : 'bg-[#E5E5E7] dark:bg-[#2A2A2A]'
+                      ? 'bg-emerald-500' 
+                      : 'bg-[#E5E5E7] dark:bg-white/10'
                     }`}
                   />
                 ))}
               </div>
               
-              <span className={`text-[12px] sm:text-[13px] font-bold min-w-7 sm:min-w-7.5 text-right ${
-                isAllComplete ? 'text-emerald-600 dark:text-emerald-400' : 'text-[#71717A] dark:text-[#888]'
+              <span className={`text-[11px] sm:text-[12px] font-bold min-w-6 text-right tabular-nums ${
+                isAllComplete ? 'text-emerald-600 dark:text-emerald-400' : 'text-neutral-500 dark:text-neutral-400'
               }`}>
                 {completedCount}/{totalSteps}
               </span>
@@ -95,7 +97,7 @@ export const OnboardingChecklist: React.FC<ChecklistProps> = ({
                     onDismiss();
                   }}
                   title="Dismiss checklist"
-                  className="w-6 h-6 rounded-md flex items-center justify-center text-[#A1A1A1] hover:text-[#1A1A1A] dark:hover:text-[#EDEDED] hover:bg-black/5 dark:hover:bg-white/10 transition-colors cursor-pointer shrink-0 ml-0.5"
+                  className="w-6 h-6 rounded-md flex items-center justify-center text-neutral-400 hover:text-neutral-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/10 transition-colors cursor-pointer shrink-0"
                 >
                   <X size={14} />
                 </button>

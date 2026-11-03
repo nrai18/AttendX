@@ -1,4 +1,5 @@
 import { prisma } from '../lib/prisma';
+import { CacheService } from './cache.service';
 import fs from 'fs/promises';
 import path from 'path';
 import crypto from 'crypto';
@@ -39,7 +40,7 @@ export class DocumentService {
     // Enforce rolling limit of 5 documents per type
     const allDocs = await prisma.storedDocument.findMany({
       where: { userId, type },
-      orderBy: { createdAt: 'desc' }
+      orderBy: { createdAt: 'desc' }, select: { id: true, fileUrl: true }
     });
 
     if (allDocs.length > 5) {
@@ -55,6 +56,7 @@ export class DocumentService {
       }
     }
 
+    await CacheService.del(userId, 'documents:list').catch(() => {});
     return doc;
   }
 }

@@ -77,15 +77,14 @@ export const useAuthStore = create<AuthState>()(
         const currentRefreshToken = get().refreshToken;
 
         if (!skipBackendCall && wasAuthenticated) {
-          try {
-            // Clear FCM token and delete DeviceSession (RefreshToken) in Linked Devices in parallel
-            await Promise.allSettled([
+          // Fire backend session & FCM token cleanup non-blockingly with a 2.5s cap so logout never hangs
+          Promise.race([
+            Promise.allSettled([
               api.patch('/users/me', { fcmToken: null }),
               api.post('/auth/logout', { refreshToken: currentRefreshToken }),
-            ]);
-          } catch (error) {
-            console.error("Failed to clean up session on logout:", error);
-          }
+            ]),
+            new Promise((resolve) => setTimeout(resolve, 2500)),
+          ]).catch(() => {});
         }
 
         import('./offlineStore').then(({ useOfflineStore }) => useOfflineStore.getState().clearQueue()).catch(() => {});
@@ -144,4 +143,18 @@ export const useAuthStore = create<AuthState>()(
     }
   )
 );
+
+export const isUserAuthenticated = (): boolean => {
+  const storeState = useAuthStore.getState();
+  if (storeState.isAuthenticated) return true;
+  try {
+    const raw = localStorage.getItem("attendx-auth");
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed?.state?.isAuthenticated || parsed?.state?.accessToken) return true;
+    }
+  } catch {}
+  return false;
+};
+
 

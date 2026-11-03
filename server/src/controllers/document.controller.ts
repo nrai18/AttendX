@@ -3,13 +3,14 @@ import { prisma } from '../lib/prisma';
 import fs from 'fs';
 import path from 'path';
 import { AuthenticatedRequest } from '../middleware/authenticate';
+import { CacheService } from '../services/cache.service';
 
 export class DocumentController {
   static async getStoredDocuments(req: AuthenticatedRequest, res: Response) {
     try {
       if (!req.user) return res.status(401).json({ message: 'Unauthorized' });
 
-      const docs = await prisma.storedDocument.findMany({
+      const docs = await CacheService.getOrSet(req.user.userId, 'documents:list', () => prisma.storedDocument.findMany({
         where: {
           userId: req.user.userId
         },
@@ -26,7 +27,7 @@ export class DocumentController {
         orderBy: {
           createdAt: 'desc'
         }
-      });
+      }));
       
       res.json(docs);
     } catch (error: any) {
@@ -88,6 +89,7 @@ export class DocumentController {
       }
       
       await prisma.storedDocument.delete({ where: { id: (req.params.id as string) } });
+      await CacheService.del(req.user.userId, 'documents:list').catch(() => {});
       
       // Attempt to delete physical file if it's stored in /uploads
       if (doc.fileUrl.startsWith('/uploads/')) {

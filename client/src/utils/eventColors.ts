@@ -2,7 +2,10 @@
 export const getEventColorClasses = (title: string, type: string) => {
   const t = title.toLowerCase();
   
-  if (t.includes("mid sem") || t.includes("exam") || type === "exam") {
+  if (t.includes("break") || t.includes("vacation") || t.includes("recess") || type === "vacation") {
+    return "text-emerald-500 bg-emerald-500/10 border-emerald-500/20";
+  }
+  if ((t.includes("mid sem") || t.includes("exam") || type === "exam") && !t.includes("break")) {
     return "text-indigo-500 bg-indigo-500/10 border-indigo-500/20";
   }
   if (t.includes("janmashtami") || t.includes("krishna")) {
@@ -33,7 +36,8 @@ export const getEventColorClasses = (title: string, type: string) => {
 
 export const getEventDotClass = (title: string, type: string) => {
   const t = title.toLowerCase();
-  if (t.includes("mid sem") || t.includes("exam") || type === "exam") return "bg-indigo-500";
+  if (t.includes("break") || t.includes("vacation") || t.includes("recess") || type === "vacation") return "bg-emerald-500";
+  if ((t.includes("mid sem") || t.includes("exam") || type === "exam") && !t.includes("break")) return "bg-indigo-500";
   if (t.includes("janmashtami") || t.includes("krishna")) return "bg-teal-500";
   if (t.includes("diwali") || t.includes("deepavali")) return "bg-amber-500";
   if (t.includes("holi")) return "bg-fuchsia-500";

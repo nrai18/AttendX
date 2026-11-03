@@ -243,6 +243,7 @@ export class AuthService {
             deviceType
           },
         });
+        CacheService.del(user.id, "user:sessions").catch(() => {});
       } catch {
         // Ignore background metadata update errors
       }

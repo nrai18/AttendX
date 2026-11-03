@@ -461,13 +461,12 @@ export class ClassroomService {
       throw err;
     }
 
-    // Set deletedAt timestamp to mark as disbanded
-    await prisma.classroom.update({
-      where: { id: classroomId },
-      data: { deletedAt: new Date() },
-    });
+    // 1. Immediately wipe all announcements for this classroom so no orphan data lingers in the DB
+    await prisma.announcement.deleteMany({
+      where: { classroomId },
+    }).catch((err) => console.error("[DeleteClassroom] Error clearing announcements:", err));
 
-    // Notify all enrolled peers via high-priority FCM
+    // 2. Notify all enrolled peers via high-priority FCM
     const peers = classroom.members.filter((m) => m.userId !== userId);
     if (peers.length > 0) {
       const adminName = classroom.createdBy?.name || "Class Representative";
@@ -490,20 +489,36 @@ export class ClassroomService {
       ).catch((err) => {
         console.error("[DeleteClassroom] FCM notification dispatch error:", err);
       });
+
+      // Set deletedAt timestamp to mark as disbanded on enrolled peers' dashboards
+      await prisma.classroom.update({
+        where: { id: classroomId },
+        data: { deletedAt: new Date() },
+      });
+
+      // Remove the admin's own membership so it's instantly cleared from their dashboard
+      await prisma.classroomMember.deleteMany({
+        where: {
+          classroomId,
+          userId,
+        },
+      });
+
+      return {
+        success: true,
+        message: "Classroom disbanded, announcements purged, and enrolled peers notified",
+      };
+    } else {
+      // No enrolled peers: immediately purge the entire classroom row and foreign keys from the DB
+      await prisma.classroom.delete({
+        where: { id: classroomId },
+      }).catch((err) => console.error("[DeleteClassroom] Error deleting classroom row:", err));
+
+      return {
+        success: true,
+        message: "Classroom and announcements permanently erased from database",
+      };
     }
-
-    // Remove the admin's own membership so it's instantly cleared from their dashboard
-    await prisma.classroomMember.deleteMany({
-      where: {
-        classroomId,
-        userId,
-      },
-    });
-
-    return {
-      success: true,
-      message: "Classroom disbanded and enrolled peers notified",
-    };
   }
 
   /**

@@ -10,15 +10,8 @@ export class DataController {
     try {
       const zipBuffer = await DataService.exportData(req.user!.userId);
 
-      const activeSem = await prisma.semester.findFirst({
-        where: { userId: req.user!.userId, isActive: true },
-      });
-
-      const semName = activeSem
-        ? activeSem.name.replace(/[^a-zA-Z0-9]/g, "_")
-        : "Semester";
       const dateStr = new Date().toISOString().split("T")[0];
-      const filename = `AttendX_${semName}_Export_${dateStr}.zip`;
+      const filename = `AttendX_Semester_Export_${dateStr}.zip`;
 
       res.setHeader(
         "Content-Disposition",

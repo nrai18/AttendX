@@ -9,7 +9,7 @@ import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
 import { OtpInput } from "../../components/ui/otp-input";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "../../components/ui/card";
-import { useAuthStore } from "../../stores/authStore";
+import { useAuthStore, isUserAuthenticated } from "../../stores/authStore";
 import { API_BASE_URL, api } from "../../lib/api";
 import { Capacitor } from "@capacitor/core";
 import { GoogleSignIn } from "@capawesome/capacitor-google-sign-in";
@@ -52,12 +52,12 @@ export const LoginPage: React.FC<LoginPageProps> = ({ initialForgotPassword = fa
 
   useEffect(() => {
     const unregister = useBackHandlerStore.getState().register(() => {
-      if (forgotPasswordMode) {
-        if (useAuthStore.getState().isAuthenticated) {
-          navigate("/today");
-        } else if (isForgotPath) {
-          navigate("/login");
-        }
+      const isAuth = isUserAuthenticated();
+      if (isAuth) {
+        navigate("/settings", { replace: true });
+        return true;
+      }
+      if (forgotPasswordMode || isForgotPath) {
         setForgotPasswordMode(false);
         setResetEmailSent(false);
         setOtpValidated(false);
@@ -66,6 +66,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ initialForgotPassword = fa
         setNewPassword("");
         setConfirmPassword("");
         setError(null);
+        navigate("/login", { replace: true });
         return true;
       }
       return false;
@@ -296,7 +297,17 @@ export const LoginPage: React.FC<LoginPageProps> = ({ initialForgotPassword = fa
       
       <Button 
         variant="ghost" 
-        onClick={() => navigate("/")}
+        onClick={() => {
+          const isAuth = isUserAuthenticated();
+          if (isAuth) {
+            navigate("/settings", { replace: true });
+          } else if (forgotPasswordMode || isForgotPath) {
+            setForgotPasswordMode(false);
+            navigate("/login", { replace: true });
+          } else {
+            navigate("/", { replace: true });
+          }
+        }}
         className="absolute left-4 md:left-8 flex items-center gap-2 text-slate-600 dark:text-slate-50/60 hover:text-slate-900 dark:text-slate-50 z-20 transition-all duration-300 active:scale-90 hover:gap-3 cursor-pointer" style={{ top: "calc(env(safe-area-inset-top) + 16px)" }}
       >
         <ArrowLeft className="w-4 h-4 transition-transform duration-300" />
@@ -491,13 +502,12 @@ export const LoginPage: React.FC<LoginPageProps> = ({ initialForgotPassword = fa
                 <button 
                   type="button" 
                   onClick={() => {
-                    if (useAuthStore.getState().isAuthenticated) {
-                      navigate("/today");
+                    const isAuth = isUserAuthenticated();
+                    if (isAuth) {
+                      navigate("/settings", { replace: true });
                     } else {
-                      if (isForgotPath) {
-                        navigate("/login");
-                      }
                       setForgotPasswordMode(false);
+                      navigate("/login", { replace: true });
                     }
                     setResetEmailSent(false);
                     setOtpValidated(false);
@@ -509,7 +519,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ initialForgotPassword = fa
                   }}
                   className="text-sm text-slate-600 dark:text-slate-50/60 hover:text-slate-900 dark:text-slate-50 flex items-center justify-center transition-colors h-11"
                 >
-                  <ArrowLeft className="w-4 h-4 mr-2" /> {useAuthStore.getState().isAuthenticated ? "Back to Dashboard" : "Back to login"}
+                  <ArrowLeft className="w-4 h-4 mr-2" /> {isUserAuthenticated() ? "Back to Settings" : "Back to login"}
                 </button>
               </CardFooter>
             </form>

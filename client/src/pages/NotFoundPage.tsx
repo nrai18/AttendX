@@ -2,6 +2,7 @@ import React from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Button } from '../components/ui/button';
 import { ArrowLeft, Home } from 'lucide-react';
+import { isUserAuthenticated } from '../stores/authStore';
 
 export const NotFoundPage: React.FC = () => {
   const navigate = useNavigate();
@@ -61,7 +62,15 @@ export const NotFoundPage: React.FC = () => {
           {description}
         </p>
         <div className="flex items-center justify-center gap-4">
-          <Button onClick={() => navigate(-1)} variant="outline" className="rounded-xl h-11 px-6 font-semibold border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 bg-white dark:bg-slate-900/50 backdrop-blur-sm">
+          <Button onClick={() => {
+            const isAuth = isUserAuthenticated();
+            const hasHistory = Boolean(window.history.state && typeof window.history.state.idx === 'number' && window.history.state.idx > 0);
+            if (hasHistory) {
+              navigate(-1);
+            } else {
+              navigate(isAuth ? "/today" : "/", { replace: true });
+            }
+          }} variant="outline" className="rounded-xl h-11 px-6 font-semibold border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 bg-white dark:bg-slate-900/50 backdrop-blur-sm cursor-pointer">
             <ArrowLeft className="w-4 h-4 mr-2" />
             Go Back
           </Button>

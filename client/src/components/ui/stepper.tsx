@@ -12,6 +12,7 @@ export interface StepperProps {
   max?: number;
   onChange?: (val: number) => void;
   size?: "sm" | "md" | "lg";
+  suffix?: string;
 }
 
 const digitVariants = {
@@ -44,7 +45,8 @@ export function Stepper({
   min = 0,
   max = 999,
   onChange,
-  size = "md"
+  size = "md",
+  suffix
 }: StepperProps) {
   const isControlled = value !== undefined;
   const [internal, setInternal] = React.useState(defaultValue);
@@ -88,11 +90,11 @@ export function Stepper({
 
   const containerClasses = size === "sm" ? "gap-1.5 px-1 py-1" : size === "lg" ? "gap-4 px-2 py-2 sm:gap-6" : "gap-3 px-1 py-1 sm:gap-5";
   const btnClasses = size === "sm" ? "h-6 w-6" : size === "lg" ? "h-14 w-14 sm:h-16 sm:w-16" : "h-11 w-11 sm:h-14 sm:w-14";
-  const textClasses = size === "sm" ? "text-sm sm:h-5 sm:text-base gap-0.5" : size === "lg" ? "text-3xl sm:h-10 sm:text-5xl gap-1.5" : "text-xl sm:h-8 sm:text-3xl gap-1";
+  const textClasses = size === "sm" ? "h-5 text-sm sm:text-base gap-0.5" : size === "lg" ? "h-10 text-3xl sm:text-5xl gap-1.5" : "h-8 text-xl sm:text-3xl gap-1";
   const digitWidth = size === "sm" ? "w-2 sm:w-2.5" : size === "lg" ? "w-5 sm:w-6" : "w-3 sm:w-4";
 
   return (
-    <div className="flex w-full justify-center">
+    <div className="inline-flex shrink-0 items-center justify-center">
       <div className={`flex items-center rounded-full border-2 border-[#E6E6EF] bg-transparent shadow-sm dark:border-zinc-800 ${containerClasses}`}>
         <motion.button
           type="button"
@@ -110,7 +112,7 @@ export function Stepper({
           {digits.map((digit, index) => (
             <div
               key={`${index}-${len}`}
-              className={`relative transform-3d ${digitWidth}`}
+              className={`relative h-full transform-3d ${digitWidth}`}
             >
               <AnimatePresence
                 mode="popLayout"
@@ -137,6 +139,7 @@ export function Stepper({
               </AnimatePresence>
             </div>
           ))}
+          {suffix && <span className="ml-0.5 select-none leading-none">{suffix}</span>}
         </div>
 
         <motion.button

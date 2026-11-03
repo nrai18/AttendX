@@ -8,7 +8,8 @@ export interface NotificationConfig {
   showLocation: boolean;
   notifyNextClassOnEnd: boolean;
   endOfDaySummary: boolean;
-  summaryTime: string; // Global canonical summary time (default "18:00")
+  dailySummaryTime?: string;
+  summaryTime: string; // Global canonical daily summary time (default "18:00")
   weeklySummaryTime?: string;
   monthlySummaryTime?: string;
   yearlySummaryTime?: string;
@@ -19,10 +20,11 @@ export const DEFAULT_NOTIFICATION_CONFIG: NotificationConfig = {
   showLocation: true,
   notifyNextClassOnEnd: true,
   endOfDaySummary: true,
+  dailySummaryTime: "18:00",
   summaryTime: "18:00",
   weeklySummaryTime: "18:00",
-  monthlySummaryTime: "18:00",
-  yearlySummaryTime: "18:00",
+  monthlySummaryTime: "19:00",
+  yearlySummaryTime: "20:00",
 };
 
 interface NotificationState {
@@ -38,17 +40,13 @@ export const useNotificationStore = create<NotificationState>()(
       updateConfig: (newConfig) =>
         set((state) => {
           const updated = { ...state.config, ...newConfig };
-          const globalTime =
-            newConfig.summaryTime ||
-            newConfig.weeklySummaryTime ||
-            newConfig.monthlySummaryTime ||
-            newConfig.yearlySummaryTime;
-          if (globalTime) {
-            updated.summaryTime = globalTime;
-            updated.weeklySummaryTime = globalTime;
-            updated.monthlySummaryTime = globalTime;
-            updated.yearlySummaryTime = globalTime;
+          // Keep dailySummaryTime and summaryTime in sync
+          if (newConfig.dailySummaryTime && !newConfig.summaryTime) {
+            updated.summaryTime = newConfig.dailySummaryTime;
+          } else if (newConfig.summaryTime && !newConfig.dailySummaryTime) {
+            updated.dailySummaryTime = newConfig.summaryTime;
           }
+          // Do NOT overwrite weekly, monthly, or yearly summary times!
           return { config: updated };
         }),
       resetConfig: () => set({ config: { ...DEFAULT_NOTIFICATION_CONFIG } }),

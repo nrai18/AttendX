@@ -1,18 +1,24 @@
 import React, { useEffect } from 'react';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, FileText, AlertTriangle, ShieldCheck, Scale, Mail } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { useAuthStore } from '../../stores/authStore';
+import { isUserAuthenticated } from '../../stores/authStore';
 import { useBackHandlerStore } from '../../stores/backHandlerStore';
 
 export function TermsPage() {
   const navigate = useNavigate();
-  const { isAuthenticated } = useAuthStore();
 
   const handleBack = () => {
-    if (window.history.length > 2) {
+    const isAuth = isUserAuthenticated();
+    const hasInternalHistory = Boolean(
+      window.history.state &&
+      typeof window.history.state.idx === 'number' &&
+      window.history.state.idx > 0
+    );
+    if (hasInternalHistory) {
       navigate(-1);
     } else {
-      navigate(isAuthenticated ? "/today" : "/", { replace: true });
+      // Deterministic fallback for cold-boot or memory-evicted instances
+      navigate(isAuth ? "/settings" : "/", { replace: true });
     }
   };
 
@@ -22,64 +28,84 @@ export function TermsPage() {
       return true;
     });
     return unregister;
-  }, [isAuthenticated, navigate]);
+  }, [navigate]);
+
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-[#050505] text-slate-900 dark:text-slate-50 pb-24 selection:hidden">
       <header className="pt-8 pb-4 px-6 md:px-12 bg-slate-50 dark:bg-[#050505]/95 backdrop-blur-md sticky top-0 z-10 border-b border-slate-300 dark:border-[#333333] flex items-center gap-4">
-        <button onClick={handleBack} className="p-2 hover:bg-muted rounded-full transition-colors cursor-pointer" aria-label="Go back">
+        <button
+          onClick={handleBack}
+          className="p-2 hover:bg-muted rounded-full transition-colors cursor-pointer"
+          aria-label="Go back"
+        >
           <ArrowLeft className="w-6 h-6" />
         </button>
-        <h1 className="text-xl md:text-2xl font-bold">Terms of Service</h1>
+        <div className="flex items-center gap-2.5">
+          <FileText className="w-5 h-5 text-indigo-500" />
+          <h1 className="text-xl md:text-2xl font-bold">Terms of Service</h1>
+        </div>
       </header>
-      
+
       <main className="max-w-4xl mx-auto px-6 md:px-12 py-12 prose prose-invert prose-violet">
-        <p className="text-slate-600 dark:text-slate-50/60 text-sm">Last updated: September 03, 2026</p>
-        
+        <p className="text-slate-600 dark:text-slate-50/60 text-sm">Last updated: November 03, 2026</p>
+
         <p className="lead text-lg mt-6">
-          Welcome to AttendX! By accessing or using our Website (https://www.attendx.tech) and Mobile Application, you agree to be bound by these Terms of Service.
+          Welcome to <strong>AttendX</strong>. By accessing our Website (https://www.attendx.tech) or using our Android Mobile Application (v4.3.0), you agree to be bound by these Terms of Service.
         </p>
 
-        <h2 className="text-2xl font-bold mt-10 mb-4 text-[#E63946]">1. Description of Service</h2>
+        <h2 className="text-2xl font-bold mt-10 mb-4 text-[#E63946] flex items-center gap-2">
+          <Scale className="w-5 h-5 inline text-[#E63946]" /> 1. Description of Service
+        </h2>
         <p className="text-slate-600 dark:text-slate-50/60">
-          AttendX is a personal utility tool designed to help students (specifically at IIITU) track their college attendance, manage timetables, and monitor assignments.
+          AttendX is an autonomous, offline-first personal academic utility designed to assist university students in tracking class attendance, managing timetables, organizing calendar milestones, and monitoring academic eligibility.
         </p>
 
-        <h2 className="text-2xl font-bold mt-10 mb-4 text-[#E63946]">2. Not an Official Record (Disclaimer)</h2>
-        <p><strong>AttendX is an independent student utility and is NOT affiliated with the official IIITU administration or ERP systems.</strong></p>
+        <h2 className="text-2xl font-bold mt-10 mb-4 text-[#E63946] flex items-center gap-2">
+          <AlertTriangle className="w-5 h-5 inline text-amber-500" /> 2. Independent Utility & Disclaimer
+        </h2>
+        <p><strong>AttendX is an independent student utility and is NOT affiliated with, endorsed by, or integrated into official university administrative ERP portals.</strong></p>
         <ul className="list-disc pl-6 space-y-2 text-slate-600 dark:text-slate-50/60">
-          <li>The attendance percentages, alerts, and calculations shown in AttendX rely entirely on the accuracy of the data you manually input.</li>
-          <li>We make no guarantees that the data in AttendX will perfectly match the official college records.</li>
-          <li><strong>Limitation of Liability:</strong> Under no circumstances shall AttendX or its developer be held liable for academic penalties, debarment, or loss of marks resulting from a discrepancy between AttendX and your official college attendance records. Always verify critical attendance data with your professors or the official college portal.</li>
+          <li><strong>Data Source:</strong> Attendance percentages, bunk runway projections, and alerts reflect the timetable slots, syllabus dates, and attendance markings you enter or import.</li>
+          <li><strong>No Official Guarantee:</strong> AttendX makes no warranty that calculations will identical-match internal faculty registers or administrative ERP sheets.</li>
+          <li><strong>Limitation of Liability:</strong> Under no circumstances shall AttendX or its developers be held liable for academic debarment, attendance penalties, or loss of marks. Always confirm critical attendance margins with your professors or official university portals.</li>
         </ul>
 
-        <h2 className="text-2xl font-bold mt-10 mb-4 text-[#E63946]">3. User Accounts & Security</h2>
+        <h2 className="text-2xl font-bold mt-10 mb-4 text-[#E63946] flex items-center gap-2">
+          <ShieldCheck className="w-5 h-5 inline text-[#E63946]" /> 3. User Accounts & Session Security
+        </h2>
         <ul className="list-disc pl-6 space-y-2 text-slate-600 dark:text-slate-50/60">
-          <li><strong>Eligibility:</strong> You must use a valid email address (restricted to @iiitu.ac.in and @gmail.com) to register.</li>
-          <li><strong>Responsibility:</strong> You are responsible for maintaining the confidentiality of your password and for all activities that occur under your account.</li>
-          <li><strong>Shared Devices:</strong> If you use AttendX on a shared college laboratory computer, you are responsible for logging out. You may use the "Active Sessions" feature in settings to remotely revoke access if you forget.</li>
+          <li><strong>Registration:</strong> Accounts are intended for enrolled students with institutional (@iiitu.ac.in) or verified Google email addresses.</li>
+          <li><strong>Shared Computers:</strong> When using AttendX on communal college laboratory systems, you are responsible for signing out. You may use the <em>Linked Devices</em> dashboard in Settings to remotely terminate open sessions.</li>
+          <li><strong>Password Integrity:</strong> You are responsible for maintaining the secrecy of your login credentials and password reset verification codes.</li>
         </ul>
 
-        <h2 className="text-2xl font-bold mt-10 mb-4 text-[#E63946]">4. Acceptable Use</h2>
-        <p>You agree not to:</p>
+        <h2 className="text-2xl font-bold mt-10 mb-4 text-[#E63946]">4. Acceptable Conduct & Classrooms Hub</h2>
+        <p className="text-slate-600 dark:text-slate-50/60">You agree not to:</p>
         <ul className="list-disc pl-6 space-y-2 text-slate-600 dark:text-slate-50/60">
-          <li>Use the service for any illegal purpose or in violation of any local laws.</li>
-          <li>Attempt to hack, reverse engineer, or disrupt the AttendX servers, database, or API.</li>
-          <li>Create automated bots to spam or overload the service.</li>
+          <li>Attempt to disrupt, reverse-engineer, or overload the AttendX backend API, database, or WebSocket servers.</li>
+          <li>Broadcast false, misleading, or abusive announcements to classmates within shared Classroom sections.</li>
+          <li>Attempt to impersonate Class Representatives or bypass section broadcast permissions.</li>
         </ul>
-        <p className="mt-4 text-slate-600 dark:text-slate-50/60">We reserve the right to suspend or terminate any account that violates these terms or poses a security threat to the platform.</p>
 
-        <h2 className="text-2xl font-bold mt-10 mb-4 text-[#E63946]">5. Communications</h2>
+        <h2 className="text-2xl font-bold mt-10 mb-4 text-[#E63946]">5. Automated Features & Hardware Integrations</h2>
         <p className="text-slate-600 dark:text-slate-50/60">
-          By creating an account, you consent to receive account-related emails (such as weekly summaries, password resets, and welcome emails) and mobile push notifications. You can opt out of weekly summary emails and push notifications at any time via the Settings page.
+          AttendX includes optional automation features designed for mobile convenience:
+        </p>
+        <ul className="list-disc pl-6 space-y-2 text-slate-600 dark:text-slate-50/60">
+          <li><strong>Do Not Disturb (DND) Auto-Mute:</strong> With your permission, AttendX temporarily suppresses ringer volume during ongoing lectures. You can enable or disable DND automation at any time in Settings.</li>
+          <li><strong>Conversational Voice Mode:</strong> Utilizes device microphone access during active voice sessions. Voice mode may be dismissed or stopped at any moment.</li>
+          <li><strong>Local Alarm Scheduling:</strong> Reminders and summaries are scheduled directly into Android's native alarm manager to ensure punctuality even when offline.</li>
+        </ul>
+
+        <h2 className="text-2xl font-bold mt-10 mb-4 text-[#E63946]">6. Service Availability & Modifications</h2>
+        <p className="text-slate-600 dark:text-slate-50/60">
+          AttendX is provided free of charge to the student community. While we maintain a 99.9% uptime architecture with offline-first synchronization, we reserve the right to deploy updates, perform maintenance, or adjust features without liability.
         </p>
 
-        <h2 className="text-2xl font-bold mt-10 mb-4 text-[#E63946]">6. Modifications to the Service</h2>
-        <p className="text-slate-600 dark:text-slate-50/60">
-          We reserve the right to modify, suspend, or discontinue the service (or any part thereof) at any time, with or without notice. As this is a free tool built for the student community, we cannot guarantee 100% uptime, though we strive to provide a highly reliable experience.
-        </p>
-
-        <h2 className="text-2xl font-bold mt-10 mb-4 text-[#E63946]">7. Contact Information</h2>
-        <p>If you have any questions about these Terms, please contact us at:</p>
+        <h2 className="text-2xl font-bold mt-10 mb-4 text-[#E63946] flex items-center gap-2">
+          <Mail className="w-5 h-5 inline text-[#E63946]" /> 7. Contact Information
+        </h2>
+        <p>For questions regarding these Terms of Service, contact:</p>
         <ul className="list-disc pl-6 space-y-2 text-slate-600 dark:text-slate-50/60">
           <li><strong>Email:</strong> support@mail.attendx.tech</li>
           <li><strong>Phone:</strong> +91 80764 08958</li>

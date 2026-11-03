@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { Send, CheckCircle2, Trash2, GraduationCap, Sparkles, FileText, Sun, Moon } from "lucide-react";
+import { Send, CheckCircle2, Trash2, GraduationCap, Sparkles, FileText, Sun, Moon, Calendar } from "lucide-react";
 import { toast } from "sonner";
 import { hapticSuccess, hapticMedium, hapticLight, hapticSelection } from "../../utils/haptics";
 import { SoundFX } from "../../utils/soundEffects";
@@ -11,7 +11,7 @@ export interface HUDConfig {
   title?: string;
   label?: string;
   subtitle?: string;
-  type?: "plane" | "butterfly" | "trash" | "cap" | "sparkle" | "success" | "origami" | "hub" | "sun" | "moon";
+  type?: "plane" | "butterfly" | "trash" | "cap" | "sparkle" | "success" | "origami" | "hub" | "sun" | "moon" | "calendar";
   durationMs?: number;
   route?: string;
   silent?: boolean;
@@ -22,6 +22,10 @@ let hudActiveUntil = 0;
 
 export const isDynamicHUDActive = (): boolean => {
   return Date.now() < hudActiveUntil;
+};
+
+export const getDynamicHUDRemainingMs = (): number => {
+  return Math.max(0, hudActiveUntil - Date.now());
 };
 
 export const triggerDynamicHUD = (config: Omit<HUDConfig, "id">) => {
@@ -37,6 +41,20 @@ export const triggerDynamicHUD = (config: Omit<HUDConfig, "id">) => {
   }
   if (hudTriggerFn) {
     hudTriggerFn({ ...config, id: String(Date.now()) });
+  }
+};
+
+/**
+ * Queue a Dynamic HUD notification so it appears cleanly AFTER any active HUD completes.
+ */
+export const queueDynamicHUD = (config: Omit<HUDConfig, "id">, minDelayMs = 400) => {
+  const remaining = getDynamicHUDRemainingMs();
+  if (remaining > 0) {
+    setTimeout(() => {
+      triggerDynamicHUD(config);
+    }, remaining + minDelayMs);
+  } else {
+    triggerDynamicHUD(config);
   }
 };
 
@@ -219,6 +237,15 @@ export const DynamicIslandHUD: React.FC = () => {
               )}
               {currentHUD.type === "sparkle" && (
                 <Sparkles className="w-3.5 h-3.5 text-sky-600 dark:text-blue-400" />
+              )}
+              {currentHUD.type === "calendar" && (
+                <motion.div
+                  initial={{ rotate: -10, scale: 0.8 }}
+                  animate={{ rotate: 0, scale: 1 }}
+                  transition={{ type: "spring", stiffness: 450, damping: 20 }}
+                >
+                  <Calendar className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />
+                </motion.div>
               )}
               {currentHUD.type === "origami" && (
                 <motion.div

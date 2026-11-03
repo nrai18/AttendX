@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { format, addMonths, subMonths, startOfMonth, endOfMonth, startOfWeek, endOfWeek, isSameMonth, isSameDay, addDays, isAfter, startOfDay, differenceInDays } from "date-fns";
-import { ChevronLeft, ChevronRight, Upload, Calendar as CalendarIcon, Loader2, Sparkles, AlertTriangle, ListFilter, AlignLeft, CalendarDays, Timer, CheckCircle2, Plus, Trash2, Palmtree, GraduationCap } from "lucide-react";
+import { ChevronLeft, ChevronRight, Upload, Calendar as CalendarIcon, Loader2, Sparkles, AlertTriangle, ListFilter, AlignLeft, CalendarDays, Timer, CheckCircle2, Plus, Trash2, Palmtree, GraduationCap, MessageSquare } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { api } from "../../lib/api";
-import { hapticMedium, hapticHeavy } from "../../utils/haptics";
+import { hapticMedium, hapticHeavy, hapticSelection } from "../../utils/haptics";
 import { EventWizardModal } from "./EventWizardModal";
 import { AddEventModal } from "./AddEventModal";
 import { CreateSemesterModal } from "../../components/semester/CreateSemesterModal";
@@ -72,6 +72,102 @@ const playTrashWhooshSound = () => {
   SoundFX.playTrashGulpSound();
 };
 
+const sortDayDetailsChronologically = (items: any[], dateStr: string): any[] => {
+  if (!items || items.length <= 1) return items || [];
+  try {
+    const cacheState = useCacheStore.getState();
+    const ttStore = cacheState.timetable;
+    const activeSlots: any[] = Array.isArray(ttStore) ? ttStore : (ttStore?.slots || []);
+    const semId =
+      (!Array.isArray(ttStore) && ttStore?.activeSemester?.id) ||
+      cacheState.semester?.activeSemester?.id ||
+      useAttendanceStore.getState().activeSemesterId;
+    const archivedVersions: any[] =
+      (!Array.isArray(ttStore) && ttStore?.archivedSlots) ||
+      (semId && (cacheState as any)[`archived_timetables_${semId}`]) ||
+      cacheState.archived_timetables ||
+      [];
+    const archivedSlots: any[] = archivedVersions.flatMap((v: any) => v?.slots || []);
+    const allSlots = [...archivedSlots, ...activeSlots];
+
+    const todayAgenda: any[] = cacheState.today?.[dateStr]?.agenda || [];
+    const allLogs: any[] =
+      cacheState.subject_logs?.["all"]?.logs ||
+      useAttendanceStore.getState().historyLogs ||
+      [];
+    const dateLogs = allLogs.filter((l: any) => String(l.date || "").slice(0, 10) === dateStr);
+
+    const d = new Date(dateStr + "T00:00:00");
+    const jsDay = d.getDay();
+    const dbDay = jsDay === 0 ? 6 : jsDay - 1;
+
+    const resolveStartTime = (item: any): string => {
+      if (item.startTime && item.startTime !== "00:00") return item.startTime;
+      const normName = String(item.subjectName || "").trim().toLowerCase();
+
+      const matchAgenda = todayAgenda.find(
+        (a: any) =>
+          (item.subjectId && a.subject?.id === item.subjectId) ||
+          String(a.subject?.name || a.subjectName || "").trim().toLowerCase() === normName
+      );
+      if (matchAgenda?.startTime && matchAgenda.startTime !== "00:00") {
+        return matchAgenda.startTime;
+      }
+
+      const matchLog = dateLogs.find(
+        (l: any) =>
+          (item.subjectId && l.subjectId === item.subjectId) ||
+          String(l.subjectName || l.subject?.name || l.subject || "").trim().toLowerCase() === normName
+      );
+      if (matchLog?.startTime && matchLog.startTime !== "00:00") {
+        return matchLog.startTime;
+      }
+
+      const subjectSlots = allSlots.filter(
+        (s: any) =>
+          (item.subjectId && s.subjectId === item.subjectId) ||
+          String(s.subject?.name || s.subjectName || "").trim().toLowerCase() === normName
+      );
+      if (subjectSlots.length === 0) return "99:99";
+
+      const sortedSubjectSlots = [...subjectSlots].sort((a: any, b: any) => {
+        const aUntil = a.validUntil ? String(a.validUntil).slice(0, 10) : null;
+        const bUntil = b.validUntil ? String(b.validUntil).slice(0, 10) : null;
+        const aValidOnDate = !aUntil || aUntil >= dateStr;
+        const bValidOnDate = !bUntil || bUntil >= dateStr;
+        if (aValidOnDate !== bValidOnDate) return aValidOnDate ? -1 : 1;
+        if (aUntil && bUntil && aUntil !== bUntil) return aUntil.localeCompare(bUntil);
+        if (aUntil && !bUntil) return -1;
+        if (!aUntil && bUntil) return 1;
+        const aFrom = a.validFrom ? String(a.validFrom).slice(0, 10) : "0000-00-00";
+        const bFrom = b.validFrom ? String(b.validFrom).slice(0, 10) : "0000-00-00";
+        return aFrom.localeCompare(bFrom);
+      });
+
+      const matchSlot =
+        sortedSubjectSlots.find(
+          (s: any) =>
+            s.dayOfWeek === dbDay &&
+            (!s.validFrom || String(s.validFrom).slice(0, 10) <= dateStr) &&
+            (!s.validUntil || String(s.validUntil).slice(0, 10) >= dateStr)
+        ) ||
+        sortedSubjectSlots.find(
+          (s: any) =>
+            s.dayOfWeek === dbDay &&
+            (!s.validUntil || String(s.validUntil).slice(0, 10) >= dateStr)
+        ) ||
+        sortedSubjectSlots.find((s: any) => s.dayOfWeek === dbDay) ||
+        sortedSubjectSlots[0];
+
+      return matchSlot?.startTime && matchSlot.startTime !== "00:00" ? matchSlot.startTime : "99:99";
+    };
+
+    return [...items].sort((a, b) => resolveStartTime(a).localeCompare(resolveStartTime(b)));
+  } catch {
+    return items;
+  }
+};
+
 const resolveInitialActiveSemester = (userObj: any): Semester | null => {
   const cacheState = useCacheStore.getState();
   if (cacheState.semester?.activeSemester?.id && cacheState.semester.activeSemester.id !== "active-semester") {
@@ -120,6 +216,51 @@ export const SemesterHubPage = () => {
   const [isFetchingSemester, setIsFetchingSemester] = useState<boolean>(() => !resolveInitialActiveSemester(user));
   const [calendarData, setCalendarData] = useState<any>(cachedData?.calendarData || null);
   const [isLoading, setIsLoading] = useState(() => !cachedData && !useAttendanceStore.getState().hasActiveSemester && !resolveInitialActiveSemester(user));
+  const [selectedMobileDate, setSelectedMobileDate] = useState<string | null>(null);
+  const [touchStartX, setTouchStartX] = useState<number | null>(null);
+  const [touchEndX, setTouchEndX] = useState<number | null>(null);
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    setTouchStartX(e.targetTouches[0].clientX);
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    setTouchEndX(e.targetTouches[0].clientX);
+  };
+
+  const handleTouchEnd = () => {
+    if (!touchStartX || !touchEndX) return;
+    const distance = touchStartX - touchEndX;
+    if (distance > 50) {
+      hapticSelection();
+      setCurrentDate(prev => addMonths(prev, 1));
+    } else if (distance < -50) {
+      hapticSelection();
+      setCurrentDate(prev => subMonths(prev, 1));
+    }
+    setTouchStartX(null);
+    setTouchEndX(null);
+  };
+
+  const [modalTouchStartY, setModalTouchStartY] = useState<number | null>(null);
+  const [modalTouchEndY, setModalTouchEndY] = useState<number | null>(null);
+
+  const modalSwipeHandlers = {
+    onTouchStart: (e: React.TouchEvent) => {
+      setModalTouchStartY(e.targetTouches[0].clientY);
+      setModalTouchEndY(null);
+    },
+    onTouchMove: (e: React.TouchEvent) => {
+      setModalTouchEndY(e.targetTouches[0].clientY);
+    },
+    onTouchEnd: () => {
+      if (modalTouchStartY && modalTouchEndY && modalTouchEndY - modalTouchStartY > 50) {
+        setSelectedMobileDate(null);
+      }
+      setModalTouchStartY(null);
+      setModalTouchEndY(null);
+    },
+  };
 
   // Reactive hydration listener when Capacitor Preferences or attendanceStore finish hydrating
   useEffect(() => {
@@ -191,6 +332,7 @@ export const SemesterHubPage = () => {
 
   useEffect(() => {
     const unregister = useBackHandlerStore.getState().register(() => {
+      if (selectedMobileDate !== null) { setSelectedMobileDate(null); return true; }
       if (isTransitionModalOpen) { setIsTransitionModalOpen(false); return true; }
       if (isImportModalOpen) { setIsImportModalOpen(false); return true; }
       if (isAddEventOpen) { setIsAddEventOpen(false); return true; }
@@ -207,7 +349,7 @@ export const SemesterHubPage = () => {
       return true;
     });
     return () => unregister();
-  }, [isTransitionModalOpen, isImportModalOpen, isAddEventOpen, isWizardOpen, isCreateSemesterOpen, activeTab, routeTab, searchParams, navigate]);
+  }, [isTransitionModalOpen, isImportModalOpen, isAddEventOpen, isWizardOpen, isCreateSemesterOpen, activeTab, routeTab, searchParams, navigate, selectedMobileDate]);
 
   const nextEventId = React.useMemo(() => {
     const _today = startOfDay(new Date());
@@ -462,6 +604,7 @@ export const SemesterHubPage = () => {
         fetchData();
       }
       fetchCalendar(true);
+      window.dispatchEvent(new Event("events-updated"));
       useAttendanceStore.getState().fetchStats(true).catch(() => {});
       SoundFX.playSnapPopSound();
       triggerDynamicHUD({
@@ -539,6 +682,7 @@ export const SemesterHubPage = () => {
           setEvents([]);
           setIsClearingDomino(false);
           useCacheStore.getState().setCache("calendar", null);
+          window.dispatchEvent(new Event("events-updated"));
           Promise.all([
             fetchData(),
             fetchCalendar(true),
@@ -629,6 +773,7 @@ export const SemesterHubPage = () => {
       await api.delete(`/events/${event.id}`);
       useCacheStore.getState().setCache("calendar", null);
       fetchCalendar(true);
+      window.dispatchEvent(new Event("events-updated"));
       useAttendanceStore.getState().fetchStats(true).catch(() => {});
     } catch (error) {
       console.error("Failed to delete event:", error);
@@ -705,23 +850,165 @@ export const SemesterHubPage = () => {
     return "bg-sky-500/20 text-sky-400 border-sky-500/30";
   };
 
+  const deduplicateEvents = (eventsList: any[]): any[] => {
+    if (!eventsList || eventsList.length <= 1) return eventsList || [];
+    const result: any[] = [];
+    for (const ev of eventsList) {
+      const isHoliday = Boolean(ev.isHoliday) || ["holiday", "restricted_holiday"].includes(ev.eventType || ev.type || "");
+      if (isHoliday) {
+        const matchIdx = result.findIndex(r => {
+          const rIsHoliday = Boolean(r.isHoliday) || ["holiday", "restricted_holiday"].includes(r.eventType || r.type || "");
+          if (!rIsHoliday) return false;
+          const normR = (r.title || "").toLowerCase().replace(/\(.*?\)/g, "").trim();
+          const normE = (ev.title || "").toLowerCase().replace(/\(.*?\)/g, "").trim();
+          return normR === normE || normR.includes(normE) || normE.includes(normR);
+        });
+        if (matchIdx !== -1) {
+          if ((ev.title || "").length > (result[matchIdx].title || "").length) {
+            result[matchIdx] = ev;
+          }
+          continue;
+        }
+      } else {
+        if (result.some(r => (r.title || "").toLowerCase().trim() === (ev.title || "").toLowerCase().trim())) {
+          continue;
+        }
+      }
+      result.push(ev);
+    }
+    return result;
+  };
+
+  const getEventOptimumStyle = (e: any) => {
+    const type = String(e?.eventType || e?.type || "").toLowerCase();
+    const titleLower = String(e?.title || "").toLowerCase();
+
+    if (type === "restricted_holiday" || (type === "other" && e?.isHolidayList)) {
+      return {
+        priority: 1,
+        dot: "bg-cyan-400",
+        ring: "ring-2 ring-cyan-500 bg-cyan-500/10 dark:bg-cyan-500/20",
+        text: "text-cyan-600 dark:text-cyan-400",
+        pill: "bg-cyan-500/10 border-cyan-500/25 text-cyan-600 dark:text-cyan-400",
+      };
+    }
+    if (e?.isHolidayList && type !== "restricted_holiday") {
+      return {
+        priority: 0,
+        dot: "bg-blue-500",
+        ring: "ring-2 ring-blue-500 bg-blue-500/10 dark:bg-blue-500/20",
+        text: "text-blue-600 dark:text-blue-400",
+        pill: "bg-blue-500/10 border-blue-500/25 text-blue-600 dark:text-blue-400",
+      };
+    }
+    if (
+      type === "holiday" ||
+      type === "break" ||
+      type === "vacation" ||
+      titleLower.includes("holiday") ||
+      titleLower.includes("break") ||
+      titleLower.includes("vacation") ||
+      titleLower.includes("jayanti") ||
+      titleLower.includes("diwali") ||
+      titleLower.includes("dussehra")
+    ) {
+      return {
+        priority: 0,
+        dot: "bg-blue-500",
+        ring: "ring-2 ring-blue-500 bg-blue-500/10 dark:bg-blue-500/20",
+        text: "text-blue-600 dark:text-blue-400",
+        pill: "bg-blue-500/10 border-blue-500/25 text-blue-600 dark:text-blue-400",
+      };
+    }
+    if (type === "endsem" || titleLower.includes("end sem") || titleLower.includes("end-sem")) {
+      return {
+        priority: 2,
+        dot: "bg-red-500",
+        ring: "ring-2 ring-red-600 bg-red-600/10 dark:bg-red-600/20",
+        text: "text-red-600 dark:text-red-400",
+        pill: "bg-red-500/10 border-red-500/25 text-red-600 dark:text-red-400",
+      };
+    }
+    if (type === "midsem" || titleLower.includes("mid sem") || titleLower.includes("mid-sem") || titleLower.includes("mse")) {
+      return {
+        priority: 3,
+        dot: "bg-orange-500",
+        ring: "ring-2 ring-orange-500 bg-orange-500/10 dark:bg-orange-500/20",
+        text: "text-orange-600 dark:text-orange-400",
+        pill: "bg-orange-500/10 border-orange-500/25 text-orange-600 dark:text-orange-400",
+      };
+    }
+    if (type === "quiz" || type === "ct" || titleLower.includes("quiz") || titleLower.includes("cycle test") || titleLower.includes("test")) {
+      return {
+        priority: 4,
+        dot: "bg-purple-500",
+        ring: "ring-2 ring-purple-500 bg-purple-500/10 dark:bg-purple-500/20",
+        text: "text-purple-600 dark:text-purple-400",
+        pill: "bg-purple-500/10 border-purple-500/25 text-purple-600 dark:text-purple-400",
+      };
+    }
+    if (type === "assignment" || type === "lab_exam" || titleLower.includes("assignment") || titleLower.includes("submission") || titleLower.includes("lab") || titleLower.includes("practical")) {
+      return {
+        priority: 5,
+        dot: "bg-emerald-500",
+        ring: "ring-2 ring-emerald-500 bg-emerald-500/10 dark:bg-emerald-500/20",
+        text: "text-emerald-600 dark:text-emerald-400",
+        pill: "bg-emerald-500/10 border-emerald-500/25 text-emerald-600 dark:text-emerald-400",
+      };
+    }
+    if (type === "sports" || titleLower.includes("sports") || titleLower.includes("yalgaar") || titleLower.includes("tournament")) {
+      return {
+        priority: 6,
+        dot: "bg-lime-500",
+        ring: "ring-2 ring-lime-500 bg-lime-500/10 dark:bg-lime-500/20",
+        text: "text-lime-600 dark:text-lime-400",
+        pill: "bg-lime-500/10 border-lime-500/25 text-lime-600 dark:text-lime-400",
+      };
+    }
+    if (type === "fest" || titleLower.includes("fest")) {
+      return {
+        priority: 6,
+        dot: "bg-fuchsia-500",
+        ring: "ring-2 ring-fuchsia-500 bg-fuchsia-500/10 dark:bg-fuchsia-500/20",
+        text: "text-fuchsia-600 dark:text-fuchsia-400",
+        pill: "bg-fuchsia-500/10 border-fuchsia-500/25 text-fuchsia-600 dark:text-fuchsia-400",
+      };
+    }
+    if (type === "institute" || titleLower.includes("institute") || titleLower.includes("commencement")) {
+      return {
+        priority: 6,
+        dot: "bg-sky-400",
+        ring: "ring-2 ring-sky-500 bg-sky-500/10 dark:bg-sky-500/20",
+        text: "text-sky-600 dark:text-sky-400",
+        pill: "bg-sky-500/10 border-sky-500/25 text-sky-600 dark:text-sky-400",
+      };
+    }
+    return {
+      priority: 7,
+      dot: "bg-pink-500",
+      ring: "ring-2 ring-pink-500 bg-pink-500/10 dark:bg-pink-500/20",
+      text: "text-pink-600 dark:text-pink-400",
+      pill: "bg-pink-500/10 border-pink-500/25 text-pink-600 dark:text-pink-400",
+    };
+  };
+
   const getDotColor = (status?: string) => {
     switch (status) {
       case "attended": return "bg-emerald-500";
       case "missed": return "bg-rose-500";
-      case "mixed": return "bg-primary";
+      case "mixed": return "bg-purple-500";
       case "off": return "bg-yellow-500";
       case "not_marked":
-      case "future": return "bg-zinc-500";
-      default: return "bg-zinc-500/50";
+      case "future": return "bg-muted-foreground/30";
+      default: return "bg-muted-foreground/20";
     }
   };
 
   // Calendar Grid Generation
   const monthStart = startOfMonth(currentDate);
   const monthEnd = endOfMonth(monthStart);
-  const startDate = startOfWeek(monthStart);
-  const endDate = endOfWeek(monthEnd);
+  const startDate = startOfWeek(monthStart, { weekStartsOn: 1 });
+  const endDate = endOfWeek(monthEnd, { weekStartsOn: 1 });
 
   const calendarDays = [];
   let day = startDate;
@@ -786,7 +1073,7 @@ export const SemesterHubPage = () => {
       `}</style>
       <PeakpathRays />
       <ScrollToTopButton />
-      <div className="p-4 md:p-8 w-full mx-auto pb-24 md:pb-8 flex flex-col min-h-full space-y-6 overflow-x-hidden">
+      <div className="px-1.5 py-4 sm:p-4 md:p-8 w-full mx-auto pb-28 md:pb-8 flex flex-col min-h-full space-y-6 overflow-x-hidden">
       
       {/* Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -947,85 +1234,170 @@ export const SemesterHubPage = () => {
       />
 
       {/* Tab Content */}
-      <div className="flex-1 bg-card border border-border rounded-3xl p-6 min-h-[500px]">
+      <div className={`flex-1 bg-card border border-border rounded-3xl ${activeTab === 'calendar' ? 'p-3.5 sm:p-6' : 'p-4 sm:p-6'} min-h-[500px]`}>
         
         {activeTab === "calendar" && (
           <div className="h-full flex flex-col">
-              <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl font-bold text-foreground">{format(currentDate, "MMMM yyyy")}</h2>
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xl font-bold text-foreground tracking-tight">{format(currentDate, "MMMM yyyy")}</h2>
               <div className="flex gap-2">
-                <button onClick={() => setCurrentDate(subMonths(currentDate, 1))} className="p-2 hover:bg-muted rounded-lg text-muted-foreground hover:text-foreground">
+                <button 
+                  onClick={() => { hapticSelection(); setCurrentDate(subMonths(currentDate, 1)); }} 
+                  className="p-2 hover:bg-muted rounded-lg text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                  title="Previous Month"
+                >
                   <ChevronLeft className="w-5 h-5" />
                 </button>
-                <button onClick={() => setCurrentDate(new Date())} className="px-3 py-1.5 hover:bg-muted rounded-lg text-sm font-medium text-foreground">
+                <button 
+                  onClick={() => { hapticSelection(); setCurrentDate(new Date()); }} 
+                  className="px-3 py-1.5 hover:bg-muted rounded-lg text-sm font-medium text-foreground transition-colors cursor-pointer"
+                >
                   Today
                 </button>
-                <button onClick={() => setCurrentDate(addMonths(currentDate, 1))} className="p-2 hover:bg-muted rounded-lg text-muted-foreground hover:text-foreground">
+                <button 
+                  onClick={() => { hapticSelection(); setCurrentDate(addMonths(currentDate, 1)); }} 
+                  className="p-2 hover:bg-muted rounded-lg text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                  title="Next Month"
+                >
                   <ChevronRight className="w-5 h-5" />
                 </button>
               </div>
             </div>
 
-            <div className="grid grid-cols-7 gap-px mb-2">
-              {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(day => (
-                <div key={day} className="text-center text-xs font-semibold text-muted-foreground py-2 uppercase tracking-wider">{day}</div>
+            <div 
+              className="grid grid-cols-7 gap-x-1.5 sm:gap-x-2.5 gap-y-2.5 sm:gap-y-4 text-center mb-6"
+              onTouchStart={handleTouchStart}
+              onTouchMove={handleTouchMove}
+              onTouchEnd={handleTouchEnd}
+            >
+              {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map(d => (
+                <div key={d} className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{d}</div>
               ))}
-            </div>
 
-            <div className="grid grid-cols-7 gap-1 sm:gap-2 mb-8">
-              {calendarDays.map((day, i) => {
+              {calendarDays.map((d, i) => {
+                const dateKey = format(d, "yyyy-MM-dd");
+                const status = calendarData?.days?.[dateKey];
+                const isCurrentMonth = isSameMonth(d, currentDate);
+                const isToday = isSameDay(d, new Date());
+                const dayDetails = sortDayDetailsChronologically(calendarData?.details?.[dateKey] || [], dateKey);
                 const dayEvents = events.filter(e => {
                   const s = startOfDay(parseLocalDate(e.date));
                   const ed = e.endDate ? startOfDay(parseLocalDate(e.endDate)) : s;
-                  return day >= s && day <= ed;
+                  return d >= s && d <= ed;
                 });
-                
-                const dateKey = format(day, "yyyy-MM-dd");
-                const status = calendarData?.days?.[dateKey];
-                const isCurrentMonth = isSameMonth(day, monthStart);
+                const calDayEvents = calendarData?.events?.[dateKey] || [];
+                const mergedEvents = deduplicateEvents([...dayEvents, ...calDayEvents]).sort(
+                  (a, b) => getEventOptimumStyle(a).priority - getEventOptimumStyle(b).priority
+                );
+                const hasRemarks = dayDetails.some((item: any) => !!item.remarks);
+                const animBorder = mergedEvents.length > 0 ? getEventOptimumStyle(mergedEvents[0]).ring : "";
 
                 return (
-                  <Link 
-                    key={i} 
-                    to={isCurrentMonth ? `/today?date=${dateKey}` : "#"} 
-                    className={`min-h-[70px] sm:min-h-[80px] p-1 sm:p-2 rounded-lg sm:rounded-xl border ${
-                      !isCurrentMonth ? "opacity-30 border-transparent cursor-default pointer-events-none" : 
-                      isSameDay(day, new Date()) ? "border-primary/50 bg-primary/5 cursor-pointer" : "border-border/50 hover:border-border bg-card cursor-pointer"
-                    } transition-colors flex flex-col`}
-                  >
-                    <div className="flex justify-between items-start mb-1">
-                      <span className={`text-sm font-medium ${isSameDay(day, new Date()) ? "text-primary bg-primary/10 w-6 h-6 rounded-full flex items-center justify-center -ml-1 -mt-1" : "text-foreground/80"}`}>
-                        {format(day, "d")}
-                      </span>
-                      <div className="flex items-center gap-1 mt-1">
-                        {isCurrentMonth && dayEvents.slice(0, 2).map(e => (
-                          <div key={`dot-${e.id}`} className={`w-2 h-2 rounded-full ${getEventDotSolidColor(e)}`} title={e.title} />
-                        ))}
-                        {isCurrentMonth && status && (
-                          <div className={`w-2 h-2 rounded-full ${getDotColor(status)}`} title={String(status).replace("_", " ")} />
-                        )}
-                      </div>
-                    </div>
-                    <div className="space-y-1 mt-auto hidden sm:block">
-                      {dayEvents.slice(0, 2).map(e => (
-                        <div key={e.id} className={`text-[10px] px-1.5 py-0.5 rounded truncate border ${getEventColor(e)}`} title={e.title}>
-                          {e.title}
+                  <div key={i} className="flex justify-center">
+                    {isCurrentMonth ? (
+                      <button
+                        onClick={() => {
+                          hapticSelection();
+                          if (window.innerWidth < 640) {
+                            setSelectedMobileDate(dateKey);
+                          } else {
+                            navigate(`/today?date=${dateKey}`);
+                          }
+                        }}
+                        className={`flex flex-col items-center justify-center relative w-full max-w-[38px] sm:max-w-[56px] h-12 sm:h-16 hover:bg-muted/60 rounded-xl sm:rounded-2xl transition-all cursor-pointer group ring-inset ${animBorder}`}
+                      >
+                        <div className={`w-7.5 h-7.5 sm:w-8 sm:h-8 flex items-center justify-center rounded-full text-sm font-medium transition-transform group-hover:scale-110 ${
+                          isToday ? "bg-primary text-primary-foreground font-bold shadow-md shadow-primary/20" : "text-foreground"
+                        }`}>
+                          {format(d, "d")}
                         </div>
-                      ))}
-                      {dayEvents.length > 2 && <div className="text-[10px] text-muted-foreground pl-1">+{dayEvents.length - 2} more</div>}
-                    </div>
-                    {/* Mobile event dots */}
-                    {dayEvents.length > 0 && (
-                      <div className="flex flex-wrap gap-1 mt-auto sm:hidden pb-0.5 justify-center w-full">
-                        {dayEvents.slice(0, 3).map(e => (
-                          <div key={e.id} className={`w-1.5 h-1.5 rounded-full ${getEventDotSolidColor(e)}`} />
-                        ))}
-                        {dayEvents.length > 3 && (
-                           <div className="w-1.5 h-1.5 rounded-full bg-muted-foreground" />
-                        )}
+                        <div className="flex items-center gap-1 mt-1">
+                          <div className={`w-1.5 h-1.5 rounded-full ${getDotColor(status)}`} />
+                          {hasRemarks && (
+                            <MessageSquare className="w-2.5 h-2.5 text-primary" />
+                          )}
+                          {mergedEvents.slice(0, 2).map((ev: any, evIdx: number) => (
+                            <span
+                              key={ev.id || evIdx}
+                              className={`w-1.5 h-1.5 rounded-full ${getEventOptimumStyle(ev).dot}`}
+                              title={ev.title}
+                            />
+                          ))}
+                        </div>
+
+                        {/* Hover Agenda Tooltip (Hidden on Mobile) */}
+                        <div className={`absolute ${Math.floor(i / 7) <= 1 ? 'top-full mt-2 origin-top' : 'bottom-full mb-2 origin-bottom'} ${i % 7 === 0 ? 'left-0' : i % 7 === 6 ? 'right-0' : 'left-1/2 -translate-x-1/2'} w-64 bg-card border border-border rounded-xl shadow-2xl p-3 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 pointer-events-auto hidden sm:flex flex-col gap-2 text-left scale-95 group-hover:scale-100 max-h-[350px] overflow-y-auto custom-scrollbar`}>
+                          {/* Header */}
+                          <div className="flex justify-between items-center pb-2 border-b border-border/50">
+                            <span className="font-bold text-sm text-foreground">{format(d, "d MMM")}</span>
+                            <span className={`text-[10px] uppercase font-bold px-1.5 py-0.5 rounded ${
+                              status === "attended" ? "bg-emerald-500/20 text-emerald-500" :
+                              status === "missed" ? "bg-rose-500/20 text-rose-500" :
+                              status === "mixed" ? "bg-purple-500/20 text-purple-500" :
+                              status === "off" ? "bg-yellow-500/20 text-yellow-500" :
+                              "bg-muted text-muted-foreground"
+                            }`}>
+                              {status === "not_marked" 
+                                ? (dayDetails.length > 0 ? "Incomplete" : "No Data") 
+                                : status}
+                            </span>
+                          </div>
+
+                          {/* Events */}
+                          {mergedEvents.length > 0 && (
+                            <div className="flex flex-col gap-1">
+                              {mergedEvents.map((e: any, idx: number) => {
+                                const evStyle = getEventOptimumStyle(e);
+                                return (
+                                  <div key={idx} className={`flex items-start gap-1.5 text-xs font-semibold ${evStyle.text}`}>
+                                    <span className={`w-1.5 h-1.5 rounded-full ${evStyle.dot} mt-1 shrink-0`} />
+                                    <span className="leading-tight">{e.title}</span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+
+                          {/* Subjects Agenda */}
+                          {dayDetails.length > 0 && (
+                            <div className="flex flex-col gap-1.5 mt-1">
+                              {dayDetails.map((detail: any, idx: number) => (
+                                <div key={idx} className="flex flex-col gap-0.5 text-xs py-0.5 border-b border-border/20 last:border-b-0">
+                                  <div className="flex items-center justify-between gap-1.5">
+                                    <span className="text-foreground font-medium truncate pr-1 flex items-center gap-1">
+                                      <span className="truncate">{detail.subjectName}</span>
+                                      {detail.isExtra && (
+                                        <span className="bg-amber-500/20 text-amber-500 border border-amber-500/30 text-[9px] font-extrabold px-1.5 py-0.2 rounded-full uppercase tracking-wider shrink-0">
+                                          Extra
+                                        </span>
+                                      )}
+                                    </span>
+                                    <span className={`font-semibold shrink-0 text-[10px] ${
+                                      detail.status === "present" ? "text-emerald-500" :
+                                      detail.status === "absent" ? "text-rose-500" :
+                                      detail.status === "off" ? "text-amber-500" :
+                                      "text-blue-500"
+                                    }`}>
+                                      {detail.status === "present" ? "Present" :
+                                       detail.status === "absent" ? "Absent" :
+                                       detail.status === "off" ? "Off" : (detail.status === "not_marked" ? "Not Marked" : detail.status.charAt(0).toUpperCase() + detail.status.slice(1))}
+                                    </span>
+                                  </div>
+                                  {detail.remarks && (
+                                    <span className="text-[10px] text-primary italic truncate">"{detail.remarks}"</span>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </button>
+                    ) : (
+                      <div className="w-full max-w-[38px] sm:max-w-[56px] h-12 sm:h-16 opacity-20 flex flex-col items-center justify-center">
+                        <span className="text-sm text-muted-foreground">{format(d, "d")}</span>
                       </div>
                     )}
-                  </Link>
+                  </div>
                 );
               })}
             </div>
@@ -1551,6 +1923,137 @@ export const SemesterHubPage = () => {
         onClose={() => setIsTransitionModalOpen(false)}
         onSuccess={fetchData}
       />
+
+      {/* Mobile Day Agenda Bottom Sheet */}
+      <AnimatePresence>
+        {selectedMobileDate && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setSelectedMobileDate(null)}
+              className="fixed inset-0 bg-background/80 backdrop-blur-sm z-[100] sm:hidden"
+            />
+            <motion.div
+              {...modalSwipeHandlers}
+              initial={{ opacity: 0, y: 100 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 100 }}
+              className="fixed bottom-0 left-0 right-0 bg-card border-t border-border rounded-t-3xl p-6 z-[101] shadow-2xl sm:hidden flex flex-col max-h-[80vh]"
+            >
+              <div className="w-12 h-1.5 bg-muted rounded-full mx-auto mb-6" />
+              
+              {(() => {
+                const dayDetails = sortDayDetailsChronologically(calendarData?.details?.[selectedMobileDate] || [], selectedMobileDate);
+                const dayEvents = events.filter(e => {
+                  const s = startOfDay(parseLocalDate(e.date));
+                  const ed = e.endDate ? startOfDay(parseLocalDate(e.endDate)) : s;
+                  const targetDay = parseLocalDate(selectedMobileDate);
+                  return targetDay >= s && targetDay <= ed;
+                });
+                const calDayEvents = calendarData?.events?.[selectedMobileDate] || [];
+                const mergedDayEvents = deduplicateEvents([...dayEvents, ...calDayEvents]);
+                const status = calendarData?.days?.[selectedMobileDate] || "not_marked";
+                
+                return (
+                  <div className="flex flex-col gap-4 overflow-y-auto">
+                    <div className="flex justify-between items-center pb-3 border-b border-border">
+                      <h3 className="text-xl font-bold text-foreground">
+                        {format(parseLocalDate(selectedMobileDate), "MMMM d, yyyy")}
+                      </h3>
+                      <span className={`text-xs uppercase font-bold px-2 py-1 rounded ${
+                        status === "attended" ? "bg-emerald-500/20 text-emerald-500" :
+                        status === "missed" ? "bg-rose-500/20 text-rose-500" :
+                        status === "mixed" ? "bg-purple-500/20 text-purple-500" :
+                        status === "off" ? "bg-yellow-500/20 text-yellow-500" :
+                        "bg-muted text-muted-foreground"
+                      }`}>
+                        {status === "not_marked" 
+                          ? (dayDetails.length > 0 ? "Incomplete" : "No Data") 
+                          : status}
+                      </span>
+                    </div>
+
+                    {mergedDayEvents.length > 0 && (
+                      <div className="flex flex-col gap-2 mb-2">
+                        <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Events</h4>
+                        {mergedDayEvents.map((e: any, idx: number) => {
+                          const evStyle = getEventOptimumStyle(e);
+                          return (
+                            <div key={idx} className={`flex items-start gap-2 text-sm font-semibold p-2.5 rounded-xl border ${evStyle.pill}`}>
+                              <span className={`w-2 h-2 rounded-full ${evStyle.dot} mt-1.5 shrink-0`} />
+                              <span className="leading-tight">{e.title}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {dayDetails.length > 0 ? (
+                      <div className="flex flex-col gap-2">
+                        <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Classes</h4>
+                        {dayDetails.map((detail: any, idx: number) => (
+                          <div key={idx} className="flex flex-col gap-1.5 text-sm bg-muted/30 p-2.5 rounded-xl border border-border">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-foreground font-medium truncate pr-2 flex-1 flex items-center gap-1.5">
+                                <span className="truncate">{detail.subjectName}</span>
+                                {detail.isExtra && (
+                                  <span className="bg-amber-500/20 text-amber-500 border border-amber-500/30 text-[10px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wider shrink-0">
+                                    Extra
+                                  </span>
+                                )}
+                              </span>
+                              <span className={`font-bold shrink-0 ${
+                                detail.status === "present" ? "text-emerald-500" :
+                                detail.status === "absent" ? "text-rose-500" :
+                                detail.status === "off" ? "text-amber-500" :
+                                "text-blue-500"
+                              }`}>
+                                {detail.status === "present" ? "Present" :
+                                 detail.status === "absent" ? "Absent" :
+                                 detail.status === "off" ? "Off" : (detail.status === "not_marked" ? "Not Marked" : detail.status.charAt(0).toUpperCase() + detail.status.slice(1))}
+                              </span>
+                            </div>
+                            {detail.remarks && (
+                              <div className="flex items-center gap-1.5 text-xs text-primary bg-primary/10 px-2 py-1 rounded-lg border border-primary/20">
+                                <MessageSquare className="w-3.5 h-3.5 shrink-0 text-primary" />
+                                <span className="font-semibold italic">{detail.remarks}</span>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-sm text-muted-foreground italic text-center py-4 bg-muted/20 rounded-xl">
+                        No classes scheduled
+                      </div>
+                    )}
+
+                    <div className="flex gap-3 mt-4 pt-4 border-t border-border">
+                      <button 
+                        onClick={() => setSelectedMobileDate(null)}
+                        className="flex-1 py-3.5 rounded-xl font-bold text-sm bg-muted text-foreground hover:bg-muted/80 transition-colors cursor-pointer"
+                      >
+                        Close
+                      </button>
+                      <button 
+                        onClick={() => {
+                          setSelectedMobileDate(null);
+                          navigate(`/today?date=${selectedMobileDate}`);
+                        }}
+                        className="flex-[2] py-3.5 rounded-xl font-bold text-sm bg-primary text-primary-foreground hover:bg-primary/90 transition-colors cursor-pointer"
+                      >
+                        Open Day Details
+                      </button>
+                    </div>
+                  </div>
+                );
+              })()}
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
     </div>
     </>
   );

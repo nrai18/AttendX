@@ -10,7 +10,7 @@ import {
   LogOut,
   Trash2,
 } from "lucide-react";
-import { api } from "../../lib/api";
+import { api, detectRealHostOS } from "../../lib/api";
 import { toast } from "sonner";
 import { useHardwareBack } from "../../hooks/useHardwareBack";
 import { useScrollLock } from "../../hooks/useScrollLock";
@@ -155,11 +155,13 @@ function SessionRow({
   onRevoke,
   isTerminating,
   staggerDelay = 0,
+  onRequestLocation,
 }: {
   session: Session;
   onRevoke: () => void;
   isTerminating?: boolean;
   staggerDelay?: number;
+  onRequestLocation?: () => void;
 }) {
   const locationText = session.location && session.location !== "Unknown Location" ? session.location : null;
   const subtitle = getSessionSubtitle(session);
@@ -169,7 +171,7 @@ function SessionRow({
       style={
         isTerminating
           ? {
-              animation: `sessionWhooshTrajectory 0.45s cubic-bezier(0.2, 0.9, 0.3, 1) ${staggerDelay}ms forwards`,
+              animation: `sessionWhooshTrajectory 1.2s cubic-bezier(0.22, 1, 0.36, 1) ${staggerDelay}ms forwards`,
               pointerEvents: "none",
               zIndex: 50,
             }
@@ -206,6 +208,19 @@ function SessionRow({
               ? <span className="text-emerald-500 font-medium">online</span>
               : <span>{formatShortDate(session.lastActive)}</span>
             }
+            {session.isCurrent && !locationText && onRequestLocation && (
+              <span
+                role="button"
+                tabIndex={0}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onRequestLocation();
+                }}
+                className="inline-flex items-center gap-1 text-[11px] text-amber-500/90 hover:text-amber-400 font-semibold underline underline-offset-2 ml-1.5 cursor-pointer"
+              >
+                • Enable location
+              </span>
+            )}
           </p>
         </div>
       </button>
@@ -237,6 +252,54 @@ function SessionRow({
 }
 
 let cachedSessions: Session[] | null = null;
+let cachedGpsCoords: { lat: number; lon: number; ts: number } | null = null;
+
+async function resolveDeviceGpsCoords(forceFresh = false): Promise<{ lat: number; lon: number } | null> {
+  if (!forceFresh && cachedGpsCoords && Date.now() - cachedGpsCoords.ts < 5 * 60 * 1000) {
+    return { lat: cachedGpsCoords.lat, lon: cachedGpsCoords.lon };
+  }
+  try {
+    const raw = sessionStorage.getItem("attendx_live_coords");
+    if (!forceFresh && raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed?.lat && parsed?.lon && Date.now() - (parsed.ts || 0) < 5 * 60 * 1000) {
+        cachedGpsCoords = parsed;
+        return { lat: parsed.lat, lon: parsed.lon };
+      }
+    }
+  } catch {}
+
+  try {
+    const { Capacitor } = await import("@capacitor/core");
+    const { Geolocation } = await import("@capacitor/geolocation");
+    if (Capacitor.isNativePlatform()) {
+      const perms = await Geolocation.checkPermissions();
+      if (perms.location !== "granted" && perms.coarseLocation !== "granted") {
+        const reqPerms = await Geolocation.requestPermissions().catch(() => null);
+        if (reqPerms && reqPerms.location !== "granted" && reqPerms.coarseLocation !== "granted") {
+          return null;
+        }
+      }
+    }
+    const pos = await Geolocation.getCurrentPosition({
+      timeout: 6000,
+      maximumAge: forceFresh ? 30000 : 180000,
+      enableHighAccuracy: false,
+    });
+    const coords = {
+      lat: pos.coords.latitude,
+      lon: pos.coords.longitude,
+      ts: Date.now(),
+    };
+    cachedGpsCoords = coords;
+    try {
+      sessionStorage.setItem("attendx_live_coords", JSON.stringify(coords));
+    } catch {}
+    return { lat: coords.lat, lon: coords.lon };
+  } catch {
+    return null;
+  }
+}
 
 export const LinkedDevicesModal: React.FC<LinkedDevicesProps> = ({ isOpen, onClose }) => {
   useHardwareBack(isOpen, onClose);
@@ -246,10 +309,19 @@ export const LinkedDevicesModal: React.FC<LinkedDevicesProps> = ({ isOpen, onClo
   const [loading, setLoading] = useState(false);
   const [terminatingSessionIds, setTerminatingSessionIds] = useState<string[]>([]);
 
-  const currentSession = sessions.find((s) => s.isCurrent);
+  const rawCurrentSession = sessions.find((s) => s.isCurrent);
+  const realHostOS = detectRealHostOS();
+  const currentSession = rawCurrentSession && (realHostOS === "Windows" || realHostOS === "macOS" || realHostOS === "Linux") && !String(rawCurrentSession.browser || "").startsWith("AttendX")
+    ? {
+        ...rawCurrentSession,
+        os: realHostOS,
+        deviceType: "desktop",
+        browser: (rawCurrentSession.browser || "Google Chrome").replace(/^Mobile\s+/i, ""),
+      }
+    : rawCurrentSession;
   const otherSessions = sessions.filter((s) => !s.isCurrent);
 
-  // Pre-warm sessions on mount so opening Linked Devices is instant (0ms spinner)
+  // Pre-warm sessions and live GPS coordinates on mount so opening Linked Devices is instant (0ms spinner)
   useEffect(() => {
     if (!cachedSessions) {
       api.get("/users/sessions")
@@ -261,6 +333,21 @@ export const LinkedDevicesModal: React.FC<LinkedDevicesProps> = ({ isOpen, onClo
         })
         .catch(() => {});
     }
+    resolveDeviceGpsCoords(false).then((loc) => {
+      if (loc) {
+        api.get("/users/sessions", {
+          headers: { "x-attendx-lat": String(loc.lat), "x-attendx-lon": String(loc.lon) },
+          params: { _loc: 1 },
+        })
+          .then((res) => {
+            if (Array.isArray(res.data)) {
+              cachedSessions = res.data;
+              setSessions(res.data);
+            }
+          })
+          .catch(() => {});
+      }
+    });
   }, []);
 
   useEffect(() => {
@@ -277,6 +364,21 @@ export const LinkedDevicesModal: React.FC<LinkedDevicesProps> = ({ isOpen, onClo
     
     if (isOpen) {
       refresh(false);
+      if (!cachedGpsCoords) {
+        resolveDeviceGpsCoords(true).then((loc) => {
+          if (loc && isMounted) {
+            api.get("/users/sessions", {
+              headers: { "x-attendx-lat": String(loc.lat), "x-attendx-lon": String(loc.lon) },
+              params: { _locSync: Date.now() },
+            }).then((res) => {
+              if (Array.isArray(res.data) && isMounted) {
+                cachedSessions = res.data;
+                setSessions(res.data);
+              }
+            }).catch(() => {});
+          }
+        });
+      }
     }
     
     return () => { 
@@ -290,13 +392,41 @@ export const LinkedDevicesModal: React.FC<LinkedDevicesProps> = ({ isOpen, onClo
       if (!cachedSessions || cachedSessions.length === 0) {
         setLoading(true);
       }
-      const res = await api.get("/users/sessions");
+      const knownCoords = cachedGpsCoords;
+      const res = await api.get("/users/sessions", {
+        headers: knownCoords
+          ? { "x-attendx-lat": String(knownCoords.lat), "x-attendx-lon": String(knownCoords.lon) }
+          : undefined,
+      });
       if (Array.isArray(res.data)) {
         cachedSessions = res.data;
         setSessions(res.data);
       } else {
         setSessions([]);
       }
+
+      // Non-blocking live GPS coordinate refresh so traveling between cities updates location automatically
+      resolveDeviceGpsCoords(!isBackground).then((freshLoc) => {
+        if (!freshLoc) return;
+        const coordChanged =
+          !knownCoords ||
+          Math.abs(freshLoc.lat - knownCoords.lat) > 0.01 ||
+          Math.abs(freshLoc.lon - knownCoords.lon) > 0.01;
+        const currentLoc = (Array.isArray(res.data) ? res.data : []).find((s: Session) => s.isCurrent)?.location;
+        if (coordChanged || !currentLoc || currentLoc === "Unknown Location") {
+          api.get("/users/sessions", {
+            headers: { "x-attendx-lat": String(freshLoc.lat), "x-attendx-lon": String(freshLoc.lon) },
+            params: { _locSync: Date.now() },
+          })
+            .then((freshRes) => {
+              if (Array.isArray(freshRes.data)) {
+                cachedSessions = freshRes.data;
+                setSessions(freshRes.data);
+              }
+            })
+            .catch(() => {});
+        }
+      });
     } catch (e: any) {
       // NEVER show irritating toasts on background polling or if cached devices are already visible
       if (!isBackground && (!cachedSessions || cachedSessions.length === 0)) {
@@ -326,6 +456,11 @@ export const LinkedDevicesModal: React.FC<LinkedDevicesProps> = ({ isOpen, onClo
         // 2. Trigger whoosh flight trajectory animation
         setTerminatingSessionIds((prev) => [...prev, session.id]);
 
+        if (session.isCurrent) {
+          // Fire backend session revocation in background while the 1.2s whoosh animation plays
+          api.delete(`/users/sessions/${session.id}`).catch(() => {});
+        }
+
         // 3. Dynamic Island HUD notification fires as row whooshes off
         setTimeout(() => {
           triggerDynamicHUD({
@@ -333,15 +468,13 @@ export const LinkedDevicesModal: React.FC<LinkedDevicesProps> = ({ isOpen, onClo
             label: session.isCurrent ? "Device Logged Out" : "Session Terminated",
             durationMs: 3500,
           });
-        }, 380);
+        }, 550);
 
-        // 4. Smooth eviction & API deletion
+        // 4. Smooth eviction & logout right when the 1.2s whoosh animation completes
         setTimeout(async () => {
           if (session.isCurrent) {
-            try {
-              await api.delete(`/users/sessions/${session.id}`);
-            } catch {}
-            useAuthStore.getState().logout();
+            onClose();
+            useAuthStore.getState().logout(true);
             return;
           }
 
@@ -358,7 +491,7 @@ export const LinkedDevicesModal: React.FC<LinkedDevicesProps> = ({ isOpen, onClo
             toast.error(e.response?.data?.message || "Failed to terminate session");
             fetchSessions(true);
           }
-        }, 460);
+        }, 1200);
       },
     });
   };
@@ -385,7 +518,7 @@ export const LinkedDevicesModal: React.FC<LinkedDevicesProps> = ({ isOpen, onClo
             label: "All Other Sessions Terminated",
             durationMs: 3800,
           });
-        }, 400);
+        }, 600);
 
         setTimeout(async () => {
           setSessions((prev) => {
@@ -401,7 +534,7 @@ export const LinkedDevicesModal: React.FC<LinkedDevicesProps> = ({ isOpen, onClo
           } catch (e: any) {
             toast.error(e.response?.data?.message || "Failed to terminate sessions");
           }
-        }, 520);
+        }, 1250);
       },
     });
   };
@@ -480,6 +613,26 @@ export const LinkedDevicesModal: React.FC<LinkedDevicesProps> = ({ isOpen, onClo
                         session={currentSession}
                         onRevoke={() => handleRevoke(currentSession)}
                         isTerminating={terminatingSessionIds.includes(currentSession.id)}
+                        onRequestLocation={async () => {
+                          hapticSelection();
+                          triggerDynamicHUD({
+                            type: "sparkle",
+                            label: "Resolving Location",
+                            subtitle: "Requesting location permission for active session",
+                            durationMs: 3500,
+                          });
+                          const loc = await resolveDeviceGpsCoords(true);
+                          if (loc) {
+                            const res = await api.get("/users/sessions", {
+                              headers: { "x-attendx-lat": String(loc.lat), "x-attendx-lon": String(loc.lon) },
+                              params: { _locSync: Date.now() },
+                            });
+                            if (Array.isArray(res.data)) {
+                              cachedSessions = res.data;
+                              setSessions(res.data);
+                            }
+                          }
+                        }}
                       />
                       {otherSessions.length > 0 && (
                         <>

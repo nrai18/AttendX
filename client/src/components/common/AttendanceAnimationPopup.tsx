@@ -28,7 +28,8 @@ export const HOLIDAY_ASSETS: Partial<Record<AnimationType, string>> = {
   maha_shivaratri: "/lottie/maha_shivaratri.json",
   milad_un_nabi: "/lottie/milad_un_nabi.json",
   rakshabandhan: "/lottie/rakshabandhan.json",
-  christmas_eve: "/lottie/christmas_eve.json"
+  christmas_eve: "/lottie/christmas_eve.json",
+  vacation: "/lottie/vacation.json"
 };
 
 export const AttendanceAnimationPopup: React.FC = () => {

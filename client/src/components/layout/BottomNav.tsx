@@ -136,10 +136,14 @@ export const BottomNav: React.FC = () => {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const [optimisticIndex, setOptimisticIndex] = useState<number | null>(null);
   const [isPressing, setIsPressing] = useState(false);
+  const [isGliding, setIsGliding] = useState(false);
+  const prevVisualIndexRef = useRef(currentIndex);
+  const lastNavigatedPathRef = useRef<string | null>(null);
 
   // Clear optimistic lock whenever route pathname changes so dynamic 6->5 transitions never point out of bounds
   useEffect(() => {
     setOptimisticIndex(null);
+    lastNavigatedPathRef.current = location.pathname;
   }, [location.pathname]);
 
   // Visual target index smoothly previews hovered/scrubbed tab and holds dropped tab without 1-frame snapback
@@ -154,6 +158,31 @@ export const BottomNav: React.FC = () => {
       ? rawVisualIndex
       : currentIndex;
   const activeVisualItem = visualIndex >= 0 ? activeNavItems[visualIndex] : null;
+
+  // Trigger subtle liquid stretch whenever the pill glides to a different tab
+  useEffect(() => {
+    if (visualIndex !== prevVisualIndexRef.current && visualIndex >= 0) {
+      prevVisualIndexRef.current = visualIndex;
+      setIsGliding(true);
+      const t = setTimeout(() => setIsGliding(false), 320);
+      return () => clearTimeout(t);
+    }
+  }, [visualIndex]);
+
+  const triggerSmoothNavigate = useCallback(
+    (targetPath: string) => {
+      if (location.pathname.startsWith(targetPath) && lastNavigatedPathRef.current === targetPath) {
+        return;
+      }
+      lastNavigatedPathRef.current = targetPath;
+      requestAnimationFrame(() => {
+        React.startTransition(() => {
+          navigate(targetPath);
+        });
+      });
+    },
+    [location.pathname, navigate]
+  );
 
   // Calculate tab index from clientX coordinate
   const calculateIndexFromX = useCallback(
@@ -221,7 +250,7 @@ export const BottomNav: React.FC = () => {
       }
       if (finalIdx !== currentIndex) {
         hapticMedium();
-        navigate(activeNavItems[finalIdx].path);
+        triggerSmoothNavigate(activeNavItems[finalIdx].path);
       }
     }
 
@@ -289,56 +318,57 @@ export const BottomNav: React.FC = () => {
         />
 
         <nav className="flex items-center justify-around h-13 relative z-10">
-          {/* Persistent Single Sliding Liquid Glass Pill (GPU Transform + Smooth Drop Settle) */}
+          {/* Persistent Single Sliding Liquid Glass Pill (Plush Critically-Damped Spring + Liquid Stretch) */}
           {visualIndex >= 0 && activeVisualItem && (
             <motion.div
               initial={false}
               animate={{
                 x: `${visualIndex * 100}%`,
-                scaleX: isPressing ? 1.04 : 1,
-                scaleY: isPressing ? 1.06 : 1,
+                scaleX: isGliding ? 1.09 : isPressing ? 1.04 : 1,
+                scaleY: isGliding ? 0.94 : isPressing ? 1.05 : 1,
                 y: isPressing ? -1 : 0,
               }}
               transition={{
                 x: {
                   type: "spring",
-                  stiffness: 380,
-                  damping: 32,
-                  mass: 0.65,
+                  stiffness: isPressing ? 280 : 200,
+                  damping: isPressing ? 27 : 25,
+                  mass: isPressing ? 0.65 : 0.85,
+                  restDelta: 0.001,
                 },
                 scaleX: {
                   type: "spring",
-                  stiffness: 460,
-                  damping: 26,
-                  mass: 0.5,
+                  stiffness: 260,
+                  damping: 20,
+                  mass: 0.6,
                 },
                 scaleY: {
                   type: "spring",
-                  stiffness: 460,
-                  damping: 26,
-                  mass: 0.5,
+                  stiffness: 260,
+                  damping: 20,
+                  mass: 0.6,
                 },
                 y: {
                   type: "spring",
-                  stiffness: 460,
-                  damping: 26,
-                  mass: 0.5,
+                  stiffness: 300,
+                  damping: 24,
+                  mass: 0.6,
                 },
               }}
               style={{ width: `${100 / activeNavItems.length}%`, left: 0 }}
-              className="absolute inset-y-0.5 px-1 pointer-events-none z-0 will-change-transform"
+              className="absolute inset-y-0.5 px-1 pointer-events-none z-0 will-change-transform transition-[width] duration-300 ease-out"
             >
               <div
                 className={cn(
                   "w-full h-full rounded-full relative overflow-hidden",
-                  "backdrop-blur-md border transition-[background-color,border-color,box-shadow] duration-250 ease-out",
+                  "backdrop-blur-md border transition-[background-color,border-color,box-shadow] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]",
                   activeVisualItem.pillClass
                 )}
               >
                 {/* Top Specular Rim Reflection */}
                 <div
                   className={cn(
-                    "absolute inset-x-3 top-0 h-[1px] bg-gradient-to-r from-transparent to-transparent pointer-events-none transition-colors duration-250",
+                    "absolute inset-x-3 top-0 h-[1px] bg-gradient-to-r from-transparent to-transparent pointer-events-none transition-colors duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]",
                     activeVisualItem.rimClass
                   )}
                 />
@@ -364,7 +394,7 @@ export const BottomNav: React.FC = () => {
                   }
                   if (currentIndex !== idx) {
                     hapticSelection();
-                    navigate(item.path);
+                    triggerSmoothNavigate(item.path);
                   }
                 }}
                 className="relative flex flex-col items-center justify-center flex-1 py-1 z-10"
@@ -372,20 +402,20 @@ export const BottomNav: React.FC = () => {
                 {/* Smooth Animated Icon Container */}
                 <motion.div
                   animate={{
-                    scale: isHighlighted ? (isPressing ? 1.04 : 1.1) : 1,
-                    y: isHighlighted ? -1.5 : 0,
+                    scale: isHighlighted ? (isPressing ? 1.05 : 1.12) : 1,
+                    y: isHighlighted ? -2 : 0,
                   }}
                   transition={{
                     type: "spring",
-                    stiffness: 380,
-                    damping: 28,
-                    mass: 0.7,
+                    stiffness: 230,
+                    damping: 22,
+                    mass: 0.75,
                   }}
-                  className="p-1 rounded-full flex items-center justify-center"
+                  className="p-1 rounded-full flex items-center justify-center will-change-transform"
                 >
                   <Icon
                     className={cn(
-                      "w-5 h-5 transition-colors duration-300 ease-out",
+                      "w-5 h-5 transition-colors duration-400 ease-[cubic-bezier(0.22,1,0.36,1)]",
                       isHighlighted
                         ? item.textClass
                         : isActive
@@ -400,7 +430,7 @@ export const BottomNav: React.FC = () => {
                 {/* Label */}
                 <span
                   className={cn(
-                    "text-[10px] font-semibold mt-0.5 transition-colors duration-300 ease-out leading-none tracking-tight",
+                    "text-[10px] font-semibold mt-0.5 transition-colors duration-400 ease-[cubic-bezier(0.22,1,0.36,1)] leading-none tracking-tight",
                     isHighlighted
                       ? cn(item.textClass, "font-bold")
                       : isActive
@@ -417,15 +447,42 @@ export const BottomNav: React.FC = () => {
           })}
         </nav>
 
-        {/* Tactile iOS Liquid Glass Bottom Grabber */}
-        <div
-          className={cn(
-            "w-8 h-1 rounded-full mx-auto mt-0.5 mb-0.5 transition-colors duration-300 ease-out",
-            activeVisualItem
-              ? activeVisualItem.grabberClass
-              : "bg-foreground/20"
+        {/* Synchronized Sliding Liquid Glass Indicator Bar */}
+        <div className="relative h-1.5 mt-0.5 mb-0.5 w-full overflow-hidden pointer-events-none">
+          {visualIndex >= 0 && activeVisualItem && (
+            <motion.div
+              initial={false}
+              animate={{
+                x: `${visualIndex * 100}%`,
+                scaleX: isGliding ? 1.35 : 1,
+              }}
+              transition={{
+                x: {
+                  type: "spring",
+                  stiffness: isPressing ? 280 : 200,
+                  damping: isPressing ? 27 : 25,
+                  mass: isPressing ? 0.65 : 0.85,
+                  restDelta: 0.001,
+                },
+                scaleX: {
+                  type: "spring",
+                  stiffness: 260,
+                  damping: 20,
+                  mass: 0.6,
+                },
+              }}
+              style={{ width: `${100 / activeNavItems.length}%`, left: 0 }}
+              className="absolute inset-y-0 flex items-center justify-center will-change-transform transition-[width] duration-300 ease-out"
+            >
+              <div
+                className={cn(
+                  "w-7 h-1 rounded-full transition-colors duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]",
+                  activeVisualItem.grabberClass
+                )}
+              />
+            </motion.div>
           )}
-        />
+        </div>
       </div>
     </div>
   );

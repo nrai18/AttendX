@@ -67,9 +67,11 @@ export const ClassroomsPage = () => {
   const [whooshingHubIds, setWhooshingHubIds] = useState<string[]>([]);
   const [newlyCreatedHubId, setNewlyCreatedHubId] = useState<string | null>(null);
 
-  const fetchClassrooms = async () => {
+  const fetchClassrooms = async (silent = false) => {
     try {
-      setIsLoading(true);
+      if (!silent && classrooms.length === 0) {
+        setIsLoading(true);
+      }
       const res = await api.get("/classrooms");
       setClassrooms(Array.isArray(res.data) ? res.data : []);
     } catch (error) {
@@ -129,6 +131,16 @@ export const ClassroomsPage = () => {
     try {
       setIsSubmitting(true);
       const res = await api.post("/classrooms/join", { joinCode: targetCode });
+      await fetchClassrooms(true);
+      setShowJoinModal(false);
+      setJoinCodeInput("");
+      setInlineJoinCode("");
+      if (res.data?.id) {
+        setNewlyCreatedHubId(res.data.id);
+        setTimeout(() => {
+          setNewlyCreatedHubId((curr) => (curr === res.data.id ? null : curr));
+        }, 1400);
+      }
       SoundFX.playWhooshSound(0.26);
       hapticSuccess();
       triggerDynamicHUD({
@@ -137,17 +149,10 @@ export const ClassroomsPage = () => {
         subtitle: `${res.data?.name || targetCode} synced to your agenda`,
         durationMs: 4400,
       });
-      setShowJoinModal(false);
-      setJoinCodeInput("");
-      setInlineJoinCode("");
-      if (res.data?.id) {
-        setNewlyCreatedHubId(res.data.id);
-      }
       try {
         localStorage.setItem("onboarding_classroom", "true");
         window.dispatchEvent(new CustomEvent("onboarding-step-completed", { detail: { step: "classroom" } }));
       } catch (_) {}
-      fetchClassrooms();
     } catch (error: any) {
       toast.error(error.response?.data?.message || "Failed to join classroom");
     } finally {
@@ -163,24 +168,29 @@ export const ClassroomsPage = () => {
     }
     try {
       setIsSubmitting(true);
+      const createdTitle = newClassName.trim();
       const res = await api.post("/classrooms/create", { 
-        name: newClassName.trim(),
+        name: createdTitle,
         section: newSection.trim() || undefined,
         department: newDepartment.trim() || undefined,
         batch: newBatch.trim() || undefined,
       });
+      await fetchClassrooms(true);
+      setShowCreateModal(false);
+      if (res.data?.id) {
+        setNewlyCreatedHubId(res.data.id);
+        setTimeout(() => {
+          setNewlyCreatedHubId((curr) => (curr === res.data.id ? null : curr));
+        }, 1400);
+      }
       SoundFX.playWhooshSound(0.28);
       hapticSuccess();
       triggerDynamicHUD({
         type: "hub",
         label: "Classroom Hub Created!",
-        subtitle: `${newClassName} • Share code ${res.data?.joinCode || ""} with peers`,
+        subtitle: `${createdTitle} • Share code ${res.data?.joinCode || ""} with peers`,
         durationMs: 4600,
       });
-      setShowCreateModal(false);
-      if (res.data?.id) {
-        setNewlyCreatedHubId(res.data.id);
-      }
       setNewClassName("");
       setNewSection("");
       setNewDepartment("");
@@ -189,7 +199,6 @@ export const ClassroomsPage = () => {
         localStorage.setItem("onboarding_classroom", "true");
         window.dispatchEvent(new CustomEvent("onboarding-step-completed", { detail: { step: "classroom" } }));
       } catch (_) {}
-      fetchClassrooms();
     } catch (error: any) {
       toast.error(error.response?.data?.message || "Failed to create classroom");
     } finally {
@@ -218,21 +227,23 @@ export const ClassroomsPage = () => {
           subtitle: `${targetName} • Enrolled peers alerted via push`,
           durationMs: 4500,
         });
-      }, 180);
+      }, 550);
 
-      // 4. Commit deletion after flight completes
+      // 4. Commit deletion after full 1.25s whoosh flight completes
       setTimeout(async () => {
+        setClassrooms(prev => prev.filter(c => c.id !== classroomId));
+        setWhooshingHubIds(prev => prev.filter(id => id !== classroomId));
         try {
           setIsSubmitting(true);
           await api.delete(`/classrooms/${classroomId}`);
-          fetchClassrooms();
+          fetchClassrooms(true);
         } catch (error: any) {
           toast.error(error.response?.data?.message || "Failed to disband classroom");
-          setWhooshingHubIds(prev => prev.filter(id => id !== classroomId));
+          fetchClassrooms(true);
         } finally {
           setIsSubmitting(false);
         }
-      }, 420);
+      }, 1250);
     } catch (error: any) {
       toast.error(error.response?.data?.message || "Failed to disband classroom");
     }
@@ -258,21 +269,23 @@ export const ClassroomsPage = () => {
           subtitle: `${targetName} cleared from your dashboard`,
           durationMs: 4000,
         });
-      }, 180);
+      }, 550);
 
-      // 4. Commit removal after flight completes
+      // 4. Commit removal after full 1.25s whoosh flight completes
       setTimeout(async () => {
+        setClassrooms(prev => prev.filter(c => c.id !== classroomId));
+        setWhooshingHubIds(prev => prev.filter(id => id !== classroomId));
         try {
           setIsSubmitting(true);
           await api.delete(`/classrooms/${classroomId}/leave`);
-          fetchClassrooms();
+          fetchClassrooms(true);
         } catch (error: any) {
           toast.error(error.response?.data?.message || "Failed to remove classroom");
-          setWhooshingHubIds(prev => prev.filter(id => id !== classroomId));
+          fetchClassrooms(true);
         } finally {
           setIsSubmitting(false);
         }
-      }, 420);
+      }, 1250);
     } catch (error: any) {
       toast.error(error.response?.data?.message || "Failed to remove classroom");
     }
@@ -529,9 +542,9 @@ export const ClassroomsPage = () => {
                 key={cls.id}
                 style={{
                   animation: isWhooshing
-                    ? "hubWhooshTrajectory 0.44s cubic-bezier(0.2, 0.9, 0.3, 1) forwards"
+                    ? "hubWhooshTrajectory 1.25s cubic-bezier(0.22, 1, 0.36, 1) forwards"
                     : isNewlyCreated
-                    ? "hubWhooshIn 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards"
+                    ? "hubWhooshIn 1.25s cubic-bezier(0.16, 1, 0.3, 1) forwards"
                     : undefined,
                   pointerEvents: isWhooshing ? "none" : undefined,
                 }}

@@ -1,6 +1,10 @@
 import { getMarketingName } from './deviceMapper';
 import { UAParser } from 'ua-parser-js';
 
+const gpsLocationCache = new Map<string, { location: string; expiresAt: number }>();
+const ipLocationCache = new Map<string, { location: string; expiresAt: number }>();
+const GEO_CACHE_TTL_MS = 15 * 60 * 1000;
+
 export async function getDeviceDetails(req: any) {
   if (!req) return { userAgent: 'Unknown OS', ipAddress: null, location: null };
   const uaString = req.headers['user-agent'] || '';
@@ -31,21 +35,23 @@ export async function getDeviceDetails(req: any) {
   const lat = req.headers['x-attendx-lat'];
   const lon = req.headers['x-attendx-lon'];
   
-  if (lat && lon) {
+  if (lat && lon) { const coordKey = `${parseFloat(String(lat)).toFixed(2)},${parseFloat(String(lon)).toFixed(2)}`; const cachedGps = gpsLocationCache.get(coordKey); if (cachedGps && cachedGps.expiresAt > Date.now()) { location = cachedGps.location; } else {
     try {
       const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=10&addressdetails=1`, {
         headers: { 'User-Agent': 'AttendXApp/1.0 (admin@attendx.tech)' },
-        signal: AbortSignal.timeout(1500)
+        signal: AbortSignal.timeout(2500)
       });
       const data = await response.json();
       if (data && data.address) {
-        const city = data.address.city || data.address.town || data.address.village || data.address.county;
+        const city = data.address.city || data.address.town || data.address.village || data.address.state_district || data.address.county || data.address.suburb;
         const state = data.address.state;
-        if (city && state) location = `${city}, ${state}`;
+        if (city && state) location = city.toLowerCase() === state.toLowerCase() ? `New ${city}, ${state}` : `${city}, ${state}`; else if (state) location = state;
         else if (data.display_name) location = data.display_name.split(',').slice(0, 2).join(',');
+        if (location !== 'Unknown Location') gpsLocationCache.set(coordKey, { location, expiresAt: Date.now() + GEO_CACHE_TTL_MS });
       }
     } catch (e) {
       console.warn('Nominatim lookup skipped or timed out:', (e as any)?.message || e);
+    }
     }
   }
 
@@ -57,7 +63,34 @@ export async function getDeviceDetails(req: any) {
   // Priority 1: GPS-based Nominatim (already set above if lat/lon provided)
 
   // Priority 2: Timezone header (much more reliable than geoip for most requests)
-  if (location === 'Unknown Location' && typeof timezone === 'string') {
+  // Priority 2: IP geolocation (city, state/region) when GPS headers are not attached
+  if (location === 'Unknown Location' && ipAddress) {
+    if (ipAddress === '127.0.0.1' || ipAddress === '::1' || ipAddress.startsWith('192.168.') || ipAddress.startsWith('10.') || ipAddress.startsWith('172.16.')) {
+      location = 'Local Network';
+    } else {
+      const cachedIp = ipLocationCache.get(ipAddress);
+      if (cachedIp && cachedIp.expiresAt > Date.now()) {
+        location = cachedIp.location;
+      } else {
+        try {
+          const geoRes = await fetch(`http://ip-api.com/json/${ipAddress}?fields=city,regionName,country`, {
+            signal: AbortSignal.timeout(1500)
+          });
+          if (geoRes.ok) {
+            const geoData = await geoRes.json() as any;
+            if (geoData && (geoData.city || geoData.regionName || geoData.country)) {
+              const regionOrCountry = geoData.regionName || geoData.country;
+              location = [geoData.city, regionOrCountry].filter(Boolean).join(', ');
+              if (location) {
+                ipLocationCache.set(ipAddress, { location, expiresAt: Date.now() + GEO_CACHE_TTL_MS });
+              }
+            }
+          }
+        } catch {}
+      }
+    }
+  }
+  if ((location === 'Unknown Location' || location === 'Local Network') && typeof timezone === 'string') {
     location = timezone.split('/').reverse().join(', ').replace(/_/g, ' ');
   }
 
@@ -93,6 +126,7 @@ export async function getDeviceDetails(req: any) {
   const customBrowser = req.headers['x-attendx-browser'];
   const hardwareModel = req.headers['x-attendx-hardware'];
   const appVersion = req.headers['x-attendx-version'];
+  const realOsHeader = typeof req.headers['x-attendx-real-os'] === 'string' ? req.headers['x-attendx-real-os'].trim() : '';
 
   if (platformHeader && osHeader && osHeader !== 'web') {
      // Native Mobile App
@@ -124,14 +158,17 @@ export async function getDeviceDetails(req: any) {
      browser = finalDeviceString ? `AttendX${versionStr} (${finalDeviceString})` : `AttendX Native App${versionStr}`;
   } else {
     // Web Browser (Laptop or Mobile Web)
-    deviceType = result.device.type || (uaString.includes('Mobile') ? 'mobile' : 'desktop');
-    os = result.os.name || 'Unknown OS';
+    deviceType = (realOsHeader === 'Windows' || realOsHeader === 'macOS' || realOsHeader === 'Linux') ? 'desktop' : (result.device.type || (uaString.includes('Mobile') ? 'mobile' : 'desktop'));
+    os = (realOsHeader === 'Windows' || realOsHeader === 'macOS' || realOsHeader === 'Linux') ? realOsHeader : (result.os.name || 'Unknown OS');
     
     // Prioritize the precise Client Hints browser name (e.g. 'Brave', 'Microsoft Edge') over spoofed UA string
     if (customBrowser) {
        browser = customBrowser;
     } else {
-       browser = result.browser.name || 'Unknown Browser';
+       browser = result.browser.name ? result.browser.name.replace(/^Mobile\s+/i, '') : 'Unknown Browser';
+    }
+    if ((realOsHeader === 'Windows' || realOsHeader === 'macOS' || realOsHeader === 'Linux') && browser) {
+       userAgent = `${browser} on ${realOsHeader}`;
     }
   }
 

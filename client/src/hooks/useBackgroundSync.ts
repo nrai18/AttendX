@@ -117,7 +117,7 @@ export const useBackgroundSync = () => {
           console.log("[BackgroundSync] Global pre-fetch complete!");
           import("../services/NotificationService")
             .then(({ NotificationService }) => {
-              NotificationService.autoScheduleFromTimetable().catch(() => {});
+              NotificationService.scheduleAllProactiveNotifications().catch(() => {});
             })
             .catch(() => {});
         } catch (err) {

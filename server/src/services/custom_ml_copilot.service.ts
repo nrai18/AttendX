@@ -1457,20 +1457,131 @@ export class CustomMlCopilotService {
 
     // 11. BIRTHDAY KNOWLEDGE & BIRTHDAY UPDATES (< 1ms Fast-Path)
     if (/\b(birthdays?|b'?days?|dob|born)\b/i.test(lower)) {
+      const isPublicHolidayEvent = (e: any): boolean => {
+        if (!e) return false;
+        if (e.isHoliday) return true;
+        const t = String(e.eventType || e.event_type || e.type || "").toLowerCase();
+        if (t === "holiday" || t === "restricted_holiday" || t === "vacation" || t === "exam" || t === "academic") return true;
+        const title = String(e.title || "").toLowerCase();
+        if (/\b(guru\s+nanak|guru\s+gobind|guru\s+tegh|mahatma\s+gandhi|gandhi\s+jayanti|dr\.?\s+b\.?r\.?\s+ambedkar|ambedkar\s+jayanti|subhas\s+chandra|buddha\s+purnima|mahavir\s+jayanti|valmiki|ravidas|hazarat\s+ali|prophet|christmas|diwali|holi|eid|independence|republic|teaching\s+day|semester|break|exam|preparatory)\b/i.test(title)) return true;
+        if (/\b(jayanti|utsav|divas|diwas)\b/i.test(title) && !/\bpeer|friend|classmate|my\b/i.test(title)) return true;
+        return false;
+      };
+
+      const parseBirthdayString = (
+        str: string,
+        currentBirthday?: string | Date | null
+      ): { isoDate: string; formatted: string; year: number } | null => {
+        if (!str) return null;
+        const clean = str.trim().replace(/^[\s"'“‘`.,;:!?~_/\\()[\]{}\-]+|[\s"'”’`.,;:!?~_/\\()[\]{}\-]+$/g, "").trim();
+
+        // 1. ISO format: YYYY-MM-DD
+        const isoMatch = clean.match(/\b(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})\b/);
+        if (isoMatch) {
+          const y = parseInt(isoMatch[1], 10);
+          const m = parseInt(isoMatch[2], 10);
+          const d = parseInt(isoMatch[3], 10);
+          if (m >= 1 && m <= 12 && d >= 1 && d <= 31 && y >= 1970 && y <= 2030) {
+            const isoDate = `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+            const dt = new Date(Date.UTC(y, m - 1, d));
+            const formatted = dt.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric", timeZone: "UTC" });
+            return { isoDate, formatted, year: y };
+          }
+        }
+
+        // 2. DMY format: DD/MM/YYYY or DD-MM-YYYY
+        const dmyMatch = clean.match(/\b(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})\b/);
+        if (dmyMatch) {
+          let p1 = parseInt(dmyMatch[1], 10);
+          let p2 = parseInt(dmyMatch[2], 10);
+          const y = parseInt(dmyMatch[3], 10);
+          let d = p1;
+          let m = p2;
+          if (p1 > 12 && p2 <= 12) {
+            d = p1;
+            m = p2;
+          } else if (p2 > 12 && p1 <= 12) {
+            m = p1;
+            d = p2;
+          }
+          if (m >= 1 && m <= 12 && d >= 1 && d <= 31 && y >= 1970 && y <= 2030) {
+            const isoDate = `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+            const dt = new Date(Date.UTC(y, m - 1, d));
+            const formatted = dt.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric", timeZone: "UTC" });
+            return { isoDate, formatted, year: y };
+          }
+        }
+
+        // 3. Named month matching
+        const monthMap: Record<string, number> = {
+          jan: 1, january: 1, feb: 2, february: 2, mar: 3, march: 3,
+          apr: 4, april: 4, may: 5, june: 6, jun: 6, jul: 7, july: 7,
+          aug: 8, august: 8, sep: 9, sept: 9, september: 9,
+          oct: 10, october: 10, nov: 11, november: 11, dec: 12, december: 12,
+        };
+
+        const getDefaultYear = (): number => {
+          if (currentBirthday) {
+            const ey = new Date(currentBirthday).getUTCFullYear();
+            if (!isNaN(ey) && ey >= 1970 && ey <= 2025) return ey;
+          }
+          return 2004;
+        };
+
+        const mFirst = clean.match(/\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+(\d{1,2})(?:st|nd|rd|th)?(?:\s*,?\s*(\d{4}))?\b/i);
+        if (mFirst) {
+          const m = monthMap[mFirst[1].toLowerCase()];
+          const d = parseInt(mFirst[2], 10);
+          const y = mFirst[3] ? parseInt(mFirst[3], 10) : getDefaultYear();
+          if (m >= 1 && m <= 12 && d >= 1 && d <= 31) {
+            const isoDate = `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+            const dt = new Date(Date.UTC(y, m - 1, d));
+            const formatted = dt.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric", timeZone: "UTC" });
+            return { isoDate, formatted, year: y };
+          }
+        }
+
+        const dFirst = clean.match(/\b(\d{1,2})(?:st|nd|rd|th)?(?:\s+of)?\s+(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)(?:\s*,?\s*(\d{4}))?\b/i);
+        if (dFirst) {
+          const d = parseInt(dFirst[1], 10);
+          const m = monthMap[dFirst[2].toLowerCase()];
+          const y = dFirst[3] ? parseInt(dFirst[3], 10) : getDefaultYear();
+          if (m >= 1 && m <= 12 && d >= 1 && d <= 31) {
+            const isoDate = `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+            const dt = new Date(Date.UTC(y, m - 1, d));
+            const formatted = dt.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric", timeZone: "UTC" });
+            return { isoDate, formatted, year: y };
+          }
+        }
+
+        return null;
+      };
+
       // 11a. Setting or updating birthday
-      const setMatch = lower.match(/(?:set|update|add|change)\s+(?:my\s+)?(?:birthdays?|b'?days?|dob)(?:\s+to|\s+on|\s+for\s+\w+\s+on)?\s+([a-z0-9\s,-]+)/i);
-      if (setMatch) {
-        const rawDateStr = setMatch[1].trim();
-        const parsed = this.resolveRelativeDate(rawDateStr, wallNow);
-        if (parsed.matched) {
+      const setBdayMatch =
+        lower.match(/\b(?:set|update|change|save|make|put|record|register|add)\s+(?:my\s+)?(?:birthdays?|b'?days?|dob)(?:\s+(?:date|to|as|=|is|on))?\s+([^?.!]+)/i) ||
+        lower.match(/^(?:my\s+)?(?:birthdays?|b'?days?|dob)\s+(?:is|=|to)\s+([^?.!]+)/i) ||
+        lower.match(/\b(?:i\s+was\s+born\s+(?:on|in))\s+([^?.!]+)/i);
+
+      if (setBdayMatch) {
+        const candidate = setBdayMatch[1].trim();
+        const parsed = parseBirthdayString(candidate, context.userBirthday);
+        if (parsed) {
+          const { isoDate, formatted } = parsed;
+          const isoPayload = `${isoDate}T00:00:00.000Z`;
           if (context.userId) {
-            prisma.user.update({
-              where: { id: context.userId },
-              data: { birthday: new Date(`${parsed.dateStr}T00:00:00.000Z`) },
-            }).catch((err) => console.error("[AIChat:BirthdayUpdate] Error updating user birthday:", err));
+            try {
+              await prisma.user.update({
+                where: { id: context.userId },
+                data: { birthday: new Date(isoPayload) },
+              });
+              context.userBirthday = isoPayload;
+            } catch (err) {
+              console.error("[AIChat:BirthdayUpdate] Error updating user birthday:", err);
+            }
           }
           const navAction = this.createAction("NAVIGATE", { path: "/settings/profile" }, "route:/settings/profile", "Open Profile", "Safe navigation action: opens Profile.");
-          const reply = `I've updated your birthday to **${parsed.friendly}**! 🎂 You will receive an automated morning birthday greeting and push notification on your special day.`;
+          const reply = `Done, ${context.userName || "Student"}! 🎂 I have updated your birthday to **${formatted}**. You'll get a special morning greeting and celebration alert on your birthday!`;
           return {
             intent: "CHIT_CHAT",
             reply,
@@ -1490,12 +1601,12 @@ export class CustomMlCopilotService {
         /\b(?:tell\s+me|check|show)\s+(?:my\s+)?(?:birthdays?|b'?days?|dob)\b/i.test(lower) ||
         /\bwhen\s+was\s+i\s+born\b/i.test(lower) ||
         /^(?:my\s+)?(?:birthdays?|b'?days?|dob)\??$/i.test(lower.trim())
-      ) && !/\b(whose|who\s+has|anybody|anyone|peer|friend|classmate)\b/i.test(lower);
+      ) && !/\b(whose|who\s+has|anybody|anyone|peer|friend|classmate|next|upcoming)\b/i.test(lower) && !/\b(?:set|update|change|save|make|put|record|register)\b/i.test(lower);
 
       if (isMyBirthdayQuery) {
         if (context.userBirthday) {
           const bDate = new Date(context.userBirthday);
-          const bFormatted = bDate.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+          const bFormatted = bDate.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric", timeZone: "UTC" });
           const reply = `Yes, ${context.userName || "Naman"}! According to your profile, your birthday is **${bFormatted}**! 🎂 Let me know if you need to update it.`;
           return {
             intent: "CHIT_CHAT",
@@ -1519,7 +1630,114 @@ export class CustomMlCopilotService {
         }
       }
 
-      // 11c. Asking whose birthday is today / peer birthdays / upcoming birthdays
+      const toIsoDateOnly = (val: any): string => {
+        if (!val) return "";
+        if (val instanceof Date) return val.toISOString().split("T")[0];
+        const s = String(val).trim();
+        if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.substring(0, 10);
+        const parsed = new Date(s);
+        return isNaN(parsed.getTime()) ? "" : parsed.toISOString().split("T")[0];
+      };
+
+      const allCalendarEvents = (Array.isArray(context.calendarEvents) ? context.calendarEvents : []);
+
+      // 11c. Asking for NEXT birthday
+      const isNextBirthday = /\b(?:next|upcoming)\s+(?:birthdays?|b'?days?)\b/i.test(lower) || /^(?:what(?:'s|\s+is)\s+)?(?:the\s+)?next\s+birthday\??$/i.test(lower.trim());
+      if (isNextBirthday) {
+        const todayMonth = wallNow.getUTCMonth() + 1;
+        const todayDay = wallNow.getUTCDate();
+        const thisYear = wallNow.getUTCFullYear();
+
+        // 1. Calculate days until user's own birthday
+        let userBdayInfo: { dateStr: string; daysUntil: number; formatted: string } | null = null;
+        if (context.userBirthday) {
+          const ub = new Date(context.userBirthday);
+          const ubMonth = ub.getUTCMonth() + 1;
+          const ubDay = ub.getUTCDate();
+          let targetYear = thisYear;
+          if (ubMonth < todayMonth || (ubMonth === todayMonth && ubDay < todayDay)) {
+            targetYear = thisYear + 1;
+          }
+          const nextUBDate = new Date(Date.UTC(targetYear, ubMonth - 1, ubDay));
+          const todayMid = new Date(Date.UTC(thisYear, todayMonth - 1, todayDay));
+          const diffMs = nextUBDate.getTime() - todayMid.getTime();
+          const daysUntil = Math.round(diffMs / (1000 * 60 * 60 * 24));
+          const formatted = nextUBDate.toLocaleDateString("en-US", { month: "long", day: "numeric" });
+          userBdayInfo = {
+            dateStr: `${targetYear}-${String(ubMonth).padStart(2, "0")}-${String(ubDay).padStart(2, "0")}`,
+            daysUntil,
+            formatted,
+          };
+        }
+
+        // 2. Check upcoming peer birthdays on calendar (strictly excluding public holidays)
+        const todayIso = `${thisYear}-${String(todayMonth).padStart(2, "0")}-${String(todayDay).padStart(2, "0")}`;
+        const upcomingPeerBirthdays = allCalendarEvents
+          .filter((e: any) => {
+            const startStr = toIsoDateOnly(e.date);
+            const isBday = /\b(birthdays?|b'?days?|dob)\b/i.test(e.title || "") || /\b(birthdays?|b'?days?|dob)\b/i.test(e.description || "");
+            return startStr >= todayIso && isBday && !isPublicHolidayEvent(e);
+          })
+          .sort((a: any, b: any) => toIsoDateOnly(a.date).localeCompare(toIsoDateOnly(b.date)));
+
+        // 3. Find any upcoming public holidays with "Birthday" or "Jayanti" in title for disambiguation
+        const upcomingHolidayBirthdays = allCalendarEvents
+          .filter((e: any) => {
+            const startStr = toIsoDateOnly(e.date);
+            return startStr >= todayIso && isPublicHolidayEvent(e) && /\b(birthdays?|b'?days?|jayanti)\b/i.test(e.title || "");
+          })
+          .sort((a: any, b: any) => toIsoDateOnly(a.date).localeCompare(toIsoDateOnly(b.date)))
+          .slice(0, 2);
+
+        let holidayNote = "";
+        if (upcomingHolidayBirthdays.length > 0) {
+          const hList = upcomingHolidayBirthdays.map((h: any) => {
+            const hd = new Date(toIsoDateOnly(h.date) + "T00:00:00");
+            return `${h.title} on ${hd.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`;
+          }).join(", ");
+          holidayNote = ` *(Note: ${hList} is an official holiday on your academic calendar).*`;
+        }
+
+        if (userBdayInfo && (!upcomingPeerBirthdays.length || userBdayInfo.dateStr <= toIsoDateOnly(upcomingPeerBirthdays[0].date))) {
+          const whenText = userBdayInfo.daysUntil === 0 ? "today! 🎉" : userBdayInfo.daysUntil === 1 ? "tomorrow! 🎂" : `in ${userBdayInfo.daysUntil} days on ${userBdayInfo.formatted}! 🎂`;
+          const reply = `The next birthday coming up is **yours**, ${context.userName || "Student"}—${whenText}${holidayNote}`;
+          return {
+            intent: "CHIT_CHAT",
+            reply,
+            response: reply,
+            citations: [],
+            actions: [],
+            requiresConfirmation: false,
+          };
+        } else if (upcomingPeerBirthdays.length > 0) {
+          const nextPeer = upcomingPeerBirthdays[0];
+          const peerDate = new Date(toIsoDateOnly(nextPeer.date) + "T00:00:00");
+          const peerFormatted = peerDate.toLocaleDateString("en-US", { month: "long", day: "numeric" });
+          const userNote = userBdayInfo ? ` (Your birthday is coming up on ${userBdayInfo.formatted}).` : "";
+          const reply = `The next birthday coming up is **${nextPeer.title}** on **${peerFormatted}**! 🎂${userNote}${holidayNote}`;
+          return {
+            intent: "CHIT_CHAT",
+            reply,
+            response: reply,
+            citations: [],
+            actions: [],
+            requiresConfirmation: false,
+          };
+        } else {
+          const userNote = userBdayInfo ? ` Your birthday on record is **${userBdayInfo.formatted}**.` : " (You haven't set your birthday yet in Settings > Edit Profile).";
+          const reply = `There are no peer birthdays scheduled on your calendar.${userNote}${holidayNote}`;
+          return {
+            intent: "CHIT_CHAT",
+            reply,
+            response: reply,
+            citations: [],
+            actions: [],
+            requiresConfirmation: false,
+          };
+        }
+      }
+
+      // 11d. Asking whose birthday is today / peer birthdays / upcoming birthdays
       const isWhoseBirthdayQuery = (
         /\b(whose|who\s+has|anybody('s)?|anyone('s)?|any|check)\s+(?:peer\s+)?(?:birthdays?|b'?days?)\b/i.test(lower) ||
         /\b(?:birthdays?|b'?days?)\s+(?:is\s+)?today\b/i.test(lower) ||
@@ -1554,26 +1772,16 @@ export class CustomMlCopilotService {
           };
         }
 
-        const toIsoDateOnly = (val: any): string => {
-          if (!val) return "";
-          if (val instanceof Date) return val.toISOString().split("T")[0];
-          const s = String(val).trim();
-          if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.substring(0, 10);
-          const parsed = new Date(s);
-          return isNaN(parsed.getTime()) ? "" : parsed.toISOString().split("T")[0];
-        };
-
-        // 2. Check context.calendarEvents for events scheduled on today
-        const allCalendarEvents = (Array.isArray(context.calendarEvents) ? context.calendarEvents : []);
+        // 2. Check context.calendarEvents for peer birthday events scheduled on today (strictly exclude holidays)
         const todayEvents = allCalendarEvents.filter((e: any) => {
           const startStr = toIsoDateOnly(e.date);
           const endStr = toIsoDateOnly(e.endDate) || startStr;
-          return startStr <= todayIso && todayIso <= endStr;
+          return startStr <= todayIso && todayIso <= endStr && !isPublicHolidayEvent(e);
         });
 
-        // Match explicit birthday events on today
+        // Match explicit peer birthday events on today
         const explicitBdayEvents = todayEvents.filter((e: any) =>
-          /\b(birthdays?|b'?days?|dob)\b/i.test(e.title || "") || /\b(birthdays?|b'?days?|dob)\b/i.test(e.description || "")
+          (/\b(birthdays?|b'?days?|dob)\b/i.test(e.title || "") || /\b(birthdays?|b'?days?|dob)\b/i.test(e.description || "")) && !isPublicHolidayEvent(e)
         );
 
         if (explicitBdayEvents.length > 0) {
@@ -1589,35 +1797,12 @@ export class CustomMlCopilotService {
           };
         }
 
-        // Match personal / other custom events on today (e.g. "Priya Didi")
-        const customTodayEvents = todayEvents.filter((e: any) => {
-          const t = String(e.eventType || e.event_type || e.type || "").toLowerCase();
-          return t === "other" || (!e.isHoliday && t !== "holiday" && t !== "restricted_holiday" && t !== "vacation");
-        });
-
-        if (customTodayEvents.length > 0) {
-          const titles = customTodayEvents.map((e: any) => e.title).join(", ");
-          const reply = `Today on your calendar: **${titles}** is scheduled for today (${todayFormatted})! 🎉🎂 Let them know you're celebrating with them!`;
-          return {
-            intent: "CHIT_CHAT",
-            reply,
-            response: reply,
-            citations: [],
-            actions: [],
-            requiresConfirmation: false,
-          };
-        }
-
-        // 3. Check for upcoming birthdays on the calendar
+        // 3. Check for upcoming peer birthdays on the calendar (strictly exclude public holidays and academic milestones)
         const upcomingBdayEvents = allCalendarEvents
           .filter((e: any) => {
             const startStr = toIsoDateOnly(e.date);
-            const t = String(e.eventType || e.event_type || e.type || "").toLowerCase();
-            return startStr >= todayIso && (
-              /\b(birthdays?|b'?days?|dob)\b/i.test(e.title || "") ||
-              /\b(birthdays?|b'?days?|dob)\b/i.test(e.description || "") ||
-              t === "other"
-            );
+            const isBday = /\b(birthdays?|b'?days?|dob)\b/i.test(e.title || "") || /\b(birthdays?|b'?days?|dob)\b/i.test(e.description || "");
+            return startStr >= todayIso && isBday && !isPublicHolidayEvent(e);
           })
           .sort((a: any, b: any) => toIsoDateOnly(a.date).localeCompare(toIsoDateOnly(b.date)))
           .slice(0, 3);
@@ -1651,7 +1836,7 @@ export class CustomMlCopilotService {
         };
       }
 
-      // 11d. Asking about a specific person or event's birthday
+      // 11e. Asking about a specific person or event's birthday
       const specificMatch = lower.match(/(?:when|what|is)\s+(?:is\s+)?([a-z0-9\s'-]+?)(?:'s|\s+has)?\s+(?:birthdays?|b'?days?|dob)\b/i) ||
         lower.match(/(?:when|is\s+it)\s+([a-z0-9\s'-]+?)(?:'s)?\s+(?:birthdays?|b'?days?)\b/i);
       if (specificMatch) {
@@ -1665,7 +1850,10 @@ export class CustomMlCopilotService {
           if (matchedEvent) {
             const d = new Date(String(matchedEvent.date).split("T")[0] + "T00:00:00");
             const formatted = d.toLocaleDateString("en-US", { month: "long", day: "numeric" });
-            const reply = `According to your calendar, **${matchedEvent.title}** is on **${formatted}**! 🎂`;
+            const isHol = isPublicHolidayEvent(matchedEvent);
+            const reply = isHol
+              ? `According to your calendar, **${matchedEvent.title}** is an official holiday on **${formatted}**!`
+              : `According to your calendar, **${matchedEvent.title}** is on **${formatted}**! 🎂`;
             return {
               intent: "CHIT_CHAT",
               reply,

@@ -4,6 +4,8 @@ import { useNavigate } from 'react-router-dom';
 import { useAttendanceStore } from '../../stores/attendanceStore';
 import { useBackHandlerStore } from '../../stores/backHandlerStore';
 import { api } from '../../lib/api';
+import { NotificationService } from '../../services/NotificationService';
+import { triggerDynamicHUD } from '../../components/ui/dynamic-island-hud';
 import { ChevronLeft, Activity, BarChart3, PieChartIcon, CalendarIcon, Clock, CheckCircle2, AlertCircle } from 'lucide-react';
 import { AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { format, subDays, addDays, isAfter, isBefore, parseISO, differenceInCalendarDays } from 'date-fns';
@@ -88,6 +90,23 @@ export const ReportView: React.FC = () => {
     });
     return () => unregister();
   }, [navigate]);
+
+  useEffect(() => {
+    // Round 2 Contextual Permission Check: prompt for notification access when viewing weekly & monthly summary
+    NotificationService.checkPermissions().then(async (status) => {
+      if (status === 'prompt') {
+        const granted = await NotificationService.requestPermissions();
+        if (granted) {
+          triggerDynamicHUD({
+            type: "success",
+            label: "Briefing Notifications Active",
+            subtitle: "You will receive periodic weekly and monthly summary alerts",
+            durationMs: 4000,
+          });
+        }
+      }
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     const fetchLogs = async () => {

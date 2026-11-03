@@ -7,6 +7,7 @@ import { Button } from "../ui/button";
 interface HolidayGreetingOverlayProps {
   isOpen: boolean;
   holidayName: string;
+  holidaySubtitle?: string;
   holidayAssetSrc?: string;
   hasClasses: boolean;
   onMarkOff: () => void;
@@ -14,10 +15,11 @@ interface HolidayGreetingOverlayProps {
 }
 
 export const HolidayGreetingOverlay: React.FC<HolidayGreetingOverlayProps> = ({
-  isOpen, holidayName, holidayAssetSrc, hasClasses, onMarkOff, onClose
+  isOpen, holidayName, holidaySubtitle, holidayAssetSrc, hasClasses, onMarkOff, onClose
 }) => {
   const [showPrompt, setShowPrompt] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const completedRef = React.useRef(false);
 
   useEffect(() => {
     setMounted(true);
@@ -26,6 +28,7 @@ export const HolidayGreetingOverlay: React.FC<HolidayGreetingOverlayProps> = ({
   useEffect(() => {
     if (isOpen) {
       setShowPrompt(false);
+      completedRef.current = false;
       
       if (!holidayAssetSrc) {
         const timer = setTimeout(() => {
@@ -41,6 +44,8 @@ export const HolidayGreetingOverlay: React.FC<HolidayGreetingOverlayProps> = ({
   }, [isOpen, holidayAssetSrc, hasClasses, onClose]);
 
   const handleAnimationComplete = () => {
+    if (completedRef.current) return;
+    completedRef.current = true;
     if (hasClasses) {
       setShowPrompt(true);
     } else {
@@ -84,6 +89,16 @@ export const HolidayGreetingOverlay: React.FC<HolidayGreetingOverlayProps> = ({
             >
               {holidayName}
             </motion.h2>
+            {holidaySubtitle && (
+              <motion.p
+                className="text-base md:text-lg font-medium text-white/85 drop-shadow-sm mb-4 max-w-sm"
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.45 }}
+              >
+                {holidaySubtitle}
+              </motion.p>
+            )}
 
             <AnimatePresence>
               {showPrompt && (

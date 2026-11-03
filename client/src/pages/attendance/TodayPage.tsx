@@ -12,7 +12,7 @@ import { OnboardingChecklist } from "../../components/ui/onboarding-checklist";
 
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { useAttendanceStore } from "../../stores/attendanceStore";
-import { triggerAttendancePopup, AnimationType } from "../../stores/animationPopupStore";
+import { triggerAttendancePopup, useAnimationPopupStore, AnimationType } from "../../stores/animationPopupStore";
 import { HOLIDAY_ASSETS } from "../../constants/holidayAssets";
 import { HolidayIconRenderer } from "../../components/common/HolidayIconRenderer";
 import { HolidayGreetingOverlay } from "../../components/common/HolidayGreetingOverlay";
@@ -22,6 +22,7 @@ import { hapticLight, hapticMedium, hapticSuccess, hapticWarning, hapticSelectio
 import { SoundFX } from "../../utils/soundEffects";
 import { triggerDynamicHUD } from "../../components/ui/dynamic-island-hud";
 import { confirmDeleteToast } from "../../components/ui/confirm-delete-toast";
+import { WidgetBridgeService } from "../../services/WidgetBridgeService";
 
 
 interface AgendaItem {
@@ -125,20 +126,45 @@ export const TodayPage = () => {
       logsForDay.forEach((l: any) => {
         const exists = pseudoAgenda.some(item => item.id === l.timetableSlotId || (item.subject.id === l.subjectId && (item.startTime === l.startTime || l.startTime === "00:00")));
         if (!exists) {
+          let resolvedStartTime = l.startTime;
+          let resolvedEndTime = l.endTime;
+          const inferredSubType =
+            /(?:^|[_\-\s])(lab|prac|practical)(?:$|[_\-\s\d])/i.test(String(l.subjectCode || "")) ||
+            /lab$/i.test(String(l.subjectCode || "")) ||
+            /\b(lab|laboratory|practical|workshop)\b/i.test(String(l.subjectName || ""))
+              ? "Practical"
+              : "Lecture";
+          let resolvedSlotType = l.slotType && l.slotType !== "Extra" ? l.slotType : inferredSubType;
+          let resolvedRoom = l.room;
+
+          // If l.startTime is 00:00 or missing, resolve from subject's timetable slot
+          if (!resolvedStartTime || resolvedStartTime === "00:00") {
+            const allCachedSlots = timetableCache?.slots || [];
+            const subSlot =
+              allCachedSlots.find((s: any) => s.subjectId === l.subjectId && s.dayOfWeek === ttDay) ||
+              allCachedSlots.find((s: any) => s.subjectId === l.subjectId);
+            if (subSlot) {
+              resolvedStartTime = subSlot.startTime;
+              resolvedEndTime = subSlot.endTime;
+              resolvedSlotType = subSlot.slotType ? subSlot.slotType.charAt(0).toUpperCase() + subSlot.slotType.slice(1) : resolvedSlotType;
+              resolvedRoom = subSlot.room || resolvedRoom;
+            }
+          }
+
           pseudoAgenda.push({
             id: l.overrideId || l.id,
             type: l.isExtra ? "override" : "slot",
-            isExtra: l.isExtra,
+            isExtra: Boolean(l.isExtra),
             subject: {
               id: l.subjectId,
               name: l.subjectName || "Unknown",
               code: l.subjectCode,
               colorHex: l.subjectColor
             },
-            startTime: l.startTime,
-            endTime: l.endTime,
-            room: l.room,
-            slotType: l.slotType || "Extra",
+            startTime: resolvedStartTime || "00:00",
+            endTime: resolvedEndTime || "00:00",
+            room: resolvedRoom,
+            slotType: resolvedSlotType,
             status: l.status === "not_marked" ? null : l.status,
             remarks: l.remarks,
             attendanceId: l.status !== "not_marked" ? l.id : null,
@@ -153,12 +179,82 @@ export const TodayPage = () => {
     }
   };
 
+  const computeLocalTodayStatus = (dateStr: string) => {
+    try {
+      const cache = useCacheStore.getState();
+      const allEvents: any[] = cache.semester?.events || (useAttendanceStore.getState().events as any) || [];
+      if (!allEvents || allEvents.length === 0) return null;
+
+      // Filter events active on dateStr
+      const activeEvents = allEvents.filter((e: any) => {
+        const s = String(e.date || "").slice(0, 10);
+        const ed = String(e.endDate || e.date || "").slice(0, 10);
+        return s && dateStr >= s && dateStr <= ed;
+      });
+
+      const EVENT_PRIORITY: Record<string, number> = {
+        holiday: 0,
+        restricted_holiday: 1,
+        vacation: 2,
+        exam: 3,
+        fest: 4,
+        institute: 5,
+      };
+
+      const sortedActive = [...activeEvents].sort((a, b) => {
+        const pa = EVENT_PRIORITY[String(a.eventType || a.type || "").toLowerCase()] ?? 99;
+        const pb = EVENT_PRIORITY[String(b.eventType || b.type || "").toLowerCase()] ?? 99;
+        return pa - pb;
+      });
+
+      const activeEvent = sortedActive.length > 0 ? sortedActive[0] : null;
+
+      // Find next upcoming event (date > dateStr)
+      const futureEvents = allEvents
+        .filter((e: any) => {
+          const s = String(e.date || "").slice(0, 10);
+          return s && s > dateStr;
+        })
+        .sort((a, b) => {
+          const sa = String(a.date || "").slice(0, 10);
+          const sb = String(b.date || "").slice(0, 10);
+          return sa.localeCompare(sb);
+        });
+
+      const nextEvent = futureEvents.length > 0 ? futureEvents[0] : null;
+
+      const isHoliday = Boolean(
+        activeEvent?.isHoliday ||
+        ["holiday", "restricted_holiday", "vacation"].includes(String(activeEvent?.eventType || activeEvent?.type || "").toLowerCase()) ||
+        (activeEvent?.title || "").toLowerCase().includes("holiday") ||
+        (activeEvent?.title || "").toLowerCase().includes("vacation") ||
+        (activeEvent?.title || "").toLowerCase().includes("break")
+      );
+
+      const isExam = Boolean(
+        ["exam", "midsem", "endsem", "ct", "lab_exam"].includes(String(activeEvent?.eventType || activeEvent?.type || "").toLowerCase()) &&
+        !isHoliday
+      );
+
+      return {
+        activeEvent,
+        activeEvents: sortedActive,
+        nextEvent,
+        isHoliday,
+        isExam
+      };
+    } catch {
+      return null;
+    }
+  };
+
   const resolveInitialAgenda = (dateStr: string): AgendaItem[] => {
     const dc = useCacheStore.getState().today?.[dateStr];
     const sem = dc?.activeSemester || useCacheStore.getState().semester?.activeSemester || null;
     if (!sem) return [];
     if (dc?.agenda && dc.agenda.length > 0) return dc.agenda;
-    if (dc?.todayStatus?.isHoliday || dc?.todayStatus?.isExam) return [];
+    const localSt = dc?.todayStatus || computeLocalTodayStatus(dateStr);
+    if (localSt?.isHoliday || localSt?.isExam) return [];
     return buildLocalFallbackAgenda(dateStr, sem);
   };
 
@@ -177,15 +273,79 @@ export const TodayPage = () => {
   useEffect(() => {
     agendaRef.current = agenda;
   }, [agenda]);
+
+  // Handle Home Screen Widget Deep Link Actions
+  useEffect(() => {
+    const action = searchParams.get("action");
+    if (!action) return;
+
+    if (action === "voice") {
+      window.dispatchEvent(new Event("open-voice-mode"));
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete("action");
+        return next;
+      }, { replace: true });
+    } else if (action === "quick_log") {
+      setTimeout(() => {
+        const firstUnmarked = agenda.find(a => !a.status);
+        if (firstUnmarked) {
+          const el = document.getElementById(`agenda-item-${firstUnmarked.id}`);
+          if (el) {
+            el.scrollIntoView({ behavior: "smooth", block: "center" });
+            el.classList.add("ring-2", "ring-emerald-500", "ring-offset-2");
+            setTimeout(() => el.classList.remove("ring-2", "ring-emerald-500", "ring-offset-2"), 3000);
+          }
+        }
+        triggerDynamicHUD({
+          type: "sparkle",
+          label: "Quick Log Ready",
+          subtitle: "Select class attendance status below",
+          durationMs: 3500,
+        });
+      }, 400);
+
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete("action");
+        return next;
+      }, { replace: true });
+    }
+  }, [searchParams, agenda, setSearchParams]);
+  const isEventMatchingDate = (ev: any, dateStr: string): boolean => {
+    if (!ev || !ev.date) return false;
+    const s = String(ev.date).slice(0, 10);
+    const ed = String(ev.endDate || ev.date).slice(0, 10);
+    return Boolean(s && dateStr >= s && dateStr <= ed);
+  };
   const [activeSemester, setActiveSemester] = useState<any>(initialActiveSemester);
-  const [todayStatus, setTodayStatus] = useState<any>(initialActiveSemester ? (dayCache?.todayStatus || null) : null);
-  const activeEvent = activeSemester ? (todayStatus?.activeEvent || null) : null;
+  const localDateStatus = computeLocalTodayStatus(targetDateStr);
+  const initialTodayStatus = dayCache?.todayStatus || localDateStatus || null;
+  const [todayStatus, setTodayStatus] = useState<any>(initialActiveSemester ? initialTodayStatus : null);
+
+  // Sync Android Home Screen Widgets whenever agenda or todayStatus changes
+  useEffect(() => {
+    WidgetBridgeService.syncFromAppState({
+      agenda,
+      overallPercentage: useAttendanceStore.getState().overallPercentage,
+      subjects: useAttendanceStore.getState().subjects,
+      todayStatus,
+    });
+  }, [agenda, todayStatus]);
+  const rawActiveEvent = activeSemester ? (todayStatus?.activeEvent || null) : null;
+  const activeEvent = activeSemester
+    ? (isEventMatchingDate(rawActiveEvent, targetDateStr) ? rawActiveEvent : (localDateStatus?.activeEvent || null))
+    : null;
+  const rawNextEvent = activeSemester ? (todayStatus?.nextEvent || null) : null;
+  const effectiveNextEvent = activeSemester
+    ? ((rawNextEvent && String(rawNextEvent.date || "").slice(0, 10) > targetDateStr) ? rawNextEvent : (localDateStatus?.nextEvent || null))
+    : null;
   const [onboardingStatus, setOnboardingStatus] = useState<any>(() => {
     return dayCache?.onboarding || null;
   });
   const [isLoading, setIsLoading] = useState<boolean>(() => {
     if (dayCache?.agenda && dayCache.agenda.length > 0) return false;
-    if (dayCache?.todayStatus?.isHoliday || dayCache?.todayStatus?.isExam) return false;
+    if (initialTodayStatus?.isHoliday || initialTodayStatus?.isExam || initialTodayStatus?.activeEvent) return false;
     const initialAgenda = resolveInitialAgenda(targetDateStr);
     return initialAgenda.length === 0;
   });
@@ -296,6 +456,32 @@ export const TodayPage = () => {
   const [isAddExtraModalOpen, setIsAddExtraModalOpen] = useState(false);
   const [subjectsForExtra, setSubjectsForExtra] = useState<any[]>([]);
   const [isAddingExtra, setIsAddingExtra] = useState(false);
+  const [extraStartTime, setExtraStartTime] = useState("09:00");
+
+  const inferSubjectSlotType = (sub?: { name?: string | null; code?: string | null } | null): "Practical" | "Lecture" => {
+    const code = String(sub?.code || "").trim();
+    const name = String(sub?.name || "").trim();
+    if (
+      /(?:^|[_\-\s])(lab|prac|practical)(?:$|[_\-\s\d])/i.test(code) ||
+      /lab$/i.test(code) ||
+      /\b(lab|laboratory|practical|workshop)\b/i.test(name)
+    ) {
+      return "Practical";
+    }
+    return "Lecture";
+  };
+
+  const computeExtraEndTime = (startStr: string, slotType: "Practical" | "Lecture" | string): string => {
+    if (!startStr || startStr === "00:00") return "00:00";
+    const m = startStr.trim().match(/^(\d{1,2}):(\d{1,2})/);
+    if (!m) return "00:00";
+    const h = parseInt(m[1], 10);
+    const min = parseInt(m[2], 10);
+    if (isNaN(h) || isNaN(min)) return "00:00";
+    const addMins = /practical|lab/i.test(slotType) ? 100 : 50;
+    const total = (h * 60 + min + addMins) % (24 * 60);
+    return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
+  };
 
   // Remark Modal / Prompt State
   const [selectedRemarkItem, setSelectedRemarkItem] = useState<{ item: AgendaItem; status: string } | null>(null);
@@ -308,7 +494,7 @@ export const TodayPage = () => {
   const [absentRemark, setAbsentRemark] = useState("");
 
   // Overlay state
-  const [lastGreetedDate, setLastGreetedDate] = useState<string | null>(null);
+  const lastGreetedDateRef = useRef<string | null>(null);
   const [showGreetingOverlay, setShowGreetingOverlay] = useState(false);
 
   const markOnboardingStep = async (stepKey: "voice_mode" | "predictive" | "peer_sync" | "sound_effects" | "attendance" | "classroom" | "dismiss") => {
@@ -489,7 +675,9 @@ export const TodayPage = () => {
 
     if (activeEvent?.title) {
       const title = activeEvent.title.toLowerCase();
-      if (title.includes("diwali") || title.includes("deepavali")) {
+      if (title.includes("break") || title.includes("vacation") || title.includes("recess") || title.includes("trip") || title.includes("tour")) {
+        animType = "vacation"; animMsg = `${activeEvent.title}! Enjoy your well-deserved break & recharge! 🌴✈️`;
+      } else if (title.includes("diwali") || title.includes("deepavali")) {
         animType = "diwali"; animMsg = "Lighting candles & firecrackers for Diwali! 🪔✨";
       } else if (title.includes("republic")) {
         animType = "republic_day"; animMsg = "Happy Republic Day! 🇮🇳";
@@ -546,14 +734,17 @@ export const TodayPage = () => {
       } else if (title.includes("raksha") || title.includes("rakhi")) {
         animType = "rakshabandhan"; animMsg = "Happy Rakshabandhan! ✨";
       } else if (
-        title.includes("midsem") || title.includes("mid sem") || title.includes("mid-sem") || title.includes("midterm") || title.includes("mid term") ||
-        title.includes("endsem") || title.includes("end sem") || title.includes("end-sem") || title.includes("exam")
+        (title.includes("midsem") || title.includes("mid sem") || title.includes("mid-sem") || title.includes("midterm") || title.includes("mid term") ||
+        title.includes("endsem") || title.includes("end sem") || title.includes("end-sem") || title.includes("exam")) &&
+        !title.includes("break") && !title.includes("vacation") && !title.includes("recess")
       ) {
         animType = "exam"; animMsg = "Focus mode activated. Best of luck on your exams! 📝✨";
       } else if (title.includes("lab") || title.includes("practical") || title.includes("demo") || title.includes("viva")) {
         animType = "practical"; animMsg = "Practical / Lab Exams today. Best of luck! 🔬💻";
       }
-    } else if (activeEvent?.eventType === "midsem" || activeEvent?.eventType === "endsem" || activeEvent?.eventType === "exam") {
+    } else if (activeEvent?.eventType === "break" || activeEvent?.eventType === "vacation") {
+      animType = "vacation"; animMsg = "Enjoy your vacation & recharge! 🌴✈️";
+    } else if ((activeEvent?.eventType === "midsem" || activeEvent?.eventType === "endsem" || activeEvent?.eventType === "exam") && !activeEvent?.title?.toLowerCase().includes("break")) {
       animType = "exam"; animMsg = "Focus mode activated. Best of luck on your exams! 📚💪";
     } else if (activeEvent?.eventType === "lab_exam" || activeEvent?.eventType === "practical" || activeEvent?.eventType === "lab") {
       animType = "practical"; animMsg = "Practical / Lab Exams today. Best of luck! 🔬💻";
@@ -770,6 +961,10 @@ export const TodayPage = () => {
     // 1. Optimistic 0ms UI Update
     const tempId = `temp_extra_${Date.now()}`;
     const selectedSub = subjectsForExtra.find(s => s.id === subjectId) || { id: subjectId, name: "Extra Lecture" };
+    const inferredSlotType = inferSubjectSlotType(selectedSub);
+    const resolvedStart = extraStartTime || "09:00";
+    const resolvedEnd = computeExtraEndTime(resolvedStart, inferredSlotType);
+    const reasonLabel = inferredSlotType === "Practical" ? "Extra Practical" : "Extra Lecture";
 
     const optimisticItem: AgendaItem = {
       id: tempId,
@@ -781,11 +976,11 @@ export const TodayPage = () => {
         code: selectedSub.code,
         colorHex: selectedSub.colorHex
       },
-      startTime: "00:00",
-      endTime: "00:00",
-      slotType: "Extra",
+      startTime: resolvedStart,
+      endTime: resolvedEnd,
+      slotType: inferredSlotType,
       status: null,
-      remarks: "Extra Lecture",
+      remarks: reasonLabel,
       attendanceId: null
     };
 
@@ -794,12 +989,16 @@ export const TodayPage = () => {
     hapticSuccess();
     setPoppingExtraId(tempId);
     SoundFX.playSnapPopSound();
-    triggerDynamicHUD({ type: "sparkle", label: "Extra Lecture Added", durationMs: 4500 });
+    triggerDynamicHUD({
+      type: "sparkle",
+      label: `${reasonLabel} Added (${resolvedStart} - ${resolvedEnd})`,
+      durationMs: 4500,
+    });
     setTimeout(() => {
       setPoppingExtraId((curr) => (curr === tempId ? null : curr));
     }, 4000);
     setAgenda(prev => {
-      const next = [...prev, optimisticItem];
+      const next = [...prev, optimisticItem].sort((a, b) => (a.startTime || "").localeCompare(b.startTime || ""));
       agendaRef.current = next;
       const existing = useCacheStore.getState().today?.[targetDateStr];
       if (existing) {
@@ -825,9 +1024,9 @@ export const TodayPage = () => {
         semesterId: activeSemester?.id,
         subjectId,
         date: targetDateStr,
-        startTime: "00:00",
-        endTime: "00:00",
-        reason: "Extra Lecture"
+        startTime: resolvedStart,
+        endTime: resolvedEnd,
+        reason: reasonLabel
       });
       const realId = res.data?.id;
       if (realId) {
@@ -1240,19 +1439,22 @@ export const TodayPage = () => {
     const cachedDay = useCacheStore.getState().today?.[targetDateStr];
     const resolvedSem = cachedDay?.activeSemester || useCacheStore.getState().semester?.activeSemester || null;
     const nextInitialAgenda = resolveInitialAgenda(targetDateStr);
-    if (cachedDay?.agenda || nextInitialAgenda.length > 0 || cachedDay?.todayStatus?.isHoliday || cachedDay?.todayStatus?.isExam) {
+    const localStatus = computeLocalTodayStatus(targetDateStr);
+    const effectiveStatus = cachedDay?.todayStatus || localStatus;
+
+    if (cachedDay?.agenda || nextInitialAgenda.length > 0 || effectiveStatus?.isHoliday || effectiveStatus?.isExam) {
       setAgenda(cachedDay?.agenda || nextInitialAgenda);
       agendaRef.current = cachedDay?.agenda || nextInitialAgenda;
-      setTodayStatus(resolvedSem ? (cachedDay?.todayStatus || null) : null);
+      setTodayStatus(resolvedSem ? effectiveStatus : null);
       setActiveSemester(resolvedSem);
       if (cachedDay?.onboarding) setOnboardingStatus(cachedDay.onboarding);
       setIsLoading(false);
     } else {
       setAgenda([]);
       agendaRef.current = [];
-      setTodayStatus(null);
+      setTodayStatus(resolvedSem ? effectiveStatus : null);
       if (resolvedSem) setActiveSemester(resolvedSem);
-      setIsLoading(true);
+      setIsLoading(!effectiveStatus?.activeEvent && !effectiveStatus?.nextEvent);
     }
     fetchData(targetDateStr, controller.signal);
 
@@ -1290,26 +1492,46 @@ export const TodayPage = () => {
     };
   }, [targetDateStr]);
 
-  // Greeting overlay effect (persisted per session to avoid re-triggering on tab switches)
+  // Immediately clear any active celebration overlay when switching dates via < or >
   useEffect(() => {
-    if (!isLoading) {
-      const shouldShowOverlay = activeEvent && ["holiday", "restricted_holiday", "vacation", "fest", "institute", "lab_exam", "midsem", "endsem", "ct", "exam"].includes(activeEvent.eventType || "");
-      if (isBirthday || shouldShowOverlay) {
-        const storageKey = `attendx_greeted_${targetDateStr}`;
-        const alreadyGreeted = sessionStorage.getItem(storageKey) === "true";
-        if (!alreadyGreeted && lastGreetedDate !== targetDateStr) {
-          setShowGreetingOverlay(true);
-          setLastGreetedDate(targetDateStr);
-          sessionStorage.setItem(storageKey, "true");
-        }
-      } else {
-        setShowGreetingOverlay(false);
-        if (lastGreetedDate !== targetDateStr) {
-          setLastGreetedDate(targetDateStr); // Keeps track that we visited a non-holiday date so we can reset and re-trigger if we go back
-        }
+    setShowGreetingOverlay(false);
+    useAnimationPopupStore.getState().closeAnimation();
+  }, [targetDateStr]);
+
+  // Greeting overlay & celebration animation when navigating to a holiday/event date
+  useEffect(() => {
+    const matchedEvent = isEventMatchingDate(activeEvent, targetDateStr) ? activeEvent : null;
+    const evType = String(matchedEvent?.eventType || matchedEvent?.type || "").toLowerCase();
+    const evTitle = String(matchedEvent?.title || "").toLowerCase();
+    const shouldShowOverlay = Boolean(
+      isBirthday ||
+      (matchedEvent && ["holiday", "restricted_holiday", "vacation", "break", "fest", "institute", "lab_exam", "midsem", "endsem", "ct", "exam"].includes(evType)) ||
+      (matchedEvent && ["holiday", "vacation", "break", "deepavali", "diwali", "recess"].some(kw => evTitle.includes(kw)))
+    );
+
+    if (!shouldShowOverlay) {
+      setShowGreetingOverlay(false);
+      if (lastGreetedDateRef.current && lastGreetedDateRef.current !== targetDateStr) {
+        lastGreetedDateRef.current = null;
       }
+      return;
     }
-  }, [isLoading, activeEvent, targetDateStr, lastGreetedDate, isBirthday]);
+
+    if (lastGreetedDateRef.current === targetDateStr) {
+      return;
+    }
+
+    // Settle on the matched date first so rapid < / > navigation checks the date before running the animation once
+    const settleTimer = setTimeout(() => {
+      if (targetDateStrRef.current !== targetDateStr) return;
+      if (!isBirthday && !isEventMatchingDate(matchedEvent, targetDateStrRef.current)) return;
+      lastGreetedDateRef.current = targetDateStr;
+      useAnimationPopupStore.getState().closeAnimation();
+      setShowGreetingOverlay(true);
+    }, 550);
+
+    return () => clearTimeout(settleTimer);
+  }, [activeEvent?.id, activeEvent?.title, activeEvent?.date, activeEvent?.endDate, targetDateStr, isBirthday]);
 
   const markAttendance = async (item: AgendaItem, status: string, remarks?: string) => {
     inFlightMarksCountRef.current += 1;
@@ -1391,9 +1613,11 @@ export const TodayPage = () => {
         triggerAttendancePopup("target_hit", `Target ${targetPct}% Touched! 🎯`);
       } else {
         const slotTypeLower = (item.slotType || "").toLowerCase();
-        const isExamDay = activeEvent && ["exam", "midsem", "endsem"].includes((activeEvent.eventType || "").toLowerCase());
+        const evTitle = (activeEvent?.title || "").toLowerCase();
+        const isEventBreak = evTitle.includes("break") || evTitle.includes("vacation") || evTitle.includes("recess");
+        const isExamDay = !isEventBreak && activeEvent && ["exam", "midsem", "endsem"].includes((activeEvent.eventType || "").toLowerCase());
         
-        if (isExamDay || slotTypeLower.includes('exam') || slotTypeLower.includes('mid') || slotTypeLower.includes('end')) {
+        if (isExamDay || (!isEventBreak && (slotTypeLower.includes('exam') || slotTypeLower.includes('mid') || slotTypeLower.includes('end')))) {
           triggerAttendancePopup("exam", "Good luck on your exam! 📝");
         } else if (slotTypeLower.includes('practical') || slotTypeLower.includes('lab')) {
           triggerAttendancePopup("practical", "Awesome! Practical marked! 🔬");
@@ -1656,6 +1880,19 @@ export const TodayPage = () => {
   const isGlobalEventActive = activeEvent && ["holiday", "restricted_holiday", "vacation", "fest", "midsem", "endsem", "exam", "lab_exam", "practical", "lab", "institute"].includes(activeEvent.eventType);
 
   const getEventStateConfig = (type: string) => {
+    const evTitle = (activeEvent?.title || "").toLowerCase();
+    if (type === "vacation" || type === "break" || evTitle.includes("break") || evTitle.includes("vacation") || evTitle.includes("recess")) {
+      const { animType } = getHolidayAnimation(activeEvent);
+      if (HOLIDAY_ASSETS[animType as AnimationType]) {
+        return {
+          icon: <HolidayIconRenderer src={HOLIDAY_ASSETS[animType as AnimationType] as string} alt="Vacation Icon" className="w-16 h-16 drop-shadow-md mb-4 mx-auto" />,
+          color: "border-emerald-500/20 bg-emerald-500/5",
+          title: activeEvent?.title || "Vacation & Break",
+          msg: "You're officially on a break. Recharge and relax! 🌴✈️"
+        };
+      }
+      return { icon: <Palmtree className="w-16 h-16 text-emerald-500 mb-4 mx-auto" />, color: "border-emerald-500/20 bg-emerald-500/5", title: "Vacation", msg: "You're officially on vacation. Recharge and relax!" };
+    }
     switch(type) {
       case "midsem":
       case "endsem":
@@ -1732,25 +1969,25 @@ export const TodayPage = () => {
       <HolidayGreetingOverlay
         isOpen={showGreetingOverlay}
         holidayName={isBirthday ? `Happy Birthday, ${user?.name?.split(' ')[0]}!` : (activeEvent?.title || "Holiday")}
+        holidaySubtitle={isBirthday ? "Hope you have a fantastic day today! 🎂✨" : (activeEvent ? getHolidayAnimation(activeEvent).animMsg : undefined)}
         holidayAssetSrc={isBirthday ? "/lottie/happy-birthday.json" : (activeEvent ? HOLIDAY_ASSETS[getHolidayAnimation(activeEvent).animType as AnimationType] : undefined)}
         hasClasses={agenda.some(item => !item.status)}
         onMarkOff={() => handleMarkFullDayAction("off")}
         onClose={() => {
           setShowGreetingOverlay(false);
-          sessionStorage.setItem(`attendx_greeted_${targetDateStr}`, "true");
         }}
       />
       
-      {isSemesterActive && todayStatus?.nextEvent && !activeEvent && (
+      {isSemesterActive && effectiveNextEvent && (
         <div className="bg-sky-50 dark:bg-sky-900/20 border border-sky-200/60 dark:border-sky-800/40 backdrop-blur-md rounded-2xl p-3.5 sm:p-4 flex items-center justify-between gap-3 shadow-xs overflow-hidden">
           <div className="flex items-center gap-3 min-w-0 flex-1">
             <Timer className="w-5 h-5 text-sky-600 dark:text-sky-400 shrink-0" />
             <span className="text-sm font-medium text-sky-800 dark:text-sky-200 truncate">
-              Upcoming: <span className="font-bold text-sky-900 dark:text-sky-100">{todayStatus.nextEvent.title}</span>
+              Upcoming: <span className="font-bold text-sky-900 dark:text-sky-100">{effectiveNextEvent.title}</span>
             </span>
           </div>
           <span className="text-xs font-bold bg-sky-200/90 dark:bg-sky-800/50 text-sky-950 dark:text-sky-200 border border-sky-300/60 dark:border-sky-700/50 px-3 py-1 rounded-full uppercase tracking-wider shrink-0 whitespace-nowrap shadow-xs">
-            {new Date(todayStatus.nextEvent.date.split('T')[0] + "T00:00:00").toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+            {new Date(effectiveNextEvent.date.split('T')[0] + "T00:00:00").toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
           </span>
         </div>
       )}
@@ -1938,12 +2175,26 @@ export const TodayPage = () => {
 
       {/* Event Highlight Banner (Exams, Yalgaar, Fests, Holidays) */}
       {activeEvent && (
-        <div className={`p-4 rounded-2xl border shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-all ${
-          ["midsem", "endsem", "exam"].includes((activeEvent.eventType || "").toLowerCase())
-            ? "bg-rose-500/10 border-rose-500/30"
-            : ["fest", "institute", "yalgaar"].includes((activeEvent.eventType || "").toLowerCase())
-            ? "bg-purple-500/10 border-purple-500/30"
-            : "bg-amber-500/10 border-amber-500/30"
+        <div
+          onClick={() => {
+            hapticMedium();
+            useAnimationPopupStore.getState().closeAnimation();
+            setShowGreetingOverlay(true);
+          }}
+          className={`p-4 rounded-2xl border shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-all cursor-pointer hover:opacity-95 active:scale-[0.99] ${
+          (() => {
+            const evTitle = (activeEvent.title || "").toLowerCase();
+            const evType = (activeEvent.eventType || "").toLowerCase();
+            const isBreak = evTitle.includes("break") || evTitle.includes("vacation") || evTitle.includes("recess") || evTitle.includes("trip") || evType === "vacation" || evType === "break";
+            if (isBreak) return "bg-emerald-500/10 border-emerald-500/30";
+            if (["midsem", "endsem", "exam"].includes(evType) || evTitle.includes("midsem") || evTitle.includes("endsem") || evTitle.includes("exam")) {
+              return "bg-rose-500/10 border-rose-500/30";
+            }
+            if (["fest", "institute", "yalgaar"].includes(evType)) {
+              return "bg-purple-500/10 border-purple-500/30";
+            }
+            return "bg-amber-500/10 border-amber-500/30";
+          })()
         }`}>
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-foreground/10 border border-foreground/20 flex items-center justify-center text-xl shadow-xs shrink-0 overflow-hidden">
@@ -1952,7 +2203,10 @@ export const TodayPage = () => {
                 if (HOLIDAY_ASSETS[animType as AnimationType]) {
                   return <HolidayIconRenderer src={HOLIDAY_ASSETS[animType as AnimationType] as string} alt="Holiday Icon" className="w-7 h-7 drop-shadow-sm" />;
                 }
-                return ["midsem", "endsem", "exam"].includes((activeEvent.eventType || "").toLowerCase()) ? "📝" : "🎉";
+                const evTitle = (activeEvent.title || "").toLowerCase();
+                const evType = (activeEvent.eventType || "").toLowerCase();
+                if (evTitle.includes("break") || evTitle.includes("vacation") || evType === "vacation") return "🌴";
+                return ["midsem", "endsem", "exam"].includes(evType) ? "📝" : "🎉";
               })()}
             </div>
             <div>
@@ -2134,7 +2388,7 @@ export const TodayPage = () => {
                 <div className="min-w-0">
                   <h3 className="text-lg font-semibold text-foreground flex items-center gap-2 flex-wrap">
                     <span className="truncate cursor-pointer hover:text-primary transition-colors" onClick={() => item.subject?.id && navigate(`/subjects/${item.subject.id}`)} title="Click to edit subject">{item.subject?.name || "Unknown Subject"}</span>
-                    {(item.isExtra || item.type === "override" || item.slotType === "Extra") && (
+                    {(item.isExtra || item.type === "override" || item.type === "manual" || item.slotType === "Extra") && (
                       <span className="bg-amber-500/20 text-amber-500 border border-amber-500/30 text-[10px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1 shadow-sm shrink-0">
                         <Sparkles className="w-3 h-3 text-amber-500" />
                         Extra
@@ -2215,7 +2469,7 @@ export const TodayPage = () => {
                   <MessageSquare className="w-3.5 h-3.5" />
                 </button>
                 {/* Delete Extra Class Button */}
-                {((item.type === "override" || item.type === "manual") && item.isExtra) && (
+                {((item.type === "override" || item.type === "manual") && (item.isExtra || item.type === "manual")) && (
                   <button
                     onClick={() => handleDeleteExtraClass(item.id)}
                     className="flex items-center justify-center p-2 rounded-xl bg-rose-500/10 text-rose-500 hover:bg-rose-500 hover:text-white transition-colors cursor-pointer ml-2"
@@ -2305,10 +2559,10 @@ export const TodayPage = () => {
       {/* Add Extra Lecture Modal */}
       {isAddExtraModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-in fade-in duration-200">
-          <div className="bg-card border border-border/80 rounded-3xl p-4 sm:p-6 w-full max-w-md shadow-2xl space-y-4 sm:space-y-5 relative max-h-[90vh] flex flex-col">
+          <div className="bg-card border border-border/80 rounded-3xl p-4 sm:p-6 w-full max-w-md shadow-2xl space-y-4 relative max-h-[90vh] flex flex-col">
             <div className="flex items-center justify-between shrink-0">
               <h3 className="text-lg sm:text-xl font-extrabold text-foreground tracking-tight">
-                Add extra lecture
+                Add extra class
               </h3>
               <button
                 onClick={() => setIsAddExtraModalOpen(false)}
@@ -2319,23 +2573,85 @@ export const TodayPage = () => {
               </button>
             </div>
 
+            {/* Start Time Picker */}
+            <div className="p-3 rounded-2xl bg-muted/40 border border-border/60 space-y-2.5 shrink-0">
+              <div className="flex items-center justify-between gap-3">
+                <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                  Start Time
+                </label>
+                <input
+                  type="time"
+                  value={extraStartTime}
+                  onChange={(e) => setExtraStartTime(e.target.value || "09:00")}
+                  className="bg-background border border-border/80 rounded-xl px-3 py-1.5 text-sm font-mono font-bold text-foreground focus:outline-none focus:border-primary transition-colors cursor-pointer"
+                />
+              </div>
+              <div className="grid grid-cols-4 gap-1.5">
+                {["09:00", "09:50", "11:00", "11:50", "14:00", "14:50", "15:40", "16:30"].map((preset) => (
+                  <button
+                    key={preset}
+                    type="button"
+                    onClick={() => {
+                      hapticSelection();
+                      setExtraStartTime(preset);
+                    }}
+                    className={`px-2 py-1.5 rounded-lg text-[11px] font-mono font-semibold text-center transition-all cursor-pointer border ${
+                      extraStartTime === preset
+                        ? "bg-primary text-primary-foreground border-primary shadow-xs"
+                        : "bg-background/60 text-muted-foreground border-border/50 hover:text-foreground hover:border-border"
+                    }`}
+                  >
+                    {preset}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <div className="space-y-2.5 overflow-y-auto pr-1 no-scrollbar flex-1">
               {subjectsForExtra.length === 0 ? (
                 <div className="text-center py-8 text-sm text-muted-foreground">
                   No subjects found for active semester.
                 </div>
               ) : (
-                subjectsForExtra.map((sub) => (
-                  <button
-                    key={sub.id}
-                    disabled={isAddingExtra}
-                    onClick={() => handleAddExtraLecture(sub.id)}
-                    className="w-full text-left p-3.5 sm:p-4 rounded-2xl bg-muted/30 hover:bg-muted/70 border border-border/40 hover:border-primary/40 transition-all font-semibold text-foreground text-sm flex items-center justify-between group cursor-pointer gap-2"
-                  >
-                    <span className="truncate flex-1 min-w-0">{sub.name}</span>
-                    <Plus className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors shrink-0" />
-                  </button>
-                ))
+                subjectsForExtra.map((sub) => {
+                  const subSlotType = inferSubjectSlotType(sub);
+                  const isPrac = subSlotType === "Practical";
+                  const previewEnd = computeExtraEndTime(extraStartTime || "09:00", subSlotType);
+                  return (
+                    <button
+                      key={sub.id}
+                      disabled={isAddingExtra}
+                      onClick={() => handleAddExtraLecture(sub.id)}
+                      className="w-full text-left p-3.5 sm:p-4 rounded-2xl bg-muted/30 hover:bg-muted/70 border border-border/40 hover:border-primary/40 transition-all font-semibold text-foreground text-sm flex items-center justify-between group cursor-pointer gap-2"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="truncate font-bold">{sub.name}</span>
+                          {sub.code && (
+                            <span className="text-[10px] font-mono text-muted-foreground shrink-0">
+                              ({sub.code})
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 mt-1">
+                          <span
+                            className={`text-[10px] font-extrabold uppercase tracking-wider px-1.5 py-0.5 rounded border ${
+                              isPrac
+                                ? "bg-cyan-500/15 text-cyan-400 border-cyan-500/30"
+                                : "bg-primary/15 text-primary border-primary/30"
+                            }`}
+                          >
+                            {subSlotType} • {isPrac ? "+100m" : "+50m"}
+                          </span>
+                          <span className="text-[11px] font-mono text-muted-foreground">
+                            {extraStartTime || "09:00"} – {previewEnd}
+                          </span>
+                        </div>
+                      </div>
+                      <Plus className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors shrink-0" />
+                    </button>
+                  );
+                })
               )}
             </div>
           </div>

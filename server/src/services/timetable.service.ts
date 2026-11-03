@@ -63,17 +63,19 @@ export class TimetableService {
     const versions = clusterCentres.map((time) => {
       // Reconstruct timetable exactly as it existed right before this mutation
       const activeSlotsAtTime = allSlots.filter(s => {
-        const slotRetired = s.validUntil ? new Date(s.validUntil).getTime() : Infinity;
+        // Archived historical versions MUST NEVER include current active slots (validUntil === null)
+        if (!s.validUntil) return false;
+
+        const slotRetired = new Date(s.validUntil).getTime();
         const slotCreated = new Date(s.validFrom).getTime();
 
         // 1. If this slot was retired during this cluster, it is part of this version
-        if (s.validUntil && Math.abs(slotRetired - time) <= CLUSTER_WINDOW_MS) {
+        if (Math.abs(slotRetired - time) <= CLUSTER_WINDOW_MS) {
           return true;
         }
 
-        // 2. Otherwise, it must have been created before or around this cluster time,
-        // and retired strictly after this cluster (or currently active)
-        return slotCreated <= time + 60000 && slotRetired > time + CLUSTER_WINDOW_MS;
+        // 2. Otherwise, it must have been created strictly before this cluster time and retired after
+        return slotCreated < time && slotRetired > time + CLUSTER_WINDOW_MS;
       });
 
       // Deduplicate slots by ID
@@ -697,15 +699,35 @@ export class TimetableService {
 
     const dateObj = data.date instanceof Date ? data.date : new Date(data.date);
 
+    const codeStr = String(subject.code || "").trim();
+    const nameStr = String(subject.name || "").trim();
+    const isPractical =
+      /(?:^|[_\-\s])(lab|prac|practical)(?:$|[_\-\s\d])/i.test(codeStr) ||
+      /lab$/i.test(codeStr) ||
+      /\b(lab|laboratory|practical|workshop)\b/i.test(nameStr);
+
+    const resolvedStart = normalizeTimeString(data.startTime, "17:30");
+    let resolvedEnd = data.endTime ? normalizeTimeString(data.endTime, "") : "";
+    if ((!resolvedEnd || resolvedEnd === "00:00") && resolvedStart && resolvedStart !== "00:00") {
+      const m = resolvedStart.match(/^(\d{1,2}):(\d{1,2})/);
+      if (m) {
+        const totalMins = (parseInt(m[1], 10) * 60 + parseInt(m[2], 10) + (isPractical ? 100 : 50)) % (24 * 60);
+        resolvedEnd = `${String(Math.floor(totalMins / 60)).padStart(2, "0")}:${String(totalMins % 60).padStart(2, "0")}`;
+      }
+    }
+    if (!resolvedEnd) {
+      resolvedEnd = resolvedStart === "00:00" ? "00:00" : "18:20";
+    }
+
     const override = await prisma.timetableOverride.create({
       data: {
         semesterId,
         subjectId: data.subjectId,
         date: dateObj,
         overrideType: "extra_class",
-        startTime: normalizeTimeString(data.startTime, "17:30"),
-        endTime: normalizeTimeString(data.endTime, "18:20"),
-        reason: data.reason || "Ad-hoc extra class",
+        startTime: resolvedStart,
+        endTime: resolvedEnd,
+        reason: data.reason || (isPractical ? "Extra Practical" : "Extra Lecture"),
       },
       include: { subject: true },
     });

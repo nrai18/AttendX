@@ -181,6 +181,8 @@ export function RunActionButton({
         }
       } catch (e: any) {
         setStatus("idle");
+        setCurrentStep(0);
+        setInternalElapsedTenths(0);
       } finally {
         if (abortControllerRef.current === controller) {
           abortControllerRef.current = null;

@@ -487,13 +487,98 @@ export const SubjectDetailPage = () => {
     return true;
   });
 
-  // Group filtered logs by dateFormatted
+  // Group filtered logs by dateFormatted and sort each date's classes chronologically by timetable startTime
   const groupedByDate: Record<string, AttendanceLogItem[]> = {};
   filteredLogs.forEach((log) => {
     if (!groupedByDate[log.dateFormatted]) {
       groupedByDate[log.dateFormatted] = [];
     }
     groupedByDate[log.dateFormatted].push(log);
+  });
+
+  const resolveLogStartTime = (log: AttendanceLogItem): string => {
+    if (log.startTime && log.startTime !== "00:00") return log.startTime;
+    try {
+      const cacheState = useCacheStore.getState();
+      const dateStr = String(log.date || "").slice(0, 10);
+      const normName = String(log.subjectName || "").trim().toLowerCase();
+
+      const todayAgenda: any[] = cacheState.today?.[dateStr]?.agenda || [];
+      const matchAgenda = todayAgenda.find(
+        (a: any) =>
+          (log.subjectId && a.subject?.id === log.subjectId) ||
+          String(a.subject?.name || a.subjectName || "").trim().toLowerCase() === normName
+      );
+      if (matchAgenda?.startTime && matchAgenda.startTime !== "00:00") {
+        log.startTime = matchAgenda.startTime;
+        return matchAgenda.startTime;
+      }
+
+      const ttStore = cacheState.timetable;
+      const activeSlots: any[] = Array.isArray(ttStore) ? ttStore : (ttStore?.slots || []);
+      const semId =
+        (!Array.isArray(ttStore) && ttStore?.activeSemester?.id) ||
+        cacheState.semester?.activeSemester?.id ||
+        useAttendanceStore.getState().activeSemesterId;
+      const archivedVersions: any[] =
+        (!Array.isArray(ttStore) && ttStore?.archivedSlots) ||
+        (semId && (cacheState as any)[`archived_timetables_${semId}`]) ||
+        cacheState.archived_timetables ||
+        [];
+      const archivedSlots: any[] = archivedVersions.flatMap((v: any) => v?.slots || []);
+      const allSlots = [...archivedSlots, ...activeSlots];
+      const d = new Date(dateStr + "T00:00:00");
+      const jsDay = d.getDay();
+      const dbDay = jsDay === 0 ? 6 : jsDay - 1;
+
+      const subjectSlots = allSlots.filter(
+        (s: any) =>
+          s.subjectId === log.subjectId ||
+          String(s.subject?.name || s.subjectName || "").trim().toLowerCase() === normName
+      );
+      const sortedSubjectSlots = [...subjectSlots].sort((a: any, b: any) => {
+        const aUntil = a.validUntil ? String(a.validUntil).slice(0, 10) : null;
+        const bUntil = b.validUntil ? String(b.validUntil).slice(0, 10) : null;
+        const aValidOnDate = !aUntil || aUntil >= dateStr;
+        const bValidOnDate = !bUntil || bUntil >= dateStr;
+        if (aValidOnDate !== bValidOnDate) return aValidOnDate ? -1 : 1;
+        if (aUntil && bUntil && aUntil !== bUntil) return aUntil.localeCompare(bUntil);
+        if (aUntil && !bUntil) return -1;
+        if (!aUntil && bUntil) return 1;
+        const aFrom = a.validFrom ? String(a.validFrom).slice(0, 10) : "0000-00-00";
+        const bFrom = b.validFrom ? String(b.validFrom).slice(0, 10) : "0000-00-00";
+        return aFrom.localeCompare(bFrom);
+      });
+
+      const matchSlot =
+        sortedSubjectSlots.find(
+          (s: any) =>
+            s.dayOfWeek === dbDay &&
+            (!s.validFrom || String(s.validFrom).slice(0, 10) <= dateStr) &&
+            (!s.validUntil || String(s.validUntil).slice(0, 10) >= dateStr)
+        ) ||
+        sortedSubjectSlots.find(
+          (s: any) =>
+            s.dayOfWeek === dbDay &&
+            (!s.validUntil || String(s.validUntil).slice(0, 10) >= dateStr)
+        ) ||
+        sortedSubjectSlots.find((s: any) => s.dayOfWeek === dbDay) ||
+        sortedSubjectSlots[0];
+      if (matchSlot?.startTime && matchSlot.startTime !== "00:00") {
+        log.startTime = matchSlot.startTime;
+        if (!log.endTime || log.endTime === "00:00") {
+          log.endTime = matchSlot.endTime || log.endTime;
+        }
+        return matchSlot.startTime;
+      }
+    } catch {
+      // ignore
+    }
+    return "99:99";
+  };
+
+  Object.keys(groupedByDate).forEach((dateKey) => {
+    groupedByDate[dateKey].sort((a, b) => resolveLogStartTime(a).localeCompare(resolveLogStartTime(b)));
   });
 
   if (isLoading && logs.length === 0) {

@@ -90,6 +90,7 @@ export function AddEventModal({
         ]
       });
       useCacheStore.getState().setCache("calendar", null);
+      window.dispatchEvent(new Event("events-updated"));
       onSaved(res.data?.events, tempId);
       // Refresh global stats quietly in background without duplicate event-storm refetches
       useAttendanceStore.getState().fetchStats(true).catch(() => {});

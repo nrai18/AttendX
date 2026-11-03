@@ -22,6 +22,91 @@ export class AttendanceService {
     return `${adj.getUTCFullYear()}-${pad(adj.getUTCMonth() + 1)}-${pad(adj.getUTCDate())}`;
   }
 
+  public static inferSlotTypeFromSubject(sub?: { name?: string | null; code?: string | null } | null): "Practical" | "Lecture" {
+    const code = String(sub?.code || "").trim();
+    const name = String(sub?.name || "").trim();
+    if (
+      /(?:^|[_\-\s])(lab|prac|practical)(?:$|[_\-\s\d])/i.test(code) ||
+      /lab$/i.test(code) ||
+      /\b(lab|laboratory|practical|workshop)\b/i.test(name)
+    ) {
+      return "Practical";
+    }
+    return "Lecture";
+  }
+
+  public static computeEndTimeFromStart(startTime: string, slotType: string): string {
+    if (!startTime || startTime === "00:00") return "00:00";
+    const match = startTime.trim().match(/^(\d{1,2}):(\d{1,2})/);
+    if (!match) return "00:00";
+    const h = parseInt(match[1], 10);
+    const m = parseInt(match[2], 10);
+    if (isNaN(h) || isNaN(m)) return "00:00";
+    const durationMins = /practical|lab/i.test(slotType) ? 100 : 50;
+    const totalMins = (h * 60 + m + durationMins) % (24 * 60);
+    const endH = String(Math.floor(totalMins / 60)).padStart(2, "0");
+    const endM = String(totalMins % 60).padStart(2, "0");
+    return `${endH}:${endM}`;
+  }
+
+  /**
+   * Resolves the best TimetableSlot for a subject on a specific dateKey ("YYYY-MM-DD") and weekday,
+   * prioritizing exact timetableSlotId, then archived timetable versions valid on or covering dateKey,
+   * before falling back to later active timetable versions.
+   */
+  static findBestSlotForDate(
+    allSlots: any[],
+    subjectId: string,
+    dayOfWeek: number,
+    dateKey: string,
+    timetableSlotId?: string | null
+  ): any | undefined {
+    if (!allSlots || allSlots.length === 0) return undefined;
+    if (timetableSlotId) {
+      const byId = allSlots.find((s: any) => s.id === timetableSlotId);
+      if (byId) return byId;
+    }
+
+    const subjectSlots = allSlots.filter((s: any) => !subjectId || s.subjectId === subjectId);
+    if (subjectSlots.length === 0) return undefined;
+
+    const sortedSubjectSlots = [...subjectSlots].sort((a, b) => {
+      const aUntil = a.validUntil ? AttendanceService.toDbLocalIso(a.validUntil) : null;
+      const bUntil = b.validUntil ? AttendanceService.toDbLocalIso(b.validUntil) : null;
+      const aValidOnDate = !aUntil || aUntil >= dateKey;
+      const bValidOnDate = !bUntil || bUntil >= dateKey;
+      if (aValidOnDate !== bValidOnDate) return aValidOnDate ? -1 : 1;
+      // Both not yet retired on dateKey: prefer the earliest archived version (smallest validUntil >= dateKey) before current (null)
+      if (aUntil && bUntil && aUntil !== bUntil) return aUntil.localeCompare(bUntil);
+      if (aUntil && !bUntil) return -1;
+      if (!aUntil && bUntil) return 1;
+      const aFrom = a.validFrom ? AttendanceService.toDbLocalIso(a.validFrom) : "0000-00-00";
+      const bFrom = b.validFrom ? AttendanceService.toDbLocalIso(b.validFrom) : "0000-00-00";
+      return aFrom.localeCompare(bFrom);
+    });
+
+    return (
+      sortedSubjectSlots.find(
+        (s: any) =>
+          s.dayOfWeek === dayOfWeek &&
+          AttendanceService.toDbLocalIso(s.validFrom) <= dateKey &&
+          (!s.validUntil || AttendanceService.toDbLocalIso(s.validUntil) >= dateKey)
+      ) ||
+      sortedSubjectSlots.find(
+        (s: any) =>
+          s.dayOfWeek === dayOfWeek &&
+          (!s.validUntil || AttendanceService.toDbLocalIso(s.validUntil) >= dateKey)
+      ) ||
+      sortedSubjectSlots.find((s: any) => s.dayOfWeek === dayOfWeek) ||
+      sortedSubjectSlots.find(
+        (s: any) =>
+          AttendanceService.toDbLocalIso(s.validFrom) <= dateKey &&
+          (!s.validUntil || AttendanceService.toDbLocalIso(s.validUntil) >= dateKey)
+      ) ||
+      sortedSubjectSlots[0]
+    );
+  }
+
   /**
    * Get the agenda for a specific date:
    * 1. Get all regular TimetableSlots for the dayOfWeek
@@ -120,12 +205,21 @@ export class AttendanceService {
 
       const allDaySlots = isPastTeachingDay ? [] : allDaySlotsRaw;
 
+      const hasArchivedSlotsOnDate = allDaySlots.some(s => {
+        if (!s.validUntil) return false;
+        const fromKey = (s.validFrom instanceof Date ? s.validFrom : new Date(s.validFrom)).toISOString().slice(0, 10);
+        const untilKey = (s.validUntil instanceof Date ? s.validUntil : new Date(s.validUntil)).toISOString().slice(0, 10);
+        return fromKey <= targetDateKey && untilKey >= targetDateKey;
+      });
+
       const rawRegularSlots = allDaySlots.filter(s => {
         const fromDateKey = (s.validFrom instanceof Date ? s.validFrom : new Date(s.validFrom)).toISOString().slice(0, 10);
         if (fromDateKey > targetDateKey) return false;
         if (s.validUntil) {
           const untilDateKey = (s.validUntil instanceof Date ? s.validUntil : new Date(s.validUntil)).toISOString().slice(0, 10);
           if (untilDateKey < targetDateKey) return false;
+        } else if (hasArchivedSlotsOnDate) {
+          return false;
         }
         return true;
       });
@@ -202,15 +296,21 @@ export class AttendanceService {
     const extraClasses = overrides.filter(o => o.overrideType === "extra_class");
     for (const extra of extraClasses) {
       const existingAtt = attendanceRecords.find(a => a.overrideId === extra.id);
+      const inferredType = AttendanceService.inferSlotTypeFromSubject(extra.subject);
+      const resolvedStart = extra.startTime || "00:00";
+      const resolvedEnd =
+        extra.endTime && extra.endTime !== "00:00"
+          ? extra.endTime
+          : AttendanceService.computeEndTimeFromStart(resolvedStart, inferredType);
       agenda.push({
         id: extra.id,
         type: "override",
         isExtra: true,
         subject: extra.subject,
-        startTime: extra.startTime || "00:00",
-        endTime: extra.endTime || "00:00",
+        startTime: resolvedStart,
+        endTime: resolvedEnd,
         room: null,
-        slotType: "Extra",
+        slotType: inferredType,
         status: existingAtt?.status || null,
         remarks: existingAtt?.remarks || null,
         attendanceId: existingAtt?.id || null,
@@ -236,25 +336,53 @@ export class AttendanceService {
     }
     
     if (manualAtts.length > 0) {
-      // Fetch subjects for these manual attendances
+      // Fetch subjects AND their timetable slots for these historical/manual attendances
       const manualSubjectIds = manualAtts.map(a => a.subjectId);
       const manualSubjects = await prisma.subject.findMany({
         where: { id: { in: Array.from(new Set(manualSubjectIds)) } },
+        include: {
+          timetableSlots: true,
+        }
       });
       
       for (const att of manualAtts) {
         const sub = manualSubjects.find(s => s.id === att.subjectId);
+        let slotStartTime = "00:00";
+        let slotEndTime = "00:00";
+        let slotType: string = AttendanceService.inferSlotTypeFromSubject(sub);
+        let slotRoom = null;
+
+        if (sub?.timetableSlots && sub.timetableSlots.length > 0) {
+          const matchingSlot = AttendanceService.findBestSlotForDate(
+            sub.timetableSlots,
+            sub.id,
+            dayOfWeek,
+            targetDateKey,
+            att.timetableSlotId
+          );
+
+          if (matchingSlot) {
+            slotStartTime = matchingSlot.startTime || "00:00";
+            slotType = matchingSlot.slotType ? matchingSlot.slotType.charAt(0).toUpperCase() + matchingSlot.slotType.slice(1) : slotType;
+            slotEndTime =
+              matchingSlot.endTime && matchingSlot.endTime !== "00:00"
+                ? matchingSlot.endTime
+                : AttendanceService.computeEndTimeFromStart(slotStartTime, slotType);
+            slotRoom = matchingSlot.room || null;
+          }
+        }
+
         agenda.push({
           id: att.id,
           type: "manual",
           isExtra: true,
           subject: sub || { id: att.subjectId, name: "Unknown" },
-          startTime: "00:00",
-          endTime: "00:00",
-          room: null,
-          slotType: "Extra",
+          startTime: slotStartTime,
+          endTime: slotEndTime,
+          room: slotRoom,
+          slotType: slotType,
           status: att.status,
-          remarks: att.remarks || "Previous Timetable / Extra Class",
+          remarks: att.remarks || null,
           attendanceId: att.id,
         });
       }
@@ -682,6 +810,7 @@ export class AttendanceService {
     const semEnd = new Date(activeSemester.endDate);
     semEnd.setHours(23, 59, 59, 999);
 
+    const allSemesterSlots = subjects.flatMap((s: any) => s.timetableSlots || []);
     const logs: any[] = [];
 
     // 1. Process all Attendance records (marked classes)
@@ -701,26 +830,80 @@ export class AttendanceService {
         year: "numeric",
       });
 
-      let slotType = "Lecture";
+      let slotType: string = AttendanceService.inferSlotTypeFromSubject(sub);
+      let isExtraClass = false;
       let startTime = "00:00";
       let endTime = "00:00";
-      
+      const attDate = new Date(att.date);
+      const attDayOfWeek = attDate.getUTCDay() === 0 ? 6 : attDate.getUTCDay() - 1;
+
+      const hasArchivedSemesterVersionOnDate = allSemesterSlots.some((s: any) => {
+        if (!s.validUntil) return false;
+        const fromKey = AttendanceService.toDbLocalIso(s.validFrom);
+        const untilKey = AttendanceService.toDbLocalIso(s.validUntil);
+        return fromKey <= dateKey && untilKey >= dateKey;
+      });
+
+      // Determine whether this subject actually had a scheduled regular slot on attDayOfWeek in the timetable version active on dateKey
+      const activeWeekdaySlotsOnDate = (sub.timetableSlots || []).filter(
+        (s: any) =>
+          s.dayOfWeek === attDayOfWeek &&
+          AttendanceService.toDbLocalIso(s.validFrom) <= dateKey &&
+          (!s.validUntil || AttendanceService.toDbLocalIso(s.validUntil) >= dateKey) &&
+          (!hasArchivedSemesterVersionOnDate || Boolean(s.validUntil))
+      );
+      if (activeWeekdaySlotsOnDate.length === 0) {
+        isExtraClass = true;
+      }
+
       if (att.timetableSlotId) {
         const slot = sub.timetableSlots.find(s => s.id === att.timetableSlotId);
         if (slot) {
-          slotType = slot.slotType ? slot.slotType.charAt(0).toUpperCase() + slot.slotType.slice(1) : "Lecture";
+          slotType = slot.slotType ? slot.slotType.charAt(0).toUpperCase() + slot.slotType.slice(1) : slotType;
           startTime = slot.startTime;
           endTime = slot.endTime;
+          const slotFrom = AttendanceService.toDbLocalIso(slot.validFrom);
+          const slotUntil = slot.validUntil ? AttendanceService.toDbLocalIso(slot.validUntil) : null;
+          if (
+            slot.dayOfWeek !== attDayOfWeek ||
+            slotFrom > dateKey ||
+            (slotUntil && slotUntil < dateKey) ||
+            (hasArchivedSemesterVersionOnDate && !slot.validUntil)
+          ) {
+            isExtraClass = true;
+          }
         }
       }
       
       if (att.overrideId) {
         const override = overrides.find(o => o.id === att.overrideId);
         if (override) {
-          slotType = override.overrideType === "extra_class" ? "Extra" : slotType;
+          if (override.overrideType === "extra_class") {
+            isExtraClass = true;
+          }
           startTime = override.startTime || startTime;
           endTime = override.endTime || endTime;
         }
+      }
+
+      if (startTime === "00:00" && sub.timetableSlots && sub.timetableSlots.length > 0) {
+        const matchingSlot = AttendanceService.findBestSlotForDate(
+          sub.timetableSlots,
+          sub.id,
+          attDayOfWeek,
+          dateKey,
+          att.timetableSlotId
+        );
+
+        if (matchingSlot) {
+          slotType = matchingSlot.slotType ? matchingSlot.slotType.charAt(0).toUpperCase() + matchingSlot.slotType.slice(1) : slotType;
+          startTime = matchingSlot.startTime;
+          endTime = matchingSlot.endTime;
+        }
+      }
+
+      if (startTime !== "00:00" && (!endTime || endTime === "00:00")) {
+        endTime = AttendanceService.computeEndTimeFromStart(startTime, slotType);
       }
 
       logs.push({
@@ -738,7 +921,7 @@ export class AttendanceService {
         needAttend: stats.needAttend,
         statusText: stats.statusText,
         slotType,
-        isExtra: slotType === "Extra",
+        isExtra: isExtraClass || slotType === "Extra",
         startTime,
         endTime,
         status: att.status,
@@ -769,6 +952,13 @@ export class AttendanceService {
         year: "numeric",
       });
 
+      const extraInferredType = AttendanceService.inferSlotTypeFromSubject(sub);
+      const extraStart = extra.startTime || "00:00";
+      const extraEnd =
+        extra.endTime && extra.endTime !== "00:00"
+          ? extra.endTime
+          : AttendanceService.computeEndTimeFromStart(extraStart, extraInferredType);
+
       logs.push({
         id: `extra-${extra.id}-${dateKey}`,
         date: dateKey,
@@ -783,10 +973,10 @@ export class AttendanceService {
         canMiss: stats.canMiss,
         needAttend: stats.needAttend,
         statusText: stats.statusText,
-        slotType: "Extra",
+        slotType: extraInferredType,
         isExtra: true,
-        startTime: extra.startTime || "00:00",
-        endTime: extra.endTime || "00:00",
+        startTime: extraStart,
+        endTime: extraEnd,
         status: "not_marked",
         remarks: null,
         timetableSlotId: undefined,
@@ -795,8 +985,13 @@ export class AttendanceService {
       });
     }
 
-    // Sort descending by timestamp (newest first)
-    logs.sort((a, b) => b.timestamp - a.timestamp || b.startTime.localeCompare(a.startTime));
+    // Sort descending by date (newest date first), and chronologically by startTime within the same date
+    logs.sort((a, b) => {
+      if (b.timestamp !== a.timestamp) return b.timestamp - a.timestamp;
+      const aTime = a.startTime && a.startTime !== "00:00" ? a.startTime : "99:99";
+      const bTime = b.startTime && b.startTime !== "00:00" ? b.startTime : "99:99";
+      return aTime.localeCompare(bTime);
+    });
 
     return {
       logs,
@@ -1195,19 +1390,15 @@ export class AttendanceService {
       };
     }
 
-    // Fetch regularSlots, globalEvents (L1 cached across months), overrides, and attendances in 1 parallel round-trip
+    // Fetch regularSlots (including all archived timetable versions for the semester), globalEvents, overrides, and attendances in 1 parallel round-trip
     const [regularSlots, overrides, attendances, allUserSemesterEvents] = await Promise.all([
       CacheService.getOrSet(
         userId,
-        `timetable:all_slots:${activeSemester.id}`,
+        `timetable:all_sem_slots_v2:${activeSemester.id}`,
         () =>
           prisma.timetableSlot.findMany({
             where: {
               semesterId: activeSemester.id,
-              OR: [
-                { validUntil: null },
-                { validUntil: { gte: startDate } }
-              ]
             },
             include: { subject: true },
           })
@@ -1321,6 +1512,13 @@ export class AttendanceService {
 
       const isPastTeachingDay = (lastTeachingDateEnd && dEnd > lastTeachingDateEnd) || dEnd > semEndDate;
 
+      const hasArchivedSlotsOnDay = regularSlots.some(s => {
+        if (!s.validUntil) return false;
+        const fromKey = new Date(s.validFrom).toISOString().slice(0, 10);
+        const untilKey = new Date(s.validUntil).toISOString().slice(0, 10);
+        return fromKey <= dateKey && untilKey >= dateKey;
+      });
+
       const rawDaySlots = isPastTeachingDay ? [] : regularSlots.filter(s => {
         if (s.dayOfWeek !== dbDayOfWeek) return false;
         const fromDateKey = new Date(s.validFrom).toISOString().slice(0, 10);
@@ -1328,6 +1526,8 @@ export class AttendanceService {
         if (s.validUntil) {
           const untilDateKey = new Date(s.validUntil).toISOString().slice(0, 10);
           if (untilDateKey < dateKey) return false; // Already archived before this calendar date began
+        } else if (hasArchivedSlotsOnDay) {
+          return false;
         }
         return true;
       });
@@ -1343,6 +1543,7 @@ export class AttendanceService {
           daySlots.push(s);
         }
       }
+      daySlots.sort((a, b) => (a.startTime || "99:99").localeCompare(b.startTime || "99:99"));
 
       const dayOverrides = overrides.filter(o => AttendanceService.toDbLocalIso(o.date) === dateKey);
       
@@ -1451,7 +1652,11 @@ export class AttendanceService {
           if (att) handledAttendanceIds.add(att.id);
           dayAgenda.push({
             id: att ? att.id : `unmarked-${slot.id}-${dateKey}`,
+            subjectId: slot.subjectId,
             subjectName: slot.subject?.name || "Subject",
+            startTime: slot.startTime || "00:00",
+            endTime: slot.endTime || "00:00",
+            isExtra: false,
             status: att ? att.status : (dateKey > localTodayStr ? "future" : "not_marked"),
             remarks: att ? att.remarks : null,
           });
@@ -1467,7 +1672,11 @@ export class AttendanceService {
           if (att) handledAttendanceIds.add(att.id);
           dayAgenda.push({
             id: att ? att.id : `unmarked-${o.id}-${dateKey}`,
+            subjectId: o.subjectId,
             subjectName: o.subject?.name || "Subject",
+            startTime: o.startTime || "00:00",
+            endTime: o.endTime || "00:00",
+            isExtra: true,
             status: att ? att.status : (dateKey > localTodayStr ? "future" : "not_marked"),
             remarks: att ? att.remarks : null,
           });
@@ -1476,9 +1685,22 @@ export class AttendanceService {
 
       for (const a of dayAtts) {
         if (!handledAttendanceIds.has(a.id)) {
+          const matchedSlot = AttendanceService.findBestSlotForDate(
+            regularSlots,
+            a.subjectId,
+            dbDayOfWeek,
+            dateKey,
+            a.timetableSlotId
+          );
+          const matchedOverride = a.overrideId ? dayOverrides.find(o => o.id === a.overrideId) : undefined;
+          const isScheduledOnDay = daySlots.some(s => s.subjectId === a.subjectId);
           dayAgenda.push({
             id: a.id,
+            subjectId: a.subjectId,
             subjectName: a.subject?.name || "Subject",
+            startTime: matchedOverride?.startTime || matchedSlot?.startTime || "00:00",
+            endTime: matchedOverride?.endTime || matchedSlot?.endTime || "00:00",
+            isExtra: !isScheduledOnDay,
             status: a.status,
             remarks: a.remarks || null,
           });
@@ -1486,6 +1708,11 @@ export class AttendanceService {
       }
 
       if (dayAgenda.length > 0) {
+        dayAgenda.sort((a, b) => {
+          const aTime = a.startTime && a.startTime !== "00:00" ? a.startTime : "99:99";
+          const bTime = b.startTime && b.startTime !== "00:00" ? b.startTime : "99:99";
+          return aTime.localeCompare(bTime);
+        });
         detailsObj[dateKey] = dayAgenda;
       }
 

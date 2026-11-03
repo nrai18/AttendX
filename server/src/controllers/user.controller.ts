@@ -267,7 +267,7 @@ export class UserController {
     try {
       const userId = req.user!.userId;
       const sessionId = req.user!.sessionId;
-      const sessions = await UserService.getSessions(userId, sessionId);
+      const sessions = await UserService.getSessions(userId, sessionId, req);
       res.status(200).json(sessions);
     } catch (error: any) {
       console.error("[UserController.updateOnboardingStatus] Failed to update onboarding status:", error);

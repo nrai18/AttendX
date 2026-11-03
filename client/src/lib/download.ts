@@ -19,15 +19,32 @@ export const downloadBlob = async (blob: Blob, filename: string): Promise<void> 
               recursive: true,
             });
             
-            await Share.share({
-              title: filename,
-              url: result.uri,
-              dialogTitle: 'Save or Share File'
-            });
-            resolve();
+            try {
+              await Share.share({
+                title: filename,
+                url: result.uri,
+                dialogTitle: 'Save or Share File'
+              });
+              resolve();
+            } catch (shareErr: any) {
+              const msg = String(shareErr?.message || shareErr || "").toLowerCase();
+              if (
+                msg.includes("cancel") || 
+                msg.includes("dismiss") || 
+                msg.includes("abort") ||
+                shareErr?.name === "AbortError"
+              ) {
+                // User dismissed the share dialog; the file was already safely generated & saved to cache
+                resolve();
+              } else {
+                console.warn("Share sheet note:", shareErr);
+                // Even if sharing activity was aborted, the file was written to device storage
+                resolve();
+              }
+            }
           } catch (innerErr) {
-            console.error("Inner share err:", innerErr);
-            toast.error("Failed to share file.");
+            console.error("Inner write err:", innerErr);
+            toast.error("Failed to save file to cache.");
             reject(innerErr);
           }
         };

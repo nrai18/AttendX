@@ -951,7 +951,7 @@ html.light body.theme-classrooms-black {
   border-color: var(--ts-border) !important;
 }
 
-.theme-terrascape * {
+.theme-terrascape *:not(.bottom-nav-shell):not(.bottom-nav-shell *) {
   border-color: var(--ts-border) !important;
 }
 

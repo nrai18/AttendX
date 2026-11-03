@@ -52,6 +52,7 @@
 - [📬 Transactional Email Infrastructure](#-transactional-email-infrastructure)
 - [🔐 Linked Devices & Passive Session Security](#-linked-devices--passive-session-security)
 - [⚡ Zustand Offline-First Global State Architecture](#-zustand-offline-first-global-state-architecture)
+- [🏛️ Comprehensive Architecture & Engineering Diagrams Suite](#-comprehensive-architecture--engineering-diagrams-suite)
 - [📊 Engineering-Grade Scalability Breakdown](#-engineering-grade-scalability-breakdown)
 - [🛠️ Tech Stack Directory](#️-tech-stack-directory)
 - [💻 Local Development Setup](#-local-development-setup)
@@ -144,16 +145,24 @@ AttendX avoids Google Play Store update delays (which take days to approve) by s
 
 ```mermaid
 flowchart TD
-    A["Developer commits web changes"] --> B["npm run build (Vite + Rolldown)"]
-    B --> C["node zip_dist.cjs bundles client/dist into update.zip"]
-    C --> D["server/src/uploads/update.zip uploaded to backend"]
-    D --> E["Mobile App boots (Capacitor WebView)"]
-    E --> F["GET /api/system/update?t=timestamp"]
-    F --> G{"localVersion < latestVersion?"}
-    G -- No --> H["Serve local assets instantly (0ms)"]
-    G -- Yes --> I["CapacitorUpdater downloads update.zip in background"]
-    I --> J["Extracts into sandbox & verifies integrity"]
-    J --> K["Seamlessly reloads WebView to latest version"]
+    classDef client fill:#e0f2fe,stroke:#0284c7,stroke-width:2px,color:#0f172a,font-weight:bold;
+    classDef server fill:#ede9fe,stroke:#7c3aed,stroke-width:2px,color:#1e1b4b,font-weight:bold;
+    classDef db fill:#dcfce7,stroke:#16a34a,stroke-width:2px,color:#064e3b,font-weight:bold;
+    classDef cache fill:#fef3c7,stroke:#d97706,stroke-width:2px,color:#78350f,font-weight:bold;
+    classDef ai fill:#fae8ff,stroke:#c026d3,stroke-width:2px,color:#701a75,font-weight:bold;
+    classDef warn fill:#fee2e2,stroke:#dc2626,stroke-width:2px,color:#7f1d1d,font-weight:bold;
+    classDef action fill:#f1f5f9,stroke:#475569,stroke-width:2px,color:#0f172a,font-weight:bold;
+
+    A["Developer Commits Web Assets"]:::action --> B["npm run build (Vite + Rolldown)"]:::client
+    B --> C["node zip_dist.cjs (Bundles dist to update.zip)"]:::server
+    C --> D["server/src/uploads/update.zip (Stored on Backend)"]:::server
+    D --> E["Mobile App Boots (Capacitor WebView)"]:::client
+    E --> F["GET /api/system/update?t=timestamp"]:::server
+    F --> G{"localVersion < latestVersion?"}:::cache
+    G -- No --> H["Serve Local Sandbox Assets (0ms Latency)"]:::db
+    G -- Yes --> I["CapacitorUpdater Downloads update.zip (Background)"]:::ai
+    I --> J["Extracts into Isolated App Sandbox & Verifies Checksum"]:::client
+    J --> K["Seamlessly Reloads WebView to v4.3.0"]:::db
 ```
 
 - **Rollback Safety**: If the newly downloaded bundle crashes on launch, Capacitor automatically rolls back to the previous stable bundle.
@@ -195,14 +204,22 @@ AttendX features a hands-free conversational voice mode built for students on th
 
 ```mermaid
 flowchart LR
-    A["Student Speaks"] --> B["Native Android Speech Recognition"]
-    B --> C["Continuous VAD Silence Detector (1.2s timeout)"]
-    C --> D{"3-Tier Intent Router"}
-    D -- Tier 1 (0-15ms) --> E["Deterministic Fast Path (0 Gemini RPM)"]
-    D -- Tier 2 (<80ms) --> F["Batch Report & Timetable Swap"]
-    D -- Tier 3 (~400ms) --> G["Gemini 3.8 Flash (Structured Function Call)"]
-    E & F & G --> H["Streaming ElevenLabs Voice Synthesis (TTS)"]
-    H --> I["Capacitor Audio Player"]
+    classDef client fill:#e0f2fe,stroke:#0284c7,stroke-width:2px,color:#0f172a,font-weight:bold;
+    classDef server fill:#ede9fe,stroke:#7c3aed,stroke-width:2px,color:#1e1b4b,font-weight:bold;
+    classDef db fill:#dcfce7,stroke:#16a34a,stroke-width:2px,color:#064e3b,font-weight:bold;
+    classDef cache fill:#fef3c7,stroke:#d97706,stroke-width:2px,color:#78350f,font-weight:bold;
+    classDef ai fill:#fae8ff,stroke:#c026d3,stroke-width:2px,color:#701a75,font-weight:bold;
+    classDef warn fill:#fee2e2,stroke:#dc2626,stroke-width:2px,color:#7f1d1d,font-weight:bold;
+    classDef action fill:#f1f5f9,stroke:#475569,stroke-width:2px,color:#0f172a,font-weight:bold;
+
+    A["Student Speaks Aloud"]:::action --> B["Native SpeechRecognition Engine"]:::client
+    B --> C["Continuous VAD Silence Detector (1.2s Timeout)"]:::cache
+    C --> D{"3-Tier Intent Router"}:::ai
+    D -- Tier 1 (0-15ms) --> E["Deterministic Fast-Path (0 Gemini Tokens)"]:::db
+    D -- Tier 2 (<80ms) --> F["Batch Report & Timetable Local Solver"]:::client
+    D -- Tier 3 (~400ms) --> G["Gemini 3.8 Flash (Structured Function Calls)"]:::server
+    E & F & G --> H["Streaming ElevenLabs Flash v2.5 Synthesis"]:::ai
+    H --> I["Capacitor Audio Track (Automatic Mic Muting)"]:::client
 ```
 
 - **Zero Overlapping Audio**: Microphone automatically pauses during agent speech synthesis.
@@ -255,19 +272,493 @@ AttendX works completely offline. All network queries are cached locally using *
 
 ```mermaid
 flowchart TD
-    subgraph Zustand Store Architecture
-        A["authStore<br/>User Profile & Session Tokens"]
-        B["attendanceStore<br/>Active Semester, Subjects, Agendas & Logs"]
-        C["offlineStore<br/>Offline Mutation Queue & Rollback Engine"]
-        D["cacheStore<br/>L1 Memory SWR Cache (0ms Hydration)"]
-        E["syncStore<br/>P2P 6-Digit Transfer Code & TTL State"]
-        F["notificationStore<br/>Reminder Lead Times, DND & Location Flags"]
+    classDef client fill:#e0f2fe,stroke:#0284c7,stroke-width:2px,color:#0f172a,font-weight:bold;
+    classDef server fill:#ede9fe,stroke:#7c3aed,stroke-width:2px,color:#1e1b4b,font-weight:bold;
+    classDef db fill:#dcfce7,stroke:#16a34a,stroke-width:2px,color:#064e3b,font-weight:bold;
+    classDef cache fill:#fef3c7,stroke:#d97706,stroke-width:2px,color:#78350f,font-weight:bold;
+    classDef ai fill:#fae8ff,stroke:#c026d3,stroke-width:2px,color:#701a75,font-weight:bold;
+    classDef warn fill:#fee2e2,stroke:#dc2626,stroke-width:2px,color:#7f1d1d,font-weight:bold;
+
+    subgraph Zustand Reactive Global State Architecture
+        A["authStore<br/>User Profile, Credentials & Auth Tokens"]:::client
+        B["attendanceStore<br/>Active Semester, Subjects & Attendance Logs"]:::db
+        C["offlineStore<br/>Offline Mutation FIFO Queue & Optimistic Rollback"]:::warn
+        D["cacheStore<br/>L1 Memory SWR Cache (0ms Hydration Engine)"]:::cache
+        E["syncStore<br/>P2P 6-Digit Ephemeral Transfer Code & TTL"]:::server
+        F["notificationStore<br/>Reminder Lead Times, DND & Location Flags"]:::ai
     end
 ```
 
 - **Optimistic UI Execution**: Marking attendance, adding extra lectures, or deleting events updates the UI in **`0ms`** with local rollback if network requests fail.
 - **Offline Mutation Queue**: Actions performed in classrooms without internet are queued in `offlineStore` and automatically replayed in order upon reconnection.
 - **Stale-While-Revalidate (SWR)**: L1 cached data displays on frame 0, eliminating loading spinners during app launch.
+
+---
+
+---
+
+## 🏛️ Comprehensive Architecture & Engineering Diagrams Suite
+
+AttendX is engineered with a strict zero-latency, fault-tolerant, and high-concurrency philosophy. Below is the complete visual specification of the **15 core system workflows, state machines, and data pipelines** powering the platform, fully color-coded by architectural layer.
+
+```mermaid
+flowchart TD
+    classDef client fill:#e0f2fe,stroke:#0284c7,stroke-width:2px,color:#0f172a,font-weight:bold;
+    classDef server fill:#ede9fe,stroke:#7c3aed,stroke-width:2px,color:#1e1b4b,font-weight:bold;
+    classDef db fill:#dcfce7,stroke:#16a34a,stroke-width:2px,color:#064e3b,font-weight:bold;
+    classDef cache fill:#fef3c7,stroke:#d97706,stroke-width:2px,color:#78350f,font-weight:bold;
+    classDef ai fill:#fae8ff,stroke:#c026d3,stroke-width:2px,color:#701a75,font-weight:bold;
+    classDef warn fill:#fee2e2,stroke:#dc2626,stroke-width:2px,color:#7f1d1d,font-weight:bold;
+    classDef action fill:#f1f5f9,stroke:#475569,stroke-width:2px,color:#0f172a,font-weight:bold;
+```
+
+---
+
+### 1. 🛡️ Onboarding & Multi-Round Contextual Permission Seeking Pattern
+AttendX respects user privacy by avoiding aggressive blocking permission walls. Permissions follow a graceful two-round progressive disclosure architecture.
+
+```mermaid
+flowchart TD
+    classDef client fill:#e0f2fe,stroke:#0284c7,stroke-width:2px,color:#0f172a,font-weight:bold;
+    classDef server fill:#ede9fe,stroke:#7c3aed,stroke-width:2px,color:#1e1b4b,font-weight:bold;
+    classDef db fill:#dcfce7,stroke:#16a34a,stroke-width:2px,color:#064e3b,font-weight:bold;
+    classDef cache fill:#fef3c7,stroke:#d97706,stroke-width:2px,color:#78350f,font-weight:bold;
+    classDef warn fill:#fee2e2,stroke:#dc2626,stroke-width:2px,color:#7f1d1d,font-weight:bold;
+    classDef action fill:#f1f5f9,stroke:#475569,stroke-width:2px,color:#0f172a,font-weight:bold;
+
+    subgraph Round1 ["Round 1: Initial App Onboarding"]
+        R1A["Student Completes Registration / Login"]:::action --> R1B["Onboarding Step Checklist"]:::client
+        R1B --> R1C{"Request System Permissions"}:::cache
+        R1C -->|Granted| R1D["Store Permissions Granted Locally"]:::db
+        R1C -->|Denied / Dismissed| R1E["Flag Incomplete Permissions in App State"]:::warn
+    end
+
+    subgraph Round2 ["Round 2: Contextual Feature-Triggered Re-Prompts"]
+        R1E --> F1["Feature Trigger: Mic in Voice / Hands-Free"]:::action
+        R1E --> F2["Feature Trigger: Location in Linked Devices"]:::action
+        R1E --> F3["Feature Trigger: Settings 5m/10m/15m Lead Times"]:::action
+        R1E --> F4["Feature Trigger: Weekly and Monthly Summary Access"]:::action
+
+        F1 --> P1{"Microphone Granted?"}:::cache
+        P1 -- No --> A1["Prompt Native Speech / Web getUserMedia"]:::warn
+        A1 -- Granted --> OK1["Start Voice Recognition and Hands-Free Loop"]:::db
+        A1 -- Denied --> D1["Show Dynamic Island HUD Warning"]:::warn
+
+        F2 --> P2{"Location Cached?"}:::cache
+        P2 -- No --> A2["Trigger Geolocation.getCurrentPosition"]:::warn
+        A2 -- Granted --> OK2["Patch Live GPS to GET /users/sessions"]:::db
+        A2 -- Denied --> D2["Render 'Enable Location' Action Badge"]:::warn
+
+        F3 --> P3{"Notification Granted?"}:::cache
+        P3 -- No --> G3["Grey Out 5m, 10m, 15m Chips (Opacity 40% + Strike)"]:::warn
+        G3 --> A3["User Clicks Greyed-out Lead Time Chip"]:::action
+        A3 --> REQ3["NotificationService.requestPermissions()"]:::client
+        REQ3 -- Granted --> OK3["Un-grey Chips + Schedule Alarms + Recover FCM"]:::db
+
+        F4 --> P4{"Notification Granted?"}:::cache
+        P4 -- No --> A4["Contextual Briefing Permission Prompt"]:::warn
+        A4 -- Granted --> OK4["Schedule Periodic Summary Alarms (8800..8899)"]:::db
+    end
+```
+
+---
+
+### 2. 📲 FCM Push Notification Lifecycle, Token Recovery & Targeted Multicast Routing
+Handles initial push notification denial, seamless token recovery upon later approval, and granular targeting for birthdays and section classrooms.
+
+```mermaid
+flowchart TD
+    classDef client fill:#e0f2fe,stroke:#0284c7,stroke-width:2px,color:#0f172a,font-weight:bold;
+    classDef server fill:#ede9fe,stroke:#7c3aed,stroke-width:2px,color:#1e1b4b,font-weight:bold;
+    classDef db fill:#dcfce7,stroke:#16a34a,stroke-width:2px,color:#064e3b,font-weight:bold;
+    classDef cache fill:#fef3c7,stroke:#d97706,stroke-width:2px,color:#78350f,font-weight:bold;
+    classDef ai fill:#fae8ff,stroke:#c026d3,stroke-width:2px,color:#701a75,font-weight:bold;
+    classDef warn fill:#fee2e2,stroke:#dc2626,stroke-width:2px,color:#7f1d1d,font-weight:bold;
+    classDef action fill:#f1f5f9,stroke:#475569,stroke-width:2px,color:#0f172a,font-weight:bold;
+
+    subgraph FCMRecovery ["FCM Token Recovery Pipeline"]
+        T1["User Denies Push in Round 1"]:::warn --> T2["PushNotifications.register() Deferred"]:::cache
+        T2 --> T3["Later: User Approves in Settings OR Android App Settings"]:::action
+        T3 --> T4["appStateChange Active Event OR Settings Toggle"]:::client
+        T4 --> T5["NotificationService.setupPushListeners() (Idempotent)"]:::server
+        T5 --> T6["PushNotifications.addListener('registration') Active"]:::client
+        T6 --> T7["PushNotifications.register() Generates Native Token"]:::client
+        T7 --> T8["localStorage.setItem('fcm_token', token.value)"]:::cache
+        T8 --> T9["PATCH /api/users/me { fcmToken } -> Saved in Postgres and Redis"]:::db
+    end
+
+    subgraph FCMTargeting ["Targeted Multicast Routing Engine"]
+        B1["Daily 9:00 AM IST Cron Job"]:::action --> B2{"Is Today Student's Birthday?"}:::cache
+        B2 -- Yes (Birthday User) --> B3["Direct Personal Greeting FCM: 'Happy Birthday!'"]:::db
+        B2 -- No (Classmates) --> B4["Check Active Classroom Cohort"]:::client
+        B4 --> B5["Query prisma.classroomMember for User's Section"]:::server
+        B5 --> B6["Filter Peers with fcmToken != null and birthday != today"]:::server
+        B6 --> B7["Dispatch Classroom Reminder: 'Wish your classmate a Happy Birthday!'"]:::ai
+
+        C1["Class Representative Publishes Announcement"]:::action --> C2["POST /api/classrooms/:id/announcements"]:::server
+        C2 --> C3["Prisma Query: ClassroomMember WHERE classroomId = :id AND userId != senderId"]:::server
+        C3 --> C4["Extract Batch FCM Tokens Array"]:::cache
+        C4 --> C5["firebase-admin.messaging().sendEachForMulticast()"]:::ai
+        C5 --> C6["Classroom Enrolled Devices Receive Instant Notice (<250ms)"]:::db
+        C6 --> C7["Tap Opens Classroom Feed Directly via /classrooms/:id Deep-link"]:::client
+    end
+```
+
+---
+
+### 3. 🔄 Peer Sync: 6-Digit Ephemeral P2P Schedule Transfer
+Permits students to share full timetable configurations without third-party messaging apps or manual entry.
+
+```mermaid
+flowchart LR
+    classDef client fill:#e0f2fe,stroke:#0284c7,stroke-width:2px,color:#0f172a,font-weight:bold;
+    classDef server fill:#ede9fe,stroke:#7c3aed,stroke-width:2px,color:#1e1b4b,font-weight:bold;
+    classDef db fill:#dcfce7,stroke:#16a34a,stroke-width:2px,color:#064e3b,font-weight:bold;
+    classDef cache fill:#fef3c7,stroke:#d97706,stroke-width:2px,color:#78350f,font-weight:bold;
+    classDef warn fill:#fee2e2,stroke:#dc2626,stroke-width:2px,color:#7f1d1d,font-weight:bold;
+
+    A["Sender: Tap 'Generate Peer Sync Code'"]:::client --> B["POST /api/sync/generate"]:::server
+    B --> C["Generate Random 6-Digit Code (e.g. 748291)"]:::server
+    C --> D[("Store Payload in Redis with 5-Minute TTL")]:::cache
+    D --> E["Sender Screen Displays 6-Digit Pill & Countdown"]:::client
+    
+    F["Receiver: Enters 6-Digit Code"]:::client --> G["POST /api/sync/redeem { code: '748291' }"]:::server
+    G --> H{"Code Exists and Active in Redis?"}:::cache
+    H -- Expired / Invalid --> I["Return 404 Code Invalid Error"]:::warn
+    H -- Valid --> J["Atomic Fetch and Prune from Redis Key"]:::cache
+    J --> K["Prisma Transaction: Ingest Subjects and Timetable Slots"]:::db
+    K --> L["Invalidate Receiver Local CacheStore (0ms SWR)"]:::client
+    L --> M["Today Agenda Instantly Hydrates with Shared Schedule"]:::db
+```
+
+---
+
+### 4. 📦 ZIP Export & Import Pipeline (Sub-15ms L1/L2 Cache + Extra Class Inference)
+Full semester disaster recovery and migration engine handling raw CSV streams and intelligent extra class inference.
+
+```mermaid
+flowchart TD
+    classDef client fill:#e0f2fe,stroke:#0284c7,stroke-width:2px,color:#0f172a,font-weight:bold;
+    classDef server fill:#ede9fe,stroke:#7c3aed,stroke-width:2px,color:#1e1b4b,font-weight:bold;
+    classDef db fill:#dcfce7,stroke:#16a34a,stroke-width:2px,color:#064e3b,font-weight:bold;
+    classDef cache fill:#fef3c7,stroke:#d97706,stroke-width:2px,color:#78350f,font-weight:bold;
+    classDef action fill:#f1f5f9,stroke:#475569,stroke-width:2px,color:#0f172a,font-weight:bold;
+
+    subgraph ExportFlow ["Export Semester ZIP Archive (<15ms)"]
+        E1["User Taps 'Export data to ZIP'"]:::action --> E2["GET /api/data/export"]:::server
+        E2 --> E3["L1 Memory / Redis L2 Cache Check"]:::cache
+        E3 --> E4["Extract: subjects.csv, attendance_logs.csv, timetable.csv, events.csv"]:::db
+        E4 --> E5["Archiver Streams In-Memory ZIP Buffer"]:::server
+        E5 --> E6["Browser / Capacitor File Download Handler"]:::client
+        E6 --> E7["Trigger Dynamic Island HUD: 'ZIP Archive Saved'"]:::client
+    end
+
+    subgraph ImportFlow ["Import and Restore Pipeline"]
+        I1["User Selects AttendX_Semester_Export.zip"]:::action --> I2["POST /api/data/import (Multipart Buffer)"]:::server
+        I2 --> I3["Unzipper Parses CSV Manifests"]:::server
+        I3 --> I4["Inference Engine: Compare Log Time vs Scheduled Timetable Slots"]:::server
+        I4 --> I5{"Slot Matched in Timetable?"}:::cache
+        I5 -- No Matched Slot --> I6["Tag Log as 'extraClass = true' (Preserves Extra Sessions)"]:::db
+        I5 -- Matched Slot --> I7["Tag Log as 'extraClass = false' (Standard Schedule)"]:::db
+        I6 & I7 --> I8["Atomic Prisma Transaction: Replace Semester Records"]:::db
+        I8 --> I9["Trigger Client 'timetable-updated' Custom Event"]:::client
+        I9 --> I10["Full UI Re-render with Restored Semester Data"]:::client
+    end
+```
+
+---
+
+### 5. 🚀 Over-The-Air (OTA) Release Pipeline
+Instant binary updates bypassing app store approval latencies with cryptographic safety rollbacks.
+
+```mermaid
+flowchart TD
+    classDef client fill:#e0f2fe,stroke:#0284c7,stroke-width:2px,color:#0f172a,font-weight:bold;
+    classDef server fill:#ede9fe,stroke:#7c3aed,stroke-width:2px,color:#1e1b4b,font-weight:bold;
+    classDef db fill:#dcfce7,stroke:#16a34a,stroke-width:2px,color:#064e3b,font-weight:bold;
+    classDef cache fill:#fef3c7,stroke:#d97706,stroke-width:2px,color:#78350f,font-weight:bold;
+    classDef ai fill:#fae8ff,stroke:#c026d3,stroke-width:2px,color:#701a75,font-weight:bold;
+    classDef warn fill:#fee2e2,stroke:#dc2626,stroke-width:2px,color:#7f1d1d,font-weight:bold;
+    classDef action fill:#f1f5f9,stroke:#475569,stroke-width:2px,color:#0f172a,font-weight:bold;
+
+    A["Developer Packages Web Assets"]:::action --> B["npm run build (Vite + Rolldown)"]:::client
+    B --> C["node zip_dist.cjs (Bundles dist/ into update.zip)"]:::server
+    C --> D["server/src/uploads/update.zip (Stored on Backend)"]:::server
+    D --> E["Mobile App Boots (Capacitor WebView)"]:::client
+    E --> F["GET /api/system/update?t=timestamp"]:::server
+    F --> G{"localVersion < latestVersion?"}:::cache
+    G -- No --> H["Serve Local Sandbox Assets (0ms Latency)"]:::db
+    G -- Yes --> I["CapacitorUpdater Downloads update.zip (Background)"]:::ai
+    I --> J["Extracts into Isolated App Sandbox & Verifies Checksum"]:::client
+    J --> K["Seamlessly Reloads WebView to v4.3.0"]:::db
+```
+
+---
+
+### 6. 🧠 AI Copilot & Hybrid ML Architecture
+Combines sub-millisecond deterministic regex fast-paths, a local statistical RAG engine, and Google Gemini 3.8 Flash for zero token waste.
+
+```mermaid
+flowchart TD
+    classDef client fill:#e0f2fe,stroke:#0284c7,stroke-width:2px,color:#0f172a,font-weight:bold;
+    classDef server fill:#ede9fe,stroke:#7c3aed,stroke-width:2px,color:#1e1b4b,font-weight:bold;
+    classDef db fill:#dcfce7,stroke:#16a34a,stroke-width:2px,color:#064e3b,font-weight:bold;
+    classDef cache fill:#fef3c7,stroke:#d97706,stroke-width:2px,color:#78350f,font-weight:bold;
+    classDef ai fill:#fae8ff,stroke:#c026d3,stroke-width:2px,color:#701a75,font-weight:bold;
+    classDef action fill:#f1f5f9,stroke:#475569,stroke-width:2px,color:#0f172a,font-weight:bold;
+
+    A["Student Enters Query (Text or Voice)"]:::action --> B["Input Sanitization & Toxic Word Masking"]:::client
+    B --> C{"Tier 0: Client Local Fast-Path (0ms)"}:::cache
+    C -- Matched (Farewells, Help, Greetings) --> D["Instant Client UI Response (0 Token Cost)"]:::client
+    C -- Unmatched --> E["POST /api/ai/chat { prompt, context }"]:::server
+    
+    E --> F{"Tier 1: Deterministic Engine (<1ms)"}:::cache
+    F -- Action / Query (Mark attendance, Next class, Bunk query) --> G["Deterministic Handler executes Prisma Query"]:::server
+    G --> H["Formatted Markdown + Structured Action Payload"]:::client
+
+    F -- Unmatched Complex Query --> I["Local Statistical RAG Context Builder"]:::ai
+    I --> J["Grounding Context: Active Semester, Subject Vulnerabilities, Target 75%"]:::db
+    J --> K["Gemini 3.8 Flash (Structured Tool Calling)"]:::ai
+    K --> L["Model Decides: markAttendance(), rescheduleAlerts(), or natural text"]:::ai
+    L --> M["Streaming Response Dispatched to Client"]:::server
+    M --> N["ElevenLabs Audio Synthesizer (If in Voice Mode)"]:::ai
+```
+
+---
+
+### 7. 📅 Timetable Versioning & Historical Slot Resolution
+Prevents historical attendance corruption when professors or colleges update the timetable mid-semester.
+
+```mermaid
+flowchart LR
+    classDef client fill:#e0f2fe,stroke:#0284c7,stroke-width:2px,color:#0f172a,font-weight:bold;
+    classDef server fill:#ede9fe,stroke:#7c3aed,stroke-width:2px,color:#1e1b4b,font-weight:bold;
+    classDef db fill:#dcfce7,stroke:#16a34a,stroke-width:2px,color:#064e3b,font-weight:bold;
+    classDef cache fill:#fef3c7,stroke:#d97706,stroke-width:2px,color:#78350f,font-weight:bold;
+
+    A["Mid-Semester Schedule Revision Announced"]:::client --> B["Setup Wizard: Upload New Schedule"]:::server
+    B --> C["Archive Old Slots: set validUntil = NOW()"]:::db
+    C --> D["Insert New Slots: set validFrom = NOW()"]:::db
+    
+    E["Student Views Past Date Attendance"]:::client --> F["Resolve Query: WHERE date <= validUntil AND date >= validFrom"]:::server
+    F --> G["Historical Attendance Renders Old Schedule (Exact Historical Accuracy)"]:::db
+    
+    H["Student Views Today / Future Agenda"]:::client --> I["Resolve Query: WHERE validUntil IS NULL OR validUntil > NOW()"]:::server
+    I --> J["Today Agenda Renders Revised Active Schedule"]:::db
+```
+
+---
+
+### 8. 🗑️ Safe Delete (Soft-Archive) vs Hard Delete Architecture
+Ensures historical logs remain mathematically complete when subjects or slots are removed, while providing cinematic physical feedback.
+
+```mermaid
+flowchart TD
+    classDef client fill:#e0f2fe,stroke:#0284c7,stroke-width:2px,color:#0f172a,font-weight:bold;
+    classDef server fill:#ede9fe,stroke:#7c3aed,stroke-width:2px,color:#1e1b4b,font-weight:bold;
+    classDef db fill:#dcfce7,stroke:#16a34a,stroke-width:2px,color:#064e3b,font-weight:bold;
+    classDef warn fill:#fee2e2,stroke:#dc2626,stroke-width:2px,color:#7f1d1d,font-weight:bold;
+    classDef action fill:#f1f5f9,stroke:#475569,stroke-width:2px,color:#0f172a,font-weight:bold;
+
+    A["User Triggers Delete Action"]:::action --> B{"Deletion Context?"}:::client
+
+    B -- Delete Subject / Slot (Soft-Archive) --> C["Preserve Historical AttendanceLogs"]:::db
+    C --> D["Set isArchived = true on Subject / Slot"]:::server
+    D --> E["Overall 75% Math and Past Logs Remain Intact"]:::db
+    D --> F["Card 4-Shard Fracture + 3D Flapping Butterfly Animation (2.4s)"]:::client
+
+    B -- Shred Document / Purge Database (Hard Delete) --> G["Confirm Permanent Erasure via Dialog"]:::warn
+    G --> H["Cascade Delete: Foreign Keys & Physical File Storage"]:::warn
+    H --> I["Prisma transaction: deleteMany() from Postgres and Redis"]:::db
+    I --> J["12-Ribbon Industrial Paper Shredder Animation + Motor Audio (4.2s)"]:::client
+```
+
+---
+
+### 9. 🎓 Semester Transitioning Pipeline
+Handles end-of-term rollovers, archiving previous scores while carrying forward subjects or resetting for a fresh term.
+
+```mermaid
+flowchart TD
+    classDef client fill:#e0f2fe,stroke:#0284c7,stroke-width:2px,color:#0f172a,font-weight:bold;
+    classDef server fill:#ede9fe,stroke:#7c3aed,stroke-width:2px,color:#1e1b4b,font-weight:bold;
+    classDef db fill:#dcfce7,stroke:#16a34a,stroke-width:2px,color:#064e3b,font-weight:bold;
+    classDef action fill:#f1f5f9,stroke:#475569,stroke-width:2px,color:#0f172a,font-weight:bold;
+
+    A["Term Concludes: Open SemesterTransitionModal"]:::action --> B["Select Transition Strategy"]:::client
+    B --> C["Option 1: Complete Fresh Start (New Subjects & Timetable)"]:::action
+    B --> D["Option 2: Carry Forward Subjects (Reset Attendance to 0/0)"]:::action
+    
+    C & D --> E["POST /api/semesters/transition"]:::server
+    E --> F["Archive Previous Semester: isActive = false, snapshot finalized"]:::db
+    F --> G["Create New Semester Record: set isActive = true"]:::db
+    G --> H["Auto-Load Official IIIT Una Gazetted Holidays and Academic Events"]:::server
+    H --> I["Clear L1/L2 Redis and Zustand CacheStores"]:::client
+    I --> J["Navigate to Today Agenda with Zeroed Progress Meters"]:::client
+```
+
+---
+
+### 10. 🔐 Multi-Device Session Security & WebGL Real-OS Detection
+Banking-grade session token rotation with client spoofing detection.
+
+```mermaid
+flowchart TD
+    classDef client fill:#e0f2fe,stroke:#0284c7,stroke-width:2px,color:#0f172a,font-weight:bold;
+    classDef server fill:#ede9fe,stroke:#7c3aed,stroke-width:2px,color:#1e1b4b,font-weight:bold;
+    classDef db fill:#dcfce7,stroke:#16a34a,stroke-width:2px,color:#064e3b,font-weight:bold;
+    classDef cache fill:#fef3c7,stroke:#d97706,stroke-width:2px,color:#78350f,font-weight:bold;
+    classDef warn fill:#fee2e2,stroke:#dc2626,stroke-width:2px,color:#7f1d1d,font-weight:bold;
+
+    A["Client Connects to AttendX API"]:::client --> B["Extract navigator.platform & WebGL UNMASKED_RENDERER"]:::client
+    B --> C{"DevTools Android Emulation on Windows PC?"}:::cache
+    C -- Direct3D11 / Windows Detected --> D["Inject X-Attendx-Real-OS: Windows Header"]:::server
+    C -- Genuine Mobile Hardware --> E["Pass Hardware Architecture Header"]:::client
+    
+    D & E --> F["POST /api/auth/login OR /api/auth/refresh"]:::server
+    F --> G["Generate 15m Access Token + 30d Cryptographic Refresh Token"]:::server
+    G --> H[("Store Session Record in Postgres & Cache in Redis")]:::db
+    H --> I["Settings › Linked Devices Displays Genuine Host OS (Windows PC / Nothing Phone)"]:::client
+    
+    J["Student Clicks 'Terminate Session'"]:::client --> K["DELETE /api/users/sessions/:id"]:::server
+    K --> L["Invalidate Refresh Token in Redis Blacklist"]:::cache
+    L --> M["3D Perspective Aerodynamic Whoosh Flight Dismissal (@keyframes sessionWhooshTrajectory)"]:::warn
+```
+
+---
+
+### 11. ⚡ Zero-Latency Performance Architecture (Zustand L1 SWR + Redis L2 + Singleflight)
+Guarantees sub-15ms response times across the entire application.
+
+```mermaid
+flowchart LR
+    classDef client fill:#e0f2fe,stroke:#0284c7,stroke-width:2px,color:#0f172a,font-weight:bold;
+    classDef server fill:#ede9fe,stroke:#7c3aed,stroke-width:2px,color:#1e1b4b,font-weight:bold;
+    classDef db fill:#dcfce7,stroke:#16a34a,stroke-width:2px,color:#064e3b,font-weight:bold;
+    classDef cache fill:#fef3c7,stroke:#d97706,stroke-width:2px,color:#78350f,font-weight:bold;
+
+    A["App Mounts / Route Changes"]:::client --> B["Zustand cacheStore (L1 Memory SWR)"]:::cache
+    B -->|0ms Latency| C["Render Frame 0 UI Instantly (Zero Spinners)"]:::client
+    
+    A --> D["In-Flight Singleflight Map Check"]:::client
+    D -->|Duplicate Query Already in Flight| E["Coalesce to Existing Promise (0 Network Overhead)"]:::cache
+    D -->|New Query| F["GET /api/endpoint with ETag / Stale Token"]:::server
+    
+    F --> G[("Redis L2 Cache Check (<3ms)")]:::cache
+    G -- Cache Hit --> H["Return Cached JSON to Client"]:::server
+    G -- Cache Miss --> I[("Neon PostgreSQL via PgBouncer Pool (<18ms)")]:::db
+    I --> J["Write-Through to Redis L2 + Update L1 Zustand Store"]:::cache
+```
+
+---
+
+### 12. 🔁 Idempotency & Offline Sync Replay
+Reliable operation in basements and network-dead lecture halls.
+
+```mermaid
+flowchart TD
+    classDef client fill:#e0f2fe,stroke:#0284c7,stroke-width:2px,color:#0f172a,font-weight:bold;
+    classDef server fill:#ede9fe,stroke:#7c3aed,stroke-width:2px,color:#1e1b4b,font-weight:bold;
+    classDef db fill:#dcfce7,stroke:#16a34a,stroke-width:2px,color:#064e3b,font-weight:bold;
+    classDef cache fill:#fef3c7,stroke:#d97706,stroke-width:2px,color:#78350f,font-weight:bold;
+    classDef warn fill:#fee2e2,stroke:#dc2626,stroke-width:2px,color:#7f1d1d,font-weight:bold;
+
+    A["Student Taps Attendance Status in Classroom"]:::client --> B{"Device Online?"}:::cache
+    B -- Yes --> C["Dispatch Direct PATCH /api/attendance/mark"]:::server
+    B -- No Network --> D["Compute Deterministic DJB2 Key (slotId_date_status)"]:::cache
+    D --> E["Zustand 0ms Optimistic UI Update (Percentage Updates Instantly)"]:::client
+    E --> F["Enqueue Mutation in FIFO offlineStore"]:::warn
+    
+    G["Network Connection Restored"]:::client --> H["Background Sync Worker Awakens"]:::server
+    H --> I["Drain FIFO offlineStore sequentially"]:::server
+    I --> J["POST /api/attendance/batch-sync with Deterministic Keys"]:::db
+    J --> K["Prisma UPSERT: Guarantees Exact One Mark Recorded (Zero Duplicates)"]:::db
+    K --> L["Clear Replayed Items from offlineStore"]:::client
+```
+
+---
+
+### 13. 🏛️ Classroom (Batch Hub) Architecture
+Section-level synchronization, Class Representative notices, and cohort schedule distribution.
+
+```mermaid
+flowchart TD
+    classDef client fill:#e0f2fe,stroke:#0284c7,stroke-width:2px,color:#0f172a,font-weight:bold;
+    classDef server fill:#ede9fe,stroke:#7c3aed,stroke-width:2px,color:#1e1b4b,font-weight:bold;
+    classDef db fill:#dcfce7,stroke:#16a34a,stroke-width:2px,color:#064e3b,font-weight:bold;
+    classDef cache fill:#fef3c7,stroke:#d97706,stroke-width:2px,color:#78350f,font-weight:bold;
+    classDef ai fill:#fae8ff,stroke:#c026d3,stroke-width:2px,color:#701a75,font-weight:bold;
+
+    A["Class Representative Creates Section Hub"]:::client --> B["POST /api/classrooms (Generates 6-Char Join Code)"]:::server
+    B --> C["Assign Visual Theme Vector Banner (Silicon AI / Physics / Library)"]:::client
+    C --> D["Students Enter Join Code -> Enrolled in Cohort"]:::db
+    
+    E["CR Broadcasts Urgent Lecture Room Change"]:::client --> F["POST /api/classrooms/:id/announcements"]:::server
+    F --> G["Section-Scoped FCM Multicast Engine"]:::ai
+    G --> H["All Enrolled Classmates Receive High-Priority Notification"]:::client
+    
+    I["CR Publishes Section Master Timetable"]:::client --> J["Sync Action: Batch Members Receive Prompt to Merge Timetable"]:::server
+    J --> K["One-Click Import Aligns All Students to Official Batch Schedule"]:::db
+```
+
+---
+
+### 14. 🎙️ ElevenLabs Ultra-Low Latency Voice Copilot
+Real-time continuous voice interaction loop with Voice Activity Detection (VAD) and auto-muting.
+
+```mermaid
+flowchart LR
+    classDef client fill:#e0f2fe,stroke:#0284c7,stroke-width:2px,color:#0f172a,font-weight:bold;
+    classDef server fill:#ede9fe,stroke:#7c3aed,stroke-width:2px,color:#1e1b4b,font-weight:bold;
+    classDef db fill:#dcfce7,stroke:#16a34a,stroke-width:2px,color:#064e3b,font-weight:bold;
+    classDef cache fill:#fef3c7,stroke:#d97706,stroke-width:2px,color:#78350f,font-weight:bold;
+    classDef ai fill:#fae8ff,stroke:#c026d3,stroke-width:2px,color:#701a75,font-weight:bold;
+    classDef warn fill:#fee2e2,stroke:#dc2626,stroke-width:2px,color:#7f1d1d,font-weight:bold;
+    classDef action fill:#f1f5f9,stroke:#475569,stroke-width:2px,color:#0f172a,font-weight:bold;
+
+    A["Student Speaks Aloud"]:::action --> B["Native SpeechRecognition Engine"]:::client
+    B --> C["Continuous VAD Silence Detector (1.2s Timeout)"]:::cache
+    C --> D{"3-Tier Intent Router"}:::ai
+    D -- Tier 1 (0-15ms) --> E["Deterministic Fast-Path (0 Gemini Tokens)"]:::db
+    D -- Tier 2 (<80ms) --> F["Batch Report & Timetable Local Solver"]:::client
+    D -- Tier 3 (~400ms) --> G["Gemini 3.8 Flash (Structured Function Calls)"]:::server
+    E & F & G --> H["Streaming ElevenLabs Flash v2.5 Synthesis"]:::ai
+    H --> I["Capacitor Audio Track (Automatic Mic Muting)"]:::client
+```
+
+---
+
+### 15. 💰 Compute Hours & Free-Tier Resource Budget (0.25 CU DB + 750h Backend + IST Cron Jobs)
+Architected to operate indefinitely on free cloud infrastructure with zero operational costs.
+
+```mermaid
+flowchart TD
+    classDef client fill:#e0f2fe,stroke:#0284c7,stroke-width:2px,color:#0f172a,font-weight:bold;
+    classDef server fill:#ede9fe,stroke:#7c3aed,stroke-width:2px,color:#1e1b4b,font-weight:bold;
+    classDef db fill:#dcfce7,stroke:#16a34a,stroke-width:2px,color:#064e3b,font-weight:bold;
+    classDef cache fill:#fef3c7,stroke:#d97706,stroke-width:2px,color:#78350f,font-weight:bold;
+
+    subgraph NeonDB ["Neon Serverless Database (0.25 Compute Units Budget)"]
+        N1["Connection Pool: min 0, idleTimeoutMillis: 30,000"]:::db
+        N1 --> N2["Zero Routine Keep-Alive Pings to Postgres"]:::cache
+        N2 --> N3["Neon Enters Auto-Suspend After 5 Minutes of Inactivity"]:::db
+        N3 --> N4["Wakes on Active Query in <800ms with Connection Retry Pool"]:::server
+        N4 --> N5["Total Monthly Usage: < 8 CU-hours / 100 CU-hours Free Limit (92% Under Limit)"]:::db
+    end
+
+    subgraph RenderBackend ["Render Cloud Web Service (750 Hours Free Tier)"]
+        R1["Single Continuous Node.js Instance"]:::server
+        R1 --> R2["In-Memory Health Endpoint /api/health (0 DB Queries)"]:::cache
+        R2 --> R3["Uptime Monitor Keeps Web Server Awake (720h-744h / 750h Monthly Budget)"]:::server
+        R3 --> R4["Memory Footprint Constrained to ~180MB / 512MB RAM Budget"]:::server
+    end
+
+    subgraph CronJobs ["IST Orchestrated Cron Engine"]
+        C1["9:00 AM IST: Birthday Greetings & Morning Academic Briefings"]:::client
+        C2["11:59 PM IST: Daily Attendance Rollup & Stale Session Garbage Collection"]:::server
+        C3["Cron Dispatches Batch Direct to FCM & Resend (Bypasses LLM Quota)"]:::db
+    end
+```
 
 ---
 

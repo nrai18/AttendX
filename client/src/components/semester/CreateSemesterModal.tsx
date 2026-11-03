@@ -5,7 +5,7 @@ import { useScrollLock } from "../../hooks/useScrollLock";
 import { useAttendanceStore } from "../../stores/attendanceStore";
 import { useCacheStore } from "../../stores/cacheStore";
 import { SoundFX } from "../../utils/soundEffects";
-import { triggerDynamicHUD } from "../ui/dynamic-island-hud";
+import { triggerDynamicHUD, queueDynamicHUD } from "../ui/dynamic-island-hud";
 import { triggerShockwaveCelebration } from "../ui/shockwave-celebration";
 import { hapticSuccess } from "../../utils/haptics";
 import {
@@ -139,7 +139,12 @@ export const CreateSemesterModal: React.FC<CreateSemesterModalProps> = ({
           year: startYear,
         })
           .then(() => {
-            toast.success("Official academic calendar and holidays synced!");
+            queueDynamicHUD({
+              type: "calendar",
+              label: "Academic Calendar & Holidays Synced",
+              subtitle: "Official institute calendar now active",
+              durationMs: 4000,
+            });
             window.dispatchEvent(new CustomEvent("attendance-updated", { detail: { source: "template-sync" } }));
           })
           .catch((syncErr) => {

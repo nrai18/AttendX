@@ -188,13 +188,27 @@ export class NativeVoiceService {
         // 2. Also sync with the SpeechRecognition plugin
         const speechStatus = await SpeechRecognition.checkPermissions();
         if (speechStatus.speechRecognition !== 'granted') {
-          await SpeechRecognition.requestPermissions();
+          const req = await SpeechRecognition.requestPermissions();
+          if (req && req.speechRecognition === 'granted') {
+            isGranted = true;
+          }
         }
 
         return isGranted;
       } catch (err) {
         console.warn("Speech recognition permission request failed:", err);
         return false;
+      }
+    } else {
+      if (typeof navigator !== 'undefined' && navigator.mediaDevices?.getUserMedia) {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          stream.getTracks().forEach(t => t.stop());
+          return true;
+        } catch (e) {
+          console.warn("Microphone access denied on web:", e);
+          return false;
+        }
       }
     }
     return true;
@@ -326,6 +340,13 @@ export class NativeVoiceService {
       } else {
         // Safe Web browser fallback
         if (typeof window === 'undefined') {
+          options.onEnd?.();
+          return false;
+        }
+
+        const granted = await this.requestPermissions();
+        if (!granted) {
+          options.onError?.(new Error("Microphone access denied. Please allow microphone access in settings."));
           options.onEnd?.();
           return false;
         }

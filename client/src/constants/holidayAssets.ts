@@ -27,6 +27,7 @@ export const HOLIDAY_ASSETS: Partial<Record<AnimationType, string>> = {
   muharram: "/lottie/muharram.json",
   birthday: "/lottie/happy-birthday.json",
   exam: "/lottie/exam.json",
-  practical: "/lottie/lab_exam.json"
+  practical: "/lottie/lab_exam.json",
+  vacation: "/lottie/vacation.json"
 };
 

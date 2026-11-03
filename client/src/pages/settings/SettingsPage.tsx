@@ -319,7 +319,23 @@ export const SettingsPage: React.FC = () => {
                     try {
                       const res = await api.get(`/documents/${doc.id}/download`, { responseType: 'blob' });
                       const blob = res.data instanceof Blob ? res.data : new Blob([res.data], { type: doc.mimeType });
-                      await downloadBlob(blob, doc.name);
+                      if (Capacitor.isNativePlatform()) {
+                        triggerDynamicHUD({
+                          type: "sparkle",
+                          label: "Document Ready to Share",
+                          subtitle: `Choose where to save or share ${doc.name}`,
+                          durationMs: 4200,
+                        });
+                        await downloadBlob(blob, doc.name);
+                      } else {
+                        await downloadBlob(blob, doc.name);
+                        triggerDynamicHUD({
+                          type: "success",
+                          label: "Document Saved to Device",
+                          subtitle: `${doc.name} downloaded to your computer`,
+                          durationMs: 4000,
+                        });
+                      }
                     } catch (e) {
                       console.error(e);
                       toast.error("Failed to download document.");
@@ -357,9 +373,9 @@ export const SettingsPage: React.FC = () => {
                           setShreddingDocId(null);
                           try {
                             await api.delete(`/documents/${doc.id}`);
-                            const { data } = await api.get("/documents");
-                            const freshDocs = Array.isArray(data) ? data : (data?.documents || []);
-                            setStoredDocuments(freshDocs.filter((d: any) => !deletedDocIdsRef.current.has(d.id)));
+                            api.get("/documents").then(({ data }) => { const freshDocs = Array.isArray(data) ? data : (data?.documents || []); setStoredDocuments(freshDocs.filter((d: any) => !deletedDocIdsRef.current.has(d.id))); }).catch(() => {});
+                            // non-blocking document refresh handled above
+                            // state updated in .then()
                           } catch (e) {
                             console.error(e);
                             toast.error("Failed to delete document.");
@@ -547,9 +563,9 @@ export const SettingsPage: React.FC = () => {
   useEffect(() => {
     const fetchDocs = async () => {
       try {
-        const { data } = await api.get("/documents");
-        const freshDocs = Array.isArray(data) ? data : (data?.documents || []);
-        setStoredDocuments(freshDocs.filter((d: any) => !deletedDocIdsRef.current.has(d.id)));
+        api.get("/documents").then(({ data }) => { const freshDocs = Array.isArray(data) ? data : (data?.documents || []); setStoredDocuments(freshDocs.filter((d: any) => !deletedDocIdsRef.current.has(d.id))); }).catch(() => {});
+        // non-blocking document refresh handled above
+        // state updated in .then()
       } catch (err) {
         console.error("Failed to fetch documents", err);
       }
@@ -564,14 +580,41 @@ export const SettingsPage: React.FC = () => {
   const [notifyBirthday, setNotifyBirthday] = useState(true);
   const [dndEnabled, setDndEnabled] = useState(true);
   const [dndAccessGranted, setDndAccessGranted] = useState<boolean>(false);
+  const [hasNotifPermission, setHasNotifPermission] = useState<boolean>(true);
+
+  const refreshNotifPermission = React.useCallback(async () => {
+    try {
+      const status = await NotificationService.checkPermissions();
+      const granted = status === 'granted';
+      setHasNotifPermission(granted);
+      return granted;
+    } catch {
+      setHasNotifPermission(false);
+      return false;
+    }
+  }, []);
+  const prevDndGrantedRef = useRef<boolean | null>(null);
+  const awaitingDndGrantRef = useRef<boolean>(false);
 
   const refreshDndPermission = React.useCallback(async () => {
     try {
       const { checkDndPermission } = await import("../../lib/ringer");
       const granted = await checkDndPermission();
+      if (granted && (awaitingDndGrantRef.current || prevDndGrantedRef.current === false)) {
+        awaitingDndGrantRef.current = false;
+        hapticSelection();
+        triggerDynamicHUD({
+          type: "success",
+          label: "Do Not Disturb Access Granted",
+          subtitle: "Auto-mute during classes is now active",
+          durationMs: 4200,
+        });
+      }
+      prevDndGrantedRef.current = granted;
       setDndAccessGranted(granted);
       return granted;
     } catch {
+      prevDndGrantedRef.current = false;
       setDndAccessGranted(false);
       return false;
     }
@@ -580,10 +623,21 @@ export const SettingsPage: React.FC = () => {
   const handleOpenDndSettings = React.useCallback(async () => {
     const { requestDndPermission } = await import("../../lib/ringer");
     if (!Capacitor.isNativePlatform()) {
-      toast.info("Do Not Disturb auto-mute requires the AttendX Android app.");
+      triggerDynamicHUD({
+        type: "sparkle",
+        label: "Android App Required",
+        subtitle: "Do Not Disturb auto-mute requires the AttendX Android app",
+        durationMs: 3800,
+      });
       return;
     }
-    toast.info("Opening Android Do Not Disturb settings — toggle ON access for AttendX.");
+    awaitingDndGrantRef.current = true;
+    triggerDynamicHUD({
+      type: "sparkle",
+      label: "Opening DND Settings",
+      subtitle: "Toggle ON access for AttendX to enable auto-mute",
+      durationMs: 4000,
+    });
     await requestDndPermission();
     setTimeout(() => {
       refreshDndPermission();
@@ -594,9 +648,11 @@ export const SettingsPage: React.FC = () => {
     refreshDndPermission();
 
     const onWindowFocus = () => {
+      refreshNotifPermission();
       refreshDndPermission();
     };
     const onVisibilityChange = () => {
+      refreshNotifPermission();
       if (document.visibilityState === "visible") {
         refreshDndPermission();
       }
@@ -628,46 +684,151 @@ export const SettingsPage: React.FC = () => {
   const { reminderFrequency, setReminderFrequency, frequencyMemory } = useCacheStore();
   const { config: notifConfig, updateConfig } = useNotificationStore();
 
+  const handleSelectClassReminderOffset = async (mins: number) => {
+    hapticSelection();
+    if (mins === -1) {
+      updateConfig({ classReminderOffset: -1 });
+      NotificationService.autoScheduleFromTimetable();
+      return;
+    }
+
+    let isGranted = hasNotifPermission;
+    if (!isGranted) {
+      const reqGranted = await NotificationService.requestPermissions();
+      if (reqGranted) {
+        setHasNotifPermission(true);
+        isGranted = true;
+        triggerDynamicHUD({
+          type: "success",
+          label: "Notifications Enabled",
+          subtitle: `Class reminder alert set to ${mins} minutes before class`,
+          durationMs: 4000,
+        });
+      } else {
+        setHasNotifPermission(false);
+        triggerDynamicHUD({
+          type: "sparkle",
+          label: "Notification Access Required",
+          subtitle: "Please grant notification permission to receive class reminder alerts",
+          durationMs: 4200,
+        });
+        return;
+      }
+    }
+
+    updateConfig({ classReminderOffset: mins });
+    NotificationService.autoScheduleFromTimetable();
+  };
+
+  const handleSelectReminderFrequency = async (freq: any) => {
+    hapticSelection();
+    if (freq.type === 'Never') {
+      setReminderFrequency(freq);
+      NotificationService.scheduleAcademicUpdates(freq);
+      return;
+    }
+
+    if (freq.type === 'Weekly' || freq.type === 'Monthly' || freq.type === 'Daily' || freq.type === 'Yearly') {
+      let isGranted = hasNotifPermission;
+      if (!isGranted) {
+        const reqGranted = await NotificationService.requestPermissions();
+        if (reqGranted) {
+          setHasNotifPermission(true);
+          isGranted = true;
+          triggerDynamicHUD({
+            type: "success",
+            label: "Notifications Enabled",
+            subtitle: `${freq.type} academic briefing alerts scheduled`,
+            durationMs: 4000,
+          });
+        } else {
+          setHasNotifPermission(false);
+          triggerDynamicHUD({
+            type: "sparkle",
+            label: "Notification Access Required",
+            subtitle: `Allow notifications in device settings to receive ${freq.type.toLowerCase()} summaries`,
+            durationMs: 4200,
+          });
+        }
+      }
+    }
+
+    setReminderFrequency(freq);
+    NotificationService.scheduleAcademicUpdates(freq);
+  };
+
   useEffect(() => {
-    // Schedule updates whenever frequency, memory, or times change
-    NotificationService.scheduleAcademicUpdates(reminderFrequency);
+    // Proactively schedule all notifications whenever frequency, memory, or times change
+    NotificationService.scheduleAllProactiveNotifications();
   }, [
     reminderFrequency,
     frequencyMemory,
+    notifConfig.dailySummaryTime,
     notifConfig.summaryTime,
     notifConfig.weeklySummaryTime,
     notifConfig.monthlySummaryTime,
     notifConfig.yearlySummaryTime,
   ]);
 
-  const activeSummaryTime = notifConfig.summaryTime || "18:00";
+  const activeSummaryTime = React.useMemo(() => {
+    if (reminderFrequency.type === 'Weekly') {
+      return notifConfig.weeklySummaryTime || "18:00";
+    }
+    if (reminderFrequency.type === 'Monthly') {
+      return notifConfig.monthlySummaryTime || "19:00";
+    }
+    if (reminderFrequency.type === 'Yearly') {
+      return notifConfig.yearlySummaryTime || "20:00";
+    }
+    return notifConfig.dailySummaryTime || notifConfig.summaryTime || "18:00";
+  }, [
+    reminderFrequency.type,
+    notifConfig.dailySummaryTime,
+    notifConfig.summaryTime,
+    notifConfig.weeklySummaryTime,
+    notifConfig.monthlySummaryTime,
+    notifConfig.yearlySummaryTime,
+  ]);
+
+  const handleActiveSummaryTimeChange = (newTime: string) => {
+    hapticSelection();
+    if (reminderFrequency.type === 'Weekly') {
+      updateConfig({ weeklySummaryTime: newTime });
+    } else if (reminderFrequency.type === 'Monthly') {
+      updateConfig({ monthlySummaryTime: newTime });
+    } else if (reminderFrequency.type === 'Yearly') {
+      updateConfig({ yearlySummaryTime: newTime });
+    } else {
+      updateConfig({ dailySummaryTime: newTime, summaryTime: newTime });
+    }
+    NotificationService.scheduleAllProactiveNotifications();
+  };
 
   const nextSummaryDate = React.useMemo(() => {
     if (!reminderFrequency || reminderFrequency.type === 'Never') return null;
     try {
       const now = new Date();
-      const globalTime = notifConfig.summaryTime || "18:00";
 
       if (reminderFrequency.type === 'Weekly') {
         const weeklyDay = reminderFrequency.subValue || frequencyMemory?.Weekly || 'Sun';
-        const weeklyDates = calculateNextSummaryDates({ type: 'Weekly', subValue: weeklyDay }, globalTime, now);
+        const weeklyDates = calculateNextSummaryDates({ type: 'Weekly', subValue: weeklyDay }, notifConfig.weeklySummaryTime || "18:00", now);
         return weeklyDates.length > 0 ? weeklyDates[0] : null;
       }
 
       if (reminderFrequency.type === 'Monthly') {
         const monthlyDay = reminderFrequency.subValue || frequencyMemory?.Monthly || '1';
-        const monthlyDates = calculateNextSummaryDates({ type: 'Monthly', subValue: monthlyDay }, globalTime, now);
+        const monthlyDates = calculateNextSummaryDates({ type: 'Monthly', subValue: monthlyDay }, notifConfig.monthlySummaryTime || "19:00", now);
         return monthlyDates.length > 0 ? monthlyDates[0] : null;
       }
 
       if (reminderFrequency.type === 'Daily') {
-        const dailyDates = calculateNextSummaryDates({ type: 'Daily' }, globalTime, now);
+        const dailyDates = calculateNextSummaryDates({ type: 'Daily' }, notifConfig.dailySummaryTime || notifConfig.summaryTime || "18:00", now);
         return dailyDates.length > 0 ? dailyDates[0] : null;
       }
 
       if (reminderFrequency.type === 'Yearly') {
         const yearlyMonth = reminderFrequency.subValue || frequencyMemory?.Yearly || 'Jan';
-        const yearlyDates = calculateNextSummaryDates({ type: 'Yearly', subValue: yearlyMonth }, globalTime, now);
+        const yearlyDates = calculateNextSummaryDates({ type: 'Yearly', subValue: yearlyMonth }, notifConfig.yearlySummaryTime || "20:00", now);
         return yearlyDates.length > 0 ? yearlyDates[0] : null;
       }
 
@@ -678,7 +839,11 @@ export const SettingsPage: React.FC = () => {
   }, [
     reminderFrequency,
     frequencyMemory,
+    notifConfig.dailySummaryTime,
     notifConfig.summaryTime,
+    notifConfig.weeklySummaryTime,
+    notifConfig.monthlySummaryTime,
+    notifConfig.yearlySummaryTime,
   ]);
 
   // Reset Section Toggle
@@ -998,7 +1163,23 @@ export const SettingsPage: React.FC = () => {
 
       const fileName = `attendance_backup_${new Date().toISOString().slice(0, 10)}.json`;
       const jsonString = JSON.stringify(exportData, null, 2);
-      await downloadBlob(new Blob([jsonString], { type: "application/json" }), fileName);
+      if (Capacitor.isNativePlatform()) {
+        triggerDynamicHUD({
+          type: "sparkle",
+          label: "Backup Ready to Share",
+          subtitle: `Choose where to save or share ${fileName}`,
+          durationMs: 4200,
+        });
+        await downloadBlob(new Blob([jsonString], { type: "application/json" }), fileName);
+      } else {
+        await downloadBlob(new Blob([jsonString], { type: "application/json" }), fileName);
+        triggerDynamicHUD({
+          type: "success",
+          label: "Backup Saved to Device",
+          subtitle: `${fileName} downloaded to your computer`,
+          durationMs: 4000,
+        });
+      }
       setBackupStatusMessage("Backup exported successfully!");
       setTimeout(() => setBackupStatusMessage(""), 3000);
     } catch (err) {
@@ -1071,7 +1252,29 @@ export const SettingsPage: React.FC = () => {
       }
 
       const blob = new Blob([res.data], { type: "application/zip" });
-      await downloadBlob(blob, filename);
+      if (Capacitor.isNativePlatform()) {
+        triggerDynamicHUD({
+          type: "sparkle",
+          label: "ZIP Archive Ready to Share",
+          subtitle: `Choose where to save or share ${filename}`,
+          durationMs: 4500,
+        });
+        await downloadBlob(blob, filename);
+        triggerDynamicHUD({
+          type: "success",
+          label: "ZIP Archive Exported",
+          subtitle: `${filename} shared or saved to device`,
+          durationMs: 4000,
+        });
+      } else {
+        await downloadBlob(blob, filename);
+        triggerDynamicHUD({
+          type: "success",
+          label: "ZIP Archive Saved to Device",
+          subtitle: `${filename} downloaded to your computer`,
+          durationMs: 4200,
+        });
+      }
       // RunActionButton already transitions to "Saved" state
     } catch (err: any) {
       if (
@@ -1081,7 +1284,7 @@ export const SettingsPage: React.FC = () => {
         err?.code === "ERR_CANCELED" || 
         axios.isCancel(err)
       ) {
-        toast("Export cancelled", { icon: "🛑" });
+        throw err;
         return;
       }
       console.error("CSV/ZIP export failed", err);
@@ -1096,12 +1299,13 @@ export const SettingsPage: React.FC = () => {
         errorMsg = err.response.data.error;
       }
       toast.error(errorMsg);
+      throw err;
     } finally {
       // Refresh documents after export
       try {
-        const { data } = await api.get("/documents");
-        const freshDocs = Array.isArray(data) ? data : (data?.documents || []);
-        setStoredDocuments(freshDocs.filter((d: any) => !deletedDocIdsRef.current.has(d.id)));
+        api.get("/documents").then(({ data }) => { const freshDocs = Array.isArray(data) ? data : (data?.documents || []); setStoredDocuments(freshDocs.filter((d: any) => !deletedDocIdsRef.current.has(d.id))); }).catch(() => {});
+        // non-blocking document refresh handled above
+        // state updated in .then()
       } catch (e) {}
     }
   };
@@ -1158,9 +1362,9 @@ export const SettingsPage: React.FC = () => {
 
             // Refresh stored documents list
             try {
-              const { data } = await api.get("/documents");
-              const freshDocs = Array.isArray(data) ? data : (data?.documents || []);
-              setStoredDocuments(freshDocs.filter((d: any) => !deletedDocIdsRef.current.has(d.id)));
+              api.get("/documents").then(({ data }) => { const freshDocs = Array.isArray(data) ? data : (data?.documents || []); setStoredDocuments(freshDocs.filter((d: any) => !deletedDocIdsRef.current.has(d.id))); }).catch(() => {});
+              // non-blocking document refresh handled above
+              // state updated in .then()
             } catch (e) {}
 
             setTimeout(() => navigate("/today"), 800);
@@ -1778,8 +1982,9 @@ export const SettingsPage: React.FC = () => {
                 max={100}
                 value={Number(targetAttendance) || 75}
                 onChange={setTargetAttendance}
+                suffix="%"
               />
-              <span className="text-xs font-semibold text-foreground">%</span>
+
               <SaveToggle onClick={handleSaveProfile} size="sm" />
             </div>
           </div>
@@ -1821,9 +2026,9 @@ export const SettingsPage: React.FC = () => {
           </div>
 
           {/* Animation & Micro-Physics Sounds (Default: OFF) */}
-          <div id="setting-animation-sounds" className="p-4 flex items-center justify-between">
+          <div id="setting-animation-sounds" className="p-4 flex items-center justify-between gap-3">
             <div className="flex items-center gap-3">
-              <div className={`w-9 h-9 rounded-xl flex items-center justify-center transition-colors ${
+              <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 transition-colors ${
                 soundEffectsEnabled ? "bg-amber-500/10 text-amber-500" : "bg-muted text-muted-foreground"
               }`}>
                 {soundEffectsEnabled ? <Volume2 className="w-5 h-5" /> : <VolumeX className="w-5 h-5" />}
@@ -1840,9 +2045,9 @@ export const SettingsPage: React.FC = () => {
             <button
               type="button"
               onClick={handleToggleSoundEffects}
-              className={`w-11 h-6 rounded-full transition-colors relative cursor-pointer ${soundEffectsEnabled ? 'bg-primary' : 'bg-muted'}`}
+              className={`w-11 h-6 shrink-0 rounded-full transition-colors duration-200 ease-in-out relative cursor-pointer p-0.5 ${soundEffectsEnabled ? 'bg-primary' : 'bg-muted'}`}
             >
-              <div className={`w-5 h-5 bg-white rounded-full absolute top-0.5 transition-transform ${soundEffectsEnabled ? 'left-[22px]' : 'left-0.5'}`} />
+              <div className={`w-5 h-5 bg-white rounded-full shadow-sm transition-transform duration-200 ease-in-out ${soundEffectsEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
             </button>
           </div>
 
@@ -1867,7 +2072,7 @@ export const SettingsPage: React.FC = () => {
           <div className="w-full flex items-center justify-center bg-transparent transition-colors duration-500">
             <FrequencySelector
               value={reminderFrequency}
-              onChange={setReminderFrequency}
+              onChange={handleSelectReminderFrequency}
               memory={frequencyMemory}
             />
           </div>
@@ -1875,7 +2080,7 @@ export const SettingsPage: React.FC = () => {
             <div className="w-full flex items-center justify-between p-4 mt-2 bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-black/5 dark:border-white/5">
               <div className="flex flex-col gap-0.5">
                 <span className="text-sm font-bold text-slate-900 dark:text-white">
-                  {reminderFrequency.type === 'Daily' ? 'Briefing Time' : 'Summary Time'}
+                  {reminderFrequency.type === 'Daily' ? 'Daily Briefing Time' : reminderFrequency.type === 'Weekly' ? 'Weekly Summary Time' : reminderFrequency.type === 'Monthly' ? 'Monthly Summary Time' : 'Yearly Review Time'}
                 </span>
                 <span className="text-xs text-slate-500 dark:text-slate-400">
                   {(() => {
@@ -1893,10 +2098,7 @@ export const SettingsPage: React.FC = () => {
               <input
                 type="time"
                 value={activeSummaryTime}
-                onChange={(e) => {
-                  hapticSelection();
-                  updateConfig({ summaryTime: e.target.value });
-                }}
+                onChange={(e) => handleActiveSummaryTimeChange(e.target.value)}
                 className="bg-white dark:bg-black text-slate-900 dark:text-white text-sm font-semibold rounded-lg px-3 py-1.5 border border-black/10 dark:border-white/10 outline-none focus:ring-2 focus:ring-slate-900 dark:focus:ring-white cursor-pointer"
               />
             </div>
@@ -1909,11 +2111,115 @@ export const SettingsPage: React.FC = () => {
               </div>
               <div className="flex flex-col gap-0.5">
                 <span className="text-xs font-bold text-slate-900 dark:text-white">
-                  Next Scheduled Report
+                  Next Scheduled Report ({reminderFrequency.type})
                 </span>
                 <span className="text-[11px] text-slate-500 dark:text-slate-400">
                   {format(nextSummaryDate, "EEE, d MMM yyyy 'at' h:mm a")} ({formatDistanceToNow(nextSummaryDate, { addSuffix: true })})
                 </span>
+              </div>
+            </div>
+          )}
+
+          {/* Individual Times for All 4 Summary Frequencies */}
+          {reminderFrequency.type !== 'Never' && (
+            <div className="pt-2 border-t border-black/5 dark:border-white/5 space-y-2.5">
+              <div className="flex items-center justify-between px-1">
+                <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                  All Summary Delivery Times
+                </span>
+                <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold bg-emerald-500/10 px-2 py-0.5 rounded-full">
+                  All Scheduled
+                </span>
+              </div>
+              
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {/* Daily */}
+                <div className="flex items-center justify-between p-3 bg-slate-50/80 dark:bg-slate-900/40 rounded-xl border border-black/5 dark:border-white/5">
+                  <div className="flex flex-col">
+                    <span className="text-xs font-semibold text-slate-900 dark:text-white flex items-center gap-1.5">
+                      📅 Daily Briefing
+                    </span>
+                    <span className="text-[10px] text-slate-500 dark:text-slate-400">
+                      Every day
+                    </span>
+                  </div>
+                  <input
+                    type="time"
+                    value={notifConfig.dailySummaryTime || notifConfig.summaryTime || "18:00"}
+                    onChange={(e) => {
+                      hapticSelection();
+                      updateConfig({ dailySummaryTime: e.target.value, summaryTime: e.target.value });
+                      NotificationService.scheduleAllProactiveNotifications();
+                    }}
+                    className="bg-white dark:bg-black text-slate-900 dark:text-white text-xs font-semibold rounded-md px-2 py-1 border border-black/10 dark:border-white/10 outline-none cursor-pointer"
+                  />
+                </div>
+
+                {/* Weekly */}
+                <div className="flex items-center justify-between p-3 bg-slate-50/80 dark:bg-slate-900/40 rounded-xl border border-black/5 dark:border-white/5">
+                  <div className="flex flex-col">
+                    <span className="text-xs font-semibold text-slate-900 dark:text-white flex items-center gap-1.5">
+                      📊 Weekly Review
+                    </span>
+                    <span className="text-[10px] text-slate-500 dark:text-slate-400">
+                      Every {frequencyMemory?.Weekly || (reminderFrequency.type === 'Weekly' && reminderFrequency.subValue) || 'Sun'}
+                    </span>
+                  </div>
+                  <input
+                    type="time"
+                    value={notifConfig.weeklySummaryTime || "18:00"}
+                    onChange={(e) => {
+                      hapticSelection();
+                      updateConfig({ weeklySummaryTime: e.target.value });
+                      NotificationService.scheduleAllProactiveNotifications();
+                    }}
+                    className="bg-white dark:bg-black text-slate-900 dark:text-white text-xs font-semibold rounded-md px-2 py-1 border border-black/10 dark:border-white/10 outline-none cursor-pointer"
+                  />
+                </div>
+
+                {/* Monthly */}
+                <div className="flex items-center justify-between p-3 bg-slate-50/80 dark:bg-slate-900/40 rounded-xl border border-black/5 dark:border-white/5">
+                  <div className="flex flex-col">
+                    <span className="text-xs font-semibold text-slate-900 dark:text-white flex items-center gap-1.5">
+                      📈 Monthly Summary
+                    </span>
+                    <span className="text-[10px] text-slate-500 dark:text-slate-400">
+                      Day {frequencyMemory?.Monthly || (reminderFrequency.type === 'Monthly' && reminderFrequency.subValue) || '1'} of month
+                    </span>
+                  </div>
+                  <input
+                    type="time"
+                    value={notifConfig.monthlySummaryTime || "19:00"}
+                    onChange={(e) => {
+                      hapticSelection();
+                      updateConfig({ monthlySummaryTime: e.target.value });
+                      NotificationService.scheduleAllProactiveNotifications();
+                    }}
+                    className="bg-white dark:bg-black text-slate-900 dark:text-white text-xs font-semibold rounded-md px-2 py-1 border border-black/10 dark:border-white/10 outline-none cursor-pointer"
+                  />
+                </div>
+
+                {/* Yearly */}
+                <div className="flex items-center justify-between p-3 bg-slate-50/80 dark:bg-slate-900/40 rounded-xl border border-black/5 dark:border-white/5">
+                  <div className="flex flex-col">
+                    <span className="text-xs font-semibold text-slate-900 dark:text-white flex items-center gap-1.5">
+                      🎓 Yearly Wrap-up
+                    </span>
+                    <span className="text-[10px] text-slate-500 dark:text-slate-400">
+                      Every {frequencyMemory?.Yearly || (reminderFrequency.type === 'Yearly' && reminderFrequency.subValue) || 'Jan'} 1st
+                    </span>
+                  </div>
+                  <input
+                    type="time"
+                    value={notifConfig.yearlySummaryTime || "20:00"}
+                    onChange={(e) => {
+                      hapticSelection();
+                      updateConfig({ yearlySummaryTime: e.target.value });
+                      NotificationService.scheduleAllProactiveNotifications();
+                    }}
+                    className="bg-white dark:bg-black text-slate-900 dark:text-white text-xs font-semibold rounded-md px-2 py-1 border border-black/10 dark:border-white/10 outline-none cursor-pointer"
+                  />
+                </div>
               </div>
             </div>
           )}
@@ -1928,16 +2234,35 @@ export const SettingsPage: React.FC = () => {
           <div className="w-full flex flex-col gap-4">
             <div className="flex flex-col gap-1">
               <h3 className="text-sm font-bold text-slate-900 dark:text-white">Class Reminders</h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400">Time before class</p>
+              <div className="flex items-center justify-between">
+                <p className="text-xs text-slate-500 dark:text-slate-400">Time before class</p>
+                {!hasNotifPermission && (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const granted = await NotificationService.requestPermissions();
+                      if (granted) {
+                        setHasNotifPermission(true);
+                        refreshNotifPermission();
+                      }
+                    }}
+                    className="text-[11px] font-bold text-amber-500 hover:text-amber-400 underline cursor-pointer"
+                  >
+                    ⚠️ Notifications Disabled (Tap to enable)
+                  </button>
+                )}
+              </div>
             </div>
             
             <div className="flex w-full bg-slate-100 dark:bg-slate-900 p-1 rounded-xl">
               {[-1, 5, 10, 15].map((mins) => (
                 <button
                   key={mins}
-                  onClick={() => { updateConfig({ classReminderOffset: mins }); NotificationService.autoScheduleFromTimetable(); }}
+                  onClick={() => handleSelectClassReminderOffset(mins)}
                   className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all ${
-                    notifConfig.classReminderOffset === mins
+                    mins > 0 && !hasNotifPermission
+                      ? 'opacity-40 text-slate-400 dark:text-slate-500 hover:opacity-75 cursor-pointer line-through decoration-slate-400/50'
+                      : notifConfig.classReminderOffset === mins
                       ? 'bg-slate-900 text-[#ffffff] dark:bg-white dark:text-slate-900 shadow-sm'
                       : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
                   }`}
@@ -1954,9 +2279,9 @@ export const SettingsPage: React.FC = () => {
               </div>
               <button
                 onClick={() => { updateConfig({ showLocation: !notifConfig.showLocation }); NotificationService.autoScheduleFromTimetable(); }}
-                className={`w-11 h-6 rounded-full transition-colors relative ${notifConfig.showLocation ? 'bg-primary' : 'bg-muted'}`}
+                className={`w-11 h-6 shrink-0 rounded-full transition-colors duration-200 ease-in-out relative cursor-pointer p-0.5 ${notifConfig.showLocation ? 'bg-primary' : 'bg-muted'}`}
               >
-                <div className={`w-5 h-5 bg-white rounded-full absolute top-0.5 transition-transform ${notifConfig.showLocation ? 'left-[22px]' : 'left-0.5'}`} />
+                <div className={`w-5 h-5 bg-white rounded-full shadow-sm transition-transform duration-200 ease-in-out ${notifConfig.showLocation ? 'translate-x-5' : 'translate-x-0'}`} />
               </button>
             </div>
 
@@ -1967,9 +2292,9 @@ export const SettingsPage: React.FC = () => {
               </div>
               <button
                 onClick={() => { updateConfig({ notifyNextClassOnEnd: !notifConfig.notifyNextClassOnEnd }); NotificationService.autoScheduleFromTimetable(); }}
-                className={`w-11 h-6 rounded-full transition-colors relative ${notifConfig.notifyNextClassOnEnd ? 'bg-primary' : 'bg-muted'}`}
+                className={`w-11 h-6 shrink-0 rounded-full transition-colors duration-200 ease-in-out relative cursor-pointer p-0.5 ${notifConfig.notifyNextClassOnEnd ? 'bg-primary' : 'bg-muted'}`}
               >
-                <div className={`w-5 h-5 bg-white rounded-full absolute top-0.5 transition-transform ${notifConfig.notifyNextClassOnEnd ? 'left-[22px]' : 'left-0.5'}`} />
+                <div className={`w-5 h-5 bg-white rounded-full shadow-sm transition-transform duration-200 ease-in-out ${notifConfig.notifyNextClassOnEnd ? 'translate-x-5' : 'translate-x-0'}`} />
               </button>
             </div>
 
@@ -1980,9 +2305,9 @@ export const SettingsPage: React.FC = () => {
               </div>
               <button
                 onClick={() => { updateConfig({ endOfDaySummary: !notifConfig.endOfDaySummary }); NotificationService.autoScheduleFromTimetable(); }}
-                className={`w-11 h-6 rounded-full transition-colors relative ${notifConfig.endOfDaySummary ? 'bg-primary' : 'bg-muted'}`}
+                className={`w-11 h-6 shrink-0 rounded-full transition-colors duration-200 ease-in-out relative cursor-pointer p-0.5 ${notifConfig.endOfDaySummary ? 'bg-primary' : 'bg-muted'}`}
               >
-                <div className={`w-5 h-5 bg-white rounded-full absolute top-0.5 transition-transform ${notifConfig.endOfDaySummary ? 'left-[22px]' : 'left-0.5'}`} />
+                <div className={`w-5 h-5 bg-white rounded-full shadow-sm transition-transform duration-200 ease-in-out ${notifConfig.endOfDaySummary ? 'translate-x-5' : 'translate-x-0'}`} />
               </button>
             </div>
 
@@ -2007,7 +2332,13 @@ export const SettingsPage: React.FC = () => {
                     if (!stillGranted) {
                       await handleOpenDndSettings();
                     } else {
-                      toast.success("Do Not Disturb access is verified and active.");
+                      hapticSelection();
+                      triggerDynamicHUD({
+                        type: "success",
+                        label: "Do Not Disturb Access Active",
+                        subtitle: "Do Not Disturb access is verified and active",
+                        durationMs: 3800,
+                      });
                     }
                   }}
                   title="Tap to re-verify DND permission"
@@ -2058,14 +2389,14 @@ export const SettingsPage: React.FC = () => {
             <RunActionButton
               action={async (signal) => {
                 recordScroll();
-                await handleExportCSV(signal);
+                try { await handleExportCSV(signal); } finally { restoreScrollPosition(); }
                 restoreScrollPosition();
               }}
               onCancel={() => {
                 toast("Export cancelled", { icon: "🛑" });
               }}
               idleLabel="Export ZIP"
-              doneLabel="Saved"
+              doneLabel={Capacitor.isNativePlatform() ? "Shared" : "Saved"}
               subLabel="Exporting"
               idleIcon={
                 <Download className="w-4 h-4 text-primary-foreground opacity-90" />
@@ -2074,7 +2405,7 @@ export const SettingsPage: React.FC = () => {
               steps={[
                 { id: 1, label: "Gathering", icon: FileSpreadsheet },
                 { id: 2, label: "Compressing", icon: FileArchive },
-                { id: 3, label: "Downloading", icon: Download },
+                { id: 3, label: Capacitor.isNativePlatform() ? "Sharing" : "Downloading", icon: Download },
               ]}
             />
           </div>

@@ -45,6 +45,8 @@ import { NotificationService } from "../../services/NotificationService";
 import { useAssignmentStore } from "../../stores/assignmentStore";
 import { App } from "@capacitor/app";
 import { maskProfanity, TOXIC_PATTERN } from "../../utils/profanityMask";
+import { triggerDynamicHUD } from "../ui/dynamic-island-hud";
+import { SoundFX } from "../../utils/soundEffects";
 
 interface ActionPayload {
   id?: string;
@@ -174,12 +176,22 @@ export const FloatingChatbot: React.FC = () => {
   const [isServerOnline, setIsServerOnline] = useState(true);
 
   useEffect(() => {
-    const handleOpenVoiceMode = () => {
+    const handleOpenVoiceMode = async () => {
       try {
         localStorage.setItem("onboarding_voice_mode", "true");
         api.patch("/users/onboarding-status", { step: "voice_mode" }).catch(() => {});
         window.dispatchEvent(new CustomEvent("onboarding-step-completed", { detail: { step: "voice_mode" } }));
       } catch {}
+      const hasMic = await NativeVoiceService.requestPermissions();
+      if (!hasMic) {
+        triggerDynamicHUD({
+          type: "sparkle",
+          label: "Microphone Access Required",
+          subtitle: "Please allow microphone access to enter voice mode",
+          durationMs: 4000,
+        });
+        return;
+      }
       setIsVoiceOpen(true);
     };
     window.addEventListener('open-voice-mode', handleOpenVoiceMode);
@@ -354,6 +366,17 @@ export const FloatingChatbot: React.FC = () => {
   const startHandsFreeMode = async () => {
     if (isHandsFree) {
       stopHandsFreeMode();
+      return;
+    }
+
+    const hasMic = await NativeVoiceService.requestPermissions();
+    if (!hasMic) {
+      triggerDynamicHUD({
+        type: "sparkle",
+        label: "Microphone Access Required",
+        subtitle: "Please allow microphone access to use hands-free mode",
+        durationMs: 4000,
+      });
       return;
     }
 
@@ -865,8 +888,170 @@ const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'vo
         }
 
         // 3.6. Birthday & Peer Birthday Knowledge (0ms Client Fast-Path)
+        const isPublicHolidayEvent = (e: any): boolean => {
+          if (!e) return false;
+          if (e.isHoliday) return true;
+          const t = String(e.eventType || e.event_type || e.type || "").toLowerCase();
+          if (t === "holiday" || t === "restricted_holiday" || t === "vacation" || t === "exam" || t === "midsem" || t === "endsem") return true;
+          const title = String(e.title || "").toLowerCase();
+          if (/\b(guru\s*nanak|guru\s*gobind|guru\s*tegh|mahatma\s*gandhi|gandhi\s*jayanti|hazarat\s*ali|ambedkar|mahavir|buddha|valmiki|ravidas|krishna\s*janmashtami|ram\s*navami|diwali|holi|eid|christmas|dussera|dussehra|independence|republic|teaching\s+day|working\s+day)\b/i.test(title)) {
+            return true;
+          }
+          return false;
+        };
+
+        const parseDateInput = (str: string, currentBirthday?: string | null): { isoDate: string; formatted: string } | null => {
+          if (!str) return null;
+          const clean = str.trim().replace(/^[\s"'“‘`.,;:!?~_/\\()[\]{}\-]+|[\s"'”’`.,;:!?~_/\\()[\]{}\-]+$/g, "").trim();
+
+          // 1. ISO format: YYYY-MM-DD
+          const isoMatch = clean.match(/\b(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})\b/);
+          if (isoMatch) {
+            const y = parseInt(isoMatch[1], 10);
+            const m = parseInt(isoMatch[2], 10);
+            const d = parseInt(isoMatch[3], 10);
+            if (m >= 1 && m <= 12 && d >= 1 && d <= 31 && y >= 1970 && y <= 2030) {
+              const isoDate = `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+              const dt = new Date(`${isoDate}T00:00:00`);
+              const formatted = dt.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+              return { isoDate, formatted };
+            }
+          }
+
+          // 2. DMY format: DD/MM/YYYY or DD-MM-YYYY
+          const dmyMatch = clean.match(/\b(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})\b/);
+          if (dmyMatch) {
+            let p1 = parseInt(dmyMatch[1], 10);
+            let p2 = parseInt(dmyMatch[2], 10);
+            const y = parseInt(dmyMatch[3], 10);
+            let d = p1;
+            let m = p2;
+            if (p1 > 12 && p2 <= 12) {
+              d = p1;
+              m = p2;
+            } else if (p2 > 12 && p1 <= 12) {
+              m = p1;
+              d = p2;
+            }
+            if (m >= 1 && m <= 12 && d >= 1 && d <= 31 && y >= 1970 && y <= 2030) {
+              const isoDate = `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+              const dt = new Date(`${isoDate}T00:00:00`);
+              const formatted = dt.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+              return { isoDate, formatted };
+            }
+          }
+
+          // 3. Named month matching
+          const monthMap: Record<string, number> = {
+            jan: 1, january: 1, feb: 2, february: 2, mar: 3, march: 3,
+            apr: 4, april: 4, may: 5, jun: 6, june: 6, jul: 7, july: 7,
+            aug: 8, august: 8, sep: 9, sept: 9, september: 9,
+            oct: 10, october: 10, nov: 11, november: 11, dec: 12, december: 12,
+          };
+
+          const getDefaultYear = (): number => {
+            if (currentBirthday) {
+              const ey = new Date(currentBirthday).getFullYear();
+              if (!isNaN(ey) && ey >= 1970 && ey <= 2025) return ey;
+            }
+            return 2004;
+          };
+
+          const mFirst = clean.match(/\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+(\d{1,2})(?:st|nd|rd|th)?(?:\s*,?\s*(\d{4}))?\b/i);
+          if (mFirst) {
+            const m = monthMap[mFirst[1].toLowerCase()];
+            const d = parseInt(mFirst[2], 10);
+            const y = mFirst[3] ? parseInt(mFirst[3], 10) : getDefaultYear();
+            if (m >= 1 && m <= 12 && d >= 1 && d <= 31) {
+              const isoDate = `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+              const dt = new Date(`${isoDate}T00:00:00`);
+              const formatted = dt.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+              return { isoDate, formatted };
+            }
+          }
+
+          const dFirst = clean.match(/\b(\d{1,2})(?:st|nd|rd|th)?(?:\s+of)?\s+(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)(?:\s*,?\s*(\d{4}))?\b/i);
+          if (dFirst) {
+            const d = parseInt(dFirst[1], 10);
+            const m = monthMap[dFirst[2].toLowerCase()];
+            const y = dFirst[3] ? parseInt(dFirst[3], 10) : getDefaultYear();
+            if (m >= 1 && m <= 12 && d >= 1 && d <= 31) {
+              const isoDate = `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+              const dt = new Date(`${isoDate}T00:00:00`);
+              const formatted = dt.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+              return { isoDate, formatted };
+            }
+          }
+
+          return null;
+        };
+
+        const uName = user?.name || "Student";
+
+        // Check if user is asking to SET / UPDATE their birthday
+        const setBdayMatch =
+          lower.match(/\b(?:set|update|change|save|make|put|record|register)\s+(?:my\s+)?(?:birthdays?|b'?days?|dob)(?:\s+(?:date|to|as|=|is))?\s+([^?.!]+)/i) ||
+          lower.match(/^(?:my\s+)?(?:birthdays?|b'?days?|dob)\s+(?:is|=|to)\s+([^?.!]+)/i) ||
+          lower.match(/\b(?:i\s+was\s+born\s+(?:on|in))\s+([^?.!]+)/i);
+
+        // Check follow-up context: if the previous assistant message prompted to set a birthday
+        let isFollowUpBday = false;
+        let followUpCandidate = "";
+        if (!setBdayMatch) {
+          const lastAssistant = history.slice().reverse().find(m => m.role === "assistant");
+          if (lastAssistant && /birthday/i.test(lastAssistant.content) && /(?:saved\s+in\s+your\s+profile|tell\s+me\s+here|what\s+is\s+your\s+birthday|set\s+my\s+birthday)/i.test(lastAssistant.content)) {
+            const parsedDirect = parseDateInput(lower, user?.birthday);
+            if (parsedDirect) {
+              isFollowUpBday = true;
+              followUpCandidate = lower;
+            }
+          }
+        }
+
+        if (setBdayMatch || isFollowUpBday) {
+          const candidate = setBdayMatch ? setBdayMatch[1].trim() : followUpCandidate.trim();
+          const parsed = parseDateInput(candidate, user?.birthday);
+          if (parsed) {
+            const { isoDate, formatted } = parsed;
+            const isoPayload = `${isoDate}T00:00:00.000Z`;
+
+            // Asynchronously persist to backend user profile
+            api.patch("/users/me", { birthday: isoPayload })
+              .then((res) => {
+                if (res.data) {
+                  useAuthStore.getState().setUser(res.data);
+                }
+              })
+              .catch((err) => {
+                console.warn("Failed to persist birthday update via chat:", err);
+              });
+
+            // Optimistically update local auth store
+            const cu = useAuthStore.getState().user;
+            if (cu) {
+              useAuthStore.getState().setUser({ ...cu, birthday: isoPayload });
+            }
+
+            // Reschedule proactive notifications with new birthday
+            NotificationService.scheduleAllProactiveNotifications().catch(() => {});
+
+            // Tactile feedback & Dynamic HUD
+            SoundFX.playSnapPopSound();
+            triggerDynamicHUD({
+              type: "sparkle",
+              label: "Birthday Saved",
+              subtitle: `Birthday updated to ${formatted}`,
+              durationMs: 4000,
+            });
+
+            return {
+              reply: `Done, ${uName}! 🎂 I have updated your birthday to **${formatted}**. You'll get a special celebration greeting on your birthday!`,
+            };
+          }
+        }
+
+        // Asking about birthday
         if (/\b(birthdays?|b'?days?|dob|born)\b/i.test(lower)) {
-          const uName = user?.name || "Student";
           // A. User's own birthday query
           const isMyBirthday = (
             /\bmy\s+(?:birthdays?|b'?days?|dob)\b/i.test(lower) ||
@@ -875,7 +1060,7 @@ const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'vo
             /\b(?:tell\s+me|check|show)\s+(?:my\s+)?(?:birthdays?|b'?days?|dob)\b/i.test(lower) ||
             /\bwhen\s+was\s+i\s+born\b/i.test(lower) ||
             /^(?:my\s+)?(?:birthdays?|b'?days?|dob)\??$/i.test(lower.trim())
-          ) && !/\b(whose|who\s+has|anybody|anyone|peer|friend|classmate)\b/i.test(lower);
+          ) && !/\b(whose|who\s+has|anybody|anyone|peer|friend|classmate|next|upcoming)\b/i.test(lower) && !/\b(?:set|update|change|save|make|put|record|register)\b/i.test(lower);
 
           if (isMyBirthday) {
             const rawBday = user?.birthday;
@@ -888,12 +1073,85 @@ const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'vo
             }
           }
 
-          // B. Whose birthday is today / Peer birthday query
+          // B. Next Birthday Query
+          const isNextBirthday = /\b(?:next|upcoming)\s+(?:birthdays?|b'?days?)\b/i.test(lower) || /^(?:what(?:'s|\s+is)\s+)?(?:the\s+)?next\s+birthday\??$/i.test(lower.trim());
+          if (isNextBirthday) {
+            // Check user's own upcoming birthday
+            let userBdayInfo: { dateStr: string; daysUntil: number } | null = null;
+            if (user?.birthday) {
+              const ub = new Date(user.birthday);
+              const thisYear = today.getFullYear();
+              let targetBday = new Date(thisYear, ub.getMonth(), ub.getDate());
+              const todayMidnight = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+              if (targetBday.getTime() < todayMidnight) {
+                targetBday = new Date(thisYear + 1, ub.getMonth(), ub.getDate());
+              }
+              const daysUntil = Math.max(0, Math.round((targetBday.getTime() - todayMidnight) / (1000 * 60 * 60 * 24)));
+              userBdayInfo = {
+                dateStr: targetBday.toLocaleDateString("en-US", { month: "long", day: "numeric" }),
+                daysUntil,
+              };
+            }
+
+            // Check peer birthdays on calendar (strictly excluding public holidays)
+            const upcomingPeerBirthdays = (currentEvents || [])
+              .filter((e: any) => {
+                if (isPublicHolidayEvent(e)) return false;
+                const startStr = toIsoDateOnly(e.date);
+                if (!startStr || startStr < localTodayStr) return false;
+                return /\b(birthdays?|b'?days?|dob)\b/i.test(e.title || "") || /\b(birthdays?|b'?days?|dob)\b/i.test(e.description || "");
+              })
+              .sort((a: any, b: any) => toIsoDateOnly(a.date).localeCompare(toIsoDateOnly(b.date)));
+
+            // Check upcoming public holidays that have "Birthday" in title for explicit disambiguation
+            const upcomingHolidayBirthdays = (currentEvents || [])
+              .filter((e: any) => {
+                if (!isPublicHolidayEvent(e)) return false;
+                const startStr = toIsoDateOnly(e.date);
+                if (!startStr || startStr < localTodayStr) return false;
+                return /\b(birthdays?|jayanti)\b/i.test(e.title || "");
+              })
+              .sort((a: any, b: any) => toIsoDateOnly(a.date).localeCompare(toIsoDateOnly(b.date)));
+
+            let nextEventTitle = "";
+            let nextEventDate = "";
+            let nextEventDays = 9999;
+            if (upcomingPeerBirthdays.length > 0) {
+              const topPeer = upcomingPeerBirthdays[0];
+              const pDate = new Date(toIsoDateOnly(topPeer.date) + "T00:00:00");
+              const todayMidnight = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+              nextEventDays = Math.max(0, Math.round((pDate.getTime() - todayMidnight) / (1000 * 60 * 60 * 24)));
+              nextEventTitle = topPeer.title;
+              nextEventDate = pDate.toLocaleDateString("en-US", { month: "long", day: "numeric" });
+            }
+
+            let reply = "";
+            if (userBdayInfo && userBdayInfo.daysUntil <= nextEventDays) {
+              const countdown = userBdayInfo.daysUntil === 0 ? "today! 🎉" : userBdayInfo.daysUntil === 1 ? "tomorrow!" : `in **${userBdayInfo.daysUntil} days**`;
+              reply = `The next birthday coming up is **yours on ${userBdayInfo.dateStr}** (${countdown})! 🎂`;
+            } else if (nextEventTitle) {
+              const countdown = nextEventDays === 0 ? "today!" : nextEventDays === 1 ? "tomorrow!" : `in **${nextEventDays} days**`;
+              reply = `The next birthday coming up on your calendar is **${nextEventTitle}** on **${nextEventDate}** (${countdown})! 🎂`;
+            } else if (userBdayInfo) {
+              reply = `The next birthday coming up is **yours on ${userBdayInfo.dateStr}**! 🎂`;
+            } else {
+              reply = `You don't have any upcoming peer birthdays scheduled on your calendar, and your birthday isn't saved yet. You can tell me your birthday anytime (e.g. "Set my birthday to November 18")!`;
+            }
+
+            if (upcomingHolidayBirthdays.length > 0) {
+              const topHol = upcomingHolidayBirthdays[0];
+              const hDate = new Date(toIsoDateOnly(topHol.date) + "T00:00:00").toLocaleDateString("en-US", { month: "long", day: "numeric" });
+              reply += `\n\n*(Note: **${topHol.title}** on ${hDate} is an official institute holiday, not a peer birthday).*`;
+            }
+
+            return { reply };
+          }
+
+          // C. Whose birthday is today / Peer birthday query
           const isWhoseBirthday = (
             /\b(whose|who\s+has|anybody('s)?|anyone('s)?|any|check)\s+(?:peer\s+)?(?:birthdays?|b'?days?)\b/i.test(lower) ||
             /\b(?:birthdays?|b'?days?)\s+(?:is\s+)?today\b/i.test(lower) ||
-            /\bis\s+today\s+(?:anybody('s)?|anyone('s)?|a)\s+(?:birthdays?|b'?days?)\b/i.test(lower) ||
-            /\bupcoming\s+(?:birthdays?|b'?days?)\b/i.test(lower)
+            /\bis\s+today\s+(?:anybody('s)?|anyone('s)?|a)\s+(?:birthdays?|b'?days?)\b/i.test(lower)
           );
 
           if (isWhoseBirthday) {
@@ -912,16 +1170,18 @@ const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'vo
               return { reply: `Today is **YOUR birthday**, ${uName}! 🎉🎂 Wishing you a wonderful birthday filled with joy and academic success from the entire AttendX team!` };
             }
 
-            // Check calendar events for today
+            // Check calendar events for today (strictly excluding public holidays)
             const todayEvents = (currentEvents || []).filter((e: any) => {
               const startStr = toIsoDateOnly(e.date);
               const endStr = toIsoDateOnly(e.endDate) || startStr;
               return startStr <= localTodayStr && localTodayStr <= endStr;
             });
 
-            // Priority 1: Events explicitly mentioning birthday
             const explicitBdayEvents = todayEvents.filter((e: any) =>
-              /\b(birthdays?|b'?days?|dob)\b/i.test(e.title || "") || /\b(birthdays?|b'?days?|dob)\b/i.test(e.description || "")
+              !isPublicHolidayEvent(e) && (
+                /\b(birthdays?|b'?days?|dob)\b/i.test(e.title || "") ||
+                /\b(birthdays?|b'?days?|dob)\b/i.test(e.description || "")
+              )
             );
 
             if (explicitBdayEvents.length > 0) {
@@ -929,26 +1189,14 @@ const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'vo
               return { reply: `Today on your calendar: **${names}**! 🎉🎂 Let them know you're celebrating with them today!` };
             }
 
-            // Priority 2: Custom/personal events scheduled for today (e.g. "Priya Didi")
-            const customEvents = todayEvents.filter((e: any) => {
-              const t = String(e.eventType || e.event_type || e.type || "").toLowerCase();
-              return t === "other" || (!e.isHoliday && t !== "holiday" && t !== "restricted_holiday" && t !== "vacation");
-            });
-
-            if (customEvents.length > 0) {
-              const names = customEvents.map((e: any) => e.title).join(", ");
-              return { reply: `Today on your calendar: **${names}** is scheduled for today (${todayFormatted})! 🎉🎂 Let them know you're celebrating with them!` };
-            }
-
-            // Priority 3: Upcoming birthdays in the calendar
+            // Upcoming peer birthdays only
             const upcomingBdayEvents = (currentEvents || [])
               .filter((e: any) => {
+                if (isPublicHolidayEvent(e)) return false;
                 const startStr = toIsoDateOnly(e.date);
-                const t = String(e.eventType || e.event_type || e.type || "").toLowerCase();
                 return startStr >= localTodayStr && (
                   /\b(birthdays?|b'?days?|dob)\b/i.test(e.title || "") ||
-                  /\b(birthdays?|b'?days?|dob)\b/i.test(e.description || "") ||
-                  t === "other"
+                  /\b(birthdays?|b'?days?|dob)\b/i.test(e.description || "")
                 );
               })
               .sort((a: any, b: any) => toIsoDateOnly(a.date).localeCompare(toIsoDateOnly(b.date)))
@@ -963,11 +1211,11 @@ const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'vo
               return { reply: `There are no peer birthdays scheduled for today. Upcoming on your calendar: ${formattedList}.${userBdayStr}` };
             }
 
-            const userBdayStr = user?.birthday ? ` Your birthday on record is **${new Date(user.birthday).toLocaleDateString("en-US", { month: "long", day: "numeric" })}**.` : " (Set your birthday in Settings > Edit Profile).";
+            const userBdayStr = user?.birthday ? ` Your birthday on record is **${new Date(user.birthday).toLocaleDateString("en-US", { month: "long", day: "numeric" })}**.` : " (Set your birthday anytime by saying 'Set my birthday to November 18').";
             return { reply: `There are no peer birthdays scheduled for today.${userBdayStr}` };
           }
 
-          // C. Asking about a specific person or event's birthday
+          // D. Asking about a specific person or event's birthday
           const specificMatch = lower.match(/(?:when|what|is)\s+(?:is\s+)?([a-z0-9\s'-]+?)(?:'s|\s+has)?\s+(?:birthdays?|b'?days?|dob)\b/i) ||
             lower.match(/(?:when|is\s+it)\s+([a-z0-9\s'-]+?)(?:'s)?\s+(?:birthdays?|b'?days?)\b/i);
           if (specificMatch) {
@@ -980,6 +1228,10 @@ const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'vo
               if (matchedEvent) {
                 const d = new Date(String(matchedEvent.date).split("T")[0] + "T00:00:00");
                 const formatted = d.toLocaleDateString("en-US", { month: "long", day: "numeric" });
+                const isHoliday = isPublicHolidayEvent(matchedEvent);
+                if (isHoliday) {
+                  return { reply: `According to your calendar, **${matchedEvent.title}** is an official institute holiday on **${formatted}**! 🌴` };
+                }
                 return { reply: `According to your calendar, **${matchedEvent.title}** is on **${formatted}**! 🎂` };
               }
             }
@@ -1854,7 +2106,7 @@ const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'vo
     <>
       {/* Floating Trigger Dock with Ambient Glow (hidden when drawer is open to prevent overlapping artifacts) */}
       {!isOpen && (
-        <div className="fixed bottom-[calc(5rem+env(safe-area-inset-bottom))] md:bottom-6 right-6 z-40">
+        <div className="fixed bottom-[calc(6.25rem+env(safe-area-inset-bottom,0px))] md:bottom-6 right-4 sm:right-6 z-40">
           <motion.button
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
@@ -2379,12 +2631,22 @@ const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'vo
                       </button>
                       <button
                         type="button"
-                        onClick={() => {
+                        onClick={async () => {
                           try {
                             localStorage.setItem("onboarding_voice_mode", "true");
                             api.patch("/users/onboarding-status", { step: "voice_mode" }).catch(() => {});
                             window.dispatchEvent(new CustomEvent("onboarding-step-completed", { detail: { step: "voice_mode" } }));
                           } catch {}
+                          const hasMic = await NativeVoiceService.requestPermissions();
+                          if (!hasMic) {
+                            triggerDynamicHUD({
+                              type: "sparkle",
+                              label: "Microphone Access Required",
+                              subtitle: "Please allow microphone access to enter voice mode",
+                              durationMs: 4000,
+                            });
+                            return;
+                          }
                           setIsVoiceOpen(true);
                         }}
                         className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-slate-200 dark:hover:bg-white/10 text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors cursor-pointer"

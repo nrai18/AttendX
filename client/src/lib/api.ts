@@ -127,6 +127,48 @@ import { App } from "@capacitor/app";
 
 let cachedHardwareInfo = "";
 let cachedAppVersion = "";
+let cachedRealHostOS = "";
+
+export function detectRealHostOS(): string {
+  if (cachedRealHostOS) return cachedRealHostOS;
+  try {
+    if (Capacitor.isNativePlatform()) {
+      const p = Capacitor.getPlatform();
+      cachedRealHostOS = p === "ios" ? "iOS" : "Android";
+      return cachedRealHostOS;
+    }
+    const navPlat = typeof navigator !== "undefined" ? (navigator.platform || "") : "";
+    if (/Win/i.test(navPlat)) {
+      cachedRealHostOS = "Windows";
+      return cachedRealHostOS;
+    }
+    if (/Mac/i.test(navPlat)) {
+      cachedRealHostOS = "macOS";
+      return cachedRealHostOS;
+    }
+    if (typeof document !== "undefined") {
+      const canvas = document.createElement("canvas");
+      const gl = (canvas.getContext("webgl") || canvas.getContext("experimental-webgl")) as any;
+      if (gl) {
+        const dbg = gl.getExtension("WEBGL_debug_renderer_info");
+        const renderer = String(dbg ? gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER) || "");
+        if (/Direct3D|D3D11|D3D9|Microsoft Basic Render/i.test(renderer)) {
+          cachedRealHostOS = "Windows";
+          return cachedRealHostOS;
+        }
+        if (/Apple M\d|Apple GPU|Intel.*OpenGL Engine/i.test(renderer) && !/Adreno|Mali|PowerVR/i.test(renderer)) {
+          cachedRealHostOS = "macOS";
+          return cachedRealHostOS;
+        }
+      }
+    }
+    if (/Linux x86_64/i.test(navPlat) && !/Android/i.test(navigator.userAgent || "")) {
+      cachedRealHostOS = "Linux";
+      return cachedRealHostOS;
+    }
+  } catch {}
+  return "";
+}
 
 
 
@@ -166,6 +208,8 @@ api.interceptors.request.use(
 
     config.headers['X-Attendx-Platform'] = Capacitor.isNativePlatform() ? 'Mobile App' : 'Web/Laptop';
     config.headers['X-Attendx-OS'] = Capacitor.getPlatform();
+    const realHostOS = detectRealHostOS();
+    if (realHostOS) config.headers['X-Attendx-Real-OS'] = realHostOS;
     config.headers['X-Attendx-Timezone'] = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
     if (cachedHardwareInfo) config.headers['X-Attendx-Hardware'] = cachedHardwareInfo;
@@ -181,7 +225,19 @@ api.interceptors.request.use(
     }
     if (browserName) config.headers['X-Attendx-Browser'] = browserName;
 
-    // Geolocation fetching has been moved directly to UI mounting phases
+    // Attach cached live GPS coordinates for session & refresh calls without blocking requests
+    if (config.url?.includes("/users/sessions") || config.url?.includes("/auth/refresh")) {
+      try {
+        const rawCoords = sessionStorage.getItem("attendx_live_coords");
+        if (rawCoords) {
+          const parsed = JSON.parse(rawCoords);
+          if (parsed?.lat && parsed?.lon && !config.headers["x-attendx-lat"]) {
+            config.headers["x-attendx-lat"] = String(parsed.lat);
+            config.headers["x-attendx-lon"] = String(parsed.lon);
+          }
+        }
+      } catch {}
+    }
 
     if (
       config.url?.includes("/auth/login") || config.url?.includes("/auth/google") ||

@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { App as CapacitorApp } from "@capacitor/app";
 import { Capacitor } from "@capacitor/core";
 import { useBackHandlerStore } from "../../stores/backHandlerStore";
-import { useAuthStore } from "../../stores/authStore";
+import { useAuthStore, isUserAuthenticated } from "../../stores/authStore";
 
 export const HardwareBackButtonHandler = () => {
   const navigate = useNavigate();
@@ -46,24 +46,41 @@ export const HardwareBackButtonHandler = () => {
       // 3. PUBLIC ENTRY & LEGAL ROUTES
       // For legal pages (/privacy, /terms), respect user auth state & navigation history
       if (currentPath.startsWith("/privacy") || currentPath.startsWith("/terms")) {
-        const { isAuthenticated } = useAuthStore.getState();
-        if (historyStack.current.length > 1) {
+        const isAuth = isUserAuthenticated();
+        const hasInternalHistory = Boolean(window.history.state && typeof window.history.state.idx === 'number' && window.history.state.idx > 0) && historyStack.current.length > 1;
+        if (hasInternalHistory) {
           historyStack.current.pop();
           const prev = historyStack.current[historyStack.current.length - 1];
           if (!prev || prev === "/" || prev === "/login" || prev === "/signup" || prev === "/privacy" || prev === "/terms") {
-            navigate(isAuthenticated ? "/today" : "/", { replace: true });
+            navigate(isAuth ? "/settings" : "/", { replace: true });
           } else {
             navigate(-1);
           }
         } else {
-          navigate(isAuthenticated ? "/today" : "/", { replace: true });
+          // Cold boot / memory-evicted launch fallback: return to settings if logged in, else landing page
+          navigate(isAuth ? "/settings" : "/", { replace: true });
         }
         return;
       }
 
-      // For auth entry routes (/login, /signup, etc.)
+      // For auth entry routes (/login, /signup, /forgot-password, /reset-password)
       const authRoutes = ["/login", "/signup", "/forgot-password", "/reset-password"];
       if (authRoutes.includes(currentPath)) {
+        const isAuth = isUserAuthenticated();
+        if (isAuth) {
+          navigate("/settings", { replace: true });
+          return;
+        }
+        if (currentPath === "/forgot-password" || currentPath === "/reset-password") {
+          const hasInternalHistory = Boolean(window.history.state && typeof window.history.state.idx === 'number' && window.history.state.idx > 0) && historyStack.current.length > 1;
+          if (hasInternalHistory) {
+            historyStack.current.pop();
+            navigate(-1);
+          } else {
+            navigate("/login", { replace: true });
+          }
+          return;
+        }
         navigate("/", { replace: true });
         return;
       }
@@ -99,6 +116,10 @@ export const HardwareBackButtonHandler = () => {
         navigate("/settings", { replace: true });
         return;
       }
+      if (currentPath === "/404") {
+        navigate(isUserAuthenticated() ? "/today" : "/", { replace: true });
+        return;
+      }
 
       // Top-level tabs return to the main dashboard
       if (currentPath === "/timetable" || currentPath === "/calendar" || currentPath === "/subjects" || currentPath === "/settings") {
@@ -119,9 +140,9 @@ export const HardwareBackButtonHandler = () => {
           navigate(-1);
         }
       } else {
-        // We are deep in the app but have no history (e.g., opened via deep link/notification)
-        // Fallback to the home tab so the user isn't trapped
-        navigate("/today", { replace: true });
+        // We are deep in the app but have no history (e.g., opened via deep link/notification/cold memory boot)
+        // Fallback safely so the user isn't trapped
+        navigate(isUserAuthenticated() ? "/today" : "/", { replace: true });
       }
     });
 

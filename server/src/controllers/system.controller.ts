@@ -28,6 +28,51 @@ export class SystemController {
               "title": "Delight Micro-Physics & Web Audio Synthesizer (4.0s - 5.0s Suite)",
               "items": [
                 {
+                  "icon": "🏛️",
+                  "text": "Classroom Disband Lifecycle & Database Announcement Purge: Hardened classroom deletion to immediately purge all section announcements from the database upon disbanding, preventing orphaned announcements from lingering in PostgreSQL. If a classroom has no enrolled peers, the classroom record is immediately and permanently erased from the database; if peers exist, the hub is marked as disbanded to deliver the high-priority push alert and greyed-out dashboard state, and is completely deleted from the database once all peers remove the hub."
+                },
+                {
+                  "icon": "🎂",
+                  "text": "AI Copilot Birthday Intent & Public Holiday Disambiguation: Enhanced client (0ms) and server (<1ms) AI Copilot fast-path router with robust natural language birthday parsing across ISO (YYYY-MM-DD), DMY (DD/MM/YYYY), and named-month variants (e.g. 'November 18', '2004-04-17'). Prompts to set missing birthdays automatically capture subsequent replies or explicit 'Set my birthday to ...' instructions, instantly persisting to the user profile, synchronizing local auth state, and triggering celebratory Dynamic Island HUD feedback. Strictly isolated peer birthdays from gazetted holidays and academic milestones (e.g. Guru Nanak's Birthday, Hazarat Ali's Birthday, Gandhi Jayanti, Last Teaching Day), providing dedicated calendar disambiguation notes."
+                },
+                {
+                  "icon": "📱",
+                  "text": "Android Home Screen Widgets, Choreographed Dynamic Island HUD & Anti-Collision Onboarding Layout: Built native Android Home Screen widgets including the 4x2 Today + Quick Log Obsidian widget (#0B0F17) with live attendance percentages, active lecture spotlight with room numbers, countdown timer, bunk runway metrics, and 1-tap quick action buttons (+ Quick Log, Voice Copilot, and Today Schedule), alongside the 1x2 Next Class Glance widget with dynamic high-contrast theming. Connected via zero-latency Capacitor WidgetBridge plugin auto-syncing timetable and attendance states. Converted uncoordinated calendar sync toasts into a choreographed Dynamic Island HUD notification (queueDynamicHUD) that appears smoothly after the 'Semester Created & Active!' pill without collisions, and eliminated onboarding stepper label/dot horizontal text overlapping."
+                },
+                {
+                  "icon": "🔔",
+                  "text": "Multi-Frequency Summary Delivery & Proactive Zero-Navigation Notification Engine: Architected independent delivery times for Daily Briefings (18:00), Weekly Reviews (18:00), Monthly Summaries (19:00), and Yearly Wrap-ups (20:00) with dedicated, non-colliding Android LocalNotification ID bands (8800..8807, 8810..8813, 8820..8822, 8830) scheduled simultaneously. Eliminated legacy forced time overwriting and unblocked academic updates from waiting for students to visit Settings, Timetable, or Semester pages. Automatically evaluates timetable slots, semester events, holidays, and onboarding status upon app launch, auth hydration, and data mutations. Wrapped Android native share sheet interactions in defensive cancellation guards to eliminate false export failure toasts."
+                },
+
+                {
+                  "icon": "📍",
+                  "text": "Chronological Day Agenda & Overall Log Ordering, Live Linked-Device Location Refetching, Sub-15ms Cached ZIP Export & Extra Class Start-Time Picker: Enforced strict chronological timetable ordering (by startTime ascending) across the Calendar Day Agenda bottom sheet, hover tooltips, and Overall Attendance Logs across both active and archived timetable versions. Added live GPS and IP-based city/state location refetching when opening Linked Devices or refreshing sessions. Inferred Practical vs. Lecture slot types dynamically from subject codes/names (e.g. _LAB) and added preset Start Time chips (09:00–16:30) to the Add Extra Class modal. Preserved Extra Class metadata in ZIP CSV exports/imports, added platform-aware Dynamic Island HUD notifications for PC downloads vs. Android share sheets, refined Subjects quick-action icon contrast, and eliminated mobile calendar cell ring collisions and AttendX AI bottom navbar overlap."
+                },
+                {
+                  "icon": "✨",
+                  "text": "Holiday Date-Matched Celebration, Smooth 1.25s Whoosh Trajectories & DND Dynamic HUD: Strictly bound holiday greeting animations (such as Diwali) to their exact matched date after < / > navigation settles without duplicate background popups. Slowed Classroom Hub creation/deletion and Linked Devices revocation whoosh trajectories to a smooth 1.2s–1.25s flight with immediate session logout upon completion, stopped the ZIP export timer immediately on error/timeout, and upgraded Do Not Disturb (DND) verification and permission-grant feedback to Dynamic Island HUD pills."
+                },
+                {
+                  "icon": "📅",
+                  "text": "Archived Timetable Version Leak & 00:00 Historical Time Resolution: Fixed an issue where current active timetable slots (validUntil === null) inadvertently leaked into historical archived versions, inflating Version 1 from 20 to 40 classes. Strictly restricted archived versions to their respective retirement clusters. In addition, resolved the 00:00 - 00:00 display bug on past attendance cards (e.g. 2026-07-31) by dynamically matching historical and manual attendance entries against their subjects' valid timetable slots and archived schedule times."
+                },
+                {
+                  "icon": "🌴",
+                  "text": "Vacation & Break Airplane Flight Lottie Mode: Integrated smooth flying airplane Lottie animation (trip-vacation-mode-fly-flying-plane.json) for vacations, semester recesses, and academic breaks. Disambiguated 'Mid Semester Break' from exam schedules to prevent false exam banners and cheer alerts, styling vacation cards with soothing emerald themes and restful recharge messages."
+                },
+                {
+                  "icon": "🧠",
+                  "text": "Multi-Dimensional Forecast Engine & Planned Leave Buffer: Elevated predictive intelligence with deep behavioral correlations. Correlates Friday clusters with 'Home' travel remarks, morning attendance with 'Overslept' remarks, recovers attended classes marked with 'Forgot to say present', resolves the 00:00 unscheduled extra class artifact, computes subject-specific runway margins for Fiber Optic Communication, and reframes generic bunks into a flexible planned leave cushion for trips, vacations, and exam prep."
+                },
+                {
+                  "icon": "⚡",
+                  "text": "Neon Serverless Connection Resilience: Increased pool connection timeout to 15,000ms with progressive exponential retry delays (800ms, 2000ms, 3500ms) and statement query timeouts, preventing socket termination when waking suspended Neon database endpoints."
+                },
+                {
+                  "icon": "🎛️",
+                  "text": "Settings Toggle Button Structural Containment: Added flex shrink protection (shrink-0) and standardized translate-x kinematics to the Sound and Notification switches in Settings, eliminating knob overflow beyond track bounds on small viewports."
+                },
+                {
                   "icon": "📲",
                   "text": "Classroom Section-Scoped FCM Delivery & Deep-Link Routing: Enforced strict section-isolated FCM dispatch (prisma.classroomMember query excluding the sender) so that announcements and disband alerts reach strictly enrolled peers of that specific classroom code. Added rich routing metadata (data.route, data.url, and data.classroomId) and cold/warm launch deep-link routing in NotificationService and AppShell, navigating students directly to /classrooms/:id upon announcement tap, and /classrooms upon hub disband alerts."
                 },
@@ -476,6 +521,7 @@ export class SystemController {
             {
               "title": "Android Hardware, DND & Notifications",
               "items": [
+
                 {
                   "icon": "⏰",
                   "text": "Unified Global Summary Time Architecture: Summary report time is now maintained globally across all frequencies (Daily, Weekly, Monthly, Yearly). Setting the time updates the single canonical global summary time (default 18:00 / 6:00 PM), preventing diverging or disjointed time slots."
@@ -533,6 +579,7 @@ export class SystemController {
             {
               "title": "Attendance & Schedule Hardening",
               "items": [
+
                 {
                   "icon": "🗑️",
                   "text": "Archived Timetable Version Deletion & Management: Users can now delete specific versions or all historical versions of their archived timetables directly from the Archived Timetables modal. Incorporates confirmDeleteToast spring confirmation, SoundFX.playPaperCrumpleSound audio synthesis, optimistic state eviction, and safe foreign key decoupling to protect historical attendance records while guaranteeing active timetable slots remain completely untouched."
@@ -742,6 +789,7 @@ export class SystemController {
             {
               "title": "Architecture & Linked Devices Optimization",
               "items": [
+
                 {
                   "icon": "⚡",
                   "text": "High-Speed Sessions API & In-Memory Caching: Cached active user sessions via CacheService.getOrSet and purged expired sessions asynchronously, slashing /api/users/sessions latency from ~13,000ms down to sub-10ms."
@@ -775,6 +823,7 @@ export class SystemController {
                             {
                                       "title": "Authentication & Password Reset Polish",
                                       "items": [
+
                                                 {
                                                           "icon": "🔢",
                                                           "text": "6-Box OTP Verification UI: Replaced the single input field and placeholder with 6 individual digit boxes featuring blank placeholders, auto-advance, backspace jumps, clipboard paste, and numeric keyboard mode."
@@ -796,6 +845,7 @@ export class SystemController {
                             {
                                       "title": "iOS Liquid Glass Dock & Gesture Scrubbing",
                                       "items": [
+
                                                 {
                                                           "icon": "📱",
                                                           "text": "Optical Liquid Glass Dock: Re-engineered the mobile navigation bar into an Apple Safari-styled floating glass dock with rounded-full pill ergonomics, specular rim highlights, saturation boost, and an organic liquid lens indicator replacing boxy containers."
@@ -809,6 +859,7 @@ export class SystemController {
                             {
                                       "title": "Peer Sync & Historical Integrity",
                                       "items": [
+
                                                 {
                                                           "icon": "🔄",
                                                           "text": "Full Timetable & Override Synchronization: Peer sync now transmits and preserves archived timetable versions, slot dates, timetable overrides, and extra classes without loss."
@@ -822,6 +873,7 @@ export class SystemController {
                             {
                                       "title": "Interface Polish & Notification Hygiene",
                                       "items": [
+
                                                 {
                                                           "icon": "✨",
                                                           "text": "Modal CSS Glitch Elimination: Fixed background bleeding and dual scrollbar jitter across Linked Devices and Profile Settings."
@@ -835,6 +887,7 @@ export class SystemController {
                             {
                                       "title": "Tactile Experience & Haptics",
                                       "items": [
+
                                                 {
                                                           "icon": "📳",
                                                           "text": "Universal Haptic Engine: Ultra-low latency pointer-level physical tactile response across all buttons, tabs, links, and actionable controls."
@@ -856,6 +909,7 @@ export class SystemController {
                             {
                                       "title": "Timetable & Schedule Engine",
                                       "items": [
+
                                                 {
                                                           "icon": "📅",
                                                           "text": "Dual Timetable Display: Surfaced active timetable with 'Active' pill badge above historical archives, displaying exact start dates with pristine version resolution."
@@ -881,6 +935,7 @@ export class SystemController {
                             {
                                       "title": "Voice Assistant & UI Polish",
                                       "items": [
+
                                                 {
                                                           "icon": "🎙️",
                                                           "text": "Hands-Free Voice Loop: Assistant seamlessly listens and responds in a continuous natural conversation without repetitive query repeats."
@@ -926,6 +981,7 @@ export class SystemController {
                             {
                                       "title": "Navigation & Mobile Architecture",
                                       "items": [
+
                                                 {
                                                           "icon": "📍",
                                                           "text": "Hardware Back Scroll Retention: Backing out of Settings subviews precisely restores your exact scroll depth without jumping to top."
@@ -951,6 +1007,7 @@ export class SystemController {
                             {
                                       "title": "Core Stability, Database & Notifications",
                                       "items": [
+
                                                 {
                                                           "icon": "🎂",
                                                           "text": "Automated Birthday Engine: Fixed PostgreSQL timezone date extraction so automated birthday greetings and native push alerts dispatch reliably at 8:00 AM."
@@ -976,6 +1033,7 @@ export class SystemController {
                             {
                                       "title": "AI Diagnostics & Email Delivery Telemetry",
                                       "items": [
+
                                                 {
                                                           "icon": "🤖",
                                                           "text": "Deep AI Telemetry: Structured high-visibility logging for incoming user questions, enriched academic context snapshots, model cascades, and intent classification."
@@ -993,6 +1051,7 @@ export class SystemController {
                             {
                                       "title": "Voice Mode Fluidity & Multi-Turn Intelligence",
                                       "items": [
+
                                                 {
                                                           "icon": "🎙️",
                                                           "text": "Streaming Voice Cursor Synchronization: Eliminated flash-to-end timing glitching in Voice Mode Overlay by stabilizing speech clock start boundaries and rendering a glowing cursor traveling hand-in-hand with spoken audio."
@@ -1026,6 +1085,7 @@ export class SystemController {
                             {
                               "title": "Today Schedule Engine & Timetable Deletion Optimization",
                               "items": [
+
                                 {
                                   "icon": "⚡",
                                   "text": "Sub-10ms Today Page Engine & Query Coalescing: Eliminated sequential late round-trips by resolving known active semesters upfront in the initial parallel wave, caching onboarding status across date swipes, and removing duplicate background notification scheduling."
@@ -1053,6 +1113,18 @@ export class SystemController {
                                  {
                                    "icon": "✅",
                                    "text": "Flawless Onboarding Checklist & Multi-Device Sync: Resolved race conditions and stale closure issues across all 9 checklist stages. Step 5 (\"Log your first attendance\") now ticks immediately with 0ms latency upon logging any class or full day off. Step 6 (\"Explore Hands-Free Voice Mode\") automatically completes whenever hands-free speech loop or live voice overlay is opened. Hardened bidirectional sync between database (User record) and localStorage, added celebratory ascending major-chord level-up fanfare (C5->E5->G5->C6) and Dynamic Island HUD on completion, and implemented smooth dismiss handling with permanent global persistence."
+                                  },
+                                  {
+                                    "icon": "🛡️",
+                                    "text": "Multi-Round Contextual Permission Pattern & FCM Recovery: Re-architected system permission requests with progressive contextual fallbacks. If permissions are skipped during Round 1 onboarding, the app contextually re-prompts when the relevant feature is accessed: microphone permissions in Voice Mode and Hands-Free, location permissions in Linked Devices, and notification permissions in Settings (for 5m, 10m, and 15m class reminder lead times, which visually grey out when notifications are disabled) and Weekly/Monthly summary reports. Fixed an FCM token recovery bug so that if a student initially denies push notifications and later grants them in Settings or resumes the app after enabling them in Android system settings, push listeners attach idempotently, PushNotifications.register() executes, and the newly generated token automatically syncs to /api/users/me."
+                                  },
+                                  {
+                                    "icon": "📍",
+                                    "text": "Linked Devices Location Re-Prompt & Active Session Sync: Equipped LinkedDevicesModal with automatic live coordinate resolution and an interactive 'Enable location' trigger on the current session card when location access was denied in Round 1, seamlessly patching coordinates to the active session without requiring page refreshes."
+                                  },
+                                  {
+                                    "icon": "📥",
+                                    "text": "High-Impact Landing Page Download App UI: Elevated the mobile and desktop Download App CTA on attendx.tech with prominent Neo-Brutalist tactile styling, APK badge pills, and responsive layout scaling to eliminate button clipping on small viewports."
                                  }
                               ]
                             }
@@ -1066,6 +1138,7 @@ export class SystemController {
             {
               "title": "General Improvements & Bug Fixes",
                             "items": [
+
                 { "icon": "🎙️", "text": "Fixed a UI state freeze where Hands-Free mode wouldn't exit if the hardware mic timed out due to silence." },
                 { "icon": "🚀", "text": "Resolved a subtle race condition where Push Notifications wouldn't register on fresh logins." },
                 { "icon": "🔐", "text": "Form metadata injected to trigger Password Managers (like Google) reliably on Android WebViews." },
@@ -1081,6 +1154,7 @@ export class SystemController {
             {
               "title": "New Features",
               "items": [
+
                 { "icon": "🔔", "text": "Introduced Birthday Push Notifications — the app will now ping your phone at 9:00 AM for friends' birthdays, and 8:00 AM for your own!" },
                 { "icon": "📅", "text": "Added support for adding Custom Events directly into the calendar via the Semester Hub!" },
                 { "icon": "🎙️", "text": "Upgraded Voice Mode to a truly hands-free continuous loop. The AI now automatically resumes listening after speaking, creating seamless back-and-forth conversations." }
@@ -1089,6 +1163,7 @@ export class SystemController {
             {
               "title": "Architecture & Performance",
               "items": [
+
                 { "icon": "🐛", "text": "Massive performance fix: Removed a global CSS transition that was causing severe UI jitter and frame drops when switching tabs across the app." },
                 { "icon": "🎙️", "text": "Hardened Voice Mode against audio echoes by injecting a strict 200ms acoustic kill-switch before AI playback begins." }
               ]
@@ -1096,6 +1171,7 @@ export class SystemController {
             {
               "title": "Visual Enhancements",
               "items": [
+
                 { "icon": "🎨", "text": "Engineered a flawless CSS transition for the Light/Dark mode toggle, enabling smooth cinematic cross-fades globally." },
                 { "icon": "🌙", "text": "Fixed dark mode text legibility and cleaned up dropdown categories on the Add Custom Event modal." }
               ]
@@ -1103,6 +1179,7 @@ export class SystemController {
             {
               "title": "Bug Fixes",
               "items": [
+
                 { "icon": "🛠️", "text": "Fixed Firebase Push Notifications bug where devices occasionally failed to sync FCM tokens on login." },
                 { "icon": "📅", "text": "Fixed calendar loop bug where some regular events (like Cultural Fests) failed to dispatch morning push notifications." },
                 { "icon": "🎉", "text": "Restricted Holidays now correctly dispatch morning notifications without accidentally erasing your class timetable for the day." }
@@ -1118,6 +1195,7 @@ export class SystemController {
             {
               "title": "Architecture & Performance",
               "items": [
+
                 { "icon": "🚀", "text": "Completely overhauled the AI Copilot backend, migrating to a high-speed Gemini 3.8-Flash intent router." },
                 { "icon": "🧹", "text": "Implemented an automated 14-day cache pruner to prevent infinite storage bloat." }
               ]
@@ -1125,6 +1203,7 @@ export class SystemController {
             {
               "title": "New Features & Enhancements",
               "items": [
+
                 { "icon": "🎙️", "text": "Fixed Voice Mode stale closures to ensure seamless, hands-free audio interaction." },
                 { "icon": "📱", "text": "Corrected the mobile Calendar Agenda view to accurately display dynamic attendance statuses." }
               ]
@@ -1132,6 +1211,7 @@ export class SystemController {
             {
               "title": "Improvements & Bug Fixes",
               "items": [
+
                 { "icon": "📡", "text": "Fortified the offline sync engine to automatically roll back the UI and notify you if the server rejects an offline mark." },
                 { "icon": "🧮", "text": "Fixed a critical offline race condition where network errors would erase the global attendance percentage to zero." },
                 { "icon": "🤖", "text": "Prevented the AI Chatbot from freezing when used offline, ensuring it gracefully delivers an offline warning." }
@@ -1148,6 +1228,7 @@ export class SystemController {
                         {
                                 "title": "What's New",
                                 "items": [
+
                                         {
                                                 "icon": "✨",
                                                 "text": "Predictive Insights: AI now predicts future attendance based on your historical patterns."
@@ -1173,6 +1254,7 @@ export class SystemController {
                         {
                                 "title": "Major Features & Polish",
                                 "items": [
+
                                         {
                                                 "icon": "✨",
                                                 "text": "Added immersive full-screen Lottie animations for academic events and achievements."
@@ -1186,6 +1268,7 @@ export class SystemController {
                         {
                                 "title": "Offline & Sync Improvements",
                                 "items": [
+
                                         {
                                                 "icon": "🔌",
                                                 "text": "Fixed race conditions in optimistic offline sync to prevent stale data overwrites."
@@ -1203,6 +1286,7 @@ export class SystemController {
                         {
                                 "title": "Bug Fixes",
                                 "items": [
+
                                         {
                                                 "icon": "🐛",
                                                 "text": "Resolved a global timezone offset bug that was shifting scheduled classes by hours."
@@ -1232,6 +1316,7 @@ export class SystemController {
                         {
                                 "title": "What's New",
                                 "items": [
+
                                         {
                                                 "icon": "📅",
                                                 "text": "Fixed overlapping extra classes ('00:00') when migrating to a new timetable."
@@ -1253,6 +1338,7 @@ export class SystemController {
                         {
                                 "title": "What's New (UI Polish & Theming)",
                                 "items": [
+
                                         {
                                                 "icon": "🎨",
                                                 "text": "Complete Calendar redesign with Orbital Operations Center aesthetic and true dark mode isolation."
@@ -1273,6 +1359,7 @@ export class SystemController {
                         {
                                 "title": "What's New (Security & Offline)",
                                 "items": [
+
                                         {
                                                 "icon": "🛡️",
                                                 "text": "Zero-Knowledge OTPs: Upgraded internal token hashing to HMAC-SHA256, stopping offline cracking tools instantly."
@@ -1290,6 +1377,7 @@ export class SystemController {
                         {
                                 "title": "Improvements & UI Polish",
                                 "items": [
+
                                         {
                                                 "icon": "🎨",
                                                 "text": "Complete UI/UX redesign featuring a pure brutalist aesthetic with NO neon gradients or AI slop."
@@ -1314,6 +1402,7 @@ export class SystemController {
                         {
                                 "title": "What's New",
                                 "items": [
+
                                         {
                                                 "icon": "🔒",
                                                 "text": "Stateless OTP Security: Gorgeous new 6-digit email flows for resetting passwords safely"
@@ -1338,6 +1427,7 @@ export class SystemController {
                         {
                                 "title": "What's New",
                                 "items": [
+
                                         {
                                                 "icon": "✨",
                                                 "text": "Immersive Voice Mode: Full-screen AI voice assistant with continuous conversation orb"
@@ -1359,6 +1449,7 @@ export class SystemController {
                         {
                                 "title": "Bug Fixes & UI Polish",
                                 "items": [
+
                                         {
                                                 "icon": "🐛",
                                                 "text": "Mojibake Fixed: Resolved UTF-8 corruption causing emojis to render improperly"
@@ -1383,6 +1474,7 @@ export class SystemController {
                         {
                                 "title": "What's New",
                                 "items": [
+
                                         {
                                                 "icon": "🔌",
                                                 "text": "The Offline Engine: Mark attendance offline; auto-syncs when reconnected"
@@ -1400,6 +1492,7 @@ export class SystemController {
                         {
                                 "title": "Improvements & UI Polish",
                                 "items": [
+
                                         {
                                                 "icon": "📱",
                                                 "text": "Dynamic Notch Support: Headers no longer overlap with your system status bar"
@@ -1421,6 +1514,7 @@ export class SystemController {
                         {
                                 "title": "Bug Fixes",
                                 "items": [
+
                                         {
                                                 "icon": "👻",
                                                 "text": "Ghost Data Purge: Eradicated aggressive cache leaks when switching accounts"
@@ -1441,6 +1535,7 @@ export class SystemController {
                         {
                                 "title": "Offline & Notification Engine",
                                 "items": [
+
                                         {
                                                 "icon": "🔌",
                                                 "text": "Offline Mutation Queue: Mark attendance offline and auto-sync when reconnected"
@@ -1458,6 +1553,7 @@ export class SystemController {
                         {
                                 "title": "Improvements & Fixes",
                                 "items": [
+
                                         {
                                                 "icon": "✨",
                                                 "text": "Status Bar Fixes: Headers no longer overlap with the notch on Login, Devices, and Settings"
@@ -1482,6 +1578,7 @@ export class SystemController {
                         {
                                 "title": "What's New",
                                 "items": [
+
                                         {
                                                 "icon": "✨",
                                                 "text": "3D Immersive Reports: Gorgeous new visualizations for your weekly and monthly stats"
@@ -1495,6 +1592,7 @@ export class SystemController {
                         {
                                 "title": "Security & Fixes",
                                 "items": [
+
                                         {
                                                 "icon": "🛡️",
                                                 "text": "Delete Account: Added a secure, permanent account deletion option in Settings"
@@ -1519,6 +1617,7 @@ export class SystemController {
                         {
                                 "title": "What's New",
                                 "items": [
+
                                         {
                                                 "icon": "🔗",
                                                 "text": "Peer Sync: Securely mirror your timetable or attendance to friends using a 6-digit code"
@@ -1540,6 +1639,7 @@ export class SystemController {
                         {
                                 "title": "Improvements & Fixes",
                                 "items": [
+
                                         {
                                                 "icon": "🌓",
                                                 "text": "True Light & Dark Mode: High-contrast light mode and sleek dark mode"
@@ -1564,6 +1664,7 @@ export class SystemController {
                         {
                                 "title": "Quality of Life",
                                 "items": [
+
                                         {
                                                 "icon": "✉️",
                                                 "text": "Email Developer button now opens your native Gmail app directly"
@@ -1580,6 +1681,7 @@ export class SystemController {
                         {
                                 "title": "Developer Preview",
                                 "items": [
+
                                         {
                                                 "icon": "🔔",
                                                 "text": "Testing: Real-time Android push notifications enabled"
@@ -1596,6 +1698,7 @@ export class SystemController {
                         {
                                 "title": "New Features & Fixes",
                                 "items": [
+
                                         {
                                                 "icon": "☁️",
                                                 "text": "Cloud Storage Engine: Academic calendars are now permanently backed up to the database"
@@ -1628,6 +1731,7 @@ export class SystemController {
                         {
                                 "title": "Major Improvements",
                                 "items": [
+
                                         {
                                                 "icon": "⚡",
                                                 "text": "Peer Sync engine overhauled: Full backups now import 50x faster"
