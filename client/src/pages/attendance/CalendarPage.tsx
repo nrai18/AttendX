@@ -48,6 +48,7 @@ function sortDayDetailsChronologically(items: DayDetail[], dateStr: string): Day
     const todayAgenda: any[] = cacheState.today?.[dateStr]?.agenda || [];
     const allLogs: any[] =
       cacheState.subject_logs?.["all"]?.logs ||
+      cacheState.all_logs ||
       useAttendanceStore.getState().historyLogs ||
       [];
     const dateLogs = allLogs.filter((l: any) => String(l.date || "").slice(0, 10) === dateStr);
@@ -283,6 +284,7 @@ export const CalendarPage = () => {
       const eventsMap: Record<string, CalendarEvent[]> = {};
       const dayStats = { not_marked: 0, off: 0, missed: 0, attended: 0, mixed: 0 };
       const lectureStats = { off: 0, missed: 0, attended: 0, total: 0, percentage: 0 };
+      const cachedMonthDetails = cacheState.calendar?.[monthStr]?.details || {};
 
       for (let d = new Date(startDate); d <= endDate; d = addDays(d, 1)) {
         const dateStr = format(d, "yyyy-MM-dd");
@@ -312,6 +314,8 @@ export const CalendarPage = () => {
         );
 
         const dayLogs = allLogs.filter((l: any) => String(l.date || "").slice(0, 10) === dateStr);
+        const cachedDayDetails: any[] = cachedMonthDetails[dateStr] || [];
+
         const daySlots = isGlobalOff
           ? []
           : allSlots.filter((s: any) => {
@@ -326,16 +330,26 @@ export const CalendarPage = () => {
             });
 
         if (dayLogs.length > 0) {
-          const mappedDayLogs: DayDetail[] = dayLogs.map((l: any, idx: number) => ({
-            id: l.id || `${dateStr}-${idx}`,
-            subjectId: l.subjectId,
-            subjectName: l.subjectName || l.subject?.name || l.subject || "Subject",
-            startTime: l.startTime || "00:00",
-            endTime: l.endTime || "00:00",
-            status: String(l.status || "not_marked").toLowerCase(),
-            remarks: l.remarks || null,
-          }));
+          const mappedDayLogs: DayDetail[] = dayLogs.map((l: any, idx: number) => {
+            const cachedMatch = cachedDayDetails.find((c: any) =>
+              (c.id && (c.id === l.id || c.id === l.attendanceId)) ||
+              (c.subjectId && c.subjectId === l.subjectId) ||
+              (c.subjectName && c.subjectName === (l.subjectName || l.subject?.name))
+            );
+            return {
+              id: l.id || `${dateStr}-${idx}`,
+              subjectId: l.subjectId,
+              subjectName: l.subjectName || l.subject?.name || l.subject || "Subject",
+              startTime: l.startTime || "00:00",
+              endTime: l.endTime || "00:00",
+              status: String(l.status || "not_marked").toLowerCase(),
+              remarks: l.remarks || cachedMatch?.remarks || null,
+              isExtra: Boolean(l.isExtra || cachedMatch?.isExtra),
+            };
+          });
           details[dateStr] = sortDayDetailsChronologically(mappedDayLogs, dateStr);
+        } else if (cachedDayDetails.length > 0) {
+          details[dateStr] = cachedDayDetails;
         }
 
         let status = "off";
@@ -821,25 +835,26 @@ export const CalendarPage = () => {
                       navigate(`/today?date=${dateKey}`);
                     }
                   }}
-                  className={`flex flex-col items-center justify-center relative w-full max-w-[38px] sm:max-w-[52px] h-12 sm:h-14 hover:bg-muted/60 rounded-xl sm:rounded-2xl transition-all cursor-pointer group ring-inset ${animBorder}`}
+                  className={`flex flex-col items-center justify-between py-1.5 relative w-full max-w-[38px] sm:max-w-[50px] min-h-[52px] h-[52px] sm:h-14 hover:bg-muted/60 rounded-xl sm:rounded-2xl transition-all cursor-pointer group ring-inset ${animBorder}`}
                 >
-                  <div className={`w-8 h-8 flex items-center justify-center rounded-full text-sm font-medium transition-transform group-hover:scale-110 ${
+                  <div className={`w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center rounded-full text-xs sm:text-sm font-semibold transition-transform group-hover:scale-105 ${
                     isToday ? "bg-primary text-primary-foreground font-bold shadow-md shadow-primary/20" : "text-foreground"
                   }`}>
                     {format(d, "d")}
                   </div>
-                  <div className="flex items-center gap-1 mt-1">
-                    <div className={`w-1.5 h-1.5 rounded-full ${getDotColor(status)}`} />
-                    {hasRemarks && (
-                      <MessageSquare className="w-2.5 h-2.5 text-primary" />
+                  <div className="h-2 flex items-center justify-center gap-1">
+                    {status && status !== "future" && status !== "not_marked" && (
+                      <div className={`w-1.5 h-1.5 rounded-full ${getDotColor(status)} shrink-0`} />
                     )}
-                    {dedupedDayEvents.slice(0, 2).map((ev, evIdx) => (
+                    {hasRemarks && (
+                      <MessageSquare className="w-2.5 h-2.5 text-primary shrink-0" />
+                    )}
+                    {!animBorder && dedupedDayEvents.length > 0 && (
                       <span
-                        key={ev.id || evIdx}
-                        className={`w-1.5 h-1.5 rounded-full ${getEventOptimumStyle(ev).dot}`}
-                        title={ev.title}
+                        className={`w-1.5 h-1.5 rounded-full ${getEventOptimumStyle(dedupedDayEvents[0]).dot} shrink-0`}
+                        title={dedupedDayEvents[0].title}
                       />
-                    ))}
+                    )}
                   </div>
 
                   {/* Hover Agenda Tooltip (Hidden on Mobile) */}

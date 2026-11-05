@@ -19,6 +19,11 @@ export interface CacheState {
   subject_logs: Record<string, any>; // key: subjectId or 'all'
   all_logs?: any;
   insights: any;
+  classrooms: any[] | null;
+  classroom_feeds: Record<string, any>; // key: classroomId -> feed
+  cacheClassrooms: (classrooms: any[]) => void;
+  cacheClassroomFeed: (classroomId: string, feed: any) => void;
+  appendClassroomAnnouncement: (classroomId: string, announcement: any) => void;
   reminderFrequency: FrequencyData;
   frequencyMemory: Record<string, string | undefined>;
   setReminderFrequency: (data: FrequencyData) => void;
@@ -42,8 +47,52 @@ export const useCacheStore = create<CacheState>()(
       subject_logs: {},
       all_logs: null,
       insights: null,
+      classrooms: null,
+      classroom_feeds: {},
+      cacheClassrooms: (classrooms: any[]) => set({ classrooms }),
+      cacheClassroomFeed: (classroomId: string, feed: any) =>
+        set((state) => ({
+          classroom_feeds: {
+            ...state.classroom_feeds,
+            [classroomId]: feed,
+          },
+        })),
+      appendClassroomAnnouncement: (classroomId: string, announcement: any) =>
+        set((state) => {
+          const currentFeed = state.classroom_feeds?.[classroomId] || {
+            role: 'member',
+            announcements: [],
+          };
+          const announcements = Array.isArray(currentFeed.announcements) ? [...currentFeed.announcements] : [];
+          const incomingId = String(announcement.id || announcement.announcementId || `ann-${Date.now()}`);
+          const exists = announcements.some(
+            (a: any) => String(a.id || a.announcementId || '') === incomingId
+          );
+          if (!exists) {
+            announcements.unshift({
+              id: incomingId,
+              title: announcement.title || '',
+              content: announcement.content || announcement.body || '',
+              body: announcement.body || announcement.content || '',
+              importance: announcement.importance || 'low',
+              isPinned: Boolean(announcement.isPinned && announcement.isPinned !== 'false'),
+              createdAt: announcement.createdAt || new Date().toISOString(),
+              createdBy: announcement.createdBy || { name: announcement.authorName || 'Classroom Admin' },
+              author: announcement.author || { name: announcement.authorName || 'Classroom Admin' },
+            });
+          }
+          return {
+            classroom_feeds: {
+              ...state.classroom_feeds,
+              [classroomId]: {
+                ...currentFeed,
+                announcements,
+              },
+            },
+          };
+        }),
       reminderFrequency: { type: 'Daily' },
-      frequencyMemory: { Weekly: 'Sun', Monthly: '1', Yearly: 'Jan' },
+      frequencyMemory: { Weekly: 'Sun', Monthly: '1' },
       setReminderFrequency: (data: FrequencyData) =>
         set((state) => ({
           reminderFrequency: data,
@@ -97,13 +146,6 @@ export const useCacheStore = create<CacheState>()(
 
         if (url.includes('/attendance/')) {
           set((state) => ({
-            today: {},
-            calendar: {},
-            subjects: null,
-            subject_logs: {},
-            all_logs: null,
-            insights: null,
-            semester: state.semester ? { ...state.semester, calendarData: null } : null,
             mutationVersion: (state.mutationVersion || 0) + 1,
           }));
           return;
@@ -164,8 +206,10 @@ export const useCacheStore = create<CacheState>()(
           subject_logs: {},
           all_logs: null,
           insights: null,
+          classrooms: null,
+          classroom_feeds: {},
           reminderFrequency: { type: 'Daily' },
-          frequencyMemory: { Weekly: 'Sun', Monthly: '1', Yearly: 'Jan' },
+          frequencyMemory: { Weekly: 'Sun', Monthly: '1' },
           mutationVersion: (state.mutationVersion || 0) + 1,
         }));
         onClearListeners.forEach((cb) => {

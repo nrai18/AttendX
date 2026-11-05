@@ -185,7 +185,7 @@ export class AttendanceController {
         );
       } catch (error: any) {
         console.error("Primary predictive insights fetch failed, attempting fallback:", error.message);
-        const backupData = await redisClient.get(`backup:predictive_insights_v2:${req.user!.userId}`);
+        const backupData = redisClient && redisClient.status === "ready" ? await redisClient.get(`backup:predictive_insights_v2:${req.user!.userId}`) : null;
         if (backupData) {
           insights = JSON.parse(backupData);
         } else {

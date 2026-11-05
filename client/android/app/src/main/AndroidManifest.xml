@@ -64,6 +64,19 @@
                 <action android:name="android.intent.action.QUICKBOOT_POWERON" />
             </intent-filter>
         </receiver>
+        <!-- Home Screen Widget Action Receiver (Direct attendance marking without opening app) -->
+        <receiver
+            android:name=".WidgetActionReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.attendx.app.ACTION_WIDGET_MARK_ATTENDANCE" />
+                <action android:name="com.attendx.app.ACTION_WIDGET_NAVIGATE" />
+                <action android:name="com.attendx.app.ACTION_WIDGET_REFRESH" />
+                <action android:name="android.intent.action.USER_PRESENT" />
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+
         <!-- Home Screen Widget: Today 4x2 + Log -->
         <receiver
             android:name=".TodayWidgetProvider"
@@ -89,9 +102,29 @@
                 android:name="android.appwidget.provider"
                 android:resource="@xml/widget_next_class_info" />
         </receiver>
+        <!-- Custom Background FCM Service for Offline Feed Pre-Caching -->
+        <service
+            android:name=".AttendXMessagingService"
+            android:exported="false">
+            <intent-filter android:priority="100">
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
+        <!-- Dedicated class mute foreground service -->
+        <service
+            android:name=".RingerForegroundService"
+            android:foregroundServiceType="specialUse"
+            android:exported="false">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Automatically mutes phone and reconciles audio state during academic class intervals" />
+        </service>
     </application>
 
     <!-- Permissions -->
+    <!-- Foreground Service permissions for un-swipeable notification & exact unmute -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- Microphone for AttendX AI Voice Mode -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />

@@ -26,6 +26,7 @@ import { hapticMedium, hapticLight, hapticSuccess, hapticHeavy } from "../../uti
 import { triggerDynamicHUD } from "../../components/ui/dynamic-island-hud";
 import { useBackHandlerStore } from "../../stores/backHandlerStore";
 import { getClassroomBannerTheme } from "../../components/classroom/ClassroomBanner";
+import { useCacheStore } from "../../stores/cacheStore";
 
 interface Announcement {
   id: string;
@@ -63,8 +64,9 @@ interface FeedData {
 export const ClassroomFeedPage = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const [feed, setFeed] = useState<FeedData | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const cachedFeed = id ? useCacheStore.getState().classroom_feeds?.[id] : null;
+  const [feed, setFeed] = useState<FeedData | null>(cachedFeed || null);
+  const [isLoading, setIsLoading] = useState(!cachedFeed);
 
   // Modals state
   const [showRosterModal, setShowRosterModal] = useState(false);
@@ -79,21 +81,120 @@ export const ClassroomFeedPage = () => {
   const [showTransitionModal, setShowTransitionModal] = useState(false);
   const [transitionTermNote, setTransitionTermNote] = useState("");
 
-  const fetchFeed = async () => {
+  const fetchFeed = async (showLoading = true) => {
     try {
-      setIsLoading(true);
-      const res = await api.get(`/classrooms/${id}/feed`);
+      if (showLoading && !feed) setIsLoading(true);
+      const res = await api.get(`/classrooms/${id}/feed`, { params: { t: Date.now() } });
       const data = typeof res.data === "string" ? { role: "member", announcements: [] } : res.data;
+      if (data.isDeleted) {
+        triggerDynamicHUD({
+          type: "trash",
+          label: "Section Hub Disbanded",
+          subtitle: "The CR has disbanded this section hub. Returning to classrooms.",
+          durationMs: 4200,
+        });
+        hapticHeavy();
+        navigate("/classrooms", { replace: true });
+        return;
+      }
       setFeed(data);
+      if (id) {
+        useCacheStore.getState().cacheClassroomFeed(id, data);
+      }
     } catch (error) {
       console.error("Failed to fetch feed:", error);
+      if (id) {
+        const cached = useCacheStore.getState().classroom_feeds?.[id];
+        if (cached) {
+          setFeed(cached);
+        }
+      }
     } finally {
-      setIsLoading(false);
+      if (showLoading) setIsLoading(false);
     }
   };
 
   useEffect(() => {
-    if (id) fetchFeed();
+    if (!id) return;
+    fetchFeed(true);
+
+    const unsubCache = useCacheStore.subscribe((state) => {
+      if (id && state.classroom_feeds?.[id]) {
+        setFeed(state.classroom_feeds[id]);
+      }
+    });
+
+    const handleBroadcastReceived = (e: any) => {
+      const detail = e.detail;
+      const evtClassroomId = String(detail?.classroomId || detail?.classroom_id || detail?.id || "");
+      if (!evtClassroomId || evtClassroomId === String(id)) {
+        fetchFeed(false);
+        hapticLight();
+      }
+    };
+
+    const handleAccessUpdated = (e: any) => {
+      const detail = e.detail;
+      const evtClassroomId = String(detail?.classroomId || detail?.classroom_id || detail?.id || "");
+      if (!evtClassroomId || evtClassroomId === String(id)) {
+        fetchFeed(false);
+        hapticMedium();
+        triggerDynamicHUD({
+          type: "success",
+          label: "Broadcast Rights Refreshed",
+          subtitle: "Your section posting permissions were updated",
+          durationMs: 3500,
+        });
+      }
+    };
+
+    const handleClassroomDeleted = (e: any) => {
+      const detail = e.detail;
+      const evtClassroomId = String(detail?.classroomId || detail?.classroom_id || detail?.id || "");
+      if (!evtClassroomId || evtClassroomId === String(id)) {
+        triggerDynamicHUD({
+          type: "trash",
+          label: "Section Hub Disbanded",
+          subtitle: "The CR has disbanded this section hub. Returning to classrooms.",
+          durationMs: 4200,
+        });
+        hapticHeavy();
+        navigate("/classrooms", { replace: true });
+      }
+    };
+
+    const handleFocus = () => {
+      fetchFeed(false);
+    };
+
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") {
+        fetchFeed(false);
+      }
+    };
+
+    window.addEventListener("fcm_classroom_broadcast", handleBroadcastReceived);
+    window.addEventListener("fcm_classroom_access_updated", handleAccessUpdated);
+    window.addEventListener("fcm_classroom_deleted", handleClassroomDeleted);
+    window.addEventListener("focus", handleFocus);
+    document.addEventListener("visibilitychange", handleVisibility);
+
+    // Snappy 2.5s polling while active on screen for instant real-time message stream
+    const interval = setInterval(() => {
+      if (document.visibilityState === "visible") {
+        fetchFeed(false);
+      }
+    }, 2500);
+
+    return () => {
+      unsubCache();
+      window.removeEventListener("fcm_classroom_broadcast", handleBroadcastReceived);
+      window.removeEventListener("fcm_classroom_access_updated", handleAccessUpdated);
+      window.removeEventListener("fcm_classroom_deleted", handleClassroomDeleted);
+      window.removeEventListener("focus", handleFocus);
+      document.removeEventListener("visibilitychange", handleVisibility);
+      clearInterval(interval);
+    };
   }, [id]);
 
   // Hardware back button support for open modals
@@ -129,6 +230,21 @@ export const ClassroomFeedPage = () => {
 
     try {
       setIsSubmitting(true);
+      const optimisticAnnouncement = {
+        id: `temp-${Date.now()}`,
+        title: newTitle.trim(),
+        content: newContent.trim(),
+        body: newContent.trim(),
+        importance: newImportance,
+        isPinned: false,
+        createdAt: new Date().toISOString(),
+        createdBy: { name: "You" },
+        author: { name: "You" },
+      };
+      if (id) {
+        useCacheStore.getState().appendClassroomAnnouncement(id, optimisticAnnouncement);
+      }
+
       await api.post(`/classrooms/${id}/announcements`, {
         title: newTitle.trim(),
         content: newContent.trim(),
@@ -188,9 +304,9 @@ export const ClassroomFeedPage = () => {
         subtitle: `${hubName} • Enrolled peers alerted via push`,
         durationMs: 4500,
       });
-      await api.delete(`/classrooms/${id}`);
       setShowDeleteModal(false);
-      navigate("/classrooms");
+      navigate("/classrooms", { replace: true });
+      await api.delete(`/classrooms/${id}`);
     } catch (error: any) {
       toast.error(error.response?.data?.message || "Failed to disband classroom");
     } finally {

@@ -302,6 +302,22 @@ export class ClassroomService {
     const validModes = ["admins", "everyone", "only_selected", "everyone_except"];
     const mode = (validModes.includes(data.broadcastPermission) ? data.broadcastPermission : "admins") as any;
 
+    const existingClassroom = await prisma.classroom.findUnique({
+      where: { id: classroomId },
+      select: {
+        id: true,
+        name: true,
+        section: true,
+        broadcastPermission: true,
+        allowedPosterIds: true,
+        deniedPosterIds: true,
+      },
+    });
+
+    if (!existingClassroom) {
+      throw new Error("Classroom not found");
+    }
+
     const updated = await prisma.classroom.update({
       where: { id: classroomId },
       data: {
@@ -311,10 +327,84 @@ export class ClassroomService {
       },
       select: {
         id: true,
+        name: true,
+        section: true,
         broadcastPermission: true,
         allowedPosterIds: true,
         deniedPosterIds: true,
       },
+    });
+
+    const className = updated.section ? `${updated.name} (Sec ${updated.section})` : updated.name;
+    const oldAllowed = existingClassroom.allowedPosterIds || [];
+    const newAllowed = updated.allowedPosterIds || [];
+    const oldDenied = existingClassroom.deniedPosterIds || [];
+    const newDenied = updated.deniedPosterIds || [];
+
+    // Track targeted users to send personalized notification
+    const targetedUsersGranted = new Set<string>();
+    const targetedUsersRestricted = new Set<string>();
+
+    if (mode === "only_selected") {
+      newAllowed.filter((id) => !oldAllowed.includes(id)).forEach((id) => targetedUsersGranted.add(id));
+      oldAllowed.filter((id) => !newAllowed.includes(id)).forEach((id) => targetedUsersRestricted.add(id));
+    } else if (mode === "everyone_except") {
+      newDenied.filter((id) => !oldDenied.includes(id)).forEach((id) => targetedUsersRestricted.add(id));
+      oldDenied.filter((id) => !newDenied.includes(id)).forEach((id) => targetedUsersGranted.add(id));
+    }
+
+    // 1. Send personalized 1-on-1 push to students granted permission
+    for (const targetId of targetedUsersGranted) {
+      if (targetId === userId) continue;
+      PushNotificationService.sendToUser(
+        targetId,
+        `🎉 Broadcast Access Granted: ${className}`,
+        `You have been granted permission to post section announcements by the CR.`,
+        {
+          type: "classroom_access_updated",
+          classroomId,
+          route: `/classrooms/${classroomId}`,
+          url: `/classrooms/${classroomId}`,
+          granted: "true",
+        }
+      ).catch((err) => console.error(`[ClassroomPermissions] Error sending grant push to ${targetId}:`, err));
+    }
+
+    // 2. Send personalized 1-on-1 push to students whose permission was revoked
+    for (const targetId of targetedUsersRestricted) {
+      if (targetId === userId) continue;
+      PushNotificationService.sendToUser(
+        targetId,
+        `🔒 Broadcast Access Restricted: ${className}`,
+        `Your posting access in ${className} was restricted by the Class Representative.`,
+        {
+          type: "classroom_access_updated",
+          classroomId,
+          route: `/classrooms/${classroomId}`,
+          url: `/classrooms/${classroomId}`,
+          granted: "false",
+        }
+      ).catch((err) => console.error(`[ClassroomPermissions] Error sending revoke push to ${targetId}:`, err));
+    }
+
+    // 3. Send general update push to the classroom members so all peers' screens auto-refresh
+    PushNotificationService.sendToClassroomMembers(
+      classroomId,
+      userId,
+      "Broadcast Permissions Updated",
+      mode === "everyone" 
+        ? `Posting in ${className} is now open to all classmates.`
+        : mode === "admins"
+        ? `Posting in ${className} is now restricted to Class Representatives.`
+        : `Posting permissions in ${className} have been updated.`,
+      {
+        type: "classroom_access_updated",
+        classroomId,
+        route: `/classrooms/${classroomId}`,
+        url: `/classrooms/${classroomId}`,
+      }
+    ).catch((err) => {
+      console.error("[ClassroomPermissions] FCM push dispatch error:", err);
     });
 
     return updated;
@@ -414,7 +504,14 @@ export class ClassroomService {
         type: "classroom_announcement",
         classroomId,
         announcementId: announcement.id,
+        id: announcement.id,
+        title: data.title || "",
+        content: data.content || "",
+        body: data.content || "",
+        authorName: (announcement.createdBy as any)?.name || "Classroom Admin",
         importance: data.importance || "low",
+        isPinned: String(Boolean(announcement.isPinned)),
+        createdAt: announcement.createdAt ? new Date(announcement.createdAt).toISOString() : new Date().toISOString(),
         route: `/classrooms/${classroomId}`,
         url: `/classrooms/${classroomId}`,
       }

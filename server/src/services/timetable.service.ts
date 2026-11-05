@@ -1069,7 +1069,9 @@ CRITICAL EXTRACTION RULES:
       where: { semesterId, userId },
     });
     for (const sub of existingSemesterSubjects) {
-      subjectsMap.set(sub.code, sub.id);
+      if (sub.code) {
+        subjectsMap.set(sub.code, sub.id);
+      }
     }
 
     // 2. Identify unique subjects needed and create/update as needed
@@ -1121,7 +1123,7 @@ CRITICAL EXTRACTION RULES:
     }
 
     // 3. Batch insert all timetable slots in a single lightning-fast database operation!
-    const slotsToInsert = finalSlotsToSave.map(slot => {
+    const slotsToInsert = finalSlotsToSave.map((slot: any) => {
       const isLab = slot.type === "practical";
       const cleanCode = slot.code.replace(/\s*\([LPT]\)/g, '').trim();
       const actualCode = isLab ? `${cleanCode}_LAB` : cleanCode;

@@ -537,17 +537,17 @@ const SubjectCard: React.FC<{
             </span>
           </div>
           {/* Edit/Delete — always visible on mobile (no hover on touch), revealed on hover for desktop */}
-          <div className="flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+          <div className="flex items-center gap-1.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
             <button
               onClick={(e) => { e.stopPropagation(); hapticMedium(); onEdit(); }}
-              className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+              className="p-2 sm:p-1.5 rounded-xl bg-black/5 dark:bg-white/10 hover:bg-black/10 dark:hover:bg-white/20 text-muted-foreground hover:text-foreground active:scale-90 transition-all border border-black/5 dark:border-white/10"
               title="Edit Subject"
             >
               <Pencil className="w-3.5 h-3.5" />
             </button>
             <button
               onClick={(e) => { e.stopPropagation(); hapticHeavy(); onDelete(); }}
-              className="p-1.5 rounded-lg text-muted-foreground hover:text-rose-500 hover:bg-rose-500/10 transition-colors"
+              className="p-2 sm:p-1.5 rounded-xl bg-black/5 dark:bg-white/10 hover:bg-rose-500/20 text-muted-foreground hover:text-rose-500 active:scale-90 transition-all border border-black/5 dark:border-white/10"
               title="Remove Subject"
             >
               <Trash2 className="w-3.5 h-3.5" />
@@ -871,7 +871,7 @@ export const SubjectsPage = () => {
   });
 
   return (
-    <div className="relative min-h-full w-full flex flex-col">
+    <div className="relative min-h-full w-full flex flex-col pb-36 md:pb-12">
       <style>{`
         @keyframes sparkPopEnter {
           0% { transform: scale(0.88) translateY(16px); box-shadow: 0 0 0 rgba(245, 158, 11, 0); }
@@ -1038,7 +1038,7 @@ export const SubjectsPage = () => {
           }
         }
       `}</style>
-      <div className="relative z-10 w-full flex-1 space-y-6">
+      <div className="relative z-10 w-full flex-1 space-y-6 pb-28 md:pb-8">
         <div className="flex justify-between items-center">
           <div>
             <h1 className="text-5xl md:text-7xl lg:text-8xl font-black text-foreground dark:text-white leading-[0.9] drop-shadow-2xl" style={{fontFamily: "Impact, sans-serif"}}>SUBJ<span className="text-[#FFD700]">E</span>CTS</h1>
@@ -1133,7 +1133,7 @@ export const SubjectsPage = () => {
           )}
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-3 pb-8">
           {/* Overall Hero Card */}
           {mergedStats.length > 0 && (() => {
             const pct = Math.min(overallPct, 100);

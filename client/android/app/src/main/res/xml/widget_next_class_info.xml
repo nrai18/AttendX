@@ -9,6 +9,7 @@
     android:resizeMode="horizontal|vertical"
     android:updatePeriodMillis="1800000"
     android:initialLayout="@layout/widget_next_class_1x2"
-    android:previewImage="@drawable/attendx_notification_icon"
+    android:previewLayout="@layout/widget_next_class_1x2"
+    android:previewImage="@drawable/widget_next_class_preview"
     android:description="@string/widget_next_class_description"
     android:widgetCategory="home_screen" />

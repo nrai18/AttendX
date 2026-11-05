@@ -84,11 +84,28 @@ public class RingerAlarmReceiver extends BroadcastReceiver {
             if (audioManager != null) {
                 try {
                     audioManager.setRingerMode(AudioManager.RINGER_MODE_NORMAL);
+                    int maxRing = audioManager.getStreamMaxVolume(AudioManager.STREAM_RING);
+                    int curRing = audioManager.getStreamVolume(AudioManager.STREAM_RING);
+                    if (curRing == 0 && maxRing > 0) {
+                        audioManager.setStreamVolume(AudioManager.STREAM_RING, Math.max(1, (int)(maxRing * 0.7)), 0);
+                    }
+                    int maxNotif = audioManager.getStreamMaxVolume(AudioManager.STREAM_NOTIFICATION);
+                    int curNotif = audioManager.getStreamVolume(AudioManager.STREAM_NOTIFICATION);
+                    if (curNotif == 0 && maxNotif > 0) {
+                        audioManager.setStreamVolume(AudioManager.STREAM_NOTIFICATION, Math.max(1, (int)(maxNotif * 0.7)), 0);
+                    }
                     Log.d(TAG, "Ringer successfully restored to NORMAL by native alarm.");
                 } catch (Exception ringerEx) {
                     Log.e(TAG, "Failed to set ringer mode to NORMAL", ringerEx);
                 }
             }
+
+            // Stop foreground service when class ends
+            try {
+                Intent stopIntent = new Intent(context, RingerForegroundService.class);
+                stopIntent.setAction(RingerForegroundService.ACTION_STOP_CLASS_MUTE);
+                context.startService(stopIntent);
+            } catch (Exception ignored) {}
 
             // Clear stored unmute preferences
             RingerPlugin.clearRingerPrefs(context);
@@ -115,7 +132,7 @@ public class RingerAlarmReceiver extends BroadcastReceiver {
                     .setContentTitle("Class Ended")
                     .setContentText("Phone ringer restored to normal.")
                     .setColor(0xFF10B981)
-                    .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+                    .setPriority(NotificationCompat.PRIORITY_HIGH)
                     .setAutoCancel(true);
 
                 notificationManager.notify(UNMUTE_CONFIRM_NOTIF_ID, builder.build());
@@ -145,8 +162,27 @@ public class RingerAlarmReceiver extends BroadcastReceiver {
             }
 
             if (audioManager != null) {
-                audioManager.setRingerMode(AudioManager.RINGER_MODE_NORMAL);
+                try {
+                    audioManager.setRingerMode(AudioManager.RINGER_MODE_NORMAL);
+                    int maxRing = audioManager.getStreamMaxVolume(AudioManager.STREAM_RING);
+                    int curRing = audioManager.getStreamVolume(AudioManager.STREAM_RING);
+                    if (curRing == 0 && maxRing > 0) {
+                        audioManager.setStreamVolume(AudioManager.STREAM_RING, Math.max(1, (int)(maxRing * 0.7)), 0);
+                    }
+                    int maxNotif = audioManager.getStreamMaxVolume(AudioManager.STREAM_NOTIFICATION);
+                    int curNotif = audioManager.getStreamVolume(AudioManager.STREAM_NOTIFICATION);
+                    if (curNotif == 0 && maxNotif > 0) {
+                        audioManager.setStreamVolume(AudioManager.STREAM_NOTIFICATION, Math.max(1, (int)(maxNotif * 0.7)), 0);
+                    }
+                } catch (Exception ignored) {}
             }
+
+            // Stop foreground service when manual unmute is tapped
+            try {
+                Intent stopIntent = new Intent(context, RingerForegroundService.class);
+                stopIntent.setAction(RingerForegroundService.ACTION_STOP_CLASS_MUTE);
+                context.startService(stopIntent);
+            } catch (Exception ignored) {}
 
             RingerPlugin.cancelNativeUnmuteAlarm(context);
             RingerPlugin.clearRingerPrefs(context);
@@ -208,11 +244,17 @@ public class RingerAlarmReceiver extends BroadcastReceiver {
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             NotificationChannel channel = notificationManager.getNotificationChannel(CHANNEL_ID_SILENT);
-            if (channel == null) {
+            if (channel == null || channel.getImportance() < NotificationManager.IMPORTANCE_DEFAULT) {
+                if (channel != null) {
+                    try {
+                        notificationManager.deleteNotificationChannel(CHANNEL_ID_SILENT);
+                    } catch (Exception ignored) {}
+                }
                 channel = new NotificationChannel(CHANNEL_ID_SILENT, "Silent Mode & Class Session", NotificationManager.IMPORTANCE_DEFAULT);
                 channel.setDescription("Pinned notification while class is actively running and phone is muted.");
                 channel.setSound(null, null);
                 channel.enableVibration(false);
+                channel.setLockscreenVisibility(android.app.Notification.VISIBILITY_PUBLIC);
                 notificationManager.createNotificationChannel(channel);
             }
         }
@@ -254,7 +296,7 @@ public class RingerAlarmReceiver extends BroadcastReceiver {
             .setColor(0xFF10B981)
             .setOngoing(true)
             .setAutoCancel(false)
-            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setContentIntent(tapPendingIntent)
             .setDeleteIntent(deletePendingIntent)
             .addAction(R.drawable.ic_stat_attendx, "🔊 Unmute Phone", unmutePendingIntent);

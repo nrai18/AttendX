@@ -459,13 +459,40 @@ export const TimetablePage = () => {
           return;
         }
         await api.patch(`/timetable/slots/${editingSlotId}`, payload);
+        targetSlotId = editingSlotId;
+        // Optimistically update local slots & cache for robust offline resilience
+        setSlots(prev => prev.map(s => s.id === editingSlotId ? { ...s, ...payload, subject: subjects.find(sub => sub.id === payload.subjectId) || s.subject } : s));
+        const curTT = useCacheStore.getState().timetable;
+        if (curTT) {
+          useCacheStore.getState().setCache("timetable", {
+            ...curTT,
+            slots: (curTT.slots || []).map((s: any) => s.id === editingSlotId ? { ...s, ...payload } : s),
+          });
+        }
       } else {
         const res = await api.post("/timetable/slots", payload);
-        if (res.data?.id) {
-          targetSlotId = res.data.id;
-        }
+        targetSlotId = res.data?.id || `temp_slot_${Date.now()}`;
         if (payload.dayOfWeek !== activeTab) {
           setActiveTab(payload.dayOfWeek);
+        }
+        const createdSlot: TimetableSlot = {
+          id: targetSlotId,
+          subjectId: payload.subjectId,
+          dayOfWeek: payload.dayOfWeek,
+          startTime: payload.startTime,
+          endTime: payload.endTime,
+          room: payload.room || "",
+          slotType: payload.slotType as any,
+          subject: subjects.find(s => s.id === payload.subjectId) || ({ id: payload.subjectId, name: "Class" } as any),
+          ...(res.data || {}),
+        };
+        setSlots(prev => [...prev, createdSlot]);
+        const curTT = useCacheStore.getState().timetable;
+        if (curTT) {
+          useCacheStore.getState().setCache("timetable", {
+            ...curTT,
+            slots: [...(curTT.slots || []), createdSlot],
+          });
         }
       }
       
@@ -772,11 +799,24 @@ export const TimetablePage = () => {
       try {
         if (scope === "this_day_only") {
           // Delete only the specific slots on this day
-          if (slotIds.length === 1) {
-            await api.delete(`/timetable/slots/${slotIds[0]}?preserveHistory=${preserveHistory}`);
-          } else {
+          const tempSlots = slotIds.filter((id) => id.startsWith("temp"));
+          const realSlots = slotIds.filter((id) => !id.startsWith("temp"));
+
+          if (tempSlots.length > 0) {
+            import("../../stores/offlineStore").then(({ useOfflineStore }) => {
+              useOfflineStore.setState((state) => ({
+                queue: state.queue.filter(
+                  (req) => !(req.url.includes("/timetable/slots") && tempSlots.some((tId) => JSON.stringify(req.data || {}).includes(tId)))
+                ),
+              }));
+            }).catch(() => {});
+          }
+
+          if (realSlots.length === 1) {
+            await api.delete(`/timetable/slots/${realSlots[0]}?preserveHistory=${preserveHistory}`);
+          } else if (realSlots.length > 1) {
             await api.post("/timetable/slots/delete-batch", {
-              slotIds,
+              slotIds: realSlots,
               preserveHistory,
             });
           }

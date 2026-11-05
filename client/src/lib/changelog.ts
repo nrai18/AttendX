@@ -526,6 +526,138 @@ export const APP_CHANGELOG: ChangelogVersion[] = [
       }
     ],
     "size": "4.5 MB"
+  },
+  {
+    "version": "1.9.0",
+    "date": "Jun 08, 2026",
+    "title": "The Social & Section Hub Foundation",
+    "sections": [
+      {
+        "title": "Classroom Hubs & Section Stream",
+        "items": [
+          {
+            "icon": "🏛️",
+            "text": "Classroom Hubs: Created decentralized section hubs with 6-digit join codes for instant batch onboarding"
+          },
+          {
+            "icon": "📢",
+            "text": "CR Admin Broadcast Stream: Section representatives can post real-time schedule changes and official announcements"
+          },
+          {
+            "icon": "👥",
+            "text": "Classmates Roster: Dedicated peer directory to view joined classmates, section admins, and aggregate batch attendance"
+          },
+          {
+            "icon": "🔒",
+            "text": "Posting Access Control: Admin toggles to restrict broadcasting to CR Admins only or enable open discussions"
+          },
+          {
+            "icon": "☁️",
+            "text": "Cloud Announcement Sync: Low-latency announcement distribution powered by PostgreSQL backend storage"
+          }
+        ]
+      }
+    ],
+    "size": "4.2 MB"
+  },
+  {
+    "version": "1.5.0",
+    "date": "May 14, 2026",
+    "title": "The Smart Bunk Runway & Timetable Engine",
+    "sections": [
+      {
+        "title": "Runway Analytics & Timetable Scheduling",
+        "items": [
+          {
+            "icon": "🎯",
+            "text": "Target Attendance Thresholds: Set custom required percentages (75% default) with real-time margin alerts"
+          },
+          {
+            "icon": "🧮",
+            "text": "Smart Bunk Runway: Dynamic predictive calculator showing exactly how many lectures can be safely missed or must be attended"
+          },
+          {
+            "icon": "🗓️",
+            "text": "Multi-Slot Weekly Timetable: Comprehensive timetable planner supporting lectures, practicals, labs, and tutorials"
+          },
+          {
+            "icon": "📍",
+            "text": "Room & Venue Mapping: Tag timetable slots with lecture halls and room numbers for instant navigation"
+          },
+          {
+            "icon": "📊",
+            "text": "Subject Health Indicators: Real-time visual progress bars and status indicators across all enrolled subjects"
+          }
+        ]
+      }
+    ],
+    "size": "3.8 MB"
+  },
+  {
+    "version": "1.2.0",
+    "date": "Apr 02, 2026",
+    "title": "Daily Agenda & Action-Driven Attendance",
+    "sections": [
+      {
+        "title": "Core Daily Tracking & Offline Persistence",
+        "items": [
+          {
+            "icon": "⚡",
+            "text": "1-Tap Attendance Marking: Log lectures directly with tactile Attended, Missed, and Off action buttons"
+          },
+          {
+            "icon": "➕",
+            "text": "Add Extra Class: Quickly insert unscheduled extra lectures, substitute classes, and remedial sessions"
+          },
+          {
+            "icon": "↩️",
+            "text": "Undo & Quick Edit: Instant action recovery to correct mis-taps and modify status on past lectures"
+          },
+          {
+            "icon": "💾",
+            "text": "Local-First Offline Storage: Full client-side caching ensuring rapid responsiveness even with intermittent connectivity"
+          },
+          {
+            "icon": "🎨",
+            "text": "Obsidian Dark Mode: High-contrast, battery-friendly dark theme tailored for OLED displays"
+          }
+        ]
+      }
+    ],
+    "size": "3.4 MB"
+  },
+  {
+    "version": "1.0.0",
+    "date": "Feb 15, 2026",
+    "title": "The Genesis Release",
+    "sections": [
+      {
+        "title": "Initial Genesis Architecture",
+        "items": [
+          {
+            "icon": "🚀",
+            "text": "AttendX Genesis: Initial launch of the modern, privacy-focused college attendance tracking platform"
+          },
+          {
+            "icon": "📚",
+            "text": "Subject Architecture: Add and organize academic subjects with custom codes and total session tallies"
+          },
+          {
+            "icon": "📅",
+            "text": "Academic Calendar: Visual monthly calendar matrix displaying attended and missed lecture histories"
+          },
+          {
+            "icon": "🔐",
+            "text": "Secure Student Authentication: Multi-method authentication with email/password and Google OAuth support"
+          },
+          {
+            "icon": "📱",
+            "text": "Cross-Platform Foundation: Progressive Web App (PWA) architecture with native Android Capacitor shell"
+          }
+        ]
+      }
+    ],
+    "size": "3.0 MB"
   }
 ];
 

@@ -57,7 +57,7 @@ async function bootstrap() {
   setTimeout(async () => {
     try {
       if (redisClient.status !== "ready") return;
-      const currentVersion = "4.2.0";
+      const currentVersion = "4.3.0";
       
       // Use Redis SETNX to guarantee only ONE server instance sends the notification
       const acquired = await redisClient.setnx(`notified_update_${currentVersion}`, "1").catch(() => 0);

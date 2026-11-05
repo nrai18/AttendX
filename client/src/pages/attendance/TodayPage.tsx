@@ -23,6 +23,7 @@ import { SoundFX } from "../../utils/soundEffects";
 import { triggerDynamicHUD } from "../../components/ui/dynamic-island-hud";
 import { confirmDeleteToast } from "../../components/ui/confirm-delete-toast";
 import { WidgetBridgeService } from "../../services/WidgetBridgeService";
+import { useBackHandlerStore } from "../../stores/backHandlerStore";
 
 
 interface AgendaItem {
@@ -60,6 +61,8 @@ export const TodayPage = () => {
 
   const buildLocalFallbackAgenda = (dateStr: string, semOverride?: any): AgendaItem[] => {
     try {
+      const monthStr = dateStr.slice(0, 7);
+      const calendarDetails: any[] = useCacheStore.getState().calendar?.[monthStr]?.details?.[dateStr] || [];
       const subjectsCache = useCacheStore.getState().subject_logs || {};
       const allLogs = subjectsCache["all"]?.logs || [];
       const logsForDay = allLogs.filter((l: any) => l.date && l.date.startsWith(dateStr));
@@ -88,7 +91,7 @@ export const TodayPage = () => {
           if (s.dayOfWeek !== ttDay) return false;
           if (!s.validFrom) return true;
           const fromDateKey = String(s.validFrom).slice(0, 10);
-          if (fromDateKey > dateStr) return false;
+          if (fromDateKey > dateStr && calendarDetails.length === 0) return false;
           if (s.validUntil) {
             const untilDateKey = String(s.validUntil).slice(0, 10);
             if (untilDateKey < dateStr) return false;
@@ -106,7 +109,12 @@ export const TodayPage = () => {
         pseudoAgenda = deduplicatedSlotsForDay.map((slot: any) => {
           const subjectsOverview = useCacheStore.getState().subjects_overview || [];
           const subject = slot.subject || subjectsOverview.find((sub: any) => sub.id === slot.subjectId) || { id: slot.subjectId, name: "Unknown" };
+          const calMatch = calendarDetails.find((c: any) =>
+            (c.subjectId && c.subjectId === slot.subjectId) ||
+            String(c.subjectName || "").trim().toLowerCase() === String(subject.name || "").trim().toLowerCase()
+          );
           const logMatch = logsForDay.find((l: any) => l.timetableSlotId === slot.id || (l.subjectId === slot.subjectId && (l.startTime === slot.startTime || l.startTime === "00:00")));
+          const resolvedStatus = (calMatch && calMatch.status !== "not_marked") ? calMatch.status : (logMatch && logMatch.status !== "not_marked" ? logMatch.status : null);
 
           return {
             id: slot.id,
@@ -116,11 +124,30 @@ export const TodayPage = () => {
             endTime: slot.endTime,
             room: slot.room || undefined,
             slotType: slot.type || slot.slotType || "lecture",
-            status: logMatch && logMatch.status !== "not_marked" ? logMatch.status : null,
-            remarks: logMatch ? logMatch.remarks : undefined,
-            attendanceId: logMatch && logMatch.status !== "not_marked" ? logMatch.id : null
+            status: resolvedStatus,
+            remarks: calMatch?.remarks || logMatch?.remarks || undefined,
+            attendanceId: calMatch?.id || (logMatch && logMatch.status !== "not_marked" ? logMatch.id : null)
           };
         });
+      }
+
+      // Fallback for dates preceding current timetable (e.g. July 31)
+      if (pseudoAgenda.length === 0 && calendarDetails.length > 0) {
+        pseudoAgenda = calendarDetails.map((detail: any, idx: number) => ({
+          id: detail.id || `cal_${idx}`,
+          type: detail.isExtra ? "override" : "slot",
+          isExtra: Boolean(detail.isExtra),
+          subject: {
+            id: detail.subjectId || `sub_${idx}`,
+            name: detail.subjectName || "Subject",
+          },
+          startTime: detail.startTime || "09:00",
+          endTime: detail.endTime || "09:50",
+          slotType: "Lecture",
+          status: detail.status && detail.status !== "not_marked" ? detail.status : null,
+          remarks: detail.remarks || null,
+          attendanceId: detail.id || null,
+        }));
       }
 
       logsForDay.forEach((l: any) => {
@@ -250,9 +277,14 @@ export const TodayPage = () => {
 
   const resolveInitialAgenda = (dateStr: string): AgendaItem[] => {
     const dc = useCacheStore.getState().today?.[dateStr];
+    if (dc?.agenda && dc.agenda.length > 0) return dc.agenda;
+    const monthStr = dateStr.slice(0, 7);
+    const calDetails = useCacheStore.getState().calendar?.[monthStr]?.details?.[dateStr];
+    if (calDetails && calDetails.length > 0) {
+      return buildLocalFallbackAgenda(dateStr);
+    }
     const sem = dc?.activeSemester || useCacheStore.getState().semester?.activeSemester || null;
     if (!sem) return [];
-    if (dc?.agenda && dc.agenda.length > 0) return dc.agenda;
     const localSt = dc?.todayStatus || computeLocalTodayStatus(dateStr);
     if (localSt?.isHoliday || localSt?.isExam) return [];
     return buildLocalFallbackAgenda(dateStr, sem);
@@ -496,6 +528,27 @@ export const TodayPage = () => {
   // Overlay state
   const lastGreetedDateRef = useRef<string | null>(null);
   const [showGreetingOverlay, setShowGreetingOverlay] = useState(false);
+
+  // Register Android Hardware Back Button to dismiss open modals cleanly
+  useEffect(() => {
+    const unregister = useBackHandlerStore.getState().register(() => {
+      if (selectedRemarkItem) {
+        setSelectedRemarkItem(null);
+        return true;
+      }
+      if (isAddExtraModalOpen) {
+        setIsAddExtraModalOpen(false);
+        return true;
+      }
+      if (showMarkFullDayModal) {
+        setShowMarkFullDayModal(false);
+        setShowAbsentRemarkInput(false);
+        return true;
+      }
+      return false;
+    });
+    return () => unregister();
+  }, [selectedRemarkItem, isAddExtraModalOpen, showMarkFullDayModal]);
 
   const markOnboardingStep = async (stepKey: "voice_mode" | "predictive" | "peer_sync" | "sound_effects" | "attendance" | "classroom" | "dismiss") => {
     hapticSelection();
@@ -772,8 +825,9 @@ export const TodayPage = () => {
     if (agenda.length === 0) return;
     fetchSeqRef.current += 1;
     useAttendanceStore.getState().invalidateInFlightStats();
+    setIsMarkingFullDay(true);
+    const clearingWatchdog = setTimeout(() => setIsMarkingFullDay(false), 4000);
     try {
-      setIsMarkingFullDay(true);
 
       const normalizedStatus = status === "clear" ? null : (status as any);
 
@@ -853,6 +907,15 @@ export const TodayPage = () => {
           [monthStr]: {
             ...existingMonthCache,
             days: nextDays,
+            details: {
+              ...(existingMonthCache.details || {}),
+              [targetDateStr]: nextAgenda.map(item => ({
+                id: item.attendanceId || item.id,
+                subjectName: item.subject?.name || "Class",
+                status: status === "clear" ? "not_marked" : status,
+                remarks: remark || item.remarks || null,
+              }))
+            }
           }
         });
       }
@@ -943,17 +1006,26 @@ export const TodayPage = () => {
       toast.error("Failed to update full day attendance");
       fetchData();
     } finally {
+      clearTimeout(clearingWatchdog);
       setIsMarkingFullDay(false);
     }
   };
 
   const openAddExtraModal = async () => {
+    const cachedSubs = (useAttendanceStore.getState().subjects && useAttendanceStore.getState().subjects.length > 0)
+      ? useAttendanceStore.getState().subjects
+      : (useCacheStore.getState().subjects || []);
+    if (cachedSubs.length > 0) {
+      setSubjectsForExtra(cachedSubs);
+    }
+    setIsAddExtraModalOpen(true);
     try {
       const res = await api.get("/subjects");
-      setSubjectsForExtra(Array.isArray(res.data) ? res.data : []);
-      setIsAddExtraModalOpen(true);
+      if (Array.isArray(res.data) && res.data.length > 0) {
+        setSubjectsForExtra(res.data);
+      }
     } catch (err) {
-      console.error("Failed to load subjects:", err);
+      console.warn("Using offline cached subjects for extra class modal:", err);
     }
   };
 
@@ -1045,15 +1117,18 @@ export const TodayPage = () => {
       }
       fetchStats();
       window.dispatchEvent(new CustomEvent("attendance-updated", { detail: { source: "today-page" } }));
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to add extra lecture:", err);
-      toast.error("Failed to add extra lecture");
-      // Roll back optimistic card
-      setAgenda(prev => {
-        const reverted = prev.filter(item => item.id !== tempId);
-        agendaRef.current = reverted;
-        return reverted;
-      });
+      const isOffline = typeof navigator !== "undefined" && (!navigator.onLine || err?.message === "Network Error" || err?.code === "ERR_NETWORK");
+      if (!isOffline) {
+        toast.error("Failed to add extra lecture");
+        // Roll back optimistic card
+        setAgenda(prev => {
+          const reverted = prev.filter(item => item.id !== tempId);
+          agendaRef.current = reverted;
+          return reverted;
+        });
+      }
     } finally {
       setIsAddingExtra(false);
     }
@@ -1110,7 +1185,18 @@ export const TodayPage = () => {
             setGlidingExtraId(null);
 
             try {
-              await api.delete(`/timetable/extra-class/${overrideId}`);
+              if (overrideId.startsWith("temp")) {
+                // If created offline and deleted before ever reaching the server, purge any queued creation
+                import("../../stores/offlineStore").then(({ useOfflineStore }) => {
+                  useOfflineStore.setState((state) => ({
+                    queue: state.queue.filter(
+                      (req) => !(req.url.includes("/timetable/extra-class") && JSON.stringify(req.data || {}).includes(overrideId))
+                    ),
+                  }));
+                }).catch(() => {});
+              } else {
+                await api.delete(`/timetable/extra-class/${overrideId}`);
+              }
               fetchStats();
               window.dispatchEvent(new CustomEvent("attendance-updated", { detail: { source: "today-page" } }));
             } catch (err) {
@@ -1383,6 +1469,7 @@ export const TodayPage = () => {
           onboarding: nextOnboarding
         }
       });
+      window.dispatchEvent(new CustomEvent("attendance-updated", { detail: { source: "today-page" } }));
 
     } catch (error: any) {
       if (signal?.aborted || error?.name === 'CanceledError' || error?.code === 'ERR_CANCELED' || reqDate !== targetDateStrRef.current || myFetchSeq !== fetchSeqRef.current) {
@@ -1481,12 +1568,14 @@ export const TodayPage = () => {
     };
 
     window.addEventListener("attendance-updated", handleUpdate);
+    window.addEventListener("widget_attendance_marked", handleUpdate);
     window.addEventListener("semester-updated", handleSemesterChange);
     window.addEventListener("timetable-updated", handleSemesterChange);
     return () => {
       controller.abort();
       if (debounceUpdateTimerRef.current) clearTimeout(debounceUpdateTimerRef.current);
       window.removeEventListener("attendance-updated", handleUpdate);
+      window.removeEventListener("widget_attendance_marked", handleUpdate);
       window.removeEventListener("semester-updated", handleSemesterChange);
       window.removeEventListener("timetable-updated", handleSemesterChange);
     };
@@ -2558,15 +2647,15 @@ export const TodayPage = () => {
 
       {/* Add Extra Lecture Modal */}
       {isAddExtraModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-in fade-in duration-200">
-          <div className="bg-card border border-border/80 rounded-3xl p-4 sm:p-6 w-full max-w-md shadow-2xl space-y-4 relative max-h-[90vh] flex flex-col">
-            <div className="flex items-center justify-between shrink-0">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))]">
+          <div className="bg-card border border-border/80 rounded-3xl p-4 sm:p-6 w-full max-w-md shadow-2xl space-y-4 relative max-h-[82vh] flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between shrink-0 border-b border-border/40 pb-3">
               <h3 className="text-lg sm:text-xl font-extrabold text-foreground tracking-tight">
                 Add extra class
               </h3>
               <button
                 onClick={() => setIsAddExtraModalOpen(false)}
-                className="p-1.5 rounded-full hover:bg-muted text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                className="w-9 h-9 rounded-full bg-muted/80 hover:bg-muted text-foreground flex items-center justify-center border border-border/60 transition-colors cursor-pointer"
                 aria-label="Close"
               >
                 <X className="w-5 h-5" />
@@ -2607,7 +2696,7 @@ export const TodayPage = () => {
               </div>
             </div>
 
-            <div className="space-y-2.5 overflow-y-auto pr-1 no-scrollbar flex-1">
+            <div className="space-y-2.5 overflow-y-auto overscroll-contain pr-1 no-scrollbar flex-1 pb-4">
               {subjectsForExtra.length === 0 ? (
                 <div className="text-center py-8 text-sm text-muted-foreground">
                   No subjects found for active semester.

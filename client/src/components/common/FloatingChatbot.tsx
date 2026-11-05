@@ -174,6 +174,78 @@ export const FloatingChatbot: React.FC = () => {
   const [appVersion, setAppVersion] = useState("Unknown");
 
   const [isServerOnline, setIsServerOnline] = useState(true);
+  const [isTriggerVisible, setIsTriggerVisible] = useState(true);
+  const [isInputFocused, setIsInputFocused] = useState(false);
+  const lastScrollYRef = useRef(0);
+
+  useEffect(() => {
+    const handleFocusIn = (e: FocusEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
+        const isInsideChatbot = target.closest('.chatbot-window') || target.closest('.chatbot-btn');
+        if (!isInsideChatbot) {
+          setIsInputFocused(true);
+        }
+      }
+    };
+
+    const handleFocusOut = () => {
+      setTimeout(() => {
+        const activeEl = document.activeElement as HTMLElement | null;
+        if (!activeEl || (activeEl.tagName !== 'INPUT' && activeEl.tagName !== 'TEXTAREA' && !activeEl.isContentEditable)) {
+          setIsInputFocused(false);
+        }
+      }, 60);
+    };
+
+    window.addEventListener('focusin', handleFocusIn);
+    window.addEventListener('focusout', handleFocusOut);
+
+    let kbShowHandle: any = null;
+    let kbHideHandle: any = null;
+    if (Capacitor.isNativePlatform()) {
+      import('@capacitor/keyboard').then(({ Keyboard }) => {
+        Keyboard.addListener('keyboardWillShow', () => setIsInputFocused(true)).then(h => { kbShowHandle = h; });
+        Keyboard.addListener('keyboardWillHide', () => setIsInputFocused(false)).then(h => { kbHideHandle = h; });
+      }).catch(() => {});
+    }
+
+    return () => {
+      window.removeEventListener('focusin', handleFocusIn);
+      window.removeEventListener('focusout', handleFocusOut);
+      if (kbShowHandle?.remove) kbShowHandle.remove();
+      if (kbHideHandle?.remove) kbHideHandle.remove();
+    };
+  }, []);
+
+  useEffect(() => {
+    let timeoutId: any = null;
+    const handleScroll = () => {
+      const currentScrollY = window.scrollY;
+      // On mobile screens (< 768px), auto-hide floating trigger pill while scrolling down
+      if (window.innerWidth < 768) {
+        if (currentScrollY > lastScrollYRef.current + 8 && currentScrollY > 40) {
+          setIsTriggerVisible(false);
+        } else if (currentScrollY < lastScrollYRef.current - 8) {
+          setIsTriggerVisible(true);
+        }
+      } else {
+        setIsTriggerVisible(true);
+      }
+      lastScrollYRef.current = currentScrollY;
+
+      clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => {
+        setIsTriggerVisible(true);
+      }, 900);
+    };
+
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", handleScroll);
+      clearTimeout(timeoutId);
+    };
+  }, []);
 
   useEffect(() => {
     const handleOpenVoiceMode = async () => {
@@ -1845,13 +1917,12 @@ const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'vo
           }
         } else if (action.type === 'CHANGE_REMINDER_FREQUENCY') {
           const rawFreq = String(action.payload.frequency || 'daily');
-          let capFreq: 'Never'|'Daily'|'Weekly'|'Monthly'|'Yearly' = 'Daily';
+          let capFreq: 'Never'|'Daily'|'Weekly'|'Monthly' = 'Daily';
           let subValue: string | undefined = action.payload.subValue;
 
           if (/never|none|off|false|disable/i.test(rawFreq)) capFreq = 'Never';
           else if (/weekly/i.test(rawFreq)) { capFreq = 'Weekly'; if (!subValue) subValue = 'Sun'; }
           else if (/monthly/i.test(rawFreq)) { capFreq = 'Monthly'; if (!subValue) subValue = '1'; }
-          else if (/yearly/i.test(rawFreq)) { capFreq = 'Yearly'; if (!subValue) subValue = 'Jan'; }
           else if (/daily/i.test(rawFreq)) capFreq = 'Daily';
           
           const freqData = { type: capFreq, subValue };
@@ -1867,8 +1938,7 @@ const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'vo
           const bracket = action.payload.bracket || useCacheStore.getState().reminderFrequency?.type || 'Daily';
           if (bracket === 'Weekly') useNotificationStore.getState().updateConfig({ weeklySummaryTime: action.payload.time });
           else if (bracket === 'Monthly') useNotificationStore.getState().updateConfig({ monthlySummaryTime: action.payload.time });
-          else if (bracket === 'Yearly') useNotificationStore.getState().updateConfig({ yearlySummaryTime: action.payload.time });
-          else useNotificationStore.getState().updateConfig({ summaryTime: action.payload.time });
+          else useNotificationStore.getState().updateConfig({ summaryTime: action.payload.time, dailySummaryTime: action.payload.time });
           // Confirmed via AI chat message
         } else if (action.type === 'CHANGE_CLASS_REMINDER_OFFSET') {
           const mins = Number(action.payload.offsetMinutes ?? 10);
@@ -2106,7 +2176,17 @@ const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'vo
     <>
       {/* Floating Trigger Dock with Ambient Glow (hidden when drawer is open to prevent overlapping artifacts) */}
       {!isOpen && (
-        <div className="fixed bottom-[calc(6.25rem+env(safe-area-inset-bottom,0px))] md:bottom-6 right-4 sm:right-6 z-40">
+        <motion.div
+          animate={{
+            y: isTriggerVisible && !isInputFocused ? 0 : 80,
+            opacity: isTriggerVisible && !isInputFocused ? 1 : 0,
+            scale: isTriggerVisible && !isInputFocused ? 1 : 0.85,
+          }}
+          transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+          className={`fixed bottom-[calc(6.25rem+env(safe-area-inset-bottom,0px))] md:bottom-6 right-4 sm:right-6 z-40 ${
+            (!isTriggerVisible || isInputFocused) ? "pointer-events-none" : ""
+          }`}
+        >
           <motion.button
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
@@ -2133,7 +2213,7 @@ const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'vo
               Ctrl+/
             </span>
           </motion.button>
-        </div>
+        </motion.div>
       )}
 
       {/* Voice Mode Fullscreen Overlay */}

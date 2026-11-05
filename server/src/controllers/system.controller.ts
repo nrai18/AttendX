@@ -28,6 +28,90 @@ export class SystemController {
               "title": "Delight Micro-Physics & Web Audio Synthesizer (4.0s - 5.0s Suite)",
               "items": [
                 {
+                  "icon": "🔕",
+                  "text": "Native Android 14+ Pinned Mute Foreground Service: Implemented dedicated RingerForegroundService with FOREGROUND_SERVICE_TYPE_SPECIAL_USE keeping the app process active during lectures, ensuring the ongoing mute notification cannot be swiped away on Android 14+ and guaranteeing exact auto-unmuting."
+                },
+                {
+                  "icon": "📱",
+                  "text": "Multi-Class 4x2 Widget Inflation & Pure Linear Layout: Re-architected widget_today_4x2.xml with 100% linear layouts, eliminating RelativeLayout forward references and circular dependencies, ensuring instant, error-free inflation in launcher widget pickers across Android 14/15 and Nothing OS without 'Couldn't add widget' crashes."
+                },
+                {
+                  "icon": "📢",
+                  "text": "Classroom & Feed Offline Caching & Background FCM Pre-Buffering: Implemented instant 0ms offline hydration for Classrooms and Classroom Feed from local cache. Built native AttendXMessagingService extending Capacitor's push messaging service to intercept incoming FCM announcements when the app is backgrounded or completely closed, buffering them to native SharedPreferences and auto-reconciling into the offline cache upon next launch or app foreground."
+                },
+                {
+                  "icon": "✅",
+                  "text": "Optimistic Assignment Completion & Checkbox Offline Toggle: Resolved offline checkbox freeze by immediately toggling assignment completion in local stores with optimistic ID generation, keeping UI state synchronized before offline queueing."
+                },
+                {
+                  "icon": "📱",
+                  "text": "Multi-Class Interactive 4x2 Home Screen Widget with Direct 1-Tap Attendance Marking: Re-architected the Android 4x2 widget from a single spotlight card into a multi-class agenda view displaying up to 3 classes simultaneously with room numbers, times, and dynamic countdowns (🟢 ONGOING, ⏱️ IN 15M). Integrated direct 1-tap attendance marking buttons (✓ Present, ✗ Absent, — Off) right on the home screen that update attendance logs, local cache, and overall percentage instantly without launching the app."
+                },
+                {
+                  "icon": "🖼️",
+                  "text": "Pixel-Perfect Native Widget Previews: Configured modern android:previewLayout in widget metadata and generated high-resolution card previews (widget_today_preview.png, widget_next_class_preview.png), ensuring the Android widget picker drawer renders the true obsidian dark design of both widgets rather than a blank app logo."
+                },
+                {
+                  "icon": "📢",
+                  "text": "Real-Time Classroom Broadcast Stream & Targeted Permissions: Hardened FCM foreground notification reception in NotificationService and ClassroomFeedPage with silent instant feed refreshes, 2.5s active polling, and dynamic visibility detection. Integrated targeted 1-on-1 push alerts sent directly to students whose posting rights were granted (🎉 Broadcast Access Granted) or restricted (🔒 Broadcast Access Restricted), reflecting live on peers' screens without having to navigate back and forth."
+                },
+                {
+                  "icon": "🚪",
+                  "text": "Rapid Classroom Disband Exit & Highlighted Red Remove Hub Button: Enrolled students on a disbanded classroom feed are automatically alerted and redirected back to the Classrooms list. Disbanded hub cards now feature prominent crimson styling with an eye-catching, glowing red Remove Hub button (bg-rose-600 ring-2 ring-rose-500/30), completely removing the desaturating grayscale filter."
+                },
+                {
+                  "icon": "💻",
+                  "text": "Tablet Viewport Header Flex-Wrap: Optimized the Classrooms & Sections header layout with responsive flex-wrap and lg:flex-row breakpoints, preventing the '+ Create Hub' and 'Join with Code' action buttons from being clipped or hidden off-screen on tablet and landscape displays."
+                },
+                {
+                  "icon": "📦",
+                  "text": "100% Offline ZIP Export & Import Engine: Engineered client-side OfflineZipService utilizing JSZip to generate authentic, RFC 4180-compliant AttendX backup archives (subject_stats.csv, timetable.csv, attendance_logs.csv, events.csv, semester.json) directly in the browser when offline or when network requests fail. Added complete client-side ZIP parsing and store restoration so students can unpack and restore exported ZIP archives in airplane mode with zero server dependency, automatically enqueuing background reconciliation once reconnected to the internet."
+                },
+                {
+                  "icon": "⚡",
+                  "text": "Offline Request Interceptor & Payload Preservation: Fixed a critical offline mutation flaw in the Axios request interceptor where JSON.parse() on JavaScript object payloads threw an unhandled exception, causing offline mutations (such as saving subjects, adding extra classes, logging attendance, and adding events) to lose their data and enqueue with undefined payloads. Added comprehensive network error detection (ERR_NETWORK, ECONNABORTED, navigator.onLine) and robust optimistic mock resolution."
+                },
+                {
+                  "icon": "📚",
+                  "text": "Full-Spectrum Offline Subject, Timetable, Event & Semester Resilience: Upgraded SubjectModal, TimetablePage, AddEventModal, CreateSemesterModal, and SemesterTransitionModal to immediately update local Zustand stores (useAttendanceStore, useCacheStore) and capacitorStorage before background network requests fire. Guarantees that newly created subjects, timetable slots, calendar events, and semesters remain permanently visible and functional without internet."
+                },
+                {
+                  "icon": "➕",
+                  "text": "Offline Extra Class Creation & Aeroplane Glider Deletion: Supported offline extra class addition with optimistic agenda injection and persistent local cache updates. When an offline-created extra lecture is deleted before reaching the server, AttendX cleanses the pending creation request from the offline queue; for server-persisted classes, deletion is queued safely without rollback."
+                },
+                {
+                  "icon": "🗑️",
+                  "text": "Timetable Safe Deletion Offline Resilience: Supported Safe Deletion (origami paper crumple choreography) offline across single slots and all weekly occurrences. Temporary slots created offline are purged from the offline mutation queue, real slot IDs are enqueued for deletion, and slots are evicted synchronously from timetable state and caches to eliminate resurrection flashes."
+                },
+                {
+                  "icon": "📜",
+                  "text": "100% Offline Access to Subject Logs & Overall Attendance: Multi-tier fallback pipeline (subject_logs[id] -> subject_logs['all'] -> all_logs -> useAttendanceStore.subjects) ensures visiting any individual subject or the Overall Logs page (/subjects/overall) in airplane mode displays full past attendance logs, percentages, and bunk runways without blank screens. Editing status or remarks offline updates rows immediately and queues mutations for background synchronization."
+                },
+                {
+                  "icon": "🔕",
+                  "text": "DND & Ringer Auto-Unmute Synchronization: Resolved an issue where muting from the class reminder notification engaged DND without silencing audio streams or auto-unmuting when the lecture ended. Fixed a type-coercion flaw where Capacitor PluginCall omitted Long epoch timestamps (unmuteEpochMs evaluated to 0), unblocking AlarmManager setAlarmClock and the pinned ongoing notification. Elevated the silent_mode notification channel to IMPORTANCE_DEFAULT so Android DND policy never suppresses the ongoing session card, and added dual stream muting (STREAM_RING, STREAM_NOTIFICATION, STREAM_SYSTEM) with automatic volume restoration on auto-unmute and manual unmute."
+                },
+                {
+                  "icon": "📱",
+                  "text": "Android 4x2 Interactive Today Widget with Direct 1-Tap Marking & Real Previews: Overhauled the 4x2 Home Screen widget with authentic translucent acrylic obsidian styling (#0C1017) and direct 1-tap attendance marking ([✓ Present], [✗ Absent], [— Off]) straight from the home screen WITHOUT opening the app. Includes class paging (◀ Class 3/4 ▶) to browse and log any lecture of the day, a tactile ↻ Refresh button, and instant visual state feedback with zero latency. Added high-definition widget preview drawables (widget_today_preview.png, widget_next_class_preview.png) so the Android Launcher widget picker renders authentic layout designs instead of placeholder icons. Synchronizes mutations bidirectionally to background endpoints and in-app caches for 100% data consistency."
+                },
+                {
+                  "icon": "📢",
+                  "text": "Real-Time Classroom Broadcast Stream & Live Permission Sync: Added instant foreground FCM broadcast ingestion in ClassroomFeedPage so announcements and posting access updates reflect live on screen without requiring users to navigate back and re-enter. Dispatched section-scoped FCM updates on broadcast permission changes, accelerated classroom disbanding with immediate client replacement navigation, upgraded the 'Remove Hub' button to a prominent, high-contrast red call-to-action (bg-rose-600 border-rose-500 text-white), and resolved tablet viewport layout wrapping so the '+ Create Hub' button is never obscured."
+                },
+                {
+                  "icon": "🗓️",
+                  "text": "Academic Summary Simplification & Yearly Retirement: Removed the unnecessary Yearly Wrap-up frequency option from both the Settings Summary Reports delivery times list and the interactive Frequency selection sheet. Focused summary reporting strictly on the three high-utility academic horizons: Daily Briefings (next-day class prep and holiday heads-up), Weekly Reviews (attendance pace and subject bunker runway), and Monthly Summaries (attendance milestone trends). Auto-migrated any legacy Yearly selections cleanly to Daily."
+                },
+                {
+                  "icon": "📚",
+                  "text": "Subject Card Edit/Delete Clearance & Mobile Chatbot Scroll Auto-Hide: Fixed bottom action button collision where the floating AttendX AI icon hovered over the Edit and Delete buttons of the bottom subject card on mobile viewports. Added generous pb-36 bottom scroll clearance matching Settings and Today pages so students can scroll cards completely above floating UI elements, expanded card action touch targets with tactile chip styling, and engineered mobile scroll-direction awareness to smoothly hide the floating AI dock when scrolling down."
+                },
+                {
+                  "icon": "📱",
+                  "text": "Mobile Hero CTA Refinement & Clean Single-Action UX: Streamlined the Landing Page hero on mobile displays (< sm) by hiding the floating download button directly above 'Get Started', eliminating vertical button clutter and focus competition. Preserved the quick-access [⬇ APP] pill in the upper mobile navigation bar and retained the full dual-button action layout on tablet and desktop screens."
+                },
+                {
                   "icon": "🏛️",
                   "text": "Classroom Disband Lifecycle & Database Announcement Purge: Hardened classroom deletion to immediately purge all section announcements from the database upon disbanding, preventing orphaned announcements from lingering in PostgreSQL. If a classroom has no enrolled peers, the classroom record is immediately and permanently erased from the database; if peers exist, the hub is marked as disbanded to deliver the high-priority push alert and greyed-out dashboard state, and is completely deleted from the database once all peers remove the hub."
                 },
@@ -1755,26 +1839,168 @@ export class SystemController {
                                 ]
                         }
                 ]
+        },
+        {
+                "version": "1.9.0",
+                "date": "Jun 08, 2026",
+                "title": "The Social & Section Hub Foundation",
+                "sections": [
+                        {
+                                "title": "Classroom Hubs & Section Stream",
+                                "items": [
+                                        {
+                                                "icon": "🏛️",
+                                                "text": "Classroom Hubs: Created decentralized section hubs with 6-digit join codes for instant batch onboarding"
+                                        },
+                                        {
+                                                "icon": "📢",
+                                                "text": "CR Admin Broadcast Stream: Section representatives can post real-time schedule changes and official announcements"
+                                        },
+                                        {
+                                                "icon": "👥",
+                                                "text": "Classmates Roster: Dedicated peer directory to view joined classmates, section admins, and aggregate batch attendance"
+                                        },
+                                        {
+                                                "icon": "🔒",
+                                                "text": "Posting Access Control: Admin toggles to restrict broadcasting to CR Admins only or enable open discussions"
+                                        },
+                                        {
+                                                "icon": "☁️",
+                                                "text": "Cloud Announcement Sync: Low-latency announcement distribution powered by PostgreSQL backend storage"
+                                        }
+                                ]
+                        }
+                ]
+        },
+        {
+                "version": "1.5.0",
+                "date": "May 14, 2026",
+                "title": "The Smart Bunk Runway & Timetable Engine",
+                "sections": [
+                        {
+                                "title": "Runway Analytics & Timetable Scheduling",
+                                "items": [
+                                        {
+                                                "icon": "🎯",
+                                                "text": "Target Attendance Thresholds: Set custom required percentages (75% default) with real-time margin alerts"
+                                        },
+                                        {
+                                                "icon": "🧮",
+                                                "text": "Smart Bunk Runway: Dynamic predictive calculator showing exactly how many lectures can be safely missed or must be attended"
+                                        },
+                                        {
+                                                "icon": "🗓️",
+                                                "text": "Multi-Slot Weekly Timetable: Comprehensive timetable planner supporting lectures, practicals, labs, and tutorials"
+                                        },
+                                        {
+                                                "icon": "📍",
+                                                "text": "Room & Venue Mapping: Tag timetable slots with lecture halls and room numbers for instant navigation"
+                                        },
+                                        {
+                                                "icon": "📊",
+                                                "text": "Subject Health Indicators: Real-time visual progress bars and status indicators across all enrolled subjects"
+                                        }
+                                ]
+                        }
+                ]
+        },
+        {
+                "version": "1.2.0",
+                "date": "Apr 02, 2026",
+                "title": "Daily Agenda & Action-Driven Attendance",
+                "sections": [
+                        {
+                                "title": "Core Daily Tracking & Offline Persistence",
+                                "items": [
+                                        {
+                                                "icon": "⚡",
+                                                "text": "1-Tap Attendance Marking: Log lectures directly with tactile Attended, Missed, and Off action buttons"
+                                        },
+                                        {
+                                                "icon": "➕",
+                                                "text": "Add Extra Class: Quickly insert unscheduled extra lectures, substitute classes, and remedial sessions"
+                                        },
+                                        {
+                                                "icon": "↩️",
+                                                "text": "Undo & Quick Edit: Instant action recovery to correct mis-taps and modify status on past lectures"
+                                        },
+                                        {
+                                                "icon": "💾",
+                                                "text": "Local-First Offline Storage: Full client-side caching ensuring rapid responsiveness even with intermittent connectivity"
+                                        },
+                                        {
+                                                "icon": "🎨",
+                                                "text": "Obsidian Dark Mode: High-contrast, battery-friendly dark theme tailored for OLED displays"
+                                        }
+                                ]
+                        }
+                ]
+        },
+        {
+                "version": "1.0.0",
+                "date": "Feb 15, 2026",
+                "title": "The Genesis Release",
+                "sections": [
+                        {
+                                "title": "Initial Genesis Architecture",
+                                "items": [
+                                        {
+                                                "icon": "🚀",
+                                                "text": "AttendX Genesis: Initial launch of the modern, privacy-focused college attendance tracking platform"
+                                        },
+                                        {
+                                                "icon": "📚",
+                                                "text": "Subject Architecture: Add and organize academic subjects with custom codes and total session tallies"
+                                        },
+                                        {
+                                                "icon": "📅",
+                                                "text": "Academic Calendar: Visual monthly calendar matrix displaying attended and missed lecture histories"
+                                        },
+                                        {
+                                                "icon": "🔐",
+                                                "text": "Secure Student Authentication: Multi-method authentication with email/password and Google OAuth support"
+                                        },
+                                        {
+                                                "icon": "📱",
+                                                "text": "Cross-Platform Foundation: Progressive Web App (PWA) architecture with native Android Capacitor shell"
+                                        }
+                                ]
+                        }
+                ]
         }
 ]
     };
 
     try {
-      const updatePath = path.resolve(process.cwd(), "src/uploads/update.zip");
-      if (fs.existsSync(updatePath)) {
+      const possiblePaths = [
+        path.resolve(process.cwd(), "src/uploads/update.zip"),
+        path.resolve(process.cwd(), "uploads/update.zip"),
+        path.resolve(__dirname, "../uploads/update.zip")
+      ];
+      const updatePath = possiblePaths.find(p => fs.existsSync(p));
+      if (updatePath) {
         const stats = fs.statSync(updatePath);
         (manifest as any).downloadSizeMb = parseFloat((stats.size / (1024 * 1024)).toFixed(2));
+        (manifest as any).buildTimestamp = Math.floor(stats.mtimeMs);
+      } else {
+        (manifest as any).buildTimestamp = Date.now();
       }
     } catch (e) {
       console.error("Failed to calculate update size", e);
+      (manifest as any).buildTimestamp = Date.now();
     }
 
     res.json(manifest);
   }
 
   static async downloadUpdate(req: Request, res: Response) {
-    const updatePath = path.resolve(process.cwd(), "src/uploads/update.zip");
-    if (fs.existsSync(updatePath)) {
+    const possiblePaths = [
+      path.resolve(process.cwd(), "src/uploads/update.zip"),
+      path.resolve(process.cwd(), "uploads/update.zip"),
+      path.resolve(__dirname, "../uploads/update.zip")
+    ];
+    const updatePath = possiblePaths.find(p => fs.existsSync(p));
+    if (updatePath) {
       res.download(updatePath);
     } else {
       res.status(404).json({ message: "Update package not found" });

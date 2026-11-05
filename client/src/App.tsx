@@ -172,10 +172,12 @@ export function App() {
 
   useEffect(() => {
     const initServices = async () => {
+      if (Capacitor.isNativePlatform()) {
+        try { await CapacitorUpdater.notifyAppReady(); } catch (e) {}
+      }
       try { await useConfigStore.getState().fetchConfig(); } catch (e) {}
       try {
         if (Capacitor.isNativePlatform()) {
-          await CapacitorUpdater.notifyAppReady();
           try {
             const info = await CapacitorApp.getInfo();
             const nativeVersion = info.version;
@@ -276,22 +278,91 @@ export function App() {
       const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
       const todayCache = cache.today?.[todayStr];
 
+      let agenda = todayCache?.agenda || [];
+      if (agenda.length === 0) {
+        const jsDay = today.getDay();
+        const dbDay = jsDay === 0 ? 6 : jsDay - 1;
+        const slots = cache.timetable?.slots || [];
+        const todaySlots = slots.filter((s: any) => s.dayOfWeek === dbDay);
+        if (todaySlots.length > 0) {
+          agenda = todaySlots.map((s: any, idx: number) => ({
+            id: s.id || `slot_${idx}`,
+            subjectId: s.subjectId,
+            subject: s.subject,
+            startTime: s.startTime,
+            endTime: s.endTime,
+            room: s.room,
+            type: "slot",
+            status: null,
+          }));
+        }
+      }
+
       WidgetBridgeService.syncFromAppState({
-        agenda: todayCache?.agenda || [],
+        agenda,
         overallPercentage: state.overallPercentage,
         subjects: state.subjects,
         todayStatus: todayCache?.todayStatus,
       });
     };
 
-    syncWidgets();
+    const reconcileWidgetMutations = async () => {
+      try {
+        const mutations = await WidgetBridgeService.reconcilePendingWidgetMutations();
+        if (mutations && mutations.length > 0) {
+          window.dispatchEvent(new Event("attendance-updated"));
+        }
+      } catch (e) {
+        console.warn("Failed to reconcile widget mutations", e);
+      }
+    };
+
+    const reconcileAndSync = async () => {
+      try {
+        const mutations = await WidgetBridgeService.reconcilePendingWidgetMutations();
+        if (mutations && mutations.length > 0) {
+          window.dispatchEvent(new Event("attendance-updated"));
+        }
+      } catch (e) {
+        console.warn("Failed to reconcile widget mutations", e);
+      }
+      try {
+        await WidgetBridgeService.reconcileBufferedAnnouncements();
+      } catch (e) {
+        console.warn("Failed to reconcile buffered announcements", e);
+      }
+      syncWidgets();
+    };
+
+    reconcileAndSync();
+
+    let appStateHandle: any = null;
+    if (Capacitor.isNativePlatform()) {
+      CapacitorApp.addListener('appStateChange', ({ isActive }) => {
+        if (isActive) {
+          reconcileAndSync();
+        }
+      }).then(h => { appStateHandle = h; });
+    }
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        reconcileAndSync();
+      }
+    };
+
     window.addEventListener("attendance-updated", syncWidgets);
     window.addEventListener("timetable-updated", syncWidgets);
     window.addEventListener("semester-updated", syncWidgets);
+    window.addEventListener("focus", reconcileAndSync);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => {
       window.removeEventListener("attendance-updated", syncWidgets);
       window.removeEventListener("timetable-updated", syncWidgets);
       window.removeEventListener("semester-updated", syncWidgets);
+      window.removeEventListener("focus", reconcileAndSync);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      if (appStateHandle) appStateHandle.remove();
     };
   }, []);
 

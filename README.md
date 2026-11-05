@@ -45,6 +45,7 @@
 ## 📖 Table of Contents
 - [✨ What is AttendX?](#-what-is-attendx)
 - [📱 Features Showcase & Tabs](#-features-showcase--tabs)
+- [📱 Native Android Home Screen Widgets](#-native-android-home-screen-widgets)
 - [🧠 Predictive Attendance & Leave Simulation Engine](#-predictive-attendance--leave-simulation-engine)
 - [🚀 Over-The-Air (OTA) Release Pipeline](#-over-the-air-ota-release-pipeline)
 - [🔔 Local Notifications, Alarms & Do Not Disturb (DND)](#-local-notifications-alarms--do-not-disturb-dnd)
@@ -101,6 +102,17 @@ Whether dealing with shifting lecture halls, lab batches, unscheduled extra clas
 | :---: | :---: | :---: | :---: |
 | <img src="assets/screenshots/peer_sync.png" width="220" alt="PeerSync DataComm" /> | <img src="assets/screenshots/linked_devices.png" width="220" alt="Linked Devices" /> | <img src="assets/screenshots/dnd_notification.png" width="220" alt="DND Notification Mode" /> | <img src="assets/screenshots/edit_profile.png" width="220" alt="Edit Profile Modal" /> |
 | **P2P Schedule Transfer**<br/>Share or receive structural timetables via 6-digit ephemeral TTL codes with a live countdown timer pill. | **Active Session Security**<br/>Inspect active logins across web and mobile. Remotely terminate compromised devices and set auto-logout policies. | **Hardware Ringer Policy**<br/>Requests Android notification policy access to automatically silence phone during lectures and restore volume on end. | **Flexible Dual Credentials**<br/>Users signed in via Google can set an account password for direct email/password login across all devices. |
+
+---
+
+### 4. 📱 Native Android Home Screen Widgets & Live Glance
+
+AttendX features native, obsidian-acrylic Android Home Screen widgets built with modern Android 12–15 specifications, zero-lag `RemoteViews`, and full offline persistence.
+
+| 4×2 Multi-Class Today & Quick Log Widget | 2×1 Next Class Glance Widget |
+| :---: | :---: |
+| <img src="assets/screenshots/widget_today_4x2.png" width="460" alt="4x2 Interactive Today Widget Preview" /> | <img src="assets/screenshots/widget_next_class_1x2.png" width="460" alt="2x1 Next Class Glance Widget Preview" /> |
+| **Direct 1-Tap Attendance Marking (Zero App Launch)**<br/>• **Multi-Class Agenda:** Displays up to 3 upcoming lectures simultaneously with room locations, timings, and dynamic countdown chips (`🟢 ONGOING`, `⏱️ IN 15M`).<br/>• **1-Tap Direct Marking:** Tap `✓ Present`, `✗ Absent`, or `— Off` right from your launcher. The button instantly illuminates in glowing emerald (`#10B981`), rose (`#FB7185`), or amber (`#FBBF24`) and updates your overall percentage without opening the app.<br/>• **3-Class Pager:** Step through the entire day's schedule (`◀ 1–3 of 5 ▶`) and refresh on-demand with the tactile `↻` button.<br/>• **100% Linear Hierarchy:** Zero RelativeLayout forward references, preventing inflation crashes across Android 14/15 and Nothing OS launchers. | **Glanceable Next Lecture & Runway Radar**<br/>• **Room Radar:** High-contrast glowing cyan room badge (`📍 ROOM 204`) ensures you never walk to the wrong classroom.<br/>• **Dynamic Countdown:** Real-time countdown timer (`⏱️ IN 18M`) indicates exactly when your next class begins.<br/>• **Attendance Runway:** Instant safety status pill (`Safe` vs `Debar Danger`) calculated against your 75% threshold.<br/>• **Sub-20ms Launch:** Tapping anywhere on the card launches AttendX directly into your Today schedule. |
 
 ---
 
@@ -299,7 +311,7 @@ flowchart TD
 
 ## 🏛️ Comprehensive Architecture & Engineering Diagrams Suite
 
-AttendX is engineered with a strict zero-latency, fault-tolerant, and high-concurrency philosophy. Below is the complete visual specification of the **15 core system workflows, state machines, and data pipelines** powering the platform, fully color-coded by architectural layer.
+AttendX is engineered with a strict zero-latency, fault-tolerant, and high-concurrency philosophy. Below is the complete visual specification of the **16 core system workflows, state machines, and data pipelines** powering the platform, fully color-coded by architectural layer.
 
 ```mermaid
 flowchart TD
@@ -757,6 +769,69 @@ flowchart TD
         C1["9:00 AM IST: Birthday Greetings & Morning Academic Briefings"]:::client
         C2["11:59 PM IST: Daily Attendance Rollup & Stale Session Garbage Collection"]:::server
         C3["Cron Dispatches Batch Direct to FCM & Resend (Bypasses LLM Quota)"]:::db
+    end
+```
+
+---
+
+### 16. 📱 Android Home Screen Widgets & Zero-Launch Direct Attendance Architecture
+
+AttendX brings academic scheduling and attendance logging directly to the Android Home Screen. Powered by native `RemoteViews`, `AppWidgetProvider`, and a bi-directional Capacitor `WidgetBridge`, students can inspect multi-class schedules, check live classroom locations, and log attendance in under 20ms with **zero app launches required**.
+
+```mermaid
+flowchart TD
+    classDef client fill:#e0f2fe,stroke:#0284c7,stroke-width:2px,color:#0f172a,font-weight:bold;
+    classDef server fill:#ede9fe,stroke:#7c3aed,stroke-width:2px,color:#1e1b4b,font-weight:bold;
+    classDef db fill:#dcfce7,stroke:#16a34a,stroke-width:2px,color:#064e3b,font-weight:bold;
+    classDef cache fill:#fef3c7,stroke:#d97706,stroke-width:2px,color:#78350f,font-weight:bold;
+    classDef ai fill:#fae8ff,stroke:#c026d3,stroke-width:2px,color:#701a75,font-weight:bold;
+    classDef warn fill:#fee2e2,stroke:#dc2626,stroke-width:2px,color:#7f1d1d,font-weight:bold;
+    classDef action fill:#f1f5f9,stroke:#475569,stroke-width:2px,color:#0f172a,font-weight:bold;
+
+    subgraph UserInteraction ["Android Launcher Home Screen"]
+        W1["4x2 Multi-Class Today Widget"]:::client
+        W2["2x1 Next Class Glance Widget"]:::client
+        Tap["Student Taps [Present] / [Absent] / [Off]"]:::action
+        W1 --> Tap
+    end
+
+    subgraph NativeBroadcast ["Android Native Layer (<20ms Zero-Launch Execution)"]
+        Tap --> WAR["WidgetActionReceiver.java (BroadcastReceiver)"]:::server
+        WAR --> RV["Optimistic RemoteViews Update (<15ms)
+• Button illuminates in Emerald/Rose/Amber
+• Attendance % dynamically re-computed
+• Pager index preserved"]:::client
+        RV --> Launcher["Launcher Views Refreshed via AppWidgetManager"]:::client
+        WAR --> Prefs[("SharedPreferences: attendx_widget_prefs
+• Offline Mutation Queued
+• Local Slot Status Updated")]:::cache
+        WAR --> NetThread["Background Thread HTTP Worker"]:::server
+    end
+
+    subgraph BackgroundSync ["Network & Server Synchronization"]
+        NetThread --> API["POST /attendance/mark"]:::server
+        API --> Server["Render Cloud Node.js API"]:::server
+        Server --> DB[("Neon PostgreSQL Attendance Record")]:::db
+        NetThread -. "Offline / Airplane Mode" .-> StoreOffline["Saved in attendx_offline_mutations
+Reconciled upon Next App Launch"]:::warn
+    end
+
+    subgraph AppForegroundSync ["Capacitor Bi-Directional Bridge (On App Open / Foreground)"]
+        OpenApp["Student Opens AttendX App"]:::action --> WB["WidgetBridgeService.reconcilePendingWidgetMutations()"]:::client
+        WB --> FetchMutations["WidgetPlugin.getPendingMutations()"]:::server
+        FetchMutations --> CacheState["useCacheStore & useAttendanceStore Synchronized
+(0ms Instant Cache Alignment)"]:::db
+        SyncWidgets["App State Updates -> WidgetBridgeService.syncWidgets()"]:::client --> UpdateNative["Pushes Latest Timetable, Rooms & Stats to SharedPreferences"]:::cache
+    end
+
+    subgraph BackgroundFCM ["Zero-App-Open Background FCM Announcement Buffering"]
+        FCMIn["FCM Classroom Announcement Received (App Closed)"]:::ai --> AMS["AttendXMessagingService.java"]:::server
+        AMS --> NotifTray["Native System Notification Tray Alert"]:::client
+        AMS --> BufferAnnounce[("attendx_fcm_buffered_announcements
+Cached in Native SharedPreferences")]:::cache
+        OpenApp -. "App Resume" .-> DrainBuffer["WidgetBridgeService.reconcileBufferedAnnouncements()"]:::server
+        DrainBuffer --> FeedCache["useCacheStore.appendClassroomAnnouncement()
+Feeds 100% Readable in Airplane Mode!"]:::db
     end
 ```
 

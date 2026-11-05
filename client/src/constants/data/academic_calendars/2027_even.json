@@ -1,0 +1,160 @@
+{
+  "academicYear": "2026-27",
+  "semesterType": "even",
+  "year": 2027,
+  "events": [
+    {
+      "title": "Institute Fee Payment",
+      "startDate": "2027-01-02",
+      "endDate": "2027-01-11",
+      "eventType": "other",
+      "allDay": true,
+      "semesters": [2],
+      "description": "Fee payment window for Semester 2 (B.Tech / M.Tech)"
+    },
+    {
+      "title": "Institute Fee Payment",
+      "startDate": "2026-12-21",
+      "endDate": "2027-01-11",
+      "eventType": "other",
+      "allDay": true,
+      "semesters": [4, 6, 8],
+      "description": "Fee payment window for Semesters 4, 6, and 8"
+    },
+    {
+      "title": "Course Registration & Fee Payment Verification",
+      "startDate": "2027-01-11",
+      "endDate": "2027-01-11",
+      "eventType": "institute",
+      "allDay": true,
+      "semesters": [2, 4, 6, 8],
+      "description": "Course registration and verification for all even semester students"
+    },
+    {
+      "title": "Commencement of Classes",
+      "startDate": "2027-01-12",
+      "endDate": "2027-01-12",
+      "eventType": "institute",
+      "allDay": true,
+      "semesters": [2, 4, 6, 8],
+      "description": "Official start of even semester classes"
+    },
+    {
+      "title": "Annual Technical Fest (Meraki)",
+      "startDate": "2027-02-10",
+      "endDate": "2027-02-12",
+      "eventType": "fest",
+      "allDay": true,
+      "semesters": [2, 4, 6, 8],
+      "description": "Annual technical fest Meraki at IIIT Una"
+    },
+    {
+      "title": "Supplementary Exam (Odd Semester Backlogs)",
+      "startDate": "2027-02-22",
+      "endDate": "2027-02-26",
+      "eventType": "exam",
+      "allDay": true,
+      "semesters": [2, 4, 6, 8],
+      "description": "Supplementary examination for odd semester backlogs"
+    },
+    {
+      "title": "Mid Semester Exam (MSE)",
+      "startDate": "2027-03-15",
+      "endDate": "2027-03-17",
+      "eventType": "midsem",
+      "allDay": true,
+      "semesters": [2, 4, 6],
+      "description": "Mid-semester theory examinations for Semesters 2, 4, and 6"
+    },
+    {
+      "title": "Practical Lab Demo",
+      "startDate": "2027-03-18",
+      "endDate": "2027-03-19",
+      "eventType": "exam",
+      "allDay": true,
+      "semesters": [2, 4, 6],
+      "description": "Practical and lab demonstration evaluations"
+    },
+    {
+      "title": "Mid Semester Break",
+      "startDate": "2027-03-22",
+      "endDate": "2027-03-26",
+      "eventType": "vacation",
+      "allDay": true,
+      "semesters": [2, 4, 6, 8],
+      "description": "Mid-semester vacation (includes Holi and Good Friday)"
+    },
+    {
+      "title": "Last Day for Showing Answer-Sheets of MSE",
+      "startDate": "2027-03-30",
+      "endDate": "2027-03-30",
+      "eventType": "other",
+      "allDay": true,
+      "semesters": [2, 4, 6],
+      "description": "Evaluation review and showing of MSE answer sheets"
+    },
+    {
+      "title": "Last Teaching Day",
+      "startDate": "2027-05-06",
+      "endDate": "2027-05-06",
+      "eventType": "institute",
+      "allDay": true,
+      "semesters": [2, 4, 6, 8],
+      "description": "Last official teaching day of the even semester"
+    },
+    {
+      "title": "Notification of Attendance Shortage",
+      "startDate": "2027-05-07",
+      "endDate": "2027-05-07",
+      "eventType": "other",
+      "allDay": true,
+      "semesters": [2, 4, 6, 8],
+      "description": "Final department notification of students falling short of 75% attendance criteria"
+    },
+    {
+      "title": "End Semester Theory Exam & AAT",
+      "startDate": "2027-05-10",
+      "endDate": "2027-05-15",
+      "eventType": "endsem",
+      "allDay": true,
+      "semesters": [2, 4, 6, 8],
+      "description": "Final end-semester theory examinations and Absentee Assessment Test"
+    },
+    {
+      "title": "End Semester Lab Exam",
+      "startDate": "2027-05-17",
+      "endDate": "2027-05-25",
+      "eventType": "endsem",
+      "allDay": true,
+      "semesters": [2, 4, 6, 8],
+      "description": "Final practical and laboratory examinations"
+    },
+    {
+      "title": "Last Day for Showing Answer-Sheets of ESE",
+      "startDate": "2027-06-04",
+      "endDate": "2027-06-04",
+      "eventType": "other",
+      "allDay": true,
+      "semesters": [2, 4, 6, 8],
+      "description": "Final review and showing of end-semester answer sheets"
+    },
+    {
+      "title": "Result Declaration & Student Vacation",
+      "startDate": "2027-06-07",
+      "endDate": "2027-06-07",
+      "eventType": "vacation",
+      "allDay": true,
+      "semesters": [2, 4, 6, 8],
+      "description": "Even semester result declaration and official start of summer vacation"
+    },
+    {
+      "title": "Next Semester Commencement",
+      "startDate": "2027-07-19",
+      "endDate": "2027-07-19",
+      "eventType": "institute",
+      "allDay": true,
+      "semesters": [2, 4, 6, 8],
+      "description": "Commencement of AY 2027-28 odd semester classes"
+    }
+  ]
+}

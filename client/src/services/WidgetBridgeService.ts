@@ -1,4 +1,6 @@
 import { registerPlugin, Capacitor } from '@capacitor/core';
+import { useCacheStore } from '../stores/cacheStore';
+import { useAttendanceStore } from '../stores/attendanceStore';
 
 export interface WidgetDataPayload {
   date_formatted?: string;
@@ -13,10 +15,25 @@ export interface WidgetDataPayload {
   next_subject?: string;
   next_time?: string;
   next_runway?: string;
+  today_classes_json?: string;
+  subjects_json?: string;
+  auth_token?: string;
+  api_base_url?: string;
+}
+
+export interface WidgetPendingMutation {
+  subjectId: string;
+  timetableSlotId?: string;
+  date: string;
+  status: string;
+  timestamp: number;
 }
 
 interface WidgetPluginInterface {
   updateWidgetData(data: WidgetDataPayload): Promise<{ success: boolean }>;
+  getPendingMutations(): Promise<{ mutations: WidgetPendingMutation[] }>;
+  clearPendingMutations(): Promise<{ success: boolean }>;
+  getBufferedAnnouncements(): Promise<{ announcements: Array<{ classroomId: string; announcement: any }> }>;
 }
 
 const WidgetBridge = registerPlugin<WidgetPluginInterface>('WidgetBridge');
@@ -42,6 +59,82 @@ export const WidgetBridgeService = {
       await WidgetBridge.updateWidgetData(payload);
     } catch (e) {
       console.warn('[WidgetBridge] Failed to update Android widgets:', e);
+    }
+  },
+
+  async reconcileBufferedAnnouncements(): Promise<void> {
+    if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== 'android') {
+      return;
+    }
+    try {
+      const res = await WidgetBridge.getBufferedAnnouncements();
+      const announcements = res?.announcements || [];
+      if (announcements.length > 0) {
+        console.log('[WidgetBridge] Ingesting', announcements.length, 'buffered background FCM announcements');
+        const store = useCacheStore.getState();
+        for (const item of announcements) {
+          if (item?.classroomId && item?.announcement) {
+            store.appendClassroomAnnouncement(item.classroomId, item.announcement);
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('[WidgetBridge] Failed to fetch buffered announcements:', e);
+    }
+  },
+
+  async reconcilePendingWidgetMutations(): Promise<WidgetPendingMutation[]> {
+    if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== 'android') {
+      return [];
+    }
+    try {
+      const res = await WidgetBridge.getPendingMutations();
+      const mutations = res?.mutations || [];
+      if (mutations.length > 0) {
+        console.log('[WidgetBridge] Reconciling', mutations.length, 'widget mutations in foreground');
+        
+        // 1. Immediately apply to local in-memory cache so TodayPage and Subject Detail reflect marks without delay
+        const cache = useCacheStore.getState();
+        mutations.forEach(m => {
+          const dayData = cache.today?.[m.date];
+          if (dayData && Array.isArray(dayData.agenda)) {
+            const nextAgenda = dayData.agenda.map((item: any) => {
+              const matchesSlot = m.timetableSlotId && (item.id === m.timetableSlotId || item.timetableSlotId === m.timetableSlotId);
+              const matchesSubj = !m.timetableSlotId && (item.subjectId === m.subjectId || item.subject?.id === m.subjectId);
+              if (matchesSlot || matchesSubj) {
+                return { ...item, status: m.status === 'clear' ? null : m.status };
+              }
+              return item;
+            });
+            cache.setCache('today', {
+              ...cache.today,
+              [m.date]: { ...dayData, agenda: nextAgenda }
+            });
+          }
+        });
+
+        const { api } = await import('../lib/api');
+        for (const m of mutations) {
+          try {
+            await api.post("/attendance/mark", {
+              subjectId: m.subjectId,
+              date: m.date,
+              status: m.status,
+              timetableSlotId: m.timetableSlotId,
+            }, { silent: true, skipToast: true } as any);
+          } catch (err) {
+            console.warn('[WidgetBridge] Failed to persist widget mutation to server:', err);
+          }
+        }
+
+        // 2. Dispatch events to notify listeners and fetch fresh attendance stats
+        window.dispatchEvent(new CustomEvent('widget_attendance_marked', { detail: { mutations } }));
+        useAttendanceStore.getState().fetchStats(true);
+      }
+      return mutations;
+    } catch (e) {
+      console.warn('[WidgetBridge] Failed to reconcile pending widget mutations:', e);
+      return [];
     }
   },
 
@@ -79,7 +172,7 @@ export const WidgetBridgeService = {
       // Helper to compute runway text for a subject
       const getSubjectRunway = (subId?: string): string => {
         if (!subId) return 'Safe';
-        const sub = subjects.find(s => s.id === subId);
+        const sub = subjects.find(s => s.id === subId || s.subjectId === subId);
         if (!sub) return 'Safe';
         const target = sub.targetPercentage || 75;
         const attended = sub.attended || 0;
@@ -97,6 +190,35 @@ export const WidgetBridgeService = {
         return `Need ${Math.max(1, need)} Classes`;
       };
 
+      // Rich today_classes_json array for direct home screen marking
+      const todayClasses = agenda.map((item, idx) => ({
+        id: item.id || `slot_${idx}`,
+        subjectId: item.subject?.id || item.subjectId,
+        subjectName: item.subject?.name || item.subjectName || "Scheduled Class",
+        startTime: item.startTime || "00:00",
+        endTime: item.endTime || "00:00",
+        timeRange: `${formatTime12h(item.startTime)} – ${formatTime12h(item.endTime)}`,
+        room: item.room ? item.room.trim() : "",
+        status: item.status || null,
+        bunkRunway: getSubjectRunway(item.subject?.id || item.subjectId),
+        type: item.type || "slot",
+      }));
+
+      // Serializable subjects array
+      const subjectsJson = subjects.map(s => ({
+        id: s.id || s.subjectId,
+        name: s.name,
+        attended: s.attended || 0,
+        total: s.total || 0,
+        targetPercentage: s.targetPercentage || 75,
+      }));
+
+      const authState = (await import('../stores/authStore')).useAuthStore.getState();
+      const authToken = authState.accessToken || localStorage.getItem('token') || localStorage.getItem('accessToken') || '';
+      const apiBaseUrl = (import.meta.env.VITE_API_URL && !import.meta.env.VITE_API_URL.startsWith('/'))
+        ? import.meta.env.VITE_API_URL
+        : 'https://attendx.tech/api';
+
       // 1. Holiday State
       if (todayStatus?.isHoliday) {
         await this.syncWidgets({
@@ -112,6 +234,10 @@ export const WidgetBridgeService = {
           next_subject: todayStatus.title || 'Institute Holiday',
           next_time: 'Campus Closed',
           next_runway: 'Safe',
+          today_classes_json: JSON.stringify(todayClasses),
+          subjects_json: JSON.stringify(subjectsJson),
+          auth_token: authToken,
+          api_base_url: apiBaseUrl,
         });
         return;
       }
@@ -131,6 +257,10 @@ export const WidgetBridgeService = {
           next_subject: 'No classes scheduled today',
           next_time: 'Free schedule',
           next_runway: 'Safe',
+          today_classes_json: JSON.stringify(todayClasses),
+          subjects_json: JSON.stringify(subjectsJson),
+          auth_token: authToken,
+          api_base_url: apiBaseUrl,
         });
         return;
       }
@@ -171,6 +301,10 @@ export const WidgetBridgeService = {
           next_subject: 'All classes completed today',
           next_time: 'Free for the day',
           next_runway: 'Safe',
+          today_classes_json: JSON.stringify(todayClasses),
+          subjects_json: JSON.stringify(subjectsJson),
+          auth_token: authToken,
+          api_base_url: apiBaseUrl,
         });
         return;
       }
@@ -210,6 +344,12 @@ export const WidgetBridgeService = {
         next_subject: subName,
         next_time: timeRange,
         next_runway: runway,
+
+        // Rich interactive widget data
+        today_classes_json: JSON.stringify(todayClasses),
+        subjects_json: JSON.stringify(subjectsJson),
+        auth_token: authToken,
+        api_base_url: apiBaseUrl,
       });
     } catch (err) {
       console.warn('[WidgetBridge] Error calculating widget data:', err);

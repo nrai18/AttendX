@@ -50,15 +50,28 @@ router.post("/", authenticate, async (req, res) => {
 
 const updateHandler = async (req: any, res: any) => {
   try {
+    const id = req.params.id as string;
+    const userId = (req as any).user.userId;
+    const existing = await prisma.assignment.findFirst({
+      where: { id, userId },
+    });
+    if (!existing) {
+      return res.status(404).json({ error: "Assignment not found" });
+    }
+
     const { title, description, deadline, priority, subjectId } = req.body;
     const assignment = await prisma.assignment.update({
-      where: { id: (req.params.id as string), userId: (req as any).user.userId },
+      where: { id },
       data: {
         ...(title !== undefined && { title }),
         ...(description !== undefined && { description }),
         ...(deadline !== undefined && { deadline: new Date(deadline) }),
         ...(priority !== undefined && { priority }),
         ...(subjectId !== undefined && { subjectId }),
+      },
+      include: {
+        completions: true,
+        subject: true,
       },
     });
     res.json(assignment);

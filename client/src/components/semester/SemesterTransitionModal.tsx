@@ -109,7 +109,7 @@ export const SemesterTransitionModal: React.FC<SemesterTransitionModalProps> = (
     setIsSubmitting(true);
 
     try {
-      const res = await api.post("/semesters/transition", {
+      const transitionPayload = {
         nextName,
         startDate,
         endDate,
@@ -117,9 +117,16 @@ export const SemesterTransitionModal: React.FC<SemesterTransitionModalProps> = (
         wipeOldData,
         autoSyncCalendar: autoSyncTemplates,
         autoSyncHolidays: autoSyncTemplates
-      });
+      };
+      const res = await api.post("/semesters/transition", transitionPayload);
 
-      const newSemester = res.data?.semester;
+      const newSemester = res.data?.semester || {
+        id: res.data?.id || `temp-sem-${Date.now()}`,
+        name: nextName,
+        startDate,
+        endDate,
+        isActive: true,
+      };
 
       // Clear all local caches and pending offline sync queue for a completely fresh start
       useCacheStore.getState().clearCache();
@@ -140,10 +147,19 @@ export const SemesterTransitionModal: React.FC<SemesterTransitionModalProps> = (
       }
 
       try {
-        const { useOfflineStore } = await import("../../stores/offlineStore");
-        useOfflineStore.getState().clearQueue();
+        const isTransitionOnline = typeof navigator !== "undefined" ? navigator.onLine : true;
+        if (isTransitionOnline) {
+          const { useOfflineStore } = await import("../../stores/offlineStore");
+          useOfflineStore.getState().clearQueue();
+        }
         const { Preferences } = await import("@capacitor/preferences");
-        for (const k of ["attendx-attendance-cache", "attendx-api-cache", "attendx-sync-storage", "attendx-offline-queue"]) {
+        const transitionKeys = [
+          "attendx-attendance-cache",
+          "attendx-api-cache",
+          "attendx-sync-storage",
+          ...(isTransitionOnline ? ["attendx-offline-queue"] : []),
+        ];
+        for (const k of transitionKeys) {
           Preferences.remove({ key: k }).catch(() => {});
           localStorage.removeItem(k);
         }

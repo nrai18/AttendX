@@ -103,7 +103,7 @@ export function PrivacyPage() {
         <p>AttendX provides notifications exclusively designed to keep your academic schedule on track:</p>
         <ol className="list-decimal pl-6 space-y-2 text-slate-600 dark:text-slate-50/60">
           <li><strong>Class Heads-Up Reminders:</strong> Local device alarms scheduled 5, 10, or 15 minutes before your class begins with classroom location tags.</li>
-          <li><strong>Multi-Frequency Academic Summaries:</strong> Daily Briefings, Weekly Reviews, Monthly Summaries, and Yearly Wrap-ups delivered at your independently configured delivery times.</li>
+          <li><strong>Multi-Frequency Academic Summaries:</strong> Daily Briefings, Weekly Reviews, and Monthly Summaries delivered at your independently configured delivery times.</li>
           <li><strong>Section Broadcasts:</strong> Urgent lecture room changes and Class Representative announcements pushed via Firebase Cloud Messaging (FCM) strictly to enrolled peers of your classroom section.</li>
           <li><strong>Opt-Out:</strong> All notification channels and email summaries can be toggled on or off at any time in Settings.</li>
         </ol>

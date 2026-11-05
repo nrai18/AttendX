@@ -245,10 +245,10 @@ export const LandingPage: React.FC = () => {
 
           {/* BOTTOM CONTROLS (Step 4) */}
           <footer className={`w-full px-6 md:px-16 py-8 md:py-12 flex flex-col sm:flex-row items-center justify-between gap-4 z-20 transition-all duration-1000 ${animStep >= 4 ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'}`}>
-            {/* FLOATING DOWNLOAD BUTTON (LEFT SIDE - DESKTOP ONLY, LIGHT GREEN) */}
+            {/* FLOATING DOWNLOAD BUTTON (DESKTOP ONLY, HIDDEN ON MOBILE) */}
             <button
               onClick={() => setIsDownloadModalOpen(true)}
-              className="w-full sm:w-auto flex px-6 sm:px-8 h-14 rounded-none border-2 border-black bg-[#80ED99] hover:bg-[#6ee7b7] text-black items-center justify-center gap-3 font-black uppercase tracking-widest text-sm shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] dark:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 hover:shadow-[10px_10px_0px_0px_rgba(0,0,0,1)] active:translate-y-0 active:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all cursor-pointer group focus:outline-none focus:ring-0"
+              className="hidden sm:flex sm:w-auto px-6 sm:px-8 h-14 rounded-none border-2 border-black bg-[#80ED99] hover:bg-[#6ee7b7] text-black items-center justify-center gap-3 font-black uppercase tracking-widest text-sm shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] dark:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 hover:shadow-[10px_10px_0px_0px_rgba(0,0,0,1)] active:translate-y-0 active:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all cursor-pointer group focus:outline-none focus:ring-0"
               title="Download AttendX App"
             >
               <div className="w-7 h-7 bg-black text-[#80ED99] flex items-center justify-center border-2 border-black group-hover:scale-105 transition-transform">

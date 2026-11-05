@@ -80,6 +80,10 @@ export const PeerSyncModal = () => {
   }, [expiresAt, activeCode, clearActiveCode]);
 
   const handleGenerateCode = async () => {
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      toast.error("Peer Sync requires an active internet connection to generate a secure transfer code.");
+      return;
+    }
     if (isSemesterLoading) return toast.error("Semester data is still syncing, please wait a moment.");
     setLoading(true);
     try {
@@ -111,13 +115,16 @@ export const PeerSyncModal = () => {
         contextType,
         dateRange
       });
+      if (!res.data?.code || res.data?.code === "undefined" || res.data?._queued) {
+        throw new Error("Unable to generate transfer code. Please ensure you are connected to the internet.");
+      }
       // FE-L04 FIX: Properly handle 0 TTL by using explicit null check rather than falsy || operator
       setActiveCode(String(res.data.code), res.data.expiresIn != null ? Number(res.data.expiresIn) : 300);
       // Active code displayed directly in modal UI
     } catch (error: any) {
       console.log("Error caught in PeerSyncModal:", error);
       const errRes = error.response;
-      if (errRes?.data?.code) {
+      if (errRes?.data?.code && errRes?.data?.code !== "undefined") {
         // FE-H07 FIX: Only recover if the backend actually provides the code
         const recoveredCode = String(errRes.data.code); 
         let recoveredExp = Number(errRes.data.expiresIn);
@@ -134,6 +141,10 @@ export const PeerSyncModal = () => {
   };
 
   const handleRetrieveCode = async () => {
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      toast.error("Peer Sync requires an active internet connection to retrieve transfer data.");
+      return;
+    }
     if (isSemesterLoading) return toast.error("Semester data is still syncing, please wait a moment.");
     if (inputCode.length !== 6) return toast.error("Code must be 6 digits.");
     if (!activeSemesterId) return toast.error("No active semester found to import into.");

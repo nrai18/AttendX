@@ -4,6 +4,7 @@ import { AuthenticatedRequest } from "../middleware/authenticate";
 import { CalendarRagService } from "../services/calendar_rag.service";
 import { CacheService } from "../services/cache.service";
 import { TemplateEventService } from "../services/template_event.service";
+import { prisma } from "../lib/prisma";
 
 export class EventController {
   static async getEvents(req: AuthenticatedRequest, res: Response) {

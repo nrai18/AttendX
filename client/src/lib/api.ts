@@ -30,7 +30,7 @@ export function getRecentApiErrors(): ApiErrorLogEntry[] {
 export const api = axios.create({
   baseURL: API_BASE_URL,
   withCredentials: true, // Send httpOnly refresh cookies automatically
-  timeout: 120000,
+  timeout: 20000,
 });
 
 // In-flight GET request deduplication: collapses identical concurrent GET calls into 1 network roundtrip
@@ -176,6 +176,12 @@ export function detectRealHostOS(): string {
 // Request interceptor: Attach in-memory Access Token and proactively refresh if expired
 api.interceptors.request.use(
   async (config) => {
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      if (config.method?.toLowerCase() === 'get' || config.url?.includes('/transfer/')) {
+        return Promise.reject(new axios.AxiosError("Network Error: Device is offline", "ERR_NETWORK", config));
+      }
+    }
+
     // Global cache buster for GET requests to bypass buggy WebView 304 caches
     if (config.method?.toLowerCase() === 'get') {
       config.params = config.params || {};
@@ -394,31 +400,62 @@ api.interceptors.response.use(
       }
     }
 
-        // Global Error Interceptor for non-401s and non-429s (Peer Sync recovery)
-    if (error.message === "Network Error" || [502, 503, 504].includes(error.response?.status)) {
-      
+    // Global Error Interceptor for offline mutations and transient network/server drops
+    const isNetworkOrOfflineError =
+      !error.response ||
+      error.message === "Network Error" ||
+      error.code === "ERR_NETWORK" ||
+      error.code === "ECONNABORTED" ||
+      (typeof navigator !== "undefined" && !navigator.onLine) ||
+      [502, 503, 504].includes(error.response?.status);
+
+    if (isNetworkOrOfflineError) {
       // Offline mutation interceptor
-      if (originalRequest && !originalRequest.headers['X-Offline-Retry'] &&
-          ['post', 'put', 'delete', 'patch'].includes(originalRequest.method?.toLowerCase()) && 
-          !originalRequest.url?.includes('/auth/') &&
-          !originalRequest.url?.includes('/sync/') &&
-          !originalRequest.url?.includes('/ai/')) {
-          
-          let parsedData = undefined;
-          try { parsedData = originalRequest.data ? JSON.parse(originalRequest.data) : undefined; } catch(e) {}
+      if (
+        originalRequest &&
+        !originalRequest.headers?.['X-Offline-Retry'] &&
+        ['post', 'put', 'delete', 'patch'].includes(originalRequest.method?.toLowerCase()) &&
+        !originalRequest.url?.includes('/transfer/') &&
+        !originalRequest.url?.includes('/auth/') &&
+        !originalRequest.url?.includes('/sync/') &&
+        !originalRequest.url?.includes('/ai/') &&
+        !originalRequest.url?.includes('/data/export') &&
+        !originalRequest.url?.includes('/data/import')
+      ) {
+        let parsedData = originalRequest.data;
+        if (typeof parsedData === "string") {
+          try {
+            parsedData = JSON.parse(parsedData);
+          } catch (e) {}
+        }
 
-          useOfflineStore.getState().enqueue({
-             method: originalRequest.method,
-             url: originalRequest.url,
-             data: parsedData,
-             headers: originalRequest.headers
-          });
+        // Determine temporary entity ID for re-keying and optimistic UI tracking
+        let tempId = parsedData?.tempId || parsedData?.id;
+        if (!tempId || typeof tempId !== "string" || !tempId.startsWith("temp-")) {
+          const urlTempMatch = originalRequest.url?.match(/(temp-[a-zA-Z0-9_-]+)/);
+          if (urlTempMatch) {
+            tempId = urlTempMatch[1];
+          } else {
+            tempId = 'temp-' + Date.now();
+          }
+        }
 
-          import("sonner").then(({ toast }) => {
-          // Silent offline queue (no noisy toast)
-          });
+        useOfflineStore.getState().enqueue({
+          method: originalRequest.method,
+          url: originalRequest.url,
+          data: parsedData,
+          headers: originalRequest.headers,
+          tempId,
+        });
 
-          return Promise.resolve({ data: { id: 'temp-' + Date.now(), _queued: true } }); 
+        const payloadData = typeof parsedData === "object" && parsedData && !(parsedData instanceof FormData) ? parsedData : {};
+        return Promise.resolve({
+          data: {
+            id: tempId,
+            _queued: true,
+            ...payloadData,
+          },
+        });
       }
     } else if (
       !axios.isCancel(error) &&

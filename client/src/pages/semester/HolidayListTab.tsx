@@ -6,6 +6,7 @@ import { confirmDeleteToast } from "../../components/ui/confirm-delete-toast";
 import { SaveToggle } from "../../components/ui/save-toggle";
 import { useCacheStore } from "../../stores/cacheStore";
 import { useAttendanceStore } from "../../stores/attendanceStore";
+import { getHolidaysTemplate } from "../../constants/calendarTemplates";
 
 export const HolidayListTab = ({ semesterId, semesterStartDate, semesterEndDate }: { semesterId?: string, semesterStartDate?: string, semesterEndDate?: string }) => {
   const [activeSubTab, setActiveSubTab] = useState<"fixed" | "restricted">("fixed");
@@ -47,10 +48,11 @@ export const HolidayListTab = ({ semesterId, semesterStartDate, semesterEndDate 
           setRestrictedList(Array.isArray(res.data.restrictedHolidays) ? res.data.restrictedHolidays : []);
         }
       } catch (e) {
-        console.warn("Could not load backend holidays:", e);
+        console.warn("Could not load backend holidays (loading offline catalog fallback):", e);
         if (isMounted) {
-          setFixedList([]);
-          setRestrictedList([]);
+          const fallback = getHolidaysTemplate(selectedYear);
+          setFixedList(Array.isArray(fallback.fixedHolidays) ? fallback.fixedHolidays : []);
+          setRestrictedList(Array.isArray(fallback.restrictedHolidays) ? fallback.restrictedHolidays : []);
         }
       } finally {
         if (isMounted) setIsLoadingHolidays(false);

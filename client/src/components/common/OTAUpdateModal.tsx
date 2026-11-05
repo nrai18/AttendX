@@ -21,16 +21,19 @@ export const OTAUpdateModal: React.FC<Props> = ({ localVersion }) => {
     const checkUpdates = async () => {
       try {
         const res = await api.get(`/system/update?t=${Date.now()}`);
-        const { latestVersion, changelog } = res.data;
+        const { latestVersion, changelog, buildTimestamp } = res.data;
+        const localTimestamp = Number(localStorage.getItem("app_build_timestamp") || "0");
+        const hasNewBuild = Boolean(buildTimestamp && buildTimestamp > localTimestamp);
 
-        if (localVersion !== latestVersion) {
+
+        if (localVersion !== latestVersion || hasNewBuild) {
           // Filter changelog to only include versions greater than localVersion
           // For simplicity, we just take all items in the array until we hit the localVersion
           const index = changelog.findIndex(
             (c: any) => c.version === localVersion,
           );
           const newUpdates =
-            index !== -1 ? changelog.slice(0, index) : changelog;
+            index !== -1 && !hasNewBuild ? changelog.slice(0, index) : changelog;
 
           if (newUpdates.length > 0) {
             const latestUpdate = newUpdates[0];
@@ -40,6 +43,7 @@ export const OTAUpdateModal: React.FC<Props> = ({ localVersion }) => {
               sizeMb: res.data.downloadSizeMb || latestUpdate.sizeMb || 0,
               title: res.data.title || latestUpdate.title || "Update Available",
               sections: latestUpdate.sections || [],
+              buildTimestamp: res.data.buildTimestamp || 0,
             });
             setIsOpen(true);
           }
@@ -77,6 +81,7 @@ export const OTAUpdateModal: React.FC<Props> = ({ localVersion }) => {
           clearInterval(interval);
           setTimeout(() => {
             localStorage.setItem("app_version", remoteData.latestVersion);
+      localStorage.setItem("app_build_timestamp", String(remoteData.buildTimestamp || Date.now()));
             window.location.reload();
           }, 1000);
         }
@@ -95,7 +100,9 @@ export const OTAUpdateModal: React.FC<Props> = ({ localVersion }) => {
       }
 
       const bundle = await CapacitorUpdater.download({
-        url: `${API_BASE_URL}/system/download-update`,
+        url: (import.meta.env.VITE_API_URL && !import.meta.env.VITE_API_URL.startsWith('/'))
+          ? `${import.meta.env.VITE_API_URL}/system/download-update`
+          : (API_BASE_URL && !API_BASE_URL.startsWith('/') ? `${API_BASE_URL}/system/download-update` : 'https://attendx.tech/api/system/download-update'),
         version: remoteData.latestVersion,
       });
 
@@ -107,6 +114,7 @@ export const OTAUpdateModal: React.FC<Props> = ({ localVersion }) => {
 
       // Save the new version to localStorage so it doesn't prompt again!
       localStorage.setItem("app_version", remoteData.latestVersion);
+      localStorage.setItem("app_build_timestamp", String(remoteData.buildTimestamp || Date.now()));
 
       await CapacitorUpdater.set({ id: bundle.id });
       // The app will restart automatically after set()

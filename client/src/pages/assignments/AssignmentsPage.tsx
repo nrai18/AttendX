@@ -39,6 +39,15 @@ export function AssignmentsPage() {
 
   useEffect(() => {
     fetchAssignments();
+    const handleSync = () => {
+      fetchAssignments();
+    };
+    window.addEventListener("online", handleSync);
+    window.addEventListener("attendance-updated", handleSync);
+    return () => {
+      window.removeEventListener("online", handleSync);
+      window.removeEventListener("attendance-updated", handleSync);
+    };
   }, [fetchAssignments]);
 
   const handleToggle = (id: string, isCurrentlyDone: boolean) => {
@@ -57,8 +66,10 @@ export function AssignmentsPage() {
     hapticSuccess();
     triggerDynamicHUD({ type: "plane", label: "Assignment Completed!", durationMs: 4500 });
 
+    // Optimistically toggle immediately so state is saved and checkmark is applied instantly
+    toggleCompletion(id);
+
     setTimeout(() => {
-      toggleCompletion(id);
       setFlyingPlaneId(null);
     }, 4200);
   };

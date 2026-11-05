@@ -232,24 +232,6 @@ export function calculateNextSummaryDates(
       const clampedDate = clampDateToMonth(year, month, targetDay);
       results.push(toDeviceLocalDateTime(clampedDate, summaryHour, summaryMinute));
     }
-  } else if (frequency.type === 'Yearly') {
-    const monthNames: Record<string, number> = {
-      Jan: 0, Feb: 1, Mar: 2, Apr: 3, May: 4, Jun: 5,
-      Jul: 6, Aug: 7, Sep: 8, Oct: 9, Nov: 10, Dec: 11
-    };
-    const targetMonth = (frequency.subValue && monthNames[frequency.subValue] !== undefined)
-      ? monthNames[frequency.subValue]
-      : 0;
-    const targetDay = 1;
-    const currentYear = now.getFullYear();
-    const clampedDate = clampDateToMonth(currentYear, targetMonth, targetDay);
-    const candidate = toDeviceLocalDateTime(clampedDate, summaryHour, summaryMinute);
-    if (candidate.getTime() > now.getTime()) {
-      results.push(candidate);
-    } else {
-      const nextYearClamped = clampDateToMonth(currentYear + 1, targetMonth, targetDay);
-      results.push(toDeviceLocalDateTime(nextYearClamped, summaryHour, summaryMinute));
-    }
   }
 
   return results;
@@ -324,12 +306,34 @@ export class NotificationService {
 
     PushNotifications.addListener('pushNotificationReceived', (notification) => {
       console.log('[FCM] Push received in foreground: ', notification);
-      const data = notification.data || (notification as any)?.notification?.data || {};
-      const title = notification.title || 'Classroom Broadcast';
-      const body = notification.body || '';
-      const targetRoute = data.route || data.url || (data.type === 'classroom_announcement' && data.classroomId ? `/classrooms/${data.classroomId}` : data.type === 'classroom_deleted' ? '/classrooms' : null);
+      let rawData = notification.data || (notification as any)?.notification?.data || {};
+      if (typeof rawData === 'string') {
+        try {
+          rawData = JSON.parse(rawData);
+        } catch (_) {}
+      }
+      const data = typeof rawData === 'object' && rawData !== null ? rawData : {};
+      const type = String(data.type || data.notification_type || '').toLowerCase();
+      const classroomId = String(data.classroomId || data.classroom_id || data.id || '');
+      const title = notification.title || data.title || 'Classroom Broadcast';
+      const body = notification.body || data.body || '';
+      const targetRoute = data.route || data.url || (classroomId ? `/classrooms/${classroomId}` : type === 'classroom_deleted' ? '/classrooms' : null);
 
-      if (data.type === 'classroom_announcement') {
+      if (type === 'classroom_announcement' || type === 'classroom_broadcast' || type === 'announcement') {
+        if (classroomId) {
+          const annObj = {
+            id: data.announcementId || data.id || `fcm-${Date.now()}`,
+            title: title || data.title || 'Classroom Notice',
+            content: data.content || data.body || body || '',
+            body: data.content || data.body || body || '',
+            importance: data.importance || 'low',
+            isPinned: Boolean(data.isPinned && data.isPinned !== 'false'),
+            createdAt: data.createdAt || new Date().toISOString(),
+            authorName: data.authorName || 'Classroom Admin',
+          };
+          useCacheStore.getState().appendClassroomAnnouncement(classroomId, annObj);
+        }
+        window.dispatchEvent(new CustomEvent('fcm_classroom_broadcast', { detail: { ...data, classroomId, type } }));
         triggerDynamicHUD({
           type: 'plane',
           label: title,
@@ -337,7 +341,17 @@ export class NotificationService {
           durationMs: 5000,
           route: targetRoute || undefined,
         });
-      } else if (data.type === 'classroom_deleted') {
+      } else if (type === 'classroom_access_updated' || type === 'broadcast_permission_updated') {
+        window.dispatchEvent(new CustomEvent('fcm_classroom_access_updated', { detail: { ...data, classroomId, type } }));
+        triggerDynamicHUD({
+          type: 'success',
+          label: title,
+          subtitle: body,
+          durationMs: 4000,
+          route: targetRoute || undefined,
+        });
+      } else if (type === 'classroom_deleted' || type === 'classroom_disbanded') {
+        window.dispatchEvent(new CustomEvent('fcm_classroom_deleted', { detail: { ...data, classroomId, type } }));
         triggerDynamicHUD({
           type: 'trash',
           label: title,
@@ -350,10 +364,40 @@ export class NotificationService {
 
     PushNotifications.addListener('pushNotificationActionPerformed', (notification) => {
       console.log('[FCM] Push action performed: ', notification);
-      const data = notification.notification?.data || (notification as any)?.data || {};
-      const targetRoute = data.route || data.url || (data.type === 'classroom_announcement' && data.classroomId ? `/classrooms/${data.classroomId}` : data.type === 'classroom_deleted' ? '/classrooms' : null);
+      let rawData = notification.notification?.data || (notification as any)?.data || {};
+      if (typeof rawData === 'string') {
+        try {
+          rawData = JSON.parse(rawData);
+        } catch (_) {}
+      }
+      const data = typeof rawData === 'object' && rawData !== null ? rawData : {};
+      const type = String(data.type || data.notification_type || '').toLowerCase();
+      const classroomId = String(data.classroomId || data.classroom_id || data.id || '');
+      const targetRoute = data.route || data.url || (classroomId ? `/classrooms/${classroomId}` : type === 'classroom_deleted' ? '/classrooms' : null);
 
-      if (data.type === 'ota_update') {
+      // Re-dispatch live events when user taps notification from tray
+      if (type === 'classroom_announcement' || type === 'classroom_broadcast' || type === 'announcement') {
+        if (classroomId) {
+          const annObj = {
+            id: data.announcementId || data.id || `fcm-${Date.now()}`,
+            title: data.title || 'Classroom Notice',
+            content: data.content || data.body || '',
+            body: data.content || data.body || '',
+            importance: data.importance || 'low',
+            isPinned: Boolean(data.isPinned && data.isPinned !== 'false'),
+            createdAt: data.createdAt || new Date().toISOString(),
+            authorName: data.authorName || 'Classroom Admin',
+          };
+          useCacheStore.getState().appendClassroomAnnouncement(classroomId, annObj);
+        }
+        window.dispatchEvent(new CustomEvent('fcm_classroom_broadcast', { detail: { ...data, classroomId, type } }));
+      } else if (type === 'classroom_access_updated' || type === 'broadcast_permission_updated') {
+        window.dispatchEvent(new CustomEvent('fcm_classroom_access_updated', { detail: { ...data, classroomId, type } }));
+      } else if (type === 'classroom_deleted' || type === 'classroom_disbanded') {
+        window.dispatchEvent(new CustomEvent('fcm_classroom_deleted', { detail: { ...data, classroomId, type } }));
+      }
+
+      if (type === 'ota_update') {
         window.dispatchEvent(new Event('check_ota_update'));
       } else if (targetRoute) {
         try {
@@ -427,67 +471,7 @@ export class NotificationService {
         return;
       }
 
-      // MUST add listeners BEFORE calling register() to avoid race conditions!
-      PushNotifications.addListener('registration', async (token) => {
-        console.log('[FCM] Push registration success, token: ' + token.value);
-        localStorage.setItem('fcm_token', token.value);
-        try {
-          // Only send FCM token to backend if already authenticated
-          if (useAuthStore.getState().isAuthenticated) {
-            await api.patch('/users/me', { fcmToken: token.value });
-          }
-        } catch (error) {
-          console.error('[FCM] Failed to sync FCM token to backend (will retry on login):', error);
-        }
-      });
-
-      PushNotifications.addListener('registrationError', (error: any) => {
-        console.error('[FCM] Error on registration: ' + JSON.stringify(error));
-      });
-
       await PushNotifications.register();
-
-      PushNotifications.addListener('pushNotificationReceived', (notification) => {
-        console.log('[FCM] Push received in foreground: ', notification);
-        const data = notification.data || (notification as any)?.notification?.data || {};
-        const title = notification.title || 'Classroom Broadcast';
-        const body = notification.body || '';
-        const targetRoute = data.route || data.url || (data.type === 'classroom_announcement' && data.classroomId ? `/classrooms/${data.classroomId}` : data.type === 'classroom_deleted' ? '/classrooms' : null);
-
-        if (data.type === 'classroom_announcement') {
-          triggerDynamicHUD({
-            type: 'plane',
-            label: title,
-            subtitle: body,
-            durationMs: 5000,
-            route: targetRoute || undefined,
-          });
-        } else if (data.type === 'classroom_deleted') {
-          triggerDynamicHUD({
-            type: 'trash',
-            label: title,
-            subtitle: body,
-            durationMs: 5000,
-            route: '/classrooms',
-          });
-        }
-      });
-
-      PushNotifications.addListener('pushNotificationActionPerformed', (notification) => {
-        console.log('[FCM] Push action performed: ', notification);
-        const data = notification.notification?.data || (notification as any)?.data || {};
-        const targetRoute = data.route || data.url || (data.type === 'classroom_announcement' && data.classroomId ? `/classrooms/${data.classroomId}` : data.type === 'classroom_deleted' ? '/classrooms' : null);
-
-        if (data.type === 'ota_update') {
-          // Tell the OTAUpdateModal to fetch the manifest and show itself
-          window.dispatchEvent(new Event('check_ota_update'));
-        } else if (targetRoute) {
-          try {
-            sessionStorage.setItem('pending_push_route', targetRoute);
-          } catch (_) {}
-          window.dispatchEvent(new CustomEvent('push_route', { detail: targetRoute }));
-        }
-      });
     } catch (e) {
       console.warn("Could not register push notifications:", e);
     }
@@ -547,7 +531,7 @@ export class NotificationService {
         id: 'silent_mode',
         name: 'Active Silent Mode',
         description: 'Pinned notification while class is actively running and phone is muted.',
-        importance: 2, // Low importance: strictly silent, no audio chime when phone goes on silent
+        importance: 3, // Default importance: displays pinned notification in shade without DND hiding it
         visibility: 1, 
         lights: false,
         vibration: false,
@@ -736,12 +720,21 @@ export class NotificationService {
               // Pinned notification dismissed; no web toast needed
             }
           } else if (action.actionId === 'MUTE_ACTION') {
-            const { classTitle, endTimeStr, startTimeStr } = action.notification.extra || {};
+            let rawExtra = action.notification.extra;
+            if (typeof rawExtra === 'string') {
+              try { rawExtra = JSON.parse(rawExtra); } catch {}
+            }
+            const { classTitle, endTimeStr, startTimeStr, endTimeMs } = rawExtra || {};
             
             let endTime = new Date();
             let classEnded = false;
 
-            if (endTimeStr) {
+            if (endTimeMs && typeof endTimeMs === 'number' && !isNaN(endTimeMs) && endTimeMs > 0) {
+              endTime = new Date(endTimeMs);
+              if (endTime.getTime() <= Date.now()) {
+                classEnded = true;
+              }
+            } else if (endTimeStr) {
               const parsedEnd = parseTimeOnDate(new Date(), endTimeStr);
               if (parsedEnd) {
                 endTime = parsedEnd;
@@ -838,6 +831,8 @@ export class NotificationService {
       const cleanTitle = (classTitle || "Class").trim();
       const timeStr = actualStartTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       const notifId = getNotificationIdForSlot(slotId, formatLocalDate(actualStartTime), type);
+      const endObj = endTimeStr ? parseTimeOnDate(actualStartTime, endTimeStr) : null;
+      const calculatedEndMs = endObj ? endObj.getTime() : (actualStartTime.getTime() + 60 * 60 * 1000);
 
       await LocalNotifications.schedule({
         notifications: [
@@ -846,7 +841,7 @@ export class NotificationService {
             title: type === 'headsup' ? `Upcoming (Heads Up): ${cleanTitle}` : `Upcoming: ${cleanTitle}`,
             body: `Starts at ${timeStr} ${location ? `| ${location.trim()}` : ''}`,
             largeBody: type === 'headsup'
-              ? `\uD83D\uDCDA Class: ${cleanTitle}\n\u23F0 Time: ${timeStr} - ${endTimeStr || 'TBD'}\n\uD83D\uDCCD Room: ${location ? location.trim() : 'N/A'}\n\nHeads up: Your upcoming class starts soon.`
+              ? `\uD83D\uDCDA Class: ${cleanTitle}\n\u23F0 Time: ${timeStr} - ${endTimeStr || 'TBD'}\n\uD83D\uDCCD Room: ${location ? location.trim() : 'N/A'}\n\nHeads up: Your upcoming class starts soon. Tap below to mute your phone for this class.`
               : `\uD83D\uDCDA Class: ${cleanTitle}\n\u23F0 Time: ${timeStr} - ${endTimeStr || 'TBD'}\n\uD83D\uDCCD Room: ${location ? location.trim() : 'N/A'}\n\nTap the action button below to instantly mute your phone for the duration of this class.`,
             summaryText: "Class Reminder",
             smallIcon: "ic_stat_attendx",
@@ -854,8 +849,8 @@ export class NotificationService {
             iconColor: "#6366F1", 
             channelId: 'class_alerts',
             foreground: true,
-            actionTypeId: type === 'headsup' ? undefined : 'CLASS_REMINDER_ACTIONS',
-            extra: { classTitle: cleanTitle, endTimeStr, startTimeStr: timeStr },
+            actionTypeId: 'CLASS_REMINDER_ACTIONS',
+            extra: { classTitle: cleanTitle, endTimeStr, startTimeStr: timeStr, endTimeMs: calculatedEndMs },
             schedule: { 
               at: notifyTime,
               allowWhileIdle: true
@@ -1013,7 +1008,7 @@ export class NotificationService {
       // 2. Schedule Timetable Classes & Semester Events (does prior checks for semester, slots, and events)
       await this.autoScheduleFromTimetable();
 
-      // 3. Schedule All Academic Summaries (Daily, Weekly, Monthly, Yearly)
+      // 3. Schedule All Academic Summaries (Daily, Weekly, Monthly)
       const activeFreq = useCacheStore.getState().reminderFrequency || { type: 'Daily' };
       await this.scheduleAcademicUpdates(activeFreq);
 
@@ -1264,6 +1259,8 @@ export class NotificationService {
 
           const timeStr = classStartObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
           const roomStr = (config?.showLocation && slot.room) ? slot.room.trim() : '';
+          const classEndObj = endTimeStr ? parseTimeOnDate(currentDay, endTimeStr) : null;
+          const calculatedEndMs = classEndObj ? classEndObj.getTime() : (classStartObj.getTime() + 60 * 60 * 1000);
 
           if (reminderOffset > -1) {
             if (headsUpTime && headsUpTime.getTime() > Date.now()) {
@@ -1272,15 +1269,15 @@ export class NotificationService {
                 id: headsUpId,
                 title: `Upcoming (Heads Up): ${subjectName}`,
                 body: `Starts at ${timeStr} ${roomStr ? `| ${roomStr}` : ''}`,
-                largeBody: `\uD83D\uDCDA Class: ${subjectName}\n\u23F0 Time: ${timeStr} - ${endTimeStr || 'TBD'}\n\uD83D\uDCCD Room: ${roomStr || 'N/A'}\n\nHeads up: Your upcoming class starts soon.`,
+                largeBody: `\uD83D\uDCDA Class: ${subjectName}\n\u23F0 Time: ${timeStr} - ${endTimeStr || 'TBD'}\n\uD83D\uDCCD Room: ${roomStr || 'N/A'}\n\nHeads up: Your upcoming class starts soon. Tap below to mute your phone for this class.`,
                 summaryText: "Class Reminder",
                 smallIcon: "ic_stat_attendx",
                 largeIcon: "attendx_notification_icon",
                 iconColor: "#6366F1", 
                 channelId: 'class_alerts',
                 foreground: true,
-                actionTypeId: undefined, // Heads-up notifications do NOT show Mute button
-                extra: { classTitle: subjectName, endTimeStr, startTimeStr },
+                actionTypeId: 'CLASS_REMINDER_ACTIONS',
+                extra: { classTitle: subjectName, endTimeStr, startTimeStr, endTimeMs: calculatedEndMs },
                 schedule: { at: headsUpTime, allowWhileIdle: true }
               });
               scheduledCount++;
@@ -1300,18 +1297,15 @@ export class NotificationService {
                 channelId: 'class_alerts',
                 foreground: true,
                 actionTypeId: 'CLASS_REMINDER_ACTIONS',
-                extra: { classTitle: subjectName, endTimeStr, startTimeStr },
+                extra: { classTitle: subjectName, endTimeStr, startTimeStr, endTimeMs: calculatedEndMs },
                 schedule: { at: standardNotifyTime, allowWhileIdle: true }
               });
               scheduledCount++;
             }
           }
           
-          if (endTimeStr) {
-            const classEndObj = parseTimeOnDate(currentDay, endTimeStr);
-            if (classEndObj && (!maxEndTimeObj || classEndObj > maxEndTimeObj)) {
-              maxEndTimeObj = classEndObj;
-            }
+          if (classEndObj && (!maxEndTimeObj || classEndObj > maxEndTimeObj)) {
+            maxEndTimeObj = classEndObj;
           }
         }
 
@@ -1686,7 +1680,6 @@ export class NotificationService {
       const dailyTime = config?.dailySummaryTime || config?.summaryTime || "18:00";
       const weeklyTime = config?.weeklySummaryTime || "18:00";
       const monthlyTime = config?.monthlySummaryTime || "19:00";
-      const yearlyTime = config?.yearlySummaryTime || "20:00";
 
       // 1. Daily Academic Briefings: scheduled for the next 7 days at dailyTime
       const dailyDates = calculateNextSummaryDates({ type: 'Daily' }, dailyTime, now);
@@ -1794,24 +1787,6 @@ export class NotificationService {
           iconColor: "#EC4899",
           channelId: "academic_briefings",
           schedule: { at: notifyDate, allowWhileIdle: true }
-        });
-      }
-
-      // 4. Yearly Attendance Wrap-up: scheduled at yearlyTime on chosen yearly month
-      const yearlyMonth = memory.Yearly || (activeFreq.type === 'Yearly' ? activeFreq.subValue : 'Jan') || 'Jan';
-      const yearlyDates = calculateNextSummaryDates({ type: 'Yearly', subValue: yearlyMonth }, yearlyTime, now);
-      if (yearlyDates.length > 0) {
-        notificationsToSchedule.push({
-          id: 8830,
-          title: "Yearly Attendance Summary",
-          body: "Your annual academic attendance recap is ready.",
-          largeBody: `🎓 Yearly Summary\n\nYour overall cumulative attendance is at ${overallPct}%. Tap to review your attendance performance across all semesters.`,
-          summaryText: "Yearly Wrap-up",
-          smallIcon: "ic_stat_attendx",
-          largeIcon: "attendx_notification_icon",
-          iconColor: "#F59E0B",
-          channelId: "academic_briefings",
-          schedule: { at: yearlyDates[0], allowWhileIdle: true }
         });
       }
 

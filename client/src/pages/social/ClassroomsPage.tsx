@@ -29,6 +29,7 @@ import { triggerDynamicHUD } from "../../components/ui/dynamic-island-hud";
 import { ClassroomRosterModal } from "../../components/classroom/ClassroomRosterModal";
 import { getClassroomBannerTheme } from "../../components/classroom/ClassroomBanner";
 import { useBackHandlerStore } from "../../stores/backHandlerStore";
+import { useCacheStore } from "../../stores/cacheStore";
 
 interface Classroom {
   id: string;
@@ -45,8 +46,11 @@ interface Classroom {
 
 export const ClassroomsPage = () => {
   const navigate = useNavigate();
-  const [classrooms, setClassrooms] = useState<Classroom[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const cachedClassrooms = useCacheStore.getState().classrooms;
+  const [classrooms, setClassrooms] = useState<Classroom[]>(
+    Array.isArray(cachedClassrooms) ? cachedClassrooms : []
+  );
+  const [isLoading, setIsLoading] = useState(!cachedClassrooms || cachedClassrooms.length === 0);
   
   // Modals state
   const [showJoinModal, setShowJoinModal] = useState(false);
@@ -73,9 +77,15 @@ export const ClassroomsPage = () => {
         setIsLoading(true);
       }
       const res = await api.get("/classrooms");
-      setClassrooms(Array.isArray(res.data) ? res.data : []);
+      const list = Array.isArray(res.data) ? res.data : [];
+      setClassrooms(list);
+      useCacheStore.getState().cacheClassrooms(list);
     } catch (error) {
       console.error("Failed to fetch classrooms:", error);
+      const fallback = useCacheStore.getState().classrooms;
+      if (Array.isArray(fallback) && fallback.length > 0) {
+        setClassrooms(fallback);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -83,6 +93,34 @@ export const ClassroomsPage = () => {
 
   useEffect(() => {
     fetchClassrooms();
+
+    const handleLiveEvent = () => {
+      fetchClassrooms(true);
+    };
+
+    const unsubCache = useCacheStore.subscribe((state) => {
+      if (Array.isArray(state.classrooms) && state.classrooms.length > 0) {
+        setClassrooms((prev) => {
+          if (JSON.stringify(prev) !== JSON.stringify(state.classrooms)) {
+            return state.classrooms as Classroom[];
+          }
+          return prev;
+        });
+      }
+    });
+
+    window.addEventListener("fcm_classroom_broadcast", handleLiveEvent);
+    window.addEventListener("fcm_classroom_access_updated", handleLiveEvent);
+    window.addEventListener("fcm_classroom_deleted", handleLiveEvent);
+    window.addEventListener("focus", handleLiveEvent);
+
+    return () => {
+      unsubCache();
+      window.removeEventListener("fcm_classroom_broadcast", handleLiveEvent);
+      window.removeEventListener("fcm_classroom_access_updated", handleLiveEvent);
+      window.removeEventListener("fcm_classroom_deleted", handleLiveEvent);
+      window.removeEventListener("focus", handleLiveEvent);
+    };
   }, []);
 
   // Hardware back button support for open modals
@@ -303,8 +341,8 @@ export const ClassroomsPage = () => {
   return (
     <div className="p-4 md:p-8 space-y-8 max-w-5xl mx-auto w-full pb-28 md:pb-12 animate-in fade-in slide-in-from-bottom-2 duration-300 ease-out">
       {/* Header with Academic Context */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-border/40 pb-6">
-        <div className="flex items-start sm:items-center gap-3.5">
+      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 border-b border-border/40 pb-6">
+        <div className="flex items-start sm:items-center gap-3.5 min-w-0 flex-1">
           <button
             onClick={() => {
               hapticLight();
@@ -315,12 +353,12 @@ export const ClassroomsPage = () => {
           >
             <ArrowLeft className="w-4 h-4" />
           </button>
-          <div>
+          <div className="min-w-0">
             <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full text-[11px] font-mono tracking-wide uppercase bg-black/5 dark:bg-white/[0.04] text-neutral-700 dark:text-neutral-300 border border-neutral-200 dark:border-white/10 mb-2">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
               Batch Channels & Timetable Sync
             </div>
-            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-foreground">
+            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-foreground truncate">
               Classrooms & Sections
             </h1>
             <p className="text-sm text-muted-foreground mt-1 max-w-xl">
@@ -329,13 +367,13 @@ export const ClassroomsPage = () => {
           </div>
         </div>
 
-        <div className="flex items-center gap-2.5 w-full sm:w-auto">
+        <div className="flex items-center gap-2.5 w-full lg:w-auto shrink-0 flex-wrap">
           <button 
             onClick={() => {
               hapticMedium();
               setShowJoinModal(true);
             }}
-            className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-neutral-200 dark:border-white/10 bg-white dark:bg-[#0c0d0e] hover:bg-neutral-100 dark:hover:bg-white/5 text-neutral-900 dark:text-white text-xs font-semibold tracking-wide transition-all shadow-xs active:scale-[0.98]"
+            className="flex-1 lg:flex-none inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-neutral-200 dark:border-white/10 bg-white dark:bg-[#0c0d0e] hover:bg-neutral-100 dark:hover:bg-white/5 text-neutral-900 dark:text-white text-xs font-semibold tracking-wide transition-all shadow-xs active:scale-[0.98] shrink-0 whitespace-nowrap"
           >
             <LogIn className="w-4 h-4 text-neutral-700 dark:text-neutral-300" />
             Join with Code
@@ -345,7 +383,7 @@ export const ClassroomsPage = () => {
               hapticMedium();
               setShowCreateModal(true);
             }}
-            className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-neutral-900 dark:bg-white text-white dark:text-black hover:bg-neutral-800 dark:hover:bg-neutral-100 text-xs font-semibold tracking-wide transition-all shadow-xs active:scale-[0.98]"
+            className="flex-1 lg:flex-none inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-neutral-900 dark:bg-white text-white dark:text-black hover:bg-neutral-800 dark:hover:bg-neutral-100 text-xs font-semibold tracking-wide transition-all shadow-xs active:scale-[0.98] shrink-0 whitespace-nowrap"
           >
             <Plus className="w-4 h-4" />
             Create Hub
@@ -550,14 +588,16 @@ export const ClassroomsPage = () => {
                 }}
                 className={`group rounded-2xl sm:rounded-3xl border transition-all duration-300 flex flex-col justify-between overflow-hidden shadow-xs hover:shadow-xl ${
                   cls.isDeleted
-                    ? "bg-neutral-100/60 dark:bg-[#070709] border-dashed border-rose-500/30 opacity-70 grayscale filter hover:grayscale-0 hover:opacity-100"
+                    ? "bg-rose-500/[0.04] dark:bg-[#0e0708] border-dashed border-rose-500/50 hover:border-rose-500/80 shadow-rose-950/20"
                     : "bg-white dark:bg-[#0c0d0e] border-neutral-200 dark:border-white/10 hover:border-neutral-400 dark:hover:border-white/25"
                 }`}
               >
                 {/* 1. Google Classroom Thematic Top Header Banner */}
                 <div className="relative h-32 sm:h-36 w-full overflow-hidden p-4 sm:p-5 flex flex-col justify-between select-none">
                   {/* Full-Bleed Vector SVG Illustration */}
-                  {bannerTheme.renderIllustration()}
+                  <div className={`absolute inset-0 pointer-events-none transition-opacity ${cls.isDeleted ? "opacity-35" : "opacity-100"}`}>
+                    {bannerTheme.renderIllustration()}
+                  </div>
 
                   {/* Top Row: Academic Tags & Status Badges */}
                   <div className="relative z-10 flex items-center justify-between gap-2">
@@ -664,9 +704,9 @@ export const ClassroomsPage = () => {
                         e.stopPropagation();
                         handleLeaveClassroom(cls.id);
                       }}
-                      className="inline-flex items-center gap-1.5 text-xs font-semibold px-3.5 py-1.5 rounded-xl bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30 hover:bg-rose-500/25 transition-all shadow-xs active:scale-[0.98]"
+                      className="inline-flex items-center gap-2 text-xs font-bold px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white shadow-lg shadow-rose-600/40 border border-rose-400 ring-2 ring-rose-500/30 transition-all active:scale-95 cursor-pointer"
                     >
-                      <Trash2 className="w-3.5 h-3.5" />
+                      <Trash2 className="w-3.5 h-3.5 text-white" />
                       Remove Hub
                     </button>
                   ) : (

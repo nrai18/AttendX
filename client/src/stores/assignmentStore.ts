@@ -1,7 +1,6 @@
 import { create } from "zustand";
 import { capacitorStorage } from "./capacitorStorage";
 import { persist, createJSONStorage } from "zustand/middleware";
-import { Preferences } from "@capacitor/preferences";
 import { api } from "../lib/api";
 
 export interface Assignment {
@@ -29,8 +28,6 @@ interface AssignmentState {
   toggleCompletion: (id: string) => Promise<void>;
 }
 
-
-
 export const useAssignmentStore = create<AssignmentState>()(
   persist(
     (set, get) => ({
@@ -53,7 +50,11 @@ export const useAssignmentStore = create<AssignmentState>()(
       addAssignment: async (data) => {
         try {
           const res = await api.post("/assignments", data);
-          set({ assignments: [...get().assignments, res.data] });
+          const newAssignment = {
+            ...res.data,
+            completions: res.data?.completions || []
+          };
+          set({ assignments: [...get().assignments, newAssignment] });
           import("../services/NotificationService")
             .then(m => m.NotificationService.scheduleAssignmentReminders())
             .catch(console.error);
@@ -78,42 +79,81 @@ export const useAssignmentStore = create<AssignmentState>()(
         }
       },
       deleteAssignment: async (id) => {
+        const prevAssignments = get().assignments;
+        // Optimistic instant delete
+        set({ assignments: prevAssignments.filter(a => a.id !== id) });
         try {
           await api.delete(`/assignments/${id}`);
-          set({ assignments: get().assignments.filter(a => a.id !== id) });
           import("../services/NotificationService")
             .then(m => {
               m.NotificationService.cancelAssignmentReminders(id);
               return m.NotificationService.scheduleAssignmentReminders();
             })
             .catch(console.error);
-        } catch (err) {
+        } catch (err: any) {
           console.error("Failed to delete assignment", err);
+          const isOffline = typeof navigator !== 'undefined' && !navigator.onLine;
+          if (!isOffline && err?.response?.status && err.response.status >= 400 && err.response.status < 500) {
+            set({ assignments: prevAssignments });
+          }
         }
       },
       toggleCompletion: async (id) => {
+        const assignment = get().assignments.find(a => a.id === id);
+        if (!assignment) return;
+        const currentlyDone = Boolean(assignment.completions && assignment.completions.length > 0);
+        const nextCompleted = !currentlyDone;
+
+        // 1. Optimistic visual toggle immediately (0ms latency, works offline)
+        set({
+          assignments: get().assignments.map(a => {
+            if (a.id !== id) return a;
+            return {
+              ...a,
+              completions: nextCompleted ? [{ id: `local-${Date.now()}`, assignmentId: id }] : []
+            };
+          })
+        });
+
+        // 2. Fire backend toggle mutation (queued in offlineStore if offline)
         try {
           const res = await api.post(`/assignments/${id}/toggle`);
-          const completed = res.data?.completed;
-          set({
-            assignments: get().assignments.map(a => {
-              if (a.id !== id) return a;
-              return {
-                ...a,
-                completions: completed ? [{ id: 'local', assignmentId: id }] : []
-              };
-            })
-          });
+          // If server returned authoritative boolean, synchronize with it
+          if (res?.data && typeof res.data.completed === 'boolean') {
+            const authoritativeCompleted = res.data.completed;
+            set({
+              assignments: get().assignments.map(a => {
+                if (a.id !== id) return a;
+                return {
+                  ...a,
+                  completions: authoritativeCompleted ? [{ id: 'local', assignmentId: id }] : []
+                };
+              })
+            });
+          }
+
           import("../services/NotificationService")
             .then(m => {
-              if (completed) {
+              if (nextCompleted) {
                 m.NotificationService.cancelAssignmentReminders(id);
               }
               return m.NotificationService.scheduleAssignmentReminders();
             })
             .catch(console.error);
-        } catch (err) {
+        } catch (err: any) {
           console.error("Failed to toggle completion", err);
+          const isOffline = typeof navigator !== 'undefined' && !navigator.onLine;
+          if (!isOffline && err?.response?.status && err.response.status >= 400 && err.response.status < 500) {
+            set({
+              assignments: get().assignments.map(a => {
+                if (a.id !== id) return a;
+                return {
+                  ...a,
+                  completions: currentlyDone ? [{ id: 'local', assignmentId: id }] : []
+                };
+              })
+            });
+          }
         }
       }
     }),

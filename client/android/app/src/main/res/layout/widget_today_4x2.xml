@@ -1,25 +1,26 @@
 <?xml version="1.0" encoding="utf-8"?>
-<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/widget_today_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@drawable/widget_bg_obsidian"
-    android:padding="13dp">
+    android:orientation="vertical"
+    android:padding="10dp">
 
-    <!-- Header: Brand / Date on Left, Overall Attendance Percentage on Right -->
-    <RelativeLayout
+    <!-- Header: Brand / Date / Refresh on Left, Overall Attendance Percentage on Right -->
+    <LinearLayout
         android:id="@+id/header_layout"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_alignParentTop="true">
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
 
         <LinearLayout
-            android:layout_width="wrap_content"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_alignParentStart="true"
-            android:layout_centerVertical="true"
-            android:orientation="horizontal"
-            android:gravity="center_vertical">
+            android:layout_weight="1"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
 
             <TextView
                 android:id="@+id/text_widget_title"
@@ -27,176 +28,448 @@
                 android:layout_height="wrap_content"
                 android:text="ATTENDX"
                 android:textColor="#10B981"
-                android:textSize="12sp"
-                android:textStyle="bold"
-                android:letterSpacing="0.08" />
+                android:textSize="11sp"
+                android:textStyle="bold" />
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text=" • "
                 android:textColor="#475569"
-                android:textSize="11sp" />
+                android:textSize="10sp" />
 
             <TextView
                 android:id="@+id/text_today_date"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:maxLines="1"
                 android:text="Today"
                 android:textColor="#94A3B8"
-                android:textSize="11sp"
-                android:singleLine="true" />
+                android:textSize="11sp" />
         </LinearLayout>
 
         <LinearLayout
-            android:id="@+id/badge_percentage_layout"
+            android:id="@+id/header_right_layout"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_alignParentEnd="true"
-            android:layout_centerVertical="true"
-            android:background="@drawable/widget_badge_percentage"
-            android:paddingStart="7dp"
-            android:paddingTop="3dp"
-            android:paddingEnd="7dp"
-            android:paddingBottom="3dp"
-            android:gravity="center">
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
 
+            <!-- Tactile ↻ Refresh Button -->
             <TextView
-                android:id="@+id/text_attendance_stat"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="85.0%"
-                android:textColor="#10B981"
-                android:textSize="11sp"
-                android:textStyle="bold" />
-        </LinearLayout>
-    </RelativeLayout>
-
-    <!-- Center Spotlight Card: Active / Upcoming Lecture -->
-    <LinearLayout
-        android:id="@+id/card_spotlight"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_below="@id/header_layout"
-        android:layout_marginTop="8dp"
-        android:layout_marginBottom="8dp"
-        android:background="@drawable/widget_card_spotlight"
-        android:orientation="vertical"
-        android:padding="10dp">
-
-        <RelativeLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content">
-
-            <TextView
-                android:id="@+id/text_class_status_chip"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_alignParentStart="true"
-                android:background="@drawable/widget_chip_status"
-                android:paddingStart="6dp"
-                android:paddingTop="2dp"
-                android:paddingEnd="6dp"
-                android:paddingBottom="2dp"
-                android:text="🟢 ONGOING"
-                android:textColor="#10B981"
-                android:textSize="10sp"
-                android:textStyle="bold" />
-
-            <TextView
-                android:id="@+id/text_class_room"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_alignParentEnd="true"
-                android:text="📍 Room 204"
+                android:id="@+id/btn_widget_refresh"
+                android:layout_width="26dp"
+                android:layout_height="26dp"
+                android:layout_marginEnd="6dp"
+                android:background="@drawable/widget_btn_icon_translucent"
+                android:gravity="center"
+                android:text="↻"
                 android:textColor="#38BDF8"
-                android:textSize="11sp"
+                android:textSize="13sp"
                 android:textStyle="bold" />
-        </RelativeLayout>
+
+            <!-- Overall Percentage Badge -->
+            <LinearLayout
+                android:id="@+id/badge_percentage_layout"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="@drawable/widget_badge_percentage"
+                android:gravity="center"
+                android:paddingStart="7dp"
+                android:paddingTop="3dp"
+                android:paddingEnd="7dp"
+                android:paddingBottom="3dp">
+
+                <TextView
+                    android:id="@+id/text_attendance_stat"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="85.0%"
+                    android:textColor="#10B981"
+                    android:textSize="11sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- Center Schedule Container: Multi-Class Agenda (Expands smoothly to fill space) -->
+    <LinearLayout
+        android:id="@+id/layout_classes_container"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_marginTop="5dp"
+        android:layout_marginBottom="4dp"
+        android:layout_weight="1"
+        android:gravity="center_vertical"
+        android:orientation="vertical">
+
+        <!-- CLASS ROW 1 -->
+        <LinearLayout
+            android:id="@+id/row_class_1"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingTop="3dp"
+            android:paddingBottom="3dp">
+
+            <LinearLayout
+                android:id="@+id/layout_row1_content"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="6dp"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/text_row1_name"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:text="Digital Communication"
+                    android:textColor="#F8FAFC"
+                    android:textSize="12sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/text_row1_info"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:text="09:50 - 10:40 • Rm 231"
+                    android:textColor="#94A3B8"
+                    android:textSize="10sp" />
+            </LinearLayout>
+
+            <!-- 1-Tap Attendance Actions for Row 1 -->
+            <LinearLayout
+                android:id="@+id/actions_row_1"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:id="@+id/btn_row1_present"
+                    android:layout_width="26dp"
+                    android:layout_height="26dp"
+                    android:layout_marginEnd="3dp"
+                    android:background="@drawable/widget_btn_present_default"
+                    android:gravity="center"
+                    android:text="✓"
+                    android:textColor="#34D399"
+                    android:textSize="11sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/btn_row1_absent"
+                    android:layout_width="26dp"
+                    android:layout_height="26dp"
+                    android:layout_marginEnd="3dp"
+                    android:background="@drawable/widget_btn_absent_default"
+                    android:gravity="center"
+                    android:text="✗"
+                    android:textColor="#FB7185"
+                    android:textSize="11sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/btn_row1_off"
+                    android:layout_width="26dp"
+                    android:layout_height="26dp"
+                    android:background="@drawable/widget_btn_off_default"
+                    android:gravity="center"
+                    android:text="—"
+                    android:textColor="#FBBF24"
+                    android:textSize="11sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- Divider 1 (Pure RemoteViews compliant view) -->
+        <LinearLayout
+            android:id="@+id/divider_row_1"
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="#1E293B" />
+
+        <!-- CLASS ROW 2 -->
+        <LinearLayout
+            android:id="@+id/row_class_2"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingTop="3dp"
+            android:paddingBottom="3dp">
+
+            <LinearLayout
+                android:id="@+id/layout_row2_content"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="6dp"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/text_row2_name"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:text="Fiber Optic Communication"
+                    android:textColor="#F8FAFC"
+                    android:textSize="12sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/text_row2_info"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:text="11:00 - 11:50 • Rm 134"
+                    android:textColor="#94A3B8"
+                    android:textSize="10sp" />
+            </LinearLayout>
+
+            <!-- 1-Tap Attendance Actions for Row 2 -->
+            <LinearLayout
+                android:id="@+id/actions_row_2"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:id="@+id/btn_row2_present"
+                    android:layout_width="26dp"
+                    android:layout_height="26dp"
+                    android:layout_marginEnd="3dp"
+                    android:background="@drawable/widget_btn_present_default"
+                    android:gravity="center"
+                    android:text="✓"
+                    android:textColor="#34D399"
+                    android:textSize="11sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/btn_row2_absent"
+                    android:layout_width="26dp"
+                    android:layout_height="26dp"
+                    android:layout_marginEnd="3dp"
+                    android:background="@drawable/widget_btn_absent_default"
+                    android:gravity="center"
+                    android:text="✗"
+                    android:textColor="#FB7185"
+                    android:textSize="11sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/btn_row2_off"
+                    android:layout_width="26dp"
+                    android:layout_height="26dp"
+                    android:background="@drawable/widget_btn_off_default"
+                    android:gravity="center"
+                    android:text="—"
+                    android:textColor="#FBBF24"
+                    android:textSize="11sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- Divider 2 (Pure RemoteViews compliant view) -->
+        <LinearLayout
+            android:id="@+id/divider_row_2"
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="#1E293B" />
+
+        <!-- CLASS ROW 3 -->
+        <LinearLayout
+            android:id="@+id/row_class_3"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingTop="3dp"
+            android:paddingBottom="3dp">
+
+            <LinearLayout
+                android:id="@+id/layout_row3_content"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="6dp"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/text_row3_name"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:text="Artificial Intelligence"
+                    android:textColor="#F8FAFC"
+                    android:textSize="12sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/text_row3_info"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:text="11:50 - 12:40 • Rm 227"
+                    android:textColor="#94A3B8"
+                    android:textSize="10sp" />
+            </LinearLayout>
+
+            <!-- 1-Tap Attendance Actions for Row 3 -->
+            <LinearLayout
+                android:id="@+id/actions_row_3"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:id="@+id/btn_row3_present"
+                    android:layout_width="26dp"
+                    android:layout_height="26dp"
+                    android:layout_marginEnd="3dp"
+                    android:background="@drawable/widget_btn_present_default"
+                    android:gravity="center"
+                    android:text="✓"
+                    android:textColor="#34D399"
+                    android:textSize="11sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/btn_row3_absent"
+                    android:layout_width="26dp"
+                    android:layout_height="26dp"
+                    android:layout_marginEnd="3dp"
+                    android:background="@drawable/widget_btn_absent_default"
+                    android:gravity="center"
+                    android:text="✗"
+                    android:textColor="#FB7185"
+                    android:textSize="11sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/btn_row3_off"
+                    android:layout_width="26dp"
+                    android:layout_height="26dp"
+                    android:background="@drawable/widget_btn_off_default"
+                    android:gravity="center"
+                    android:text="—"
+                    android:textColor="#FBBF24"
+                    android:textSize="11sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- Empty State (When 0 classes today) -->
+    <LinearLayout
+        android:id="@+id/layout_empty_classes"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_marginTop="16dp"
+        android:layout_marginBottom="16dp"
+        android:layout_weight="1"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:visibility="gone">
 
         <TextView
-            android:id="@+id/text_class_name"
-            android:layout_width="match_parent"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="🎉"
+            android:textSize="22sp" />
+
+        <TextView
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp"
-            android:ellipsize="end"
-            android:singleLine="true"
-            android:text="Loading classes..."
+            android:text="No Classes Scheduled Today"
             android:textColor="#F8FAFC"
-            android:textSize="14sp"
+            android:textSize="12sp"
             android:textStyle="bold" />
 
-        <RelativeLayout
-            android:layout_width="match_parent"
+        <TextView
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="3dp">
-
-            <TextView
-                android:id="@+id/text_class_time"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_alignParentStart="true"
-                android:text="10:00 AM – 11:00 AM"
-                android:textColor="#94A3B8"
-                android:textSize="11sp" />
-
-            <TextView
-                android:id="@+id/text_bunk_runway"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_alignParentEnd="true"
-                android:text="2 Bunks Safe"
-                android:textColor="#10B981"
-                android:textSize="10sp"
-                android:textStyle="bold" />
-        </RelativeLayout>
+            android:text="Tap to review calendar or manage schedule"
+            android:textColor="#64748B"
+            android:textSize="10sp" />
     </LinearLayout>
 
-    <!-- Bottom Action Row: Quick Log, Voice Mode, Open App -->
+    <!-- Footer: Pager (when > 3 classes) or Quick App Launch info -->
     <LinearLayout
-        android:id="@+id/action_row"
+        android:id="@+id/layout_footer"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_alignParentBottom="true"
+        android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:weightSum="3">
+        android:paddingTop="2dp">
+
+        <LinearLayout
+            android:id="@+id/layout_pager_controls"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/btn_prev_page"
+                android:layout_width="22dp"
+                android:layout_height="20dp"
+                android:background="@drawable/widget_btn_icon_translucent"
+                android:gravity="center"
+                android:text="◀"
+                android:textColor="#94A3B8"
+                android:textSize="8sp" />
+
+            <TextView
+                android:id="@+id/text_page_indicator"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="5dp"
+                android:layout_marginEnd="5dp"
+                android:text="1–3 of 4"
+                android:textColor="#94A3B8"
+                android:textSize="10sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/btn_next_page"
+                android:layout_width="22dp"
+                android:layout_height="20dp"
+                android:background="@drawable/widget_btn_icon_translucent"
+                android:gravity="center"
+                android:text="▶"
+                android:textColor="#94A3B8"
+                android:textSize="8sp" />
+        </LinearLayout>
+
+        <!-- Flexible Spacer -->
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="1dp"
+            android:layout_weight="1" />
 
         <TextView
-            android:id="@+id/btn_quick_log"
-            android:layout_width="0dp"
-            android:layout_height="32dp"
-            android:layout_marginEnd="4dp"
-            android:layout_weight="1"
-            android:background="@drawable/widget_button_action"
-            android:gravity="center"
-            android:text="➕ Quick Log"
-            android:textColor="#10B981"
-            android:textSize="11sp"
-            android:textStyle="bold" />
-
-        <TextView
-            android:id="@+id/btn_voice_copilot"
-            android:layout_width="0dp"
-            android:layout_height="32dp"
-            android:layout_marginEnd="4dp"
-            android:layout_weight="1"
-            android:background="@drawable/widget_button_action"
-            android:gravity="center"
-            android:text="🎙️ Voice"
+            android:id="@+id/text_open_app_hint"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Open Today →"
             android:textColor="#38BDF8"
-            android:textSize="11sp"
-            android:textStyle="bold" />
-
-        <TextView
-            android:id="@+id/btn_open_today"
-            android:layout_width="0dp"
-            android:layout_height="32dp"
-            android:layout_weight="1"
-            android:background="@drawable/widget_button_action"
-            android:gravity="center"
-            android:text="📅 Today"
-            android:textColor="#E2E8F0"
-            android:textSize="11sp"
+            android:textSize="10sp"
             android:textStyle="bold" />
     </LinearLayout>
-</RelativeLayout>
+</LinearLayout>

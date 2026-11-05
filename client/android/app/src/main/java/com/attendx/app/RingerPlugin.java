@@ -95,9 +95,21 @@ public class RingerPlugin extends Plugin {
     @PluginMethod
     public void setRingerMode(PluginCall call) {
         String mode = call.getString("mode", "normal");
-        Double unmuteEpoch = call.getDouble("unmuteEpochMs");
-        long unmuteEpochMs = unmuteEpoch != null ? unmuteEpoch.longValue() : 0L;
+        long unmuteEpochMs = 0L;
+        Object rawEpoch = call.getData().opt("unmuteEpochMs");
+        if (rawEpoch instanceof Number) {
+            unmuteEpochMs = ((Number) rawEpoch).longValue();
+        } else if (rawEpoch instanceof String) {
+            try {
+                unmuteEpochMs = Long.parseLong((String) rawEpoch);
+            } catch (Exception ignored) {}
+        }
+        if (unmuteEpochMs == 0L) {
+            Double d = call.getDouble("unmuteEpochMs");
+            if (d != null) unmuteEpochMs = d.longValue();
+        }
         String className = call.getString("className", "Class");
+        Log.d(TAG, "setRingerMode: mode=" + mode + ", unmuteEpochMs=" + unmuteEpochMs + ", className=" + className);
 
         Context context = getContext();
         AudioManager audioManager = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
@@ -120,7 +132,18 @@ public class RingerPlugin extends Plugin {
                 }
             }
             if (audioManager != null) {
-                audioManager.setRingerMode(AudioManager.RINGER_MODE_SILENT);
+                try {
+                    audioManager.setRingerMode(AudioManager.RINGER_MODE_SILENT);
+                } catch (Exception e) {
+                    Log.w(TAG, "Could not set RINGER_MODE_SILENT", e);
+                }
+                try {
+                    audioManager.setStreamVolume(AudioManager.STREAM_RING, 0, 0);
+                    audioManager.setStreamVolume(AudioManager.STREAM_NOTIFICATION, 0, 0);
+                    audioManager.setStreamVolume(AudioManager.STREAM_SYSTEM, 0, 0);
+                } catch (Exception e) {
+                    Log.w(TAG, "Could not set streams to 0 volume", e);
+                }
             }
             if (unmuteEpochMs > System.currentTimeMillis()) {
                 // Save to SharedPreferences so receivers persist across process death
@@ -130,8 +153,17 @@ public class RingerPlugin extends Plugin {
                     .putString(KEY_CLASS_NAME, className)
                     .apply();
 
+                Intent serviceIntent = new Intent(context, RingerForegroundService.class);
+                serviceIntent.setAction(RingerForegroundService.ACTION_START_CLASS_MUTE);
+                serviceIntent.putExtra(RingerForegroundService.EXTRA_CLASS_NAME, className);
+                serviceIntent.putExtra(RingerForegroundService.EXTRA_UNMUTE_EPOCH, unmuteEpochMs);
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    context.startForegroundService(serviceIntent);
+                } else {
+                    context.startService(serviceIntent);
+                }
+
                 scheduleNativeUnmuteAlarm(context, unmuteEpochMs);
-                RingerAlarmReceiver.showPinnedMuteNotification(context, className, unmuteEpochMs);
             }
         } else if ("vibrate".equalsIgnoreCase(mode)) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && notificationManager != null && notificationManager.isNotificationPolicyAccessGranted()) {
@@ -143,8 +175,16 @@ public class RingerPlugin extends Plugin {
                 }
             }
             if (audioManager != null) {
-                audioManager.setRingerMode(AudioManager.RINGER_MODE_VIBRATE);
+                try {
+                    audioManager.setRingerMode(AudioManager.RINGER_MODE_VIBRATE);
+                } catch (Exception e) {
+                    Log.w(TAG, "Could not set RINGER_MODE_VIBRATE", e);
+                }
             }
+            Intent stopIntent = new Intent(context, RingerForegroundService.class);
+            stopIntent.setAction(RingerForegroundService.ACTION_STOP_CLASS_MUTE);
+            context.startService(stopIntent);
+
             cancelNativeUnmuteAlarm(context);
             clearRingerPrefs(context);
             RingerAlarmReceiver.cancelPinnedMuteNotification(context);
@@ -158,8 +198,26 @@ public class RingerPlugin extends Plugin {
                 }
             }
             if (audioManager != null) {
-                audioManager.setRingerMode(AudioManager.RINGER_MODE_NORMAL);
+                try {
+                    audioManager.setRingerMode(AudioManager.RINGER_MODE_NORMAL);
+                    int maxRing = audioManager.getStreamMaxVolume(AudioManager.STREAM_RING);
+                    int curRing = audioManager.getStreamVolume(AudioManager.STREAM_RING);
+                    if (curRing == 0 && maxRing > 0) {
+                        audioManager.setStreamVolume(AudioManager.STREAM_RING, Math.max(1, (int)(maxRing * 0.7)), 0);
+                    }
+                    int maxNotif = audioManager.getStreamMaxVolume(AudioManager.STREAM_NOTIFICATION);
+                    int curNotif = audioManager.getStreamVolume(AudioManager.STREAM_NOTIFICATION);
+                    if (curNotif == 0 && maxNotif > 0) {
+                        audioManager.setStreamVolume(AudioManager.STREAM_NOTIFICATION, Math.max(1, (int)(maxNotif * 0.7)), 0);
+                    }
+                } catch (Exception e) {
+                    Log.w(TAG, "Could not restore normal ringer/streams", e);
+                }
             }
+            Intent stopIntent = new Intent(context, RingerForegroundService.class);
+            stopIntent.setAction(RingerForegroundService.ACTION_STOP_CLASS_MUTE);
+            context.startService(stopIntent);
+
             cancelNativeUnmuteAlarm(context);
             clearRingerPrefs(context);
             RingerAlarmReceiver.cancelPinnedMuteNotification(context);
@@ -171,6 +229,19 @@ public class RingerPlugin extends Plugin {
     public static void scheduleNativeUnmuteAlarm(Context context, long triggerAtMillis) {
         AlarmManager alarmManager = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
         if (alarmManager == null) return;
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            if (!alarmManager.canScheduleExactAlarms()) {
+                try {
+                    Intent exactIntent = new Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM);
+                    exactIntent.setData(Uri.parse("package:" + context.getPackageName()));
+                    exactIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    context.startActivity(exactIntent);
+                } catch (Exception e) {
+                    Log.w(TAG, "Could not open exact alarm settings screen", e);
+                }
+            }
+        }
 
         Intent intent = new Intent(context, RingerAlarmReceiver.class);
         intent.setAction(RingerAlarmReceiver.ACTION_AUTO_UNMUTE);

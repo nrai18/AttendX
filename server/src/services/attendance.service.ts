@@ -142,7 +142,7 @@ export class AttendanceService {
       semEndDate.setHours(23, 59, 59, 999);
       const targetDateKey = typeof dateStr === "string" ? dateStr.slice(0, 10) : targetDate.toISOString().slice(0, 10);
 
-      const [lastTeachingEvent, allDaySlotsRaw, overrides, attendanceRecords] = await Promise.all([
+      const [lastTeachingEvent, allDaySlotsRaw, rawOverrides, rawAttendanceRecords] = await Promise.all([
         CacheService.getOrSet(
           userId,
           `lastTeachingEvent:${activeSemester.id}`,
@@ -178,7 +178,10 @@ export class AttendanceService {
         prisma.timetableOverride.findMany({
           where: {
             semesterId: activeSemester.id,
-            date: targetDate,
+            date: {
+              gte: new Date(targetDateStart.getTime() - 14 * 3600 * 1000),
+              lte: new Date(targetDateEnd.getTime() + 14 * 3600 * 1000)
+            },
           },
           include: {
             subject: true,
@@ -187,10 +190,16 @@ export class AttendanceService {
         prisma.attendance.findMany({
           where: {
             userId,
-            date: targetDate,
+            date: {
+              gte: new Date(targetDateStart.getTime() - 14 * 3600 * 1000),
+              lte: new Date(targetDateEnd.getTime() + 14 * 3600 * 1000)
+            },
           },
         }),
       ]);
+
+      const overrides = rawOverrides.filter(o => AttendanceService.toDbLocalIso(o.date) === targetDateKey);
+      const attendanceRecords = rawAttendanceRecords.filter(a => AttendanceService.toDbLocalIso(a.date) === targetDateKey);
 
       let isPastTeachingDay = false;
       if (lastTeachingEvent) {
@@ -629,7 +638,7 @@ export class AttendanceService {
         const updated = await prisma.attendance.update({
           where: { id: existing.id },
           data: {
-            status: data.status,
+            status: data.status as any,
             remarks: data.remarks || null,
           },
         });
@@ -640,7 +649,7 @@ export class AttendanceService {
             userId,
             subjectId: slot.subjectId,
             date: targetDate,
-            status: data.status,
+            status: data.status as any,
             remarks: data.remarks || null,
             timetableSlotId: slot.id,
           },
@@ -659,7 +668,7 @@ export class AttendanceService {
         const updated = await prisma.attendance.update({
           where: { id: existing.id },
           data: {
-            status: data.status,
+            status: data.status as any,
             remarks: data.remarks || null,
           },
         });
@@ -670,7 +679,7 @@ export class AttendanceService {
             userId,
             subjectId: override.subjectId,
             date: targetDate,
-            status: data.status,
+            status: data.status as any,
             remarks: data.remarks || null,
             overrideId: override.id,
           },
@@ -687,7 +696,7 @@ export class AttendanceService {
         const updated = await prisma.attendance.update({
           where: { id: record.id },
           data: {
-            status: data.status,
+            status: data.status as any,
             remarks: data.remarks || null,
           },
         });

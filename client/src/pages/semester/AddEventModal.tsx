@@ -91,7 +91,10 @@ export function AddEventModal({
       });
       useCacheStore.getState().setCache("calendar", null);
       window.dispatchEvent(new Event("events-updated"));
-      onSaved(res.data?.events, tempId);
+      const returnedEvents = (res.data?.events && res.data.events.length > 0)
+        ? res.data.events
+        : [{ ...optimisticEvent, id: res.data?.id || tempId }];
+      onSaved(returnedEvents, tempId);
       // Refresh global stats quietly in background without duplicate event-storm refetches
       useAttendanceStore.getState().fetchStats(true).catch(() => {});
     } catch (err: any) {

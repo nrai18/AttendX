@@ -5,6 +5,7 @@ import { api } from "../../lib/api";
 import { toast } from "sonner";
 import { useAuthStore } from "../../stores/authStore";
 import { useAttendanceStore } from "../../stores/attendanceStore";
+import { useCacheStore } from "../../stores/cacheStore";
 import { Stepper } from "../ui/stepper";
 import { useScrollLock } from "../../hooks/useScrollLock";
 import { hapticMedium, hapticSuccess, hapticError, hapticSelection } from "../../utils/haptics";
@@ -81,17 +82,46 @@ export const SubjectModal: React.FC<SubjectModalProps> = ({ isOpen, onClose, onS
       let savedSubject: any = null;
       if (subject?.id) {
         const res = await api.patch(`/subjects/${subject.id}`, payload);
-        savedSubject = res.data;
+        savedSubject = { ...subject, ...payload, ...(res.data || {}) };
         hapticSuccess();
         SoundFX.playSnapPopSound();
         triggerDynamicHUD({ type: "sparkle", label: "Subject Updated" });
       } else {
         const res = await api.post("/subjects", payload);
-        savedSubject = res.data;
+        const tempSubId = res.data?.id || `temp-sub-${Date.now()}`;
+        savedSubject = {
+          id: tempSubId,
+          ...payload,
+          attended: 0,
+          missed: 0,
+          off: 0,
+          total: 0,
+          percentage: 0,
+          ...(res.data || {}),
+        };
         hapticSuccess();
         SoundFX.playSnapPopSound();
         triggerDynamicHUD({ type: "sparkle", label: "Subject Created" });
       }
+
+      // Optimistically update cache & attendanceStore for robust offline persistence
+      try {
+        const curCache = useCacheStore.getState().subjects;
+        if (curCache) {
+          const list = curCache.subjects || [];
+          const updatedList = subject?.id
+            ? list.map((s: any) => (s.id === savedSubject.id ? { ...s, ...savedSubject } : s))
+            : [...list, savedSubject];
+          useCacheStore.getState().setCache("subjects", { ...curCache, subjects: updatedList });
+        }
+        useAttendanceStore.setState((state) => {
+          const list = state.subjects || [];
+          const updatedList = subject?.id
+            ? list.map((s: any) => (s.id === savedSubject.id ? { ...s, ...savedSubject } : s))
+            : [...list, savedSubject];
+          return { subjects: updatedList };
+        });
+      } catch (e) {}
 
       onSuccess(savedSubject);
       onClose();

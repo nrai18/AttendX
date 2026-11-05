@@ -69,6 +69,7 @@ import {
   FileArchive,
   History,
   Bell,
+  Clock,
 } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
 
@@ -83,6 +84,7 @@ import { downloadBlob } from "../../lib/download";
 import { FeedbackModal } from "../../components/support/FeedbackModal";
 import { ChangelogModal } from "../../components/settings/ChangelogModal";
 import { NotificationService, calculateNextSummaryDates } from "../../services/NotificationService";
+import { OfflineZipService } from "../../services/OfflineZipService";
 import { hapticSelection, hapticLight } from "../../utils/haptics";
 
 export const SettingsPage: React.FC = () => {
@@ -770,15 +772,19 @@ export const SettingsPage: React.FC = () => {
     notifConfig.yearlySummaryTime,
   ]);
 
+  useEffect(() => {
+    // If user previously had Yearly selected, normalize to Daily
+    if ((reminderFrequency?.type as string) === 'Yearly') {
+      setReminderFrequency({ type: 'Daily' });
+    }
+  }, [reminderFrequency?.type, setReminderFrequency]);
+
   const activeSummaryTime = React.useMemo(() => {
     if (reminderFrequency.type === 'Weekly') {
       return notifConfig.weeklySummaryTime || "18:00";
     }
     if (reminderFrequency.type === 'Monthly') {
       return notifConfig.monthlySummaryTime || "19:00";
-    }
-    if (reminderFrequency.type === 'Yearly') {
-      return notifConfig.yearlySummaryTime || "20:00";
     }
     return notifConfig.dailySummaryTime || notifConfig.summaryTime || "18:00";
   }, [
@@ -787,7 +793,6 @@ export const SettingsPage: React.FC = () => {
     notifConfig.summaryTime,
     notifConfig.weeklySummaryTime,
     notifConfig.monthlySummaryTime,
-    notifConfig.yearlySummaryTime,
   ]);
 
   const handleActiveSummaryTimeChange = (newTime: string) => {
@@ -796,8 +801,6 @@ export const SettingsPage: React.FC = () => {
       updateConfig({ weeklySummaryTime: newTime });
     } else if (reminderFrequency.type === 'Monthly') {
       updateConfig({ monthlySummaryTime: newTime });
-    } else if (reminderFrequency.type === 'Yearly') {
-      updateConfig({ yearlySummaryTime: newTime });
     } else {
       updateConfig({ dailySummaryTime: newTime, summaryTime: newTime });
     }
@@ -826,12 +829,6 @@ export const SettingsPage: React.FC = () => {
         return dailyDates.length > 0 ? dailyDates[0] : null;
       }
 
-      if (reminderFrequency.type === 'Yearly') {
-        const yearlyMonth = reminderFrequency.subValue || frequencyMemory?.Yearly || 'Jan';
-        const yearlyDates = calculateNextSummaryDates({ type: 'Yearly', subValue: yearlyMonth }, notifConfig.yearlySummaryTime || "20:00", now);
-        return yearlyDates.length > 0 ? yearlyDates[0] : null;
-      }
-
       return null;
     } catch {
       return null;
@@ -843,7 +840,6 @@ export const SettingsPage: React.FC = () => {
     notifConfig.summaryTime,
     notifConfig.weeklySummaryTime,
     notifConfig.monthlySummaryTime,
-    notifConfig.yearlySummaryTime,
   ]);
 
   // Reset Section Toggle
@@ -1236,22 +1232,48 @@ export const SettingsPage: React.FC = () => {
     reader.readAsText(file);
   };
 
-  // Export CSV
+  // Export CSV / ZIP (Hybrid Online & Offline)
   const handleExportCSV = async (signal?: AbortSignal) => {
     try {
-      const res = await api.get("/data/export", { 
-        responseType: "blob",
-        signal 
-      });
-
+      let blob: Blob;
       let filename = `AttendX_Backup_${new Date().toISOString().slice(0, 10)}.zip`;
-      const disposition = res.headers["content-disposition"];
-      if (disposition && disposition.indexOf("filename=") !== -1) {
-        const matches = /filename="([^"]+)"/.exec(disposition);
-        if (matches != null && matches[1]) filename = matches[1];
+
+      if (typeof navigator !== "undefined" && !navigator.onLine) {
+        // Direct Client-Side Offline Export
+        const offlineResult = await OfflineZipService.exportZipOffline();
+        blob = offlineResult.blob;
+        filename = offlineResult.filename;
+      } else {
+        try {
+          const res = await api.get("/data/export", { 
+            responseType: "blob",
+            signal 
+          });
+
+          const disposition = res.headers["content-disposition"];
+          if (disposition && disposition.indexOf("filename=") !== -1) {
+            const matches = /filename="([^"]+)"/.exec(disposition);
+            if (matches != null && matches[1]) filename = matches[1];
+          }
+
+          blob = new Blob([res.data], { type: "application/zip" });
+        } catch (serverErr: any) {
+          if (
+            signal?.aborted || 
+            serverErr?.name === "CanceledError" || 
+            serverErr?.name === "AbortError" || 
+            serverErr?.code === "ERR_CANCELED" || 
+            axios.isCancel(serverErr)
+          ) {
+            throw serverErr;
+          }
+          console.warn("[SettingsPage] Server export failed/offline, switching to offline ZIP export engine", serverErr);
+          const offlineResult = await OfflineZipService.exportZipOffline();
+          blob = offlineResult.blob;
+          filename = offlineResult.filename;
+        }
       }
 
-      const blob = new Blob([res.data], { type: "application/zip" });
       if (Capacitor.isNativePlatform()) {
         triggerDynamicHUD({
           type: "sparkle",
@@ -1275,7 +1297,6 @@ export const SettingsPage: React.FC = () => {
           durationMs: 4200,
         });
       }
-      // RunActionButton already transitions to "Saved" state
     } catch (err: any) {
       if (
         signal?.aborted || 
@@ -1285,7 +1306,6 @@ export const SettingsPage: React.FC = () => {
         axios.isCancel(err)
       ) {
         throw err;
-        return;
       }
       console.error("CSV/ZIP export failed", err);
       let errorMsg = "Failed to generate ZIP export.";
@@ -1297,6 +1317,8 @@ export const SettingsPage: React.FC = () => {
         } catch (_) {}
       } else if (err.response?.data?.error) {
         errorMsg = err.response.data.error;
+      } else if (err.message) {
+        errorMsg = err.message;
       }
       toast.error(errorMsg);
       throw err;
@@ -1304,8 +1326,6 @@ export const SettingsPage: React.FC = () => {
       // Refresh documents after export
       try {
         api.get("/documents").then(({ data }) => { const freshDocs = Array.isArray(data) ? data : (data?.documents || []); setStoredDocuments(freshDocs.filter((d: any) => !deletedDocIdsRef.current.has(d.id))); }).catch(() => {});
-        // non-blocking document refresh handled above
-        // state updated in .then()
       } catch (e) {}
     }
   };
@@ -1331,40 +1351,63 @@ export const SettingsPage: React.FC = () => {
       action: {
         label: "Import ZIP",
         onClick: async () => {
-          const formData = new FormData();
-          formData.append("file", file);
-
           const toastId = toast.loading("Importing ZIP archive...");
           setIsImportingCSV(true);
 
           try {
-            const res = await api.post("/data/import", formData, {
-              headers: { "Content-Type": "multipart/form-data" },
-            });
-
-            if (!res.data?.success) {
-              throw new Error(res.data?.error || "Failed to import data");
+            if (typeof navigator !== "undefined" && !navigator.onLine) {
+              const offlineRes = await OfflineZipService.importZipOffline(file);
+              toast.dismiss(toastId);
+              triggerDynamicHUD({
+                type: "sparkle",
+                label: "ZIP Archive Imported Offline",
+                subtitle: `${offlineRes.stats.subjectsCount} subjects and ${offlineRes.stats.slotsCount} classes restored`,
+                durationMs: 4500,
+              });
+              setTimeout(() => navigate("/today"), 800);
+              return;
             }
 
-            // Invalidate frontend cache and reload store
-            useCacheStore.getState().clearCache();
-            await useAttendanceStore.getState().fetchStats(true);
-            window.dispatchEvent(new CustomEvent("attendance-updated"));
-            window.dispatchEvent(new CustomEvent("timetable-updated"));
-            window.dispatchEvent(new CustomEvent("events-updated"));
+            const formData = new FormData();
+            formData.append("file", file);
 
-            triggerDynamicHUD({
-              type: "sparkle",
-              label: "ZIP Archive Imported Successfully",
-              subtitle: "Schedule, attendance, and events restored",
-              durationMs: 4500,
-            });
+            try {
+              const res = await api.post("/data/import", formData, {
+                headers: { "Content-Type": "multipart/form-data" },
+              });
+
+              if (!res.data?.success) {
+                throw new Error(res.data?.error || "Failed to import data");
+              }
+
+              // Invalidate frontend cache and reload store
+              useCacheStore.getState().clearCache();
+              await useAttendanceStore.getState().fetchStats(true);
+              window.dispatchEvent(new CustomEvent("attendance-updated"));
+              window.dispatchEvent(new CustomEvent("timetable-updated"));
+              window.dispatchEvent(new CustomEvent("events-updated"));
+
+              triggerDynamicHUD({
+                type: "sparkle",
+                label: "ZIP Archive Imported Successfully",
+                subtitle: "Schedule, attendance, and events restored",
+                durationMs: 4500,
+              });
+            } catch (serverErr: any) {
+              console.warn("[SettingsPage] Server ZIP import failed/offline, using client offline parser fallback", serverErr);
+              const offlineRes = await OfflineZipService.importZipOffline(file);
+              toast.dismiss(toastId);
+              triggerDynamicHUD({
+                type: "sparkle",
+                label: "ZIP Archive Imported Offline",
+                subtitle: `${offlineRes.stats.subjectsCount} subjects and ${offlineRes.stats.slotsCount} classes restored`,
+                durationMs: 4500,
+              });
+            }
 
             // Refresh stored documents list
             try {
               api.get("/documents").then(({ data }) => { const freshDocs = Array.isArray(data) ? data : (data?.documents || []); setStoredDocuments(freshDocs.filter((d: any) => !deletedDocIdsRef.current.has(d.id))); }).catch(() => {});
-              // non-blocking document refresh handled above
-              // state updated in .then()
             } catch (e) {}
 
             setTimeout(() => navigate("/today"), 800);
@@ -1388,12 +1431,15 @@ export const SettingsPage: React.FC = () => {
     useAttendanceStore.getState().invalidateInFlightStats();
     useAttendanceStore.getState().fetchStats(true);
     window.dispatchEvent(new Event("attendance-updated"));
-    import("../../stores/offlineStore").then(({ useOfflineStore }) => useOfflineStore.getState().clearQueue()).catch(() => {});
+    const isOnline = typeof navigator !== "undefined" ? navigator.onLine : true;
+    if (isOnline) {
+      import("../../stores/offlineStore").then(({ useOfflineStore }) => useOfflineStore.getState().clearQueue()).catch(() => {});
+    }
     const partialKeys = [
       "attendx-attendance-cache",
       "attendx-api-cache",
       "attendx-sync-storage",
-      "attendx-offline-queue",
+      ...(isOnline ? ["attendx-offline-queue"] : []),
     ];
     partialKeys.forEach((k) => {
       Preferences.remove({ key: k }).catch(() => {});
@@ -1467,13 +1513,16 @@ export const SettingsPage: React.FC = () => {
         setStoredDocuments([]);
 
         // Wipe all local storage keys for attendance, API responses, assignments, notifications, and onboarding
-        import("../../stores/offlineStore").then(({ useOfflineStore }) => useOfflineStore.getState().clearQueue()).catch(() => {});
+        const isResetOnline = typeof navigator !== "undefined" ? navigator.onLine : true;
+        if (isResetOnline) {
+          import("../../stores/offlineStore").then(({ useOfflineStore }) => useOfflineStore.getState().clearQueue()).catch(() => {});
+        }
         const keysToRemove = [
           "attendx-attendance-cache",
           "attendx-api-cache",
           "attendx-assignments",
           "attendx-sync-storage",
-          "attendx-offline-queue",
+          ...(isResetOnline ? ["attendx-offline-queue"] : []),
           "attendx-notification-settings",
           "attendx-global-cache",
           "onboarding_attendance",
@@ -2077,10 +2126,11 @@ export const SettingsPage: React.FC = () => {
             />
           </div>
           {reminderFrequency.type !== 'Never' && (
-            <div className="w-full flex items-center justify-between p-4 mt-2 bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-black/5 dark:border-white/5">
+            <div className="w-full flex items-center justify-between p-3.5 sm:p-4 mt-2 bg-slate-50/80 dark:bg-slate-900/50 rounded-2xl border border-black/5 dark:border-white/5 transition-all">
               <div className="flex flex-col gap-0.5">
-                <span className="text-sm font-bold text-slate-900 dark:text-white">
-                  {reminderFrequency.type === 'Daily' ? 'Daily Briefing Time' : reminderFrequency.type === 'Weekly' ? 'Weekly Summary Time' : reminderFrequency.type === 'Monthly' ? 'Monthly Summary Time' : 'Yearly Review Time'}
+                <span className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-primary" />
+                  {reminderFrequency.type === 'Daily' ? 'Daily Briefing Time' : reminderFrequency.type === 'Weekly' ? 'Weekly Review Time' : 'Monthly Summary Time'}
                 </span>
                 <span className="text-xs text-slate-500 dark:text-slate-400">
                   {(() => {
@@ -2099,14 +2149,15 @@ export const SettingsPage: React.FC = () => {
                 type="time"
                 value={activeSummaryTime}
                 onChange={(e) => handleActiveSummaryTimeChange(e.target.value)}
-                className="bg-white dark:bg-black text-slate-900 dark:text-white text-sm font-semibold rounded-lg px-3 py-1.5 border border-black/10 dark:border-white/10 outline-none focus:ring-2 focus:ring-slate-900 dark:focus:ring-white cursor-pointer"
+                style={{ colorScheme: 'dark light' }}
+                className="bg-white dark:bg-black text-slate-900 dark:text-white text-sm font-semibold rounded-xl px-3 py-1.5 border border-black/10 dark:border-white/10 outline-none focus:ring-2 focus:ring-primary cursor-pointer shadow-sm"
               />
             </div>
           )}
 
           {nextSummaryDate && reminderFrequency.type !== 'Never' && (
-            <div className="flex items-center p-3.5 mt-2 bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-black/5 dark:border-white/5 gap-3">
-              <div className="w-8 h-8 rounded-lg bg-blue-500/10 text-blue-500 flex items-center justify-center shrink-0">
+            <div className="flex items-center p-3.5 mt-2 bg-slate-50/80 dark:bg-slate-900/50 rounded-2xl border border-black/5 dark:border-white/5 gap-3">
+              <div className="w-8 h-8 rounded-xl bg-blue-500/10 text-blue-500 flex items-center justify-center shrink-0">
                 <Bell className="w-4 h-4" />
               </div>
               <div className="flex flex-col gap-0.5">
@@ -2120,7 +2171,7 @@ export const SettingsPage: React.FC = () => {
             </div>
           )}
 
-          {/* Individual Times for All 4 Summary Frequencies */}
+          {/* Individual Times for All 3 Summary Horizons */}
           {reminderFrequency.type !== 'Never' && (
             <div className="pt-2 border-t border-black/5 dark:border-white/5 space-y-2.5">
               <div className="flex items-center justify-between px-1">
@@ -2132,9 +2183,13 @@ export const SettingsPage: React.FC = () => {
                 </span>
               </div>
               
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 {/* Daily */}
-                <div className="flex items-center justify-between p-3 bg-slate-50/80 dark:bg-slate-900/40 rounded-xl border border-black/5 dark:border-white/5">
+                <div className={`flex items-center justify-between p-3 rounded-xl border transition-all ${
+                  reminderFrequency.type === 'Daily'
+                    ? 'bg-primary/5 border-primary/30 dark:bg-primary/10'
+                    : 'bg-slate-50/80 dark:bg-slate-900/40 border-black/5 dark:border-white/5'
+                }`}>
                   <div className="flex flex-col">
                     <span className="text-xs font-semibold text-slate-900 dark:text-white flex items-center gap-1.5">
                       📅 Daily Briefing
@@ -2151,12 +2206,17 @@ export const SettingsPage: React.FC = () => {
                       updateConfig({ dailySummaryTime: e.target.value, summaryTime: e.target.value });
                       NotificationService.scheduleAllProactiveNotifications();
                     }}
+                    style={{ colorScheme: 'dark light' }}
                     className="bg-white dark:bg-black text-slate-900 dark:text-white text-xs font-semibold rounded-md px-2 py-1 border border-black/10 dark:border-white/10 outline-none cursor-pointer"
                   />
                 </div>
 
                 {/* Weekly */}
-                <div className="flex items-center justify-between p-3 bg-slate-50/80 dark:bg-slate-900/40 rounded-xl border border-black/5 dark:border-white/5">
+                <div className={`flex items-center justify-between p-3 rounded-xl border transition-all ${
+                  reminderFrequency.type === 'Weekly'
+                    ? 'bg-primary/5 border-primary/30 dark:bg-primary/10'
+                    : 'bg-slate-50/80 dark:bg-slate-900/40 border-black/5 dark:border-white/5'
+                }`}>
                   <div className="flex flex-col">
                     <span className="text-xs font-semibold text-slate-900 dark:text-white flex items-center gap-1.5">
                       📊 Weekly Review
@@ -2173,12 +2233,17 @@ export const SettingsPage: React.FC = () => {
                       updateConfig({ weeklySummaryTime: e.target.value });
                       NotificationService.scheduleAllProactiveNotifications();
                     }}
+                    style={{ colorScheme: 'dark light' }}
                     className="bg-white dark:bg-black text-slate-900 dark:text-white text-xs font-semibold rounded-md px-2 py-1 border border-black/10 dark:border-white/10 outline-none cursor-pointer"
                   />
                 </div>
 
                 {/* Monthly */}
-                <div className="flex items-center justify-between p-3 bg-slate-50/80 dark:bg-slate-900/40 rounded-xl border border-black/5 dark:border-white/5">
+                <div className={`flex items-center justify-between p-3 rounded-xl border transition-all ${
+                  reminderFrequency.type === 'Monthly'
+                    ? 'bg-primary/5 border-primary/30 dark:bg-primary/10'
+                    : 'bg-slate-50/80 dark:bg-slate-900/40 border-black/5 dark:border-white/5'
+                }`}>
                   <div className="flex flex-col">
                     <span className="text-xs font-semibold text-slate-900 dark:text-white flex items-center gap-1.5">
                       📈 Monthly Summary
@@ -2195,28 +2260,7 @@ export const SettingsPage: React.FC = () => {
                       updateConfig({ monthlySummaryTime: e.target.value });
                       NotificationService.scheduleAllProactiveNotifications();
                     }}
-                    className="bg-white dark:bg-black text-slate-900 dark:text-white text-xs font-semibold rounded-md px-2 py-1 border border-black/10 dark:border-white/10 outline-none cursor-pointer"
-                  />
-                </div>
-
-                {/* Yearly */}
-                <div className="flex items-center justify-between p-3 bg-slate-50/80 dark:bg-slate-900/40 rounded-xl border border-black/5 dark:border-white/5">
-                  <div className="flex flex-col">
-                    <span className="text-xs font-semibold text-slate-900 dark:text-white flex items-center gap-1.5">
-                      🎓 Yearly Wrap-up
-                    </span>
-                    <span className="text-[10px] text-slate-500 dark:text-slate-400">
-                      Every {frequencyMemory?.Yearly || (reminderFrequency.type === 'Yearly' && reminderFrequency.subValue) || 'Jan'} 1st
-                    </span>
-                  </div>
-                  <input
-                    type="time"
-                    value={notifConfig.yearlySummaryTime || "20:00"}
-                    onChange={(e) => {
-                      hapticSelection();
-                      updateConfig({ yearlySummaryTime: e.target.value });
-                      NotificationService.scheduleAllProactiveNotifications();
-                    }}
+                    style={{ colorScheme: 'dark light' }}
                     className="bg-white dark:bg-black text-slate-900 dark:text-white text-xs font-semibold rounded-md px-2 py-1 border border-black/10 dark:border-white/10 outline-none cursor-pointer"
                   />
                 </div>

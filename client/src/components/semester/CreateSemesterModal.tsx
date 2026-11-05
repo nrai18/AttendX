@@ -8,6 +8,7 @@ import { SoundFX } from "../../utils/soundEffects";
 import { triggerDynamicHUD, queueDynamicHUD } from "../ui/dynamic-island-hud";
 import { triggerShockwaveCelebration } from "../ui/shockwave-celebration";
 import { hapticSuccess } from "../../utils/haptics";
+import { getOfflineCalendarEventsForSemester } from "../../constants/calendarTemplates";
 import {
   Calendar,
   Plus,
@@ -95,13 +96,18 @@ export const CreateSemesterModal: React.FC<CreateSemesterModalProps> = ({
     const endDate = `${endMonth}-${lastDay.toString().padStart(2, "0")}`;
 
     try {
-      const res = await api.post("/semesters", {
+      const semesterPayload = {
         name: generatedName,
         startDate,
         endDate,
         isActive: true,
-      });
-      const newSemester = res.data;
+      };
+      const res = await api.post("/semesters", semesterPayload);
+      const newSemester = {
+        id: res.data?.id || `temp-sem-${Date.now()}`,
+        ...semesterPayload,
+        ...(res.data || {}),
+      };
 
       useCacheStore.getState().setCache("semester", {
         ...useCacheStore.getState().semester,
@@ -127,10 +133,32 @@ export const CreateSemesterModal: React.FC<CreateSemesterModalProps> = ({
       window.dispatchEvent(new Event("events-updated"));
       window.dispatchEvent(new Event("semester-updated"));
 
-      // Background non-blocking template sync (batch-optimized)
+      // Background non-blocking template sync (batch-optimized) with instant offline pre-buffering
       if (autoSyncTemplates && newSemester?.id) {
         const semNum = parseInt(semesterOption);
         const startYear = parseInt(startMonth.split("-")[0]) || new Date().getFullYear();
+
+        // 1. Immediately buffer official static template events into local cache for 0ms offline calendar visibility
+        try {
+          const offlineEvents = getOfflineCalendarEventsForSemester({
+            semesterId: newSemester.id,
+            semesterNumber: semNum,
+            startDate: newSemester.startDate,
+            endDate: newSemester.endDate,
+          });
+          if (offlineEvents.length > 0) {
+            const curSem = useCacheStore.getState().semester;
+            useCacheStore.getState().setCache("semester", {
+              ...curSem,
+              activeSemester: newSemester,
+              events: offlineEvents,
+            });
+            useAttendanceStore.setState({ events: offlineEvents as any });
+          }
+        } catch (templateErr) {
+          console.warn("Failed to pre-hydrate offline calendar templates:", templateErr);
+        }
+
         api.post("/events/templates/sync", {
           semesterId: newSemester.id,
           semesterNumber: semNum,
@@ -148,7 +176,7 @@ export const CreateSemesterModal: React.FC<CreateSemesterModalProps> = ({
             window.dispatchEvent(new CustomEvent("attendance-updated", { detail: { source: "template-sync" } }));
           })
           .catch((syncErr) => {
-            console.warn("Failed to auto-sync templates for new semester:", syncErr);
+            console.warn("Failed to auto-sync templates for new semester (offline fallback active):", syncErr);
           });
       }
     } catch (err: any) {

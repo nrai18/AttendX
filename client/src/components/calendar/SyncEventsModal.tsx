@@ -7,6 +7,7 @@ import { useAttendanceStore } from "../../stores/attendanceStore";
 import { useCacheStore } from "../../stores/cacheStore";
 import { CalendarImportModal } from "./CalendarImportModal";
 import { useScrollLock } from "../../hooks/useScrollLock";
+import { getOfflineCalendarEventsForSemester } from "../../constants/calendarTemplates";
 
 interface SyncEventsModalProps {
   isOpen: boolean;
@@ -35,13 +36,32 @@ export const SyncEventsModal: React.FC<SyncEventsModalProps> = ({ isOpen, onClos
 
     try {
       setIsSyncing(true);
+      const activeSem = useCacheStore.getState().semester?.activeSemester;
+      const semStart = activeSem?.startDate || `${new Date().getFullYear()}-01-01`;
+      const semEnd = activeSem?.endDate || `${new Date().getFullYear()}-12-31`;
+
+      const offlineEvents = getOfflineCalendarEventsForSemester({
+        semesterId: activeSemesterId,
+        startDate: semStart,
+        endDate: semEnd,
+      });
+
+      if (offlineEvents.length > 0) {
+        const curSem = useCacheStore.getState().semester;
+        useCacheStore.getState().setCache("semester", {
+          ...curSem,
+          events: offlineEvents,
+        });
+        useAttendanceStore.setState({ events: offlineEvents as any });
+      }
+
       const res = await api.post("/events/templates/sync", {
         semesterId: activeSemesterId,
         syncHolidayList,
         syncAcademicCalendar
       });
 
-      const count = res.data?.syncedCount ?? 0;
+      const count = res.data?.syncedCount ?? offlineEvents.length ?? 0;
       toast.success(`Successfully synced ${count} events to your calendar!`);
       useCacheStore.getState().setCache("calendar", null);
       useAttendanceStore.getState().fetchStats(true);

@@ -72,11 +72,54 @@ export const SubjectDetailPage = () => {
   const navigate = useNavigate();
 
   const isOverall = !id || id === "overall" || id === "all";
+  const querySubject = isOverall ? "all" : id;
+  const cachedLogsData = useCacheStore.getState().subject_logs?.[querySubject]
+    || (isOverall ? useCacheStore.getState().subject_logs?.["overall"] : null);
+  const initialLogs = cachedLogsData?.logs || [];
+  const initialSubjects = cachedLogsData?.subjects || useAttendanceStore.getState().subjects || [];
 
-  const [logs, setLogs] = useState<AttendanceLogItem[]>([]);
-  const [subjectsList, setSubjectsList] = useState<any[]>([]);
-  const [headerStats, setHeaderStats] = useState<SubjectHeaderStats | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [logs, setLogs] = useState<AttendanceLogItem[]>(initialLogs);
+  const [subjectsList, setSubjectsList] = useState<any[]>(initialSubjects);
+  const [headerStats, setHeaderStats] = useState<SubjectHeaderStats | null>(() => {
+    if (initialSubjects.length === 0) return null;
+    if (isOverall) {
+      let totalAttended = 0;
+      let totalClasses = 0;
+      initialSubjects.forEach((s: any) => {
+        totalAttended += s.attended || 0;
+        totalClasses += s.total || 0;
+      });
+      const pct = totalClasses > 0 ? (totalAttended / totalClasses) * 100 : 0;
+      const avgTarget = useAuthStore.getState().user?.targetAttendance ?? 75;
+      const totalCanMiss = Math.floor((totalAttended - (avgTarget / 100) * totalClasses) / (avgTarget / 100));
+      return {
+        id: "overall",
+        name: "Overall",
+        target: avgTarget,
+        attended: totalAttended,
+        total: totalClasses,
+        percentage: pct,
+        canMiss: totalCanMiss > 0 ? totalCanMiss : 0,
+        needAttend: 0,
+        statusText: totalClasses === 0 ? "No classes recorded yet" : `${totalAttended}/${totalClasses} classes`,
+      };
+    }
+    const sub = initialSubjects.find((s: any) => s.id === id || s.subjectId === id);
+    if (!sub) return null;
+    return {
+      id: sub.id || sub.subjectId,
+      name: sub.name,
+      code: sub.code,
+      target: sub.target || (useAuthStore.getState().user?.targetAttendance ?? 75),
+      attended: sub.attended || 0,
+      total: sub.total || 0,
+      percentage: sub.percentage || 0,
+      canMiss: sub.canMiss || 0,
+      needAttend: sub.needAttend || 0,
+      statusText: sub.statusText || `${sub.attended || 0}/${sub.total || 0} classes`,
+    };
+  });
+  const [isLoading, setIsLoading] = useState(() => initialLogs.length === 0);
 
   // Filters
   const [selectedSubjectFilter, setSelectedSubjectFilter] = useState<string>(isOverall ? "all" : id);
@@ -225,73 +268,75 @@ export const SubjectDetailPage = () => {
       // Offline Fallback
       const existingCache = useCacheStore.getState().subject_logs || {};
       const cachedData = existingCache[querySubject];
-        
-        let rawLogs: AttendanceLogItem[] = [];
-        let subjects: any[] = [];
-        
-        if (cachedData) {
-          rawLogs = cachedData.logs || [];
-          subjects = cachedData.subjects || [];
-        } else {
-          // If specific subject cache is missing, fallback to the "overall" cache which contains all subjects
-          const allCache = existingCache["all"];
-          if (allCache) {
-            rawLogs = (allCache.logs || []).filter((l: AttendanceLogItem) => l.subjectId === id);
-            subjects = allCache.subjects || [];
-          } else {
-            // Ultimate fallback to just render an empty state gracefully instead of crashing
-            rawLogs = [];
-            subjects = useAttendanceStore.getState().subjects;
-          }
-        }
+      const allLogsFallback = existingCache["all"]?.logs || useCacheStore.getState().all_logs || [];
 
-        if (true) {
-          setLogs(rawLogs);
-          setSubjectsList(subjects);
+      let rawLogs: AttendanceLogItem[] = [];
+      let subjects: any[] = [];
 
+      if (cachedData) {
+        rawLogs = cachedData.logs || [];
+        subjects = cachedData.subjects || [];
+      } else if (allLogsFallback.length > 0) {
         if (isOverall) {
-          let totalAttended = 0;
-          let totalClasses = 0;
-          subjects.forEach((s: any) => {
-            totalAttended += s.attended;
-            totalClasses += s.total;
-          });
-          const pct = totalClasses > 0 ? (totalAttended / totalClasses) * 100 : 0;
-          const user = useAuthStore.getState().user;
-          const avgTarget = user?.targetAttendance ?? 75;
-          const totalCanMiss = Math.floor((totalAttended - (avgTarget / 100) * totalClasses) / (avgTarget / 100));
-
-          setHeaderStats({
-            id: "overall",
-            name: "Overall",
-            target: avgTarget,
-            attended: totalAttended,
-            total: totalClasses,
-            percentage: pct,
-            canMiss: totalCanMiss > 0 ? totalCanMiss : 0,
-            needAttend: 0,
-            statusText: totalClasses === 0
-              ? "No classes recorded yet"
-              : totalCanMiss > 0
-              ? `can miss ${totalCanMiss} lecture${totalCanMiss > 1 ? "s" : ""}`
-              : "can't miss the next lecture",
-          });
+          rawLogs = allLogsFallback;
         } else {
-          const sub = subjects.find((s: any) => s.id === id);
-          if (sub) {
-            setHeaderStats({
-              id: sub.id,
-              name: sub.name,
-              code: sub.code,
-              target: useAuthStore.getState().user?.targetAttendance ?? 75,
-              attended: sub.attended,
-              total: sub.total,
-              percentage: sub.percentage,
-              canMiss: sub.canMiss,
-              needAttend: sub.needAttend,
-              statusText: sub.statusText,
-            });
-          }
+          rawLogs = allLogsFallback.filter((l: any) => l.subjectId === id || l.subject?.id === id);
+        }
+        subjects = existingCache["all"]?.subjects || useAttendanceStore.getState().subjects || [];
+      } else {
+        // Fallback to global store
+        rawLogs = [];
+        subjects = useAttendanceStore.getState().subjects || [];
+      }
+
+      setLogs(rawLogs);
+      setSubjectsList(subjects);
+
+      if (isOverall) {
+        let totalAttended = 0;
+        let totalClasses = 0;
+        subjects.forEach((s: any) => {
+          totalAttended += (s.attended || 0);
+          totalClasses += (s.total || 0);
+        });
+        const pct = totalClasses > 0 ? (totalAttended / totalClasses) * 100 : 0;
+        const user = useAuthStore.getState().user;
+        const avgTarget = user?.targetAttendance ?? 75;
+        const totalCanMiss = Math.floor((totalAttended - (avgTarget / 100) * totalClasses) / (avgTarget / 100));
+
+        setHeaderStats({
+          id: "overall",
+          name: "Overall",
+          target: avgTarget,
+          attended: totalAttended,
+          total: totalClasses,
+          percentage: pct,
+          canMiss: totalCanMiss > 0 ? totalCanMiss : 0,
+          needAttend: 0,
+          statusText: totalClasses === 0
+            ? "No classes recorded yet"
+            : totalCanMiss > 0
+            ? `can miss ${totalCanMiss} lecture${totalCanMiss > 1 ? "s" : ""}`
+            : "can't miss the next lecture",
+        });
+      } else {
+        let sub = subjects.find((s: any) => s.id === id);
+        if (!sub) {
+          sub = useAttendanceStore.getState().subjects.find((s: any) => s.id === id || s.subjectId === id);
+        }
+        if (sub) {
+          setHeaderStats({
+            id: sub.id || sub.subjectId,
+            name: sub.name,
+            code: sub.code,
+            target: sub.target || (useAuthStore.getState().user?.targetAttendance ?? 75),
+            attended: sub.attended || 0,
+            total: sub.total || 0,
+            percentage: sub.percentage || 0,
+            canMiss: sub.canMiss || 0,
+            needAttend: sub.needAttend || 0,
+            statusText: sub.statusText || (sub.total === 0 ? "No classes recorded yet" : `${sub.attended}/${sub.total} classes`),
+          });
         }
       }
     } finally {
@@ -342,13 +387,19 @@ export const SubjectDetailPage = () => {
     }
 
     // Optimistic Update
-    setLogs((prev) =>
-      prev.map((l) =>
-        l.id === item.id || (l.date === item.date && l.subjectId === item.subjectId && l.timetableSlotId === item.timetableSlotId && l.overrideId === item.overrideId)
-          ? { ...l, status: newStatus }
-          : l
-      )
+    const nextLogs = logs.map((l) =>
+      l.id === item.id || (l.date === item.date && l.subjectId === item.subjectId && l.timetableSlotId === item.timetableSlotId && l.overrideId === item.overrideId)
+        ? { ...l, status: newStatus }
+        : l
     );
+    setLogs(nextLogs);
+
+    const currentCache = useCacheStore.getState().subject_logs || {};
+    const existingEntry = currentCache[querySubject] || {};
+    useCacheStore.getState().setCache('subject_logs', {
+      ...currentCache,
+      [querySubject]: { ...existingEntry, logs: nextLogs }
+    });
 
     try {
       await api.post("/attendance/mark", {
@@ -399,9 +450,15 @@ export const SubjectDetailPage = () => {
       });
 
       const itemKey = getLogItemKey(item);
-      setLogs((prev) =>
-        prev.map((l) => (getLogItemKey(l) === itemKey ? { ...l, remarks: finalRemark } : l))
-      );
+      const updatedWithRemark = logs.map((l) => (getLogItemKey(l) === itemKey ? { ...l, remarks: finalRemark } : l));
+      setLogs(updatedWithRemark);
+
+      const currentCache = useCacheStore.getState().subject_logs || {};
+      const existingEntry = currentCache[querySubject] || {};
+      useCacheStore.getState().setCache('subject_logs', {
+        ...currentCache,
+        [querySubject]: { ...existingEntry, logs: updatedWithRemark }
+      });
 
       toast.success(finalRemark ? "Remark saved" : "Remark cleared");
       hapticSuccess();
@@ -409,8 +466,6 @@ export const SubjectDetailPage = () => {
       setRemarkInput("");
 
       useAttendanceStore.getState().fetchStats(true);
-      useCacheStore.getState().setCache("calendar", {});
-      useCacheStore.getState().setCache("today", {});
       window.dispatchEvent(new CustomEvent("attendance-updated", { detail: { source: "subject-detail-page" } }));
     } catch (err) {
       console.error("Failed to save remark:", err);

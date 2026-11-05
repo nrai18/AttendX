@@ -88,8 +88,8 @@ export class UserController {
 
       res.status(200).json(statusPayload);
     } catch (error: any) {
-      console.error("[UserController.updateOnboardingStatus] Failed to update onboarding status:", error);
-      res.status(500).json({ message: error.message || "Failed to update onboarding status" });
+      console.error("[UserController.getSessions] Failed to fetch user sessions:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch user sessions" });
     }
   }
 
@@ -159,8 +159,8 @@ export class UserController {
         hasConfiguredSound: Boolean(soundConfigured),
       });
     } catch (error: any) {
-      console.error("[UserController.updateOnboardingStatus] Failed to update onboarding status:", error);
-      res.status(500).json({ message: error.message || "Failed to update onboarding status" });
+      console.error("[UserController.getSessions] Failed to fetch user sessions:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch user sessions" });
     }
   }
 
@@ -270,8 +270,8 @@ export class UserController {
       const sessions = await UserService.getSessions(userId, sessionId, req);
       res.status(200).json(sessions);
     } catch (error: any) {
-      console.error("[UserController.updateOnboardingStatus] Failed to update onboarding status:", error);
-      res.status(500).json({ message: error.message || "Failed to update onboarding status" });
+      console.error("[UserController.getSessions] Failed to fetch user sessions:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch user sessions" });
     }
   }
 
@@ -300,8 +300,8 @@ export class UserController {
       const result = await UserService.revokeAllOtherSessions(userId, sessionIdToKeep);
       res.status(200).json(result);
     } catch (error: any) {
-      console.error("[UserController.updateOnboardingStatus] Failed to update onboarding status:", error);
-      res.status(500).json({ message: error.message || "Failed to update onboarding status" });
+      console.error("[UserController.revokeAllOtherSessions] Failed to revoke sessions:", error);
+      res.status(500).json({ message: error.message || "Failed to revoke sessions" });
     }
   }
 
@@ -314,8 +314,8 @@ export class UserController {
       const result = await UserService.revokeSession(userId, sessionId);
       res.status(200).json(result);
     } catch (error: any) {
-      console.error("[UserController.updateOnboardingStatus] Failed to update onboarding status:", error);
-      res.status(500).json({ message: error.message || "Failed to update onboarding status" });
+      console.error("[UserController.revokeSession] Failed to revoke session:", error);
+      res.status(500).json({ message: error.message || "Failed to revoke session" });
     }
   }
 }

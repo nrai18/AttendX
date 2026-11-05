@@ -9,10 +9,11 @@ export class DocumentController {
   static async getStoredDocuments(req: AuthenticatedRequest, res: Response) {
     try {
       if (!req.user) return res.status(401).json({ message: 'Unauthorized' });
+      const userId = req.user.userId;
 
-      const docs = await CacheService.getOrSet(req.user.userId, 'documents:list', () => prisma.storedDocument.findMany({
+      const docs = await CacheService.getOrSet(userId, 'documents:list', () => prisma.storedDocument.findMany({
         where: {
-          userId: req.user.userId
+          userId: userId
         },
         select: {
           id: true,

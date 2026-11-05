@@ -10,6 +10,8 @@ import android.content.SharedPreferences;
 import android.net.Uri;
 import android.util.Log;
 import android.widget.RemoteViews;
+import org.json.JSONArray;
+import org.json.JSONObject;
 
 public class NextClassWidgetProvider extends AppWidgetProvider {
     private static final String TAG = "NextClassWidget";
@@ -32,6 +34,57 @@ public class NextClassWidgetProvider extends AppWidgetProvider {
             String subjectName = prefs.getString("next_subject", prefs.getString("subject_name", "No upcoming classes"));
             String classTime = prefs.getString("next_time", prefs.getString("class_time", "--"));
             String runway = prefs.getString("next_runway", prefs.getString("bunk_runway", "Safe"));
+
+            String classesJsonStr = prefs.getString("today_classes_json", "[]");
+            JSONArray classes = new JSONArray(classesJsonStr);
+
+            if (classes.length() > 0) {
+                int nowMins = TodayWidgetProvider.getCurrentMinutes();
+                JSONObject activeCls = null;
+                JSONObject nextCls = null;
+
+                for (int i = 0; i < classes.length(); i++) {
+                    JSONObject cls = classes.getJSONObject(i);
+                    String startTimeStr = cls.optString("startTime", "");
+                    String endTimeStr = cls.optString("endTime", "");
+                    int startMins = TodayWidgetProvider.parseMinutes(startTimeStr);
+                    int endMins = TodayWidgetProvider.parseMinutes(endTimeStr);
+
+                    if (nowMins >= startMins && nowMins < endMins) {
+                        activeCls = cls;
+                        break;
+                    } else if (nowMins < startMins && nextCls == null) {
+                        nextCls = cls;
+                    }
+                }
+
+                JSONObject spotlight = (activeCls != null) ? activeCls : nextCls;
+                if (spotlight != null) {
+                    boolean isOngoing = (spotlight == activeCls);
+                    subjectName = spotlight.optString("subjectName", subjectName);
+                    String rawRoom = spotlight.optString("room", "");
+                    room = rawRoom.isEmpty() ? "📍 ROOM TBA" : (rawRoom.startsWith("Room") ? "📍 " + rawRoom.toUpperCase() : "📍 ROOM " + rawRoom.toUpperCase());
+                    classTime = spotlight.optString("timeRange", classTime);
+                    runway = spotlight.optString("bunkRunway", runway);
+
+                    if (isOngoing) {
+                        countdown = "⚡ ONGOING";
+                    } else {
+                        int diff = TodayWidgetProvider.parseMinutes(spotlight.optString("startTime", "00:00")) - nowMins;
+                        if (diff <= 60) {
+                            countdown = "⏱️ IN " + diff + "M";
+                        } else {
+                            countdown = "⏱️ AT " + TodayWidgetProvider.formatTime12h(spotlight.optString("startTime", "00:00"));
+                        }
+                    }
+                } else {
+                    room = "📍 COMPLETED";
+                    countdown = "🎉 ALL DONE";
+                    subjectName = "All classes completed today";
+                    classTime = "Free for the day";
+                    runway = "Safe";
+                }
+            }
 
             views.setTextViewText(R.id.text_next_room_badge, room.toUpperCase());
             views.setTextViewText(R.id.text_next_countdown, countdown.toUpperCase());

@@ -1,12 +1,12 @@
 'use client';
 
-import React, { useState } from 'react';
-import { motion, AnimatePresence, LayoutGroup } from 'motion/react';
-import { Check, ChevronRight } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
+import { Check, ChevronDown, Calendar, Sparkles, X } from 'lucide-react';
 import { hapticSelection, hapticSuccess, hapticLight } from '../../utils/haptics';
 
 /* ---------- Types ---------- */
-export type FrequencyType = 'Never' | 'Daily' | 'Weekly' | 'Monthly' | 'Yearly';
+export type FrequencyType = 'Never' | 'Daily' | 'Weekly' | 'Monthly';
 
 export interface FrequencyData {
   type: FrequencyType;
@@ -20,31 +20,17 @@ interface FrequencySelectorProps {
   memory?: Record<string, string | undefined>;
 }
 
-/* ---------- Motion Config — tightened for Android WebView perf ---------- */
-const tabSpring = { type: 'spring', bounce: 0.15, duration: 0.3 } as const;
+/* ---------- Motion Config ---------- */
+const tabSpring = { type: 'spring', bounce: 0.12, duration: 0.28 } as const;
 
 /* ---------- Data ---------- */
-const FREQUENCIES: FrequencyType[] = ['Never', 'Daily', 'Weekly', 'Monthly', 'Yearly'];
+const FREQUENCIES: FrequencyType[] = ['Never', 'Daily', 'Weekly', 'Monthly'];
 
 const SUB_OPTIONS: Record<FrequencyType, string[]> = {
   Never: [],
   Daily: [],
   Weekly: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
   Monthly: Array.from({ length: 31 }, (_, i) => (i + 1).toString()),
-  Yearly: [
-    'Jan',
-    'Feb',
-    'Mar',
-    'Apr',
-    'May',
-    'Jun',
-    'Jul',
-    'Aug',
-    'Sep',
-    'Oct',
-    'Nov',
-    'Dec',
-  ],
 };
 
 export const FrequencySelector: React.FC<FrequencySelectorProps> = ({
@@ -56,8 +42,32 @@ export const FrequencySelector: React.FC<FrequencySelectorProps> = ({
   const [isOpen, setIsOpen] = useState(false);
   const [tempType, setTempType] = useState<FrequencyType>(value.type);
   const [tempSubValue, setTempSubValue] = useState<string | undefined>(
-    value.subValue,
+    value.subValue || memory[value.type] || SUB_OPTIONS[value.type][0]
   );
+
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Sync temp state when incoming value changes while closed
+  useEffect(() => {
+    if (!isOpen) {
+      setTempType(value.type);
+      setTempSubValue(value.subValue || memory[value.type] || SUB_OPTIONS[value.type][0]);
+    }
+  }, [value, isOpen, memory]);
+
+  // Click outside to dismiss without saving
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleOutsideClick = (event: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, [isOpen]);
 
   const handleOpen = () => {
     hapticLight();
@@ -66,151 +76,249 @@ export const FrequencySelector: React.FC<FrequencySelectorProps> = ({
     setIsOpen(true);
   };
 
+  const handleClose = () => {
+    hapticLight();
+    setIsOpen(false);
+  };
+
   const handleConfirm = () => {
     hapticSuccess();
     onChange({
       type: tempType,
-      subValue: tempType === 'Daily' ? undefined : tempSubValue,
+      subValue: tempType === 'Daily' || tempType === 'Never' ? undefined : tempSubValue,
     });
     setIsOpen(false);
   };
 
+  const renderDisplayLabel = () => {
+    if (value.type === 'Never') return 'Never';
+    if (value.type === 'Daily') return 'Daily';
+    if (value.type === 'Weekly') return `Weekly, ${value.subValue || 'Sun'}`;
+    if (value.type === 'Monthly') return `Monthly, Day ${value.subValue || '1'}`;
+    return value.type;
+  };
+
   return (
-    <LayoutGroup id="frequency-root">
+    <div
+      ref={containerRef}
+      className={`w-full antialiased select-none ${className}`}
+    >
+      {/* ---------- CLOSED TRIGGER PILL ---------- */}
       <div
-        className={`flex w-full items-center justify-center antialiased select-none ${className}`}
+        onClick={() => {
+          if (isOpen) handleClose();
+          else handleOpen();
+        }}
+        className="flex min-h-14 w-full cursor-pointer items-center justify-between rounded-2xl sm:rounded-full bg-slate-50 dark:bg-slate-900/60 border border-black/10 dark:border-white/10 p-2 px-4 sm:px-5 gap-3 hover:bg-slate-100/80 dark:hover:bg-slate-800/60 active:scale-[0.99] transition-all shadow-sm"
       >
-        <AnimatePresence mode="wait">
-          {!isOpen ? (
-            /* ---------- CLOSED STATE ---------- */
-            <motion.div
-              layoutId="container"
-              initial={{ opacity: 0, scale: 0.97 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.97 }}
-              onClick={handleOpen}
-              transition={tabSpring}
-              className="flex min-h-14 w-full max-w-md cursor-pointer items-center justify-between rounded-full bg-white/60 dark:bg-black/60 border border-black/10 dark:border-white/10 p-1 pl-4 sm:pl-6 gap-4 hover:bg-white/80 dark:hover:bg-black/80 transition-colors shadow-sm"
-            >
-              <motion.span
-                layout
-                className="text-base font-bold text-slate-600 dark:text-slate-400 sm:text-lg"
-              >
-                Frequency
-              </motion.span>
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center shrink-0">
+            <Calendar className="w-4 h-4" />
+          </div>
+          <span className="text-sm sm:text-base font-bold text-slate-700 dark:text-slate-300">
+            Frequency
+          </span>
+        </div>
 
-              <motion.div
-                layoutId="trigger-pill"
-                transition={tabSpring}
-                className="flex min-h-12 flex-1 items-center justify-between gap-2 rounded-full border border-black/10 dark:border-white/10 bg-white/80 dark:bg-white/10 px-3 py-1.5 shadow-sm sm:flex-initial sm:gap-3 sm:px-4"
-              >
-                <span className="text-base font-bold sm:text-lg text-slate-900 dark:text-white">
-                  {value.type}
-                  {value.subValue ? `, ${value.subValue}` : ''}
-                </span>
+        <div className="flex items-center gap-2 rounded-full border border-black/10 dark:border-white/10 bg-white dark:bg-black/80 px-3.5 py-1.5 shadow-sm">
+          <span className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white">
+            {renderDisplayLabel()}
+          </span>
+          <motion.div
+            animate={{ rotate: isOpen ? 180 : 0 }}
+            transition={{ duration: 0.2 }}
+            className="text-slate-400"
+          >
+            <ChevronDown size={16} />
+          </motion.div>
+        </div>
+      </div>
 
-                <ChevronRight size={18} className="shrink-0 text-slate-500 dark:text-slate-400" />
-              </motion.div>
-            </motion.div>
-          ) : (
-            /* ---------- OPEN STATE ---------- */
-            <motion.div
-              layoutId="container"
-              initial={{ opacity: 0, scale: 0.97 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.97 }}
-              transition={tabSpring}
-              className="flex w-full max-w-lg flex-col gap-3 rounded-[32px] border border-black/10 dark:border-white/10 bg-white/70 dark:bg-black/70 p-2 shadow-2xl"
-            >
-              {/* Top Row */}
-              <div className="flex items-center gap-2">
-                <motion.div
-                  layoutId="trigger-pill"
-                  transition={tabSpring}
-                  className="custom-scrollbar relative flex h-11 flex-1 items-center gap-2 overflow-x-auto rounded-full bg-black/5 dark:bg-white/5 border border-black/5 dark:border-white/5 p-1 shadow-inner sm:h-13 sm:gap-2"
-                >
-                  {FREQUENCIES.map((type) => (
-                    <button
-                      key={type}
-                      onClick={() => {
-                        hapticSelection();
-                        setTempType(type);
-                        setTempSubValue(memory[type] || SUB_OPTIONS[type][0]);
-                      }}
-                      className={`relative flex h-full flex-none items-center justify-center px-4 text-xs font-bold transition-colors sm:flex-1 sm:min-w-fit sm:px-6 sm:text-[15px] ${
-                        tempType === type ? 'text-slate-900 dark:text-white' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
-                      }`}
-                    >
-                      {tempType === type && (
-                        <motion.div
-                          layoutId="active-tab"
-                          transition={tabSpring}
-                          className="absolute inset-0 z-0 rounded-full bg-white dark:bg-black shadow-sm border border-black/10 dark:border-white/10"
-                        />
-                      )}
-
-                      <span className="relative z-10">{type}</span>
-                    </button>
-                  ))}
-                </motion.div>
-
-                <motion.button
-                  whileTap={{ scale: 0.9 }}
-                  onClick={handleConfirm}
-                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-900 text-[#ffffff] dark:bg-white dark:text-slate-900 sm:h-12 sm:w-12 shadow-md hover:opacity-90 transition-opacity"
-                >
-                  <Check size={18} className="text-[#ffffff] dark:text-slate-900" strokeWidth={2.5} />
-                </motion.button>
-              </div>
-
-              {/* Sub Options — layout/layout props removed from outer wrapper to prevent
-                  continuous DOM measurement during height changes (layout thrashing on WebView).
-                  Simple opacity fade on key change is enough. The active pill still slides via layoutId. */}
-              <AnimatePresence mode="wait">
-                {SUB_OPTIONS[tempType].length > 0 && (
-                  <motion.div
-                    key={tempType}
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    transition={{ duration: 0.12 }}
-                    className={`grid gap-2 rounded-2xl bg-black/5 dark:bg-white/5 border border-black/5 dark:border-white/5 p-3 shadow-inner ${
-                      tempType === 'Monthly'
-                        ? 'grid-cols-7'
-                        : tempType === 'Yearly'
-                          ? 'grid-cols-4'
-                          : 'grid-cols-7'
+      {/* ---------- EXPANDED SELECTION CARD ---------- */}
+      <AnimatePresence>
+        {isOpen && (
+          <motion.div
+            initial={{ opacity: 0, height: 0, y: -4 }}
+            animate={{ opacity: 1, height: 'auto', y: 0 }}
+            exit={{ opacity: 0, height: 0, y: -4 }}
+            transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+            className="overflow-hidden mt-2.5 rounded-2xl border border-black/10 dark:border-white/10 bg-white dark:bg-[#151518] p-3 sm:p-4 shadow-xl space-y-3.5"
+          >
+            {/* Top Tab Bar: 4-Segment Grid (Never, Daily, Weekly, Monthly) */}
+            <div className="relative grid grid-cols-4 gap-1 p-1 rounded-xl bg-slate-100 dark:bg-white/5 border border-black/5 dark:border-white/5">
+              {FREQUENCIES.map((type) => {
+                const isSelected = tempType === type;
+                return (
+                  <button
+                    key={type}
+                    type="button"
+                    onClick={() => {
+                      hapticSelection();
+                      setTempType(type);
+                      setTempSubValue(memory[type] || SUB_OPTIONS[type][0]);
+                    }}
+                    className={`relative z-10 flex h-9 items-center justify-center rounded-lg text-xs sm:text-sm font-bold transition-colors ${
+                      isSelected
+                        ? 'text-slate-900 dark:text-white'
+                        : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
                     }`}
                   >
-                    {SUB_OPTIONS[tempType].map((option) => (
+                    {isSelected && (
+                      <motion.div
+                        layoutId="active-freq-tab"
+                        transition={tabSpring}
+                        className="absolute inset-0 z-[-1] rounded-lg bg-white dark:bg-black shadow-sm border border-black/10 dark:border-white/10"
+                      />
+                    )}
+                    <span>{type}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Sub-Options Container */}
+            <div className="space-y-2">
+              {/* Weekly Sub-Options: 7 Days */}
+              {tempType === 'Weekly' && (
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between px-1">
+                    <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                      Delivery Day
+                    </span>
+                    <span className="text-xs font-bold text-primary">
+                      Every {tempSubValue || 'Sun'}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-7 gap-1.5 p-2 rounded-xl bg-slate-50 dark:bg-white/5 border border-black/5 dark:border-white/5">
+                    {SUB_OPTIONS.Weekly.map((day) => {
+                      const isDaySelected = tempSubValue === day;
+                      return (
+                        <button
+                          key={day}
+                          type="button"
+                          onClick={() => {
+                            hapticSelection();
+                            setTempSubValue(day);
+                          }}
+                          className={`relative flex h-8 sm:h-9 items-center justify-center rounded-lg text-xs font-bold transition-all ${
+                            isDaySelected
+                              ? 'bg-primary text-primary-foreground font-black shadow-sm scale-105'
+                              : 'text-slate-600 dark:text-slate-400 hover:bg-black/5 dark:hover:bg-white/5'
+                          }`}
+                        >
+                          {day}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Monthly Sub-Options: Days 1 to 31 + Quick Presets */}
+              {tempType === 'Monthly' && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between px-1">
+                    <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                      Day of Month
+                    </span>
+                    <span className="text-xs font-bold text-primary">
+                      Day {tempSubValue || '1'} of every month
+                    </span>
+                  </div>
+
+                  {/* Quick Presets: 1st, 15th, 28th, Last Day */}
+                  <div className="flex items-center gap-1.5 pb-1 overflow-x-auto">
+                    {[
+                      { label: '1st (Start)', val: '1' },
+                      { label: '15th (Mid)', val: '15' },
+                      { label: '28th', val: '28' },
+                      { label: '30th (End)', val: '30' },
+                    ].map((preset) => (
                       <button
-                        key={option}
+                        key={preset.val}
+                        type="button"
                         onClick={() => {
                           hapticSelection();
-                          setTempSubValue(option);
+                          setTempSubValue(preset.val);
                         }}
-                        className={`relative flex h-8 items-center justify-center rounded-full text-[10px] font-bold transition-colors sm:h-9 sm:text-sm ${
-                          tempSubValue === option ? 'text-slate-900 dark:text-white' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
+                        className={`text-[11px] font-bold px-2.5 py-1 rounded-full border transition-all shrink-0 ${
+                          tempSubValue === preset.val
+                            ? 'bg-primary/10 border-primary text-primary'
+                            : 'bg-black/5 dark:bg-white/5 border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
                         }`}
                       >
-                        {tempSubValue === option && (
-                          <motion.div
-                            layoutId="active-sub"
-                            transition={{ type: 'spring', bounce: 0.2, duration: 0.25 }}
-                            className="absolute inset-0 z-0 rounded-full bg-white dark:bg-black shadow-sm border border-black/10 dark:border-white/10"
-                          />
-                        )}
-
-                        <span className="relative z-10">{option}</span>
+                        {preset.label}
                       </button>
                     ))}
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
-    </LayoutGroup>
+                  </div>
+
+                  {/* 31-Day Compact Grid */}
+                  <div className="grid grid-cols-7 gap-1 p-2 rounded-xl bg-slate-50 dark:bg-white/5 border border-black/5 dark:border-white/5 max-h-48 overflow-y-auto">
+                    {SUB_OPTIONS.Monthly.map((numStr) => {
+                      const isNumSelected = tempSubValue === numStr;
+                      return (
+                        <button
+                          key={numStr}
+                          type="button"
+                          onClick={() => {
+                            hapticSelection();
+                            setTempSubValue(numStr);
+                          }}
+                          className={`flex h-7 sm:h-8 items-center justify-center rounded-md text-[11px] sm:text-xs font-bold transition-all ${
+                            isNumSelected
+                              ? 'bg-primary text-primary-foreground font-black shadow-sm scale-105'
+                              : 'text-slate-700 dark:text-slate-300 hover:bg-black/5 dark:hover:bg-white/5'
+                          }`}
+                        >
+                          {numStr}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Daily Informational Note */}
+              {tempType === 'Daily' && (
+                <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-white/5 border border-black/5 dark:border-white/5 flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-emerald-500 shrink-0" />
+                  <p className="text-xs text-slate-600 dark:text-slate-400">
+                    Daily briefings are delivered every evening with tomorrow&apos;s schedule and attendance pace.
+                  </p>
+                </div>
+              )}
+
+              {/* Never Informational Note */}
+              {tempType === 'Never' && (
+                <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-white/5 border border-black/5 dark:border-white/5 flex items-center gap-2">
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Academic update summaries are turned off. You can re-enable Daily, Weekly, or Monthly anytime.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Action Row: Cancel / Apply */}
+            <div className="flex items-center justify-end gap-2 pt-1 border-t border-black/5 dark:border-white/5">
+              <button
+                type="button"
+                onClick={handleClose}
+                className="px-3.5 py-1.5 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-400 hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirm}
+                className="flex items-center gap-1.5 px-4 py-1.5 rounded-xl text-xs font-bold bg-primary text-primary-foreground hover:opacity-90 active:scale-95 transition-all shadow-sm"
+              >
+                <Check size={14} strokeWidth={2.5} />
+                <span>Apply Frequency</span>
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
   );
 };
