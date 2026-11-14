@@ -8,6 +8,7 @@ import { SoundFX } from "../../utils/soundEffects";
 import { triggerDynamicHUD } from "../../components/ui/dynamic-island-hud";
 import { confirmDeleteToast } from "../../components/ui/confirm-delete-toast";
 import { hapticHeavy, hapticLight, hapticSuccess } from "../../utils/haptics";
+import { useBackHandlerStore } from "../../stores/backHandlerStore";
 
 const safeFormatDeadline = (deadlineStr?: string | null): string => {
   if (!deadlineStr) return "No deadline set";
@@ -49,6 +50,16 @@ export function AssignmentsPage() {
       window.removeEventListener("attendance-updated", handleSync);
     };
   }, [fetchAssignments]);
+    useEffect(() => {
+      const unregister = useBackHandlerStore.getState().register(() => {
+        if (isAddOpen) {
+          setIsAddOpen(false);
+          return true;
+        }
+        return false;
+      });
+      return () => unregister();
+    }, [isAddOpen]);
 
   const handleToggle = (id: string, isCurrentlyDone: boolean) => {
     if (flyingPlaneId || flutterDeletingId) return;

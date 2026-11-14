@@ -99,15 +99,33 @@ export class ClassroomController {
   static async createAnnouncement(req: AuthenticatedRequest, res: Response) {
     try {
       const { id } = req.params;
-      const { title, content, importance } = req.body;
+      const { title, content, importance, attachmentUrls } = req.body;
       if (!title || !content) {
         return res.status(400).json({ message: "Title and content are required" });
+      }
+
+      // Safeguard database storage: enforce strict limits on attachments
+      const safeAttachments: string[] = [];
+      if (Array.isArray(attachmentUrls)) {
+        if (attachmentUrls.length > 2) {
+          return res.status(400).json({ message: "Maximum 2 document attachments allowed per announcement" });
+        }
+        for (const item of attachmentUrls) {
+          if (typeof item === "string") {
+            // Strict length cap: 2.5MB base64 ceiling to protect Neon Postgres storage limits
+            if (item.length > 2.5 * 1024 * 1024) {
+              return res.status(400).json({ message: "Attachment exceeds 1.5MB size limit to preserve database capacity" });
+            }
+            safeAttachments.push(item);
+          }
+        }
       }
 
       const announcement = await ClassroomService.createAnnouncement(req.user!.userId, String(id), {
         title,
         content,
         importance,
+        attachmentUrls: safeAttachments,
       });
 
       res.status(201).json(announcement);

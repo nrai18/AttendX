@@ -86,6 +86,8 @@ import { ChangelogModal } from "../../components/settings/ChangelogModal";
 import { NotificationService, calculateNextSummaryDates } from "../../services/NotificationService";
 import { OfflineZipService } from "../../services/OfflineZipService";
 import { hapticSelection, hapticLight } from "../../utils/haptics";
+import { UpdateSettingsCard } from "../../components/updates/UpdateSettingsCard";
+import { UpdateManager } from "../../services/updater/updateManager";
 
 export const SettingsPage: React.FC = () => {
   const currentAppVersion = (Capacitor.isNativePlatform() ? localStorage.getItem("app_version") : null) || import.meta.env.VITE_APP_VERSION || "4.2.0";
@@ -1642,137 +1644,139 @@ export const SettingsPage: React.FC = () => {
             >
               <ArrowLeft className="w-5 h-5" />
             </button>
-          <h1 className="text-2xl font-extrabold text-foreground tracking-tight">
-            Backup/Restore
-          </h1>
-        </div>
-
-        {backupStatusMessage && (
-          <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-500 text-xs font-bold flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4" />
-            <span>{backupStatusMessage}</span>
+            <h1 className="text-2xl font-extrabold text-foreground tracking-tight">
+              Backup/Restore
+            </h1>
           </div>
-        )}
 
-        {/* Manual Export/Import backup */}
-        <div className="space-y-4">
-          <h2 className="text-base font-bold text-foreground">
-            Manual Export/Import backup
-          </h2>
-          <div className="bg-card border border-border/70 rounded-2xl divide-y divide-border/50 shadow-md">
-            <button
-              onClick={handleExportBackup}
-              className="w-full text-left p-4 hover:bg-muted/50 transition-colors flex flex-col gap-1 cursor-pointer"
-            >
-              <span className="text-sm font-bold text-foreground">
-                Export backup file
-              </span>
-              <span className="text-xs text-muted-foreground leading-relaxed">
-                Generates a backup file that can be imported back. This file
-                cannot be read externally.
-              </span>
-            </button>
-
-            <button
-              onClick={() => jsonInputRef.current?.click()}
-              className="w-full text-left p-4 hover:bg-muted/50 transition-colors flex flex-col gap-1 cursor-pointer"
-            >
-              <span className="text-sm font-bold text-foreground">
-                Import backup file
-              </span>
-              <span className="text-xs text-muted-foreground leading-relaxed">
-                Supports backups exported by this app.
-              </span>
-            </button>
-          </div>
-        </div>
-
-        {/* Automatic Google Drive backup */}
-        <div className="space-y-4 pt-2">
-          <h2 className="text-base font-bold text-foreground">
-            Automatic Google Drive backup
-          </h2>
-          <div className="bg-card border border-border/70 rounded-2xl p-5 space-y-5 shadow-md">
-            <p className="text-xs text-muted-foreground leading-relaxed">
-              Don't risk losing your data. Enable automatic backups to Google
-              Drive. Up to 30 backups are saved in the "Ajack auto backup"
-              folder and can be restored on a new phone.
-            </p>
-
-            <div className="text-xs font-semibold text-muted-foreground">
-              Last backup: <span className="text-foreground">---</span>
+          {backupStatusMessage && (
+            <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-500 text-xs font-bold flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4" />
+              <span>{backupStatusMessage}</span>
             </div>
+          )}
 
-            <div>
+          {/* Manual Export/Import backup */}
+          <div className="space-y-4">
+            <h2 className="text-base font-bold text-foreground">
+              Manual Export/Import backup
+            </h2>
+            <div className="bg-card border border-border/70 rounded-2xl divide-y divide-border/50 shadow-md">
               <button
-                disabled={isBackupNowLoading}
-                onClick={() => {
-                  setIsBackupNowLoading(true);
-                  setTimeout(() => {
-                    setIsBackupNowLoading(false);
-                    setBackupStatusMessage("Google Drive backup completed!");
-                    setTimeout(() => setBackupStatusMessage(""), 3000);
-                  }, 1500);
-                }}
-                className="px-5 py-2.5 rounded-full bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold transition-all shadow-md shadow-emerald-500/20 flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                onClick={handleExportBackup}
+                className="w-full text-left p-4 hover:bg-muted/50 transition-colors flex flex-col gap-1 cursor-pointer"
               >
-                {isBackupNowLoading && (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                )}
-                Backup Now
+                <span className="text-sm font-bold text-foreground">
+                  Export backup file
+                </span>
+                <span className="text-xs text-muted-foreground leading-relaxed">
+                  Generates a backup file that can be imported back. This file
+                  cannot be read externally.
+                </span>
+              </button>
+
+              <button
+                onClick={() => jsonInputRef.current?.click()}
+                className="w-full text-left p-4 hover:bg-muted/50 transition-colors flex flex-col gap-1 cursor-pointer"
+              >
+                <span className="text-sm font-bold text-foreground">
+                  Import backup file
+                </span>
+                <span className="text-xs text-muted-foreground leading-relaxed">
+                  Supports backups exported by this app.
+                </span>
               </button>
             </div>
+          </div>
 
-            <div className="space-y-4 pt-2 border-t border-border/50">
-              <div className="flex flex-col gap-0.5">
-                <span className="text-xs font-bold text-foreground">
-                  Google Account
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  {user?.email || "support@mail.attendx.tech"}
-                </span>
+          {/* Automatic Google Drive backup */}
+          <div className="space-y-4 pt-2">
+            <h2 className="text-base font-bold text-foreground">
+              Automatic Google Drive backup
+            </h2>
+            <div className="bg-card border border-border/70 rounded-2xl p-5 space-y-5 shadow-md">
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                Don't risk losing your data. Enable automatic backups to Google
+                Drive. Up to 30 backups are saved in the "Ajack auto backup"
+                folder and can be restored on a new phone.
+              </p>
+
+              <div className="text-xs font-semibold text-muted-foreground">
+                Last backup: <span className="text-foreground">---</span>
               </div>
 
-              <div className="flex items-center justify-between">
-                <div className="flex flex-col gap-0.5">
-                  <span className="text-xs font-bold text-foreground">
-                    Enable automatic backups
-                  </span>
-                  <span className="text-xs text-muted-foreground">
-                    {autoBackupEnabled ? "On" : "Off"}
-                  </span>
-                </div>
+              <div>
                 <button
-                  type="button"
-                  onClick={() => setAutoBackupEnabled(!autoBackupEnabled)}
-                  className={`w-12 h-6 rounded-full p-1 transition-colors cursor-pointer relative ${
-                    autoBackupEnabled ? "bg-emerald-500" : "bg-muted"
-                  }`}
+                  disabled={isBackupNowLoading}
+                  onClick={() => {
+                    setIsBackupNowLoading(true);
+                    setTimeout(() => {
+                      setIsBackupNowLoading(false);
+                      setBackupStatusMessage("Google Drive backup completed!");
+                      setTimeout(() => setBackupStatusMessage(""), 3000);
+                    }, 1500);
+                  }}
+                  className="px-5 py-2.5 rounded-full bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold transition-all shadow-md shadow-emerald-500/20 flex items-center gap-2 cursor-pointer disabled:opacity-50"
                 >
-                  <div
-                    className={`w-4 h-4 rounded-full bg-white transition-transform ${
-                      autoBackupEnabled ? "translate-x-6" : "translate-x-0"
-                    }`}
-                  />
+                  {isBackupNowLoading && (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  )}
+                  Backup Now
                 </button>
               </div>
 
-              <button
-                onClick={() => {
-                  toast.info("Restoring from Google Drive. Select backup version...");
-                }}
-                className="w-full text-left pt-2 flex flex-col gap-0.5 group cursor-pointer"
-              >
-                <span className="text-xs font-bold text-foreground group-hover:text-primary transition-colors">
-                  Restore backup
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  Choose and restore a backup from Google Drive.
-                </span>
-              </button>
+              <div className="space-y-4 pt-2 border-t border-border/50">
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-xs font-bold text-foreground">
+                    Google Account
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    {user?.email || "support@mail.attendx.tech"}
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-xs font-bold text-foreground">
+                      Enable automatic backups
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      {autoBackupEnabled ? "On" : "Off"}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setAutoBackupEnabled(!autoBackupEnabled)}
+                    className={`w-12 h-6 rounded-full p-1 transition-colors cursor-pointer relative ${
+                      autoBackupEnabled ? "bg-emerald-500" : "bg-muted"
+                    }`}
+                  >
+                    <div
+                      className={`w-4 h-4 rounded-full bg-white transition-transform ${
+                        autoBackupEnabled ? "translate-x-6" : "translate-x-0"
+                      }`}
+                    />
+                  </button>
+                </div>
+
+                <button
+                  onClick={() => {
+                    toast.info(
+                      "Restoring from Google Drive. Select backup version...",
+                    );
+                  }}
+                  className="w-full text-left pt-2 flex flex-col gap-0.5 group cursor-pointer"
+                >
+                  <span className="text-xs font-bold text-foreground group-hover:text-primary transition-colors">
+                    Restore backup
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    Choose and restore a backup from Google Drive.
+                  </span>
+                </button>
+              </div>
             </div>
           </div>
-        </div>
         </div>
       )}
 
@@ -1786,1563 +1790,1809 @@ export const SettingsPage: React.FC = () => {
             >
               <ArrowLeft className="w-5 h-5" />
             </button>
-          <h1 className="text-2xl font-extrabold text-foreground tracking-tight">
-            Contact us
-          </h1>
-        </div>
+            <h1 className="text-2xl font-extrabold text-foreground tracking-tight">
+              Contact us
+            </h1>
+          </div>
 
-        {/* Developer Info Card */}
-        <div className="bg-card border border-emerald-500/30 rounded-2xl p-5 space-y-3 shadow-md bg-gradient-to-br from-emerald-500/5 to-transparent">
-          <div className="flex items-center gap-3">
-            <img
-              src="/developer-photo.jpg"
-              alt="Naman Rai"
-              referrerPolicy="no-referrer"
-              className="w-12 h-12 avatar-circle rounded-full object-cover border-2 border-emerald-500/40 shadow-sm shrink-0"
-              onError={(e) => {
-                e.currentTarget.style.display = "none";
-                if (e.currentTarget.nextElementSibling) {
-                  (
-                    e.currentTarget.nextElementSibling as HTMLElement
-                  ).style.display = "flex";
-                }
-              }}
-            />
-            <div className="w-12 h-12 rounded-full bg-emerald-500/20 text-emerald-500 items-center justify-center font-bold text-lg hidden shrink-0">
-              NR
+          {/* Developer Info Card */}
+          <div className="bg-card border border-emerald-500/30 rounded-2xl p-5 space-y-3 shadow-md bg-gradient-to-br from-emerald-500/5 to-transparent">
+            <div className="flex items-center gap-3">
+              <img
+                src="/developer-photo.jpg"
+                alt="Naman Rai"
+                referrerPolicy="no-referrer"
+                className="w-12 h-12 avatar-circle rounded-full object-cover border-2 border-emerald-500/40 shadow-sm shrink-0"
+                onError={(e) => {
+                  e.currentTarget.style.display = "none";
+                  if (e.currentTarget.nextElementSibling) {
+                    (
+                      e.currentTarget.nextElementSibling as HTMLElement
+                    ).style.display = "flex";
+                  }
+                }}
+              />
+              <div className="w-12 h-12 rounded-full bg-emerald-500/20 text-emerald-500 items-center justify-center font-bold text-lg hidden shrink-0">
+                NR
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-foreground">
+                  Naman Rai
+                </h3>
+                <p className="text-xs text-muted-foreground">
+                  App Developer & IIITU Student
+                </p>
+              </div>
             </div>
-            <div>
-              <h3 className="text-base font-bold text-foreground">Naman Rai</h3>
-              <p className="text-xs text-muted-foreground">
-                App Developer & IIITU Student
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs pt-1 border-t border-border/50 text-muted-foreground">
+              <div className="flex items-center gap-2">
+                <Phone className="w-3.5 h-3.5 text-emerald-500" />
+                <span>+91 8076408958</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Mail className="w-3.5 h-3.5 text-emerald-500" />
+                <span>support@mail.attendx.tech</span>
+              </div>
+            </div>
+          </div>
+
+          {contactSubmitted && (
+            <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-500 text-xs font-bold space-y-1">
+              <p className="text-sm">Thank you for reaching out!</p>
+              <p className="text-muted-foreground font-normal">
+                Your email client has been opened. You can also contact Naman
+                Rai directly at support@mail.attendx.tech or 8076408958.
               </p>
             </div>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs pt-1 border-t border-border/50 text-muted-foreground">
-            <div className="flex items-center gap-2">
-              <Phone className="w-3.5 h-3.5 text-emerald-500" />
-              <span>+91 8076408958</span>
+          )}
+
+          <form onSubmit={handleSendContact} className="space-y-5">
+            {/* Topic Select */}
+            <div className="space-y-2">
+              <label className="flex items-center gap-2 text-xs font-bold text-emerald-600 dark:text-emerald-500 uppercase tracking-wider">
+                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                Topic
+              </label>
+              <select
+                value={contactTopic}
+                onChange={(e) => setContactTopic(e.target.value)}
+                className="w-full bg-card border border-emerald-500/50 rounded-xl px-4 py-3 text-foreground focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm font-semibold"
+              >
+                <option value="Suggest an idea">Suggest an idea</option>
+                <option value="Report a bug">Report a bug</option>
+                <option value="Ask a question">Ask a question</option>
+                <option value="Other">Other</option>
+              </select>
             </div>
-            <div className="flex items-center gap-2">
-              <Mail className="w-3.5 h-3.5 text-emerald-500" />
-              <span>support@mail.attendx.tech</span>
+
+            {/* Subject */}
+            <div className="space-y-2">
+              <label className="flex items-center gap-2 text-xs font-bold text-emerald-600 dark:text-emerald-500 uppercase tracking-wider">
+                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                Subject
+              </label>
+              <input
+                type="text"
+                required
+                placeholder="e.g. Issue with timetable sync"
+                value={contactSubject}
+                onChange={(e) => setContactSubject(e.target.value)}
+                className="w-full bg-card border border-emerald-500/50 rounded-xl px-4 py-3 text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm font-semibold transition-all hover:border-emerald-500/70"
+              />
             </div>
-          </div>
-        </div>
 
-        {contactSubmitted && (
-          <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-500 text-xs font-bold space-y-1">
-            <p className="text-sm">Thank you for reaching out!</p>
-            <p className="text-muted-foreground font-normal">
-              Your email client has been opened. You can also contact Naman Rai
-              directly at support@mail.attendx.tech or 8076408958.
-            </p>
-          </div>
-        )}
+            {/* Message */}
+            <div className="space-y-2">
+              <label className="flex items-center gap-2 text-xs font-bold text-emerald-600 dark:text-emerald-500 uppercase tracking-wider">
+                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                Message
+              </label>
+              <textarea
+                required
+                rows={6}
+                placeholder="Describe your issue or suggestion in detail..."
+                value={contactMessage}
+                onChange={(e) => setContactMessage(e.target.value)}
+                className="w-full bg-card border border-emerald-500/50 rounded-xl p-4 text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm font-semibold transition-all hover:border-emerald-500/70 resize-none"
+              />
+            </div>
 
-        <form onSubmit={handleSendContact} className="space-y-5">
-          {/* Topic Select */}
-          <div className="space-y-2">
-            <label className="flex items-center gap-2 text-xs font-bold text-emerald-600 dark:text-emerald-500 uppercase tracking-wider">
-              <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-              Topic
-            </label>
-            <select
-              value={contactTopic}
-              onChange={(e) => setContactTopic(e.target.value)}
-              className="w-full bg-card border border-emerald-500/50 rounded-xl px-4 py-3 text-foreground focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm font-semibold"
-            >
-              <option value="Suggest an idea">Suggest an idea</option>
-              <option value="Report a bug">Report a bug</option>
-              <option value="Ask a question">Ask a question</option>
-              <option value="Other">Other</option>
-            </select>
-          </div>
+            <div className="text-center pt-2">
+              <button
+                type="button"
+                onClick={() => navigate("/settings/faq")}
+                className="text-xs text-emerald-500 hover:underline cursor-pointer"
+              >
+                Check out our FAQs for quick answers
+              </button>
+            </div>
 
-          {/* Subject */}
-          <div className="space-y-2">
-            <label className="flex items-center gap-2 text-xs font-bold text-emerald-600 dark:text-emerald-500 uppercase tracking-wider">
-              <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-              Subject
-            </label>
-            <input
-              type="text"
-              required
-              placeholder="e.g. Issue with timetable sync"
-              value={contactSubject}
-              onChange={(e) => setContactSubject(e.target.value)}
-              className="w-full bg-card border border-emerald-500/50 rounded-xl px-4 py-3 text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm font-semibold transition-all hover:border-emerald-500/70"
-            />
-          </div>
-
-          {/* Message */}
-          <div className="space-y-2">
-            <label className="flex items-center gap-2 text-xs font-bold text-emerald-600 dark:text-emerald-500 uppercase tracking-wider">
-              <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-              Message
-            </label>
-            <textarea
-              required
-              rows={6}
-              placeholder="Describe your issue or suggestion in detail..."
-              value={contactMessage}
-              onChange={(e) => setContactMessage(e.target.value)}
-              className="w-full bg-card border border-emerald-500/50 rounded-xl p-4 text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm font-semibold transition-all hover:border-emerald-500/70 resize-none"
-            />
-          </div>
-
-          <div className="text-center pt-2">
             <button
-              type="button"
-              onClick={() => navigate("/settings/faq")}
-              className="text-xs text-emerald-500 hover:underline cursor-pointer"
+              type="submit"
+              className="w-full py-3.5 rounded-full bg-emerald-400 hover:bg-emerald-500 text-black font-extrabold text-sm transition-all shadow-lg shadow-emerald-500/20 cursor-pointer flex items-center justify-center gap-2"
             >
-              Check out our FAQs for quick answers
+              <Send className="w-4 h-4" />
+              Send via Email
             </button>
-          </div>
-
-          <button
-            type="submit"
-            className="w-full py-3.5 rounded-full bg-emerald-400 hover:bg-emerald-500 text-black font-extrabold text-sm transition-all shadow-lg shadow-emerald-500/20 cursor-pointer flex items-center justify-center gap-2"
-          >
-            <Send className="w-4 h-4" />
-            Send via Email
-          </button>
-        </form>
-      </div>
+          </form>
+        </div>
       )}
 
       {/* ------------------ MAIN SETTINGS VIEW ------------------ */}
-      <div 
+      <div
         style={{ display: activeView === "main" ? "block" : "none" }}
         className="p-4 md:p-8 max-w-3xl mx-auto w-full pb-36 md:pb-8 space-y-8 animate-in fade-in duration-200"
       >
-      {/* Header */}
-      <div className="flex items-center gap-3">
-        <button
-          onClick={() => navigate("/today")}
-          className="p-2 rounded-xl bg-card border border-border text-foreground hover:bg-muted transition-colors cursor-pointer md:hidden"
-        >
-          <ArrowLeft className="w-5 h-5" />
-        </button>
-        <div>
-          <h1 className="text-2xl md:text-3xl font-extrabold text-foreground tracking-tight">
-            Settings
-          </h1>
-        </div>
-      </div>
-      {/* CATEGORY 0: Account */}
-      <div className="space-y-3">
-        <h2 className="text-xs font-bold text-muted-foreground uppercase tracking-wider px-1">
-          Account
-        </h2>
-        <div className="bg-card border border-border/70 rounded-2xl shadow-md overflow-hidden">
-          <button 
-            onClick={() => { recordScroll(); setIsEditProfileOpen(true); }}
-            className="w-full p-4 flex items-center justify-between hover:bg-muted/30 transition-colors cursor-pointer"
+        {/* Header */}
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => navigate("/today")}
+            className="p-2 rounded-xl bg-card border border-border text-foreground hover:bg-muted transition-colors cursor-pointer md:hidden"
           >
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 avatar-circle rounded-full overflow-hidden bg-muted border-2 border-border/50 shadow-sm shrink-0">
-                <img 
-                  src={(user?.avatarUrl && user?.avatarUrl !== "null") ? user?.avatarUrl : (user?.gender === 'female' ? 'https://api.dicebear.com/7.x/notionists/svg?seed=female&gender=female' : user?.gender === 'male' ? 'https://api.dicebear.com/7.x/notionists/svg?seed=male&gender=male' : 'https://api.dicebear.com/7.x/notionists/svg?seed=user')} onError={(e) => { e.currentTarget.src = "https://api.dicebear.com/7.x/notionists/svg?seed=user"; }} 
-                  alt="Avatar" 
-                  className="w-full h-full object-cover" referrerPolicy="no-referrer" 
-                />
-              </div>
-              <div className="text-left">
-                <h3 className="text-base font-extrabold text-foreground">{user?.name || "User"}</h3>
-                <p className="text-xs text-muted-foreground font-medium">{user?.email}</p>
-              </div>
-            </div>
-            <div className="bg-primary/10 text-primary p-2 rounded-full">
-              <ChevronRight className="w-4 h-4" />
-            </div>
+            <ArrowLeft className="w-5 h-5" />
           </button>
-          <div className="h-px bg-border/50" />
-          <button 
-            onClick={() => { recordScroll(); setIsLinkedDevicesOpen(true); }}
-            className="w-full p-4 flex items-center justify-between hover:bg-muted/30 transition-colors cursor-pointer"
-          >
-            <div className="flex items-center gap-3">
-              <div className="bg-emerald-500/10 p-2.5 rounded-xl text-emerald-500 shrink-0">
-                <Laptop className="w-5 h-5" />
-              </div>
-              <div className="text-left">
-                <span className="text-sm font-semibold text-foreground block">
-                  Linked Devices
-                </span>
-                <span className="text-xs text-muted-foreground block mt-0.5">
-                  Manage active sessions
-                </span>
-              </div>
-            </div>
-            <ChevronRight className="w-4 h-4 text-muted-foreground" />
-          </button>
+          <div>
+            <h1 className="text-2xl md:text-3xl font-extrabold text-foreground tracking-tight">
+              Settings
+            </h1>
+          </div>
         </div>
-      </div>
-
-      <EditProfile 
-        isOpen={isEditProfileOpen}
-        onClose={() => { 
-          setIsEditProfileOpen(false); 
-          if (location.pathname !== "/settings") navigate("/settings", { replace: true });
-          restoreScrollPosition(); 
-        }}
-        isLoading={isSavingProfile}
-        initialData={{
-          fullName: user?.name || "",
-          email: user?.email || "",
-          gender: user?.gender || "unspecified",
-          birthday: user?.birthday ? user.birthday.split('T')[0] : "",
-          avatarUrl: user?.avatarUrl || "",
-          hasPassword: user?.hasPassword
-        }}
-        onSave={handleEditProfileSubmit}
-      />
-      {/* CATEGORY 1: General */}
-      <div className="space-y-3">
-        <h2 className="text-xs font-bold text-muted-foreground uppercase tracking-wider px-1">
-          General
-        </h2>
-        <div className="bg-card border border-border/70 rounded-2xl divide-y divide-border/50 shadow-md">
-          {/* Set criteria */}
-          <div className="p-4 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
-                <Target className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="text-sm font-bold text-foreground">
-                  Set criteria
-                </h3>
-                <p className="text-xs text-muted-foreground">
-                  {targetAttendance !== "" &&
-                  targetAttendance !== null &&
-                  targetAttendance !== undefined
-                    ? `${targetAttendance}%`
-                    : "—"}
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center gap-1">
-              <Stepper
-                size="sm"
-                min={1}
-                max={100}
-                value={Number(targetAttendance) || 75}
-                onChange={setTargetAttendance}
-                suffix="%"
-              />
-
-              <SaveToggle onClick={handleSaveProfile} size="sm" />
-            </div>
-          </div>
-
-          {/* Set theme */}
-          <div className="p-4 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-purple-500/10 text-purple-500 flex items-center justify-center">
-                <Sun className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="text-sm font-bold text-foreground">Set theme</h3>
-                <p className="text-xs text-muted-foreground">
-                  {theme === "dark"
-                    ? "Dark Mode"
-                    : theme === "light"
-                      ? "Light Mode"
-                      : "System Default, using App colors"}
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center gap-1 bg-muted p-1 rounded-xl">
-              <button
-                type="button"
-                onClick={(e) => { hapticSelection(); setTheme("dark", e); }}
-                className={`p-1.5 rounded-lg transition-all ${theme === "dark" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground"}`}
-              >
-                <Moon className="w-4 h-4" />
-              </button>
-              <button
-                type="button"
-                onClick={(e) => { hapticSelection(); setTheme("light", e); }}
-                className={`p-1.5 rounded-lg transition-all ${theme === "light" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground"}`}
-              >
-                <Sun className="w-4 h-4" />
-              </button>
-
-            </div>
-          </div>
-
-          {/* Animation & Micro-Physics Sounds (Default: OFF) */}
-          <div id="setting-animation-sounds" className="p-4 flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 transition-colors ${
-                soundEffectsEnabled ? "bg-amber-500/10 text-amber-500" : "bg-muted text-muted-foreground"
-              }`}>
-                {soundEffectsEnabled ? <Volume2 className="w-5 h-5" /> : <VolumeX className="w-5 h-5" />}
-              </div>
-              <div>
-                <h3 className="text-sm font-bold text-foreground">Animation Sounds</h3>
-                <p className="text-xs text-muted-foreground">
-                  {soundEffectsEnabled
-                    ? "Enabled • Action sound effects (Muted in Voice Mode)"
-                    : "Off by default • Silent UI actions & micro-physics"}
-                </p>
-              </div>
-            </div>
+        {/* CATEGORY 0: Account */}
+        <div className="space-y-3">
+          <h2 className="text-xs font-bold text-muted-foreground uppercase tracking-wider px-1">
+            Account
+          </h2>
+          <div className="bg-card border border-border/70 rounded-2xl shadow-md overflow-hidden">
             <button
-              type="button"
-              onClick={handleToggleSoundEffects}
-              className={`w-11 h-6 shrink-0 rounded-full transition-colors duration-200 ease-in-out relative cursor-pointer p-0.5 ${soundEffectsEnabled ? 'bg-primary' : 'bg-muted'}`}
+              onClick={() => {
+                recordScroll();
+                setIsEditProfileOpen(true);
+              }}
+              className="w-full p-4 flex items-center justify-between hover:bg-muted/30 transition-colors cursor-pointer"
             >
-              <div className={`w-5 h-5 bg-white rounded-full shadow-sm transition-transform duration-200 ease-in-out ${soundEffectsEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 avatar-circle rounded-full overflow-hidden bg-muted border-2 border-border/50 shadow-sm shrink-0">
+                  <img
+                    src={
+                      user?.avatarUrl && user?.avatarUrl !== "null"
+                        ? user?.avatarUrl
+                        : user?.gender === "female"
+                          ? "https://api.dicebear.com/7.x/notionists/svg?seed=female&gender=female"
+                          : user?.gender === "male"
+                            ? "https://api.dicebear.com/7.x/notionists/svg?seed=male&gender=male"
+                            : "https://api.dicebear.com/7.x/notionists/svg?seed=user"
+                    }
+                    onError={(e) => {
+                      e.currentTarget.src =
+                        "https://api.dicebear.com/7.x/notionists/svg?seed=user";
+                    }}
+                    alt="Avatar"
+                    className="w-full h-full object-cover"
+                    referrerPolicy="no-referrer"
+                  />
+                </div>
+                <div className="text-left">
+                  <h3 className="text-base font-extrabold text-foreground">
+                    {user?.name || "User"}
+                  </h3>
+                  <p className="text-xs text-muted-foreground font-medium">
+                    {user?.email}
+                  </p>
+                </div>
+              </div>
+              <div className="bg-primary/10 text-primary p-2 rounded-full">
+                <ChevronRight className="w-4 h-4" />
+              </div>
+            </button>
+            <div className="h-px bg-border/50" />
+            <button
+              onClick={() => {
+                recordScroll();
+                setIsLinkedDevicesOpen(true);
+              }}
+              className="w-full p-4 flex items-center justify-between hover:bg-muted/30 transition-colors cursor-pointer"
+            >
+              <div className="flex items-center gap-3">
+                <div className="bg-emerald-500/10 p-2.5 rounded-xl text-emerald-500 shrink-0">
+                  <Laptop className="w-5 h-5" />
+                </div>
+                <div className="text-left">
+                  <span className="text-sm font-semibold text-foreground block">
+                    Linked Devices
+                  </span>
+                  <span className="text-xs text-muted-foreground block mt-0.5">
+                    Manage active sessions
+                  </span>
+                </div>
+              </div>
+              <ChevronRight className="w-4 h-4 text-muted-foreground" />
             </button>
           </div>
-
-
         </div>
-      </div>
 
-      {/* CATEGORY 2: Summary Reports */}
-      <div className="space-y-3">
-        <h2 className="text-xs font-bold text-slate-500 uppercase tracking-wider px-1">
-          Summary Reports
-        </h2>
-        <div className="bg-white dark:bg-[#111113] border border-black/10 dark:border-white/10 rounded-2xl p-4 shadow-sm space-y-4">
-          <div>
-            <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-              Reminder Frequency
-            </h3>
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              Select how often you want to receive academic updates.
-            </p>
-          </div>
-          <div className="w-full flex items-center justify-center bg-transparent transition-colors duration-500">
-            <FrequencySelector
-              value={reminderFrequency}
-              onChange={handleSelectReminderFrequency}
-              memory={frequencyMemory}
-            />
-          </div>
-          {reminderFrequency.type !== 'Never' && (
-            <div className="w-full flex items-center justify-between p-3.5 sm:p-4 mt-2 bg-slate-50/80 dark:bg-slate-900/50 rounded-2xl border border-black/5 dark:border-white/5 transition-all">
-              <div className="flex flex-col gap-0.5">
-                <span className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                  <Clock className="w-4 h-4 text-primary" />
-                  {reminderFrequency.type === 'Daily' ? 'Daily Briefing Time' : reminderFrequency.type === 'Weekly' ? 'Weekly Review Time' : 'Monthly Summary Time'}
-                </span>
-                <span className="text-xs text-slate-500 dark:text-slate-400">
-                  {(() => {
-                    const parts = activeSummaryTime.split(':');
-                    const h = parseInt(parts[0], 10) || 0;
-                    const m = parseInt(parts[1], 10) || 0;
-                    const period = h >= 12 ? 'PM' : 'AM';
-                    const displayH = h % 12 === 0 ? 12 : h % 12;
-                    const displayM = String(m).padStart(2, '0');
-                    const extra = h < 5 ? ' (early morning)' : h < 12 ? ' (morning)' : h < 17 ? ' (afternoon)' : ' (evening)';
-                    return `${displayH}:${displayM} ${period}${extra}`;
-                  })()}
-                </span>
+        <EditProfile
+          isOpen={isEditProfileOpen}
+          onClose={() => {
+            setIsEditProfileOpen(false);
+            if (location.pathname !== "/settings")
+              navigate("/settings", { replace: true });
+            restoreScrollPosition();
+          }}
+          isLoading={isSavingProfile}
+          initialData={{
+            fullName: user?.name || "",
+            email: user?.email || "",
+            gender: user?.gender || "unspecified",
+            birthday: user?.birthday ? user.birthday.split("T")[0] : "",
+            avatarUrl: user?.avatarUrl || "",
+            hasPassword: user?.hasPassword,
+          }}
+          onSave={handleEditProfileSubmit}
+        />
+        {/* CATEGORY 1: General */}
+        <div className="space-y-3">
+          <h2 className="text-xs font-bold text-muted-foreground uppercase tracking-wider px-1">
+            General
+          </h2>
+          <div className="bg-card border border-border/70 rounded-2xl divide-y divide-border/50 shadow-md">
+            {/* Set criteria */}
+            <div className="p-4 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
+                  <Target className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-foreground">
+                    Set criteria
+                  </h3>
+                  <p className="text-xs text-muted-foreground">
+                    {targetAttendance !== "" &&
+                    targetAttendance !== null &&
+                    targetAttendance !== undefined
+                      ? `${targetAttendance}%`
+                      : "—"}
+                  </p>
+                </div>
               </div>
-              <input
-                type="time"
-                value={activeSummaryTime}
-                onChange={(e) => handleActiveSummaryTimeChange(e.target.value)}
-                style={{ colorScheme: 'dark light' }}
-                className="bg-white dark:bg-black text-slate-900 dark:text-white text-sm font-semibold rounded-xl px-3 py-1.5 border border-black/10 dark:border-white/10 outline-none focus:ring-2 focus:ring-primary cursor-pointer shadow-sm"
+              <div className="flex items-center gap-1">
+                <Stepper
+                  size="sm"
+                  min={1}
+                  max={100}
+                  value={Number(targetAttendance) || 75}
+                  onChange={setTargetAttendance}
+                  suffix="%"
+                />
+
+                <SaveToggle onClick={handleSaveProfile} size="sm" />
+              </div>
+            </div>
+
+            {/* Set theme */}
+            <div className="p-4 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-purple-500/10 text-purple-500 flex items-center justify-center">
+                  <Sun className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-foreground">
+                    Set theme
+                  </h3>
+                  <p className="text-xs text-muted-foreground">
+                    {theme === "dark"
+                      ? "Dark Mode"
+                      : theme === "light"
+                        ? "Light Mode"
+                        : "System Default, using App colors"}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-1 bg-muted p-1 rounded-xl">
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    hapticSelection();
+                    setTheme("dark", e);
+                  }}
+                  className={`p-1.5 rounded-lg transition-all ${theme === "dark" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground"}`}
+                >
+                  <Moon className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    hapticSelection();
+                    setTheme("light", e);
+                  }}
+                  className={`p-1.5 rounded-lg transition-all ${theme === "light" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground"}`}
+                >
+                  <Sun className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Animation & Micro-Physics Sounds (Default: OFF) */}
+            <div
+              id="setting-animation-sounds"
+              className="p-4 flex items-center justify-between gap-3"
+            >
+              <div className="flex items-center gap-3">
+                <div
+                  className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 transition-colors ${
+                    soundEffectsEnabled
+                      ? "bg-amber-500/10 text-amber-500"
+                      : "bg-muted text-muted-foreground"
+                  }`}
+                >
+                  {soundEffectsEnabled ? (
+                    <Volume2 className="w-5 h-5" />
+                  ) : (
+                    <VolumeX className="w-5 h-5" />
+                  )}
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-foreground">
+                    Animation Sounds
+                  </h3>
+                  <p className="text-xs text-muted-foreground">
+                    {soundEffectsEnabled
+                      ? "Enabled • Action sound effects (Muted in Voice Mode)"
+                      : "Off by default • Silent UI actions & micro-physics"}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleToggleSoundEffects}
+                className={`w-11 h-6 shrink-0 rounded-full transition-colors duration-200 ease-in-out relative cursor-pointer p-0.5 ${soundEffectsEnabled ? "bg-primary" : "bg-muted"}`}
+              >
+                <div
+                  className={`w-5 h-5 bg-white rounded-full shadow-sm transition-transform duration-200 ease-in-out ${soundEffectsEnabled ? "translate-x-5" : "translate-x-0"}`}
+                />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* CATEGORY 2: Summary Reports */}
+        <div className="space-y-3">
+          <h2 className="text-xs font-bold text-slate-500 uppercase tracking-wider px-1">
+            Summary Reports
+          </h2>
+          <div className="bg-white dark:bg-[#111113] border border-black/10 dark:border-white/10 rounded-2xl p-4 shadow-sm space-y-4">
+            <div>
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                Reminder Frequency
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Select how often you want to receive academic updates.
+              </p>
+            </div>
+            <div className="w-full flex items-center justify-center bg-transparent transition-colors duration-500">
+              <FrequencySelector
+                value={reminderFrequency}
+                onChange={handleSelectReminderFrequency}
+                memory={frequencyMemory}
               />
             </div>
-          )}
-
-          {nextSummaryDate && reminderFrequency.type !== 'Never' && (
-            <div className="flex items-center p-3.5 mt-2 bg-slate-50/80 dark:bg-slate-900/50 rounded-2xl border border-black/5 dark:border-white/5 gap-3">
-              <div className="w-8 h-8 rounded-xl bg-blue-500/10 text-blue-500 flex items-center justify-center shrink-0">
-                <Bell className="w-4 h-4" />
-              </div>
-              <div className="flex flex-col gap-0.5">
-                <span className="text-xs font-bold text-slate-900 dark:text-white">
-                  Next Scheduled Report ({reminderFrequency.type})
-                </span>
-                <span className="text-[11px] text-slate-500 dark:text-slate-400">
-                  {format(nextSummaryDate, "EEE, d MMM yyyy 'at' h:mm a")} ({formatDistanceToNow(nextSummaryDate, { addSuffix: true })})
-                </span>
-              </div>
-            </div>
-          )}
-
-          {/* Individual Times for All 3 Summary Horizons */}
-          {reminderFrequency.type !== 'Never' && (
-            <div className="pt-2 border-t border-black/5 dark:border-white/5 space-y-2.5">
-              <div className="flex items-center justify-between px-1">
-                <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                  All Summary Delivery Times
-                </span>
-                <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold bg-emerald-500/10 px-2 py-0.5 rounded-full">
-                  All Scheduled
-                </span>
-              </div>
-              
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                {/* Daily */}
-                <div className={`flex items-center justify-between p-3 rounded-xl border transition-all ${
-                  reminderFrequency.type === 'Daily'
-                    ? 'bg-primary/5 border-primary/30 dark:bg-primary/10'
-                    : 'bg-slate-50/80 dark:bg-slate-900/40 border-black/5 dark:border-white/5'
-                }`}>
-                  <div className="flex flex-col">
-                    <span className="text-xs font-semibold text-slate-900 dark:text-white flex items-center gap-1.5">
-                      📅 Daily Briefing
-                    </span>
-                    <span className="text-[10px] text-slate-500 dark:text-slate-400">
-                      Every day
-                    </span>
-                  </div>
-                  <input
-                    type="time"
-                    value={notifConfig.dailySummaryTime || notifConfig.summaryTime || "18:00"}
-                    onChange={(e) => {
-                      hapticSelection();
-                      updateConfig({ dailySummaryTime: e.target.value, summaryTime: e.target.value });
-                      NotificationService.scheduleAllProactiveNotifications();
-                    }}
-                    style={{ colorScheme: 'dark light' }}
-                    className="bg-white dark:bg-black text-slate-900 dark:text-white text-xs font-semibold rounded-md px-2 py-1 border border-black/10 dark:border-white/10 outline-none cursor-pointer"
-                  />
+            {reminderFrequency.type !== "Never" && (
+              <div className="w-full flex items-center justify-between p-3.5 sm:p-4 mt-2 bg-slate-50/80 dark:bg-slate-900/50 rounded-2xl border border-black/5 dark:border-white/5 transition-all">
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                    <Clock className="w-4 h-4 text-primary" />
+                    {reminderFrequency.type === "Daily"
+                      ? "Daily Briefing Time"
+                      : reminderFrequency.type === "Weekly"
+                        ? "Weekly Review Time"
+                        : "Monthly Summary Time"}
+                  </span>
+                  <span className="text-xs text-slate-500 dark:text-slate-400">
+                    {(() => {
+                      const parts = activeSummaryTime.split(":");
+                      const h = parseInt(parts[0], 10) || 0;
+                      const m = parseInt(parts[1], 10) || 0;
+                      const period = h >= 12 ? "PM" : "AM";
+                      const displayH = h % 12 === 0 ? 12 : h % 12;
+                      const displayM = String(m).padStart(2, "0");
+                      const extra =
+                        h < 5
+                          ? " (early morning)"
+                          : h < 12
+                            ? " (morning)"
+                            : h < 17
+                              ? " (afternoon)"
+                              : " (evening)";
+                      return `${displayH}:${displayM} ${period}${extra}`;
+                    })()}
+                  </span>
                 </div>
+                <input
+                  type="time"
+                  value={activeSummaryTime}
+                  onChange={(e) =>
+                    handleActiveSummaryTimeChange(e.target.value)
+                  }
+                  style={{ colorScheme: "dark light" }}
+                  className="bg-white dark:bg-black text-slate-900 dark:text-white text-sm font-semibold rounded-xl px-3 py-1.5 border border-black/10 dark:border-white/10 outline-none focus:ring-2 focus:ring-primary cursor-pointer shadow-sm"
+                />
+              </div>
+            )}
 
-                {/* Weekly */}
-                <div className={`flex items-center justify-between p-3 rounded-xl border transition-all ${
-                  reminderFrequency.type === 'Weekly'
-                    ? 'bg-primary/5 border-primary/30 dark:bg-primary/10'
-                    : 'bg-slate-50/80 dark:bg-slate-900/40 border-black/5 dark:border-white/5'
-                }`}>
-                  <div className="flex flex-col">
-                    <span className="text-xs font-semibold text-slate-900 dark:text-white flex items-center gap-1.5">
-                      📊 Weekly Review
-                    </span>
-                    <span className="text-[10px] text-slate-500 dark:text-slate-400">
-                      Every {frequencyMemory?.Weekly || (reminderFrequency.type === 'Weekly' && reminderFrequency.subValue) || 'Sun'}
-                    </span>
-                  </div>
-                  <input
-                    type="time"
-                    value={notifConfig.weeklySummaryTime || "18:00"}
-                    onChange={(e) => {
-                      hapticSelection();
-                      updateConfig({ weeklySummaryTime: e.target.value });
-                      NotificationService.scheduleAllProactiveNotifications();
-                    }}
-                    style={{ colorScheme: 'dark light' }}
-                    className="bg-white dark:bg-black text-slate-900 dark:text-white text-xs font-semibold rounded-md px-2 py-1 border border-black/10 dark:border-white/10 outline-none cursor-pointer"
-                  />
+            {nextSummaryDate && reminderFrequency.type !== "Never" && (
+              <div className="flex items-center p-3.5 mt-2 bg-slate-50/80 dark:bg-slate-900/50 rounded-2xl border border-black/5 dark:border-white/5 gap-3">
+                <div className="w-8 h-8 rounded-xl bg-blue-500/10 text-blue-500 flex items-center justify-center shrink-0">
+                  <Bell className="w-4 h-4" />
                 </div>
-
-                {/* Monthly */}
-                <div className={`flex items-center justify-between p-3 rounded-xl border transition-all ${
-                  reminderFrequency.type === 'Monthly'
-                    ? 'bg-primary/5 border-primary/30 dark:bg-primary/10'
-                    : 'bg-slate-50/80 dark:bg-slate-900/40 border-black/5 dark:border-white/5'
-                }`}>
-                  <div className="flex flex-col">
-                    <span className="text-xs font-semibold text-slate-900 dark:text-white flex items-center gap-1.5">
-                      📈 Monthly Summary
-                    </span>
-                    <span className="text-[10px] text-slate-500 dark:text-slate-400">
-                      Day {frequencyMemory?.Monthly || (reminderFrequency.type === 'Monthly' && reminderFrequency.subValue) || '1'} of month
-                    </span>
-                  </div>
-                  <input
-                    type="time"
-                    value={notifConfig.monthlySummaryTime || "19:00"}
-                    onChange={(e) => {
-                      hapticSelection();
-                      updateConfig({ monthlySummaryTime: e.target.value });
-                      NotificationService.scheduleAllProactiveNotifications();
-                    }}
-                    style={{ colorScheme: 'dark light' }}
-                    className="bg-white dark:bg-black text-slate-900 dark:text-white text-xs font-semibold rounded-md px-2 py-1 border border-black/10 dark:border-white/10 outline-none cursor-pointer"
-                  />
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-xs font-bold text-slate-900 dark:text-white">
+                    Next Scheduled Report ({reminderFrequency.type})
+                  </span>
+                  <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                    {format(nextSummaryDate, "EEE, d MMM yyyy 'at' h:mm a")} (
+                    {formatDistanceToNow(nextSummaryDate, { addSuffix: true })})
+                  </span>
                 </div>
               </div>
-            </div>
-          )}
+            )}
+
+            {/* Individual Times for All 3 Summary Horizons */}
+            {reminderFrequency.type !== "Never" && (
+              <div className="pt-2 border-t border-black/5 dark:border-white/5 space-y-2.5">
+                <div className="flex items-center justify-between px-1">
+                  <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                    All Summary Delivery Times
+                  </span>
+                  <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold bg-emerald-500/10 px-2 py-0.5 rounded-full">
+                    All Scheduled
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  {/* Daily */}
+                  <div
+                    className={`flex items-center justify-between p-3 rounded-xl border transition-all ${
+                      reminderFrequency.type === "Daily"
+                        ? "bg-primary/5 border-primary/30 dark:bg-primary/10"
+                        : "bg-slate-50/80 dark:bg-slate-900/40 border-black/5 dark:border-white/5"
+                    }`}
+                  >
+                    <div className="flex flex-col">
+                      <span className="text-xs font-semibold text-slate-900 dark:text-white flex items-center gap-1.5">
+                        📅 Daily Briefing
+                      </span>
+                      <span className="text-[10px] text-slate-500 dark:text-slate-400">
+                        Every day
+                      </span>
+                    </div>
+                    <input
+                      type="time"
+                      value={
+                        notifConfig.dailySummaryTime ||
+                        notifConfig.summaryTime ||
+                        "18:00"
+                      }
+                      onChange={(e) => {
+                        hapticSelection();
+                        updateConfig({
+                          dailySummaryTime: e.target.value,
+                          summaryTime: e.target.value,
+                        });
+                        NotificationService.scheduleAllProactiveNotifications();
+                      }}
+                      style={{ colorScheme: "dark light" }}
+                      className="bg-white dark:bg-black text-slate-900 dark:text-white text-xs font-semibold rounded-md px-2 py-1 border border-black/10 dark:border-white/10 outline-none cursor-pointer"
+                    />
+                  </div>
+
+                  {/* Weekly */}
+                  <div
+                    className={`flex items-center justify-between p-3 rounded-xl border transition-all ${
+                      reminderFrequency.type === "Weekly"
+                        ? "bg-primary/5 border-primary/30 dark:bg-primary/10"
+                        : "bg-slate-50/80 dark:bg-slate-900/40 border-black/5 dark:border-white/5"
+                    }`}
+                  >
+                    <div className="flex flex-col">
+                      <span className="text-xs font-semibold text-slate-900 dark:text-white flex items-center gap-1.5">
+                        📊 Weekly Review
+                      </span>
+                      <span className="text-[10px] text-slate-500 dark:text-slate-400">
+                        Every{" "}
+                        {frequencyMemory?.Weekly ||
+                          (reminderFrequency.type === "Weekly" &&
+                            reminderFrequency.subValue) ||
+                          "Sun"}
+                      </span>
+                    </div>
+                    <input
+                      type="time"
+                      value={notifConfig.weeklySummaryTime || "18:00"}
+                      onChange={(e) => {
+                        hapticSelection();
+                        updateConfig({ weeklySummaryTime: e.target.value });
+                        NotificationService.scheduleAllProactiveNotifications();
+                      }}
+                      style={{ colorScheme: "dark light" }}
+                      className="bg-white dark:bg-black text-slate-900 dark:text-white text-xs font-semibold rounded-md px-2 py-1 border border-black/10 dark:border-white/10 outline-none cursor-pointer"
+                    />
+                  </div>
+
+                  {/* Monthly */}
+                  <div
+                    className={`flex items-center justify-between p-3 rounded-xl border transition-all ${
+                      reminderFrequency.type === "Monthly"
+                        ? "bg-primary/5 border-primary/30 dark:bg-primary/10"
+                        : "bg-slate-50/80 dark:bg-slate-900/40 border-black/5 dark:border-white/5"
+                    }`}
+                  >
+                    <div className="flex flex-col">
+                      <span className="text-xs font-semibold text-slate-900 dark:text-white flex items-center gap-1.5">
+                        📈 Monthly Summary
+                      </span>
+                      <span className="text-[10px] text-slate-500 dark:text-slate-400">
+                        Day{" "}
+                        {frequencyMemory?.Monthly ||
+                          (reminderFrequency.type === "Monthly" &&
+                            reminderFrequency.subValue) ||
+                          "1"}{" "}
+                        of month
+                      </span>
+                    </div>
+                    <input
+                      type="time"
+                      value={notifConfig.monthlySummaryTime || "19:00"}
+                      onChange={(e) => {
+                        hapticSelection();
+                        updateConfig({ monthlySummaryTime: e.target.value });
+                        NotificationService.scheduleAllProactiveNotifications();
+                      }}
+                      style={{ colorScheme: "dark light" }}
+                      className="bg-white dark:bg-black text-slate-900 dark:text-white text-xs font-semibold rounded-md px-2 py-1 border border-black/10 dark:border-white/10 outline-none cursor-pointer"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
-      </div>
 
-      <div className="space-y-3">
-        <h2 className="text-xs font-bold text-slate-500 uppercase tracking-wider px-1">
-          Timetable Alerts
-        </h2>
-        <div className="bg-white dark:bg-[#111113] border border-black/10 dark:border-white/10 rounded-2xl p-4 shadow-sm space-y-4">
-          <div className="w-full flex flex-col gap-4">
-            <div className="flex flex-col gap-1">
-              <h3 className="text-sm font-bold text-slate-900 dark:text-white">Class Reminders</h3>
-              <div className="flex items-center justify-between">
-                <p className="text-xs text-slate-500 dark:text-slate-400">Time before class</p>
-                {!hasNotifPermission && (
+        <div className="space-y-3">
+          <h2 className="text-xs font-bold text-slate-500 uppercase tracking-wider px-1">
+            Timetable Alerts
+          </h2>
+          <div className="bg-white dark:bg-[#111113] border border-black/10 dark:border-white/10 rounded-2xl p-4 shadow-sm space-y-4">
+            <div className="w-full flex flex-col gap-4">
+              <div className="flex flex-col gap-1">
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                  Class Reminders
+                </h3>
+                <div className="flex items-center justify-between">
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Time before class
+                  </p>
+                  {!hasNotifPermission && (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const granted =
+                          await NotificationService.requestPermissions();
+                        if (granted) {
+                          setHasNotifPermission(true);
+                          refreshNotifPermission();
+                        }
+                      }}
+                      className="text-[11px] font-bold text-amber-500 hover:text-amber-400 underline cursor-pointer"
+                    >
+                      ⚠️ Notifications Disabled (Tap to enable)
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex w-full bg-slate-100 dark:bg-slate-900 p-1 rounded-xl">
+                {[-1, 5, 10, 15].map((mins) => (
+                  <button
+                    key={mins}
+                    onClick={() => handleSelectClassReminderOffset(mins)}
+                    className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+                      mins > 0 && !hasNotifPermission
+                        ? "opacity-40 text-slate-400 dark:text-slate-500 hover:opacity-75 cursor-pointer line-through decoration-slate-400/50"
+                        : notifConfig.classReminderOffset === mins
+                          ? "bg-slate-900 text-[#ffffff] dark:bg-white dark:text-slate-900 shadow-sm"
+                          : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+                    }`}
+                  >
+                    {mins === -1 ? "Off" : `${mins} min`}
+                  </button>
+                ))}
+              </div>
+
+              <div className="flex items-center justify-between mt-2">
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-sm font-semibold text-slate-900 dark:text-white">
+                    Show Location
+                  </span>
+                  <span className="text-xs text-slate-500 dark:text-slate-400">
+                    Include room in notifications
+                  </span>
+                </div>
+                <button
+                  onClick={() => {
+                    updateConfig({ showLocation: !notifConfig.showLocation });
+                    NotificationService.autoScheduleFromTimetable();
+                  }}
+                  className={`w-11 h-6 shrink-0 rounded-full transition-colors duration-200 ease-in-out relative cursor-pointer p-0.5 ${notifConfig.showLocation ? "bg-primary" : "bg-muted"}`}
+                >
+                  <div
+                    className={`w-5 h-5 bg-white rounded-full shadow-sm transition-transform duration-200 ease-in-out ${notifConfig.showLocation ? "translate-x-5" : "translate-x-0"}`}
+                  />
+                </button>
+              </div>
+
+              <div className="flex items-center justify-between mt-2">
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-sm font-semibold text-foreground">
+                    Next Class Heads-up
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    Notify when current class ends
+                  </span>
+                </div>
+                <button
+                  onClick={() => {
+                    updateConfig({
+                      notifyNextClassOnEnd: !notifConfig.notifyNextClassOnEnd,
+                    });
+                    NotificationService.autoScheduleFromTimetable();
+                  }}
+                  className={`w-11 h-6 shrink-0 rounded-full transition-colors duration-200 ease-in-out relative cursor-pointer p-0.5 ${notifConfig.notifyNextClassOnEnd ? "bg-primary" : "bg-muted"}`}
+                >
+                  <div
+                    className={`w-5 h-5 bg-white rounded-full shadow-sm transition-transform duration-200 ease-in-out ${notifConfig.notifyNextClassOnEnd ? "translate-x-5" : "translate-x-0"}`}
+                  />
+                </button>
+              </div>
+
+              <div className="flex items-center justify-between mt-2">
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-sm font-semibold text-foreground">
+                    End of Day Summary
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    Get a 'Done for the day' alert
+                  </span>
+                </div>
+                <button
+                  onClick={() => {
+                    updateConfig({
+                      endOfDaySummary: !notifConfig.endOfDaySummary,
+                    });
+                    NotificationService.autoScheduleFromTimetable();
+                  }}
+                  className={`w-11 h-6 shrink-0 rounded-full transition-colors duration-200 ease-in-out relative cursor-pointer p-0.5 ${notifConfig.endOfDaySummary ? "bg-primary" : "bg-muted"}`}
+                >
+                  <div
+                    className={`w-5 h-5 bg-white rounded-full shadow-sm transition-transform duration-200 ease-in-out ${notifConfig.endOfDaySummary ? "translate-x-5" : "translate-x-0"}`}
+                  />
+                </button>
+              </div>
+
+              <div
+                onClick={!dndAccessGranted ? handleOpenDndSettings : undefined}
+                className={`flex items-center justify-between mt-3 pt-3 border-t border-border/40 ${!dndAccessGranted ? "cursor-pointer" : ""}`}
+              >
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-sm font-semibold text-foreground">
+                    Do Not Disturb (DND) Access
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    {dndAccessGranted
+                      ? "Allows muting phone automatically during classes"
+                      : "Tap Enable Access to open Android DND permission settings"}
+                  </span>
+                </div>
+                {dndAccessGranted ? (
                   <button
                     type="button"
-                    onClick={async () => {
-                      const granted = await NotificationService.requestPermissions();
-                      if (granted) {
-                        setHasNotifPermission(true);
-                        refreshNotifPermission();
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                      const stillGranted = await refreshDndPermission();
+                      if (!stillGranted) {
+                        await handleOpenDndSettings();
+                      } else {
+                        hapticSelection();
+                        triggerDynamicHUD({
+                          type: "success",
+                          label: "Do Not Disturb Access Active",
+                          subtitle:
+                            "Do Not Disturb access is verified and active",
+                          durationMs: 3800,
+                        });
                       }
                     }}
-                    className="text-[11px] font-bold text-amber-500 hover:text-amber-400 underline cursor-pointer"
+                    title="Tap to re-verify DND permission"
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 transition-colors"
                   >
-                    ⚠️ Notifications Disabled (Tap to enable)
+                    <CheckCircle2 className="w-3.5 h-3.5" /> Granted
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleOpenDndSettings();
+                    }}
+                    className="px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-500/20 text-amber-500 hover:bg-amber-500/30 transition-colors shrink-0"
+                  >
+                    Enable Access
                   </button>
                 )}
               </div>
             </div>
-            
-            <div className="flex w-full bg-slate-100 dark:bg-slate-900 p-1 rounded-xl">
-              {[-1, 5, 10, 15].map((mins) => (
-                <button
-                  key={mins}
-                  onClick={() => handleSelectClassReminderOffset(mins)}
-                  className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all ${
-                    mins > 0 && !hasNotifPermission
-                      ? 'opacity-40 text-slate-400 dark:text-slate-500 hover:opacity-75 cursor-pointer line-through decoration-slate-400/50'
-                      : notifConfig.classReminderOffset === mins
-                      ? 'bg-slate-900 text-[#ffffff] dark:bg-white dark:text-slate-900 shadow-sm'
-                      : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
-                  }`}
-                >
-                  {mins === -1 ? 'Off' : `${mins} min`}
-                </button>
-              ))}
-            </div>
+          </div>
+        </div>
 
-            <div className="flex items-center justify-between mt-2">
-              <div className="flex flex-col gap-0.5">
-                <span className="text-sm font-semibold text-slate-900 dark:text-white">Show Location</span>
-                <span className="text-xs text-slate-500 dark:text-slate-400">Include room in notifications</span>
+        {/* CATEGORY 3: Data Management */}
+        <div className="space-y-3">
+          <h2 className="text-xs font-bold text-muted-foreground uppercase tracking-wider px-1">
+            Data Management
+          </h2>
+          <div className="bg-card border border-border/70 rounded-2xl divide-y divide-border/50 shadow-md">
+            {/* Export data to ZIP */}
+            <div className="w-full text-left p-4 hover:bg-muted/50 transition-colors flex flex-col md:flex-row md:items-center justify-between gap-4 cursor-pointer group">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center">
+                  <FileSpreadsheet className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-foreground group-hover:text-primary transition-colors">
+                    Export data to ZIP
+                  </h3>
+                  <p className="text-xs text-muted-foreground">
+                    Downloads a ZIP archive of CSV files with your entire
+                    semester data.
+                  </p>
+                </div>
               </div>
-              <button
-                onClick={() => { updateConfig({ showLocation: !notifConfig.showLocation }); NotificationService.autoScheduleFromTimetable(); }}
-                className={`w-11 h-6 shrink-0 rounded-full transition-colors duration-200 ease-in-out relative cursor-pointer p-0.5 ${notifConfig.showLocation ? 'bg-primary' : 'bg-muted'}`}
-              >
-                <div className={`w-5 h-5 bg-white rounded-full shadow-sm transition-transform duration-200 ease-in-out ${notifConfig.showLocation ? 'translate-x-5' : 'translate-x-0'}`} />
-              </button>
+              <RunActionButton
+                action={async (signal) => {
+                  recordScroll();
+                  try {
+                    await handleExportCSV(signal);
+                  } finally {
+                    restoreScrollPosition();
+                  }
+                  restoreScrollPosition();
+                }}
+                onCancel={() => {
+                  toast("Export cancelled", { icon: "🛑" });
+                }}
+                idleLabel="Export ZIP"
+                doneLabel={Capacitor.isNativePlatform() ? "Shared" : "Saved"}
+                subLabel="Exporting"
+                idleIcon={
+                  <Download className="w-4 h-4 text-primary-foreground opacity-90" />
+                }
+                widths={{ idle: 130, running: 250, done: 130 }}
+                steps={[
+                  { id: 1, label: "Gathering", icon: FileSpreadsheet },
+                  { id: 2, label: "Compressing", icon: FileArchive },
+                  {
+                    id: 3,
+                    label: Capacitor.isNativePlatform()
+                      ? "Sharing"
+                      : "Downloading",
+                    icon: Download,
+                  },
+                ]}
+              />
             </div>
 
-            <div className="flex items-center justify-between mt-2">
-              <div className="flex flex-col gap-0.5">
-                <span className="text-sm font-semibold text-foreground">Next Class Heads-up</span>
-                <span className="text-xs text-muted-foreground">Notify when current class ends</span>
+            {/* Import data from ZIP */}
+            <div className="w-full text-left p-4 hover:bg-muted/50 transition-colors flex flex-col md:flex-row md:items-center justify-between gap-4 cursor-pointer group">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-blue-500/10 text-blue-500 flex items-center justify-center">
+                  <Upload className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-foreground group-hover:text-primary transition-colors">
+                    Import data from ZIP
+                  </h3>
+                  <p className="text-xs text-muted-foreground">
+                    Restores an exported ZIP file.{" "}
+                    <span className="text-rose-500 font-bold">
+                      WARNING: Replaces current semester.
+                    </span>
+                  </p>
+                </div>
               </div>
-              <button
-                onClick={() => { updateConfig({ notifyNextClassOnEnd: !notifConfig.notifyNextClassOnEnd }); NotificationService.autoScheduleFromTimetable(); }}
-                className={`w-11 h-6 shrink-0 rounded-full transition-colors duration-200 ease-in-out relative cursor-pointer p-0.5 ${notifConfig.notifyNextClassOnEnd ? 'bg-primary' : 'bg-muted'}`}
-              >
-                <div className={`w-5 h-5 bg-white rounded-full shadow-sm transition-transform duration-200 ease-in-out ${notifConfig.notifyNextClassOnEnd ? 'translate-x-5' : 'translate-x-0'}`} />
-              </button>
+              <RunActionButton
+                action={async () => {
+                  recordScroll();
+                  csvInputRef.current?.click();
+                }}
+                disabled={isImportingCSV}
+                idleLabel="Import ZIP"
+                doneLabel="Ready"
+                subLabel="Importing"
+                idleIcon={
+                  <Upload className="w-4 h-4 text-primary-foreground opacity-90" />
+                }
+                widths={{ idle: 140, running: 250, done: 140 }}
+                steps={[{ id: 1, label: "Awaiting File", icon: Upload }]}
+              />
             </div>
 
-            <div className="flex items-center justify-between mt-2">
-              <div className="flex flex-col gap-0.5">
-                <span className="text-sm font-semibold text-foreground">End of Day Summary</span>
-                <span className="text-xs text-muted-foreground">Get a 'Done for the day' alert</span>
-              </div>
-              <button
-                onClick={() => { updateConfig({ endOfDaySummary: !notifConfig.endOfDaySummary }); NotificationService.autoScheduleFromTimetable(); }}
-                className={`w-11 h-6 shrink-0 rounded-full transition-colors duration-200 ease-in-out relative cursor-pointer p-0.5 ${notifConfig.endOfDaySummary ? 'bg-primary' : 'bg-muted'}`}
-              >
-                <div className={`w-5 h-5 bg-white rounded-full shadow-sm transition-transform duration-200 ease-in-out ${notifConfig.endOfDaySummary ? 'translate-x-5' : 'translate-x-0'}`} />
-              </button>
-            </div>
-
-            <div
-              onClick={!dndAccessGranted ? handleOpenDndSettings : undefined}
-              className={`flex items-center justify-between mt-3 pt-3 border-t border-border/40 ${!dndAccessGranted ? "cursor-pointer" : ""}`}
+            {/* Peer Sync */}
+            <button
+              onClick={() => openSubView("sync")}
+              className="w-full text-left p-4 hover:bg-muted/50 transition-colors flex items-center justify-between cursor-pointer group"
             >
-              <div className="flex flex-col gap-0.5">
-                <span className="text-sm font-semibold text-foreground">Do Not Disturb (DND) Access</span>
-                <span className="text-xs text-muted-foreground">
-                  {dndAccessGranted
-                    ? "Allows muting phone automatically during classes"
-                    : "Tap Enable Access to open Android DND permission settings"}
-                </span>
-              </div>
-              {dndAccessGranted ? (
-                <button
-                  type="button"
-                  onClick={async (e) => {
-                    e.stopPropagation();
-                    const stillGranted = await refreshDndPermission();
-                    if (!stillGranted) {
-                      await handleOpenDndSettings();
-                    } else {
-                      hapticSelection();
-                      triggerDynamicHUD({
-                        type: "success",
-                        label: "Do Not Disturb Access Active",
-                        subtitle: "Do Not Disturb access is verified and active",
-                        durationMs: 3800,
-                      });
-                    }
-                  }}
-                  title="Tap to re-verify DND permission"
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 transition-colors"
-                >
-                  <CheckCircle2 className="w-3.5 h-3.5" /> Granted
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleOpenDndSettings();
-                  }}
-                  className="px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-500/20 text-amber-500 hover:bg-amber-500/30 transition-colors shrink-0"
-                >
-                  Enable Access
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-
-
-      {/* CATEGORY 3: Data Management */}
-          <div className="space-y-3">
-        <h2 className="text-xs font-bold text-muted-foreground uppercase tracking-wider px-1">
-          Data Management
-        </h2>
-        <div className="bg-card border border-border/70 rounded-2xl divide-y divide-border/50 shadow-md">
-          {/* Export data to ZIP */}
-          <div className="w-full text-left p-4 hover:bg-muted/50 transition-colors flex flex-col md:flex-row md:items-center justify-between gap-4 cursor-pointer group">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center">
-                <FileSpreadsheet className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="text-sm font-bold text-foreground group-hover:text-primary transition-colors">
-                  Export data to ZIP
-                </h3>
-                <p className="text-xs text-muted-foreground">
-                  Downloads a ZIP archive of CSV files with your entire semester
-                  data.
-                </p>
-              </div>
-            </div>
-            <RunActionButton
-              action={async (signal) => {
-                recordScroll();
-                try { await handleExportCSV(signal); } finally { restoreScrollPosition(); }
-                restoreScrollPosition();
-              }}
-              onCancel={() => {
-                toast("Export cancelled", { icon: "🛑" });
-              }}
-              idleLabel="Export ZIP"
-              doneLabel={Capacitor.isNativePlatform() ? "Shared" : "Saved"}
-              subLabel="Exporting"
-              idleIcon={
-                <Download className="w-4 h-4 text-primary-foreground opacity-90" />
-              }
-              widths={{ idle: 130, running: 250, done: 130 }}
-              steps={[
-                { id: 1, label: "Gathering", icon: FileSpreadsheet },
-                { id: 2, label: "Compressing", icon: FileArchive },
-                { id: 3, label: Capacitor.isNativePlatform() ? "Sharing" : "Downloading", icon: Download },
-              ]}
-            />
-          </div>
-
-          {/* Import data from ZIP */}
-          <div className="w-full text-left p-4 hover:bg-muted/50 transition-colors flex flex-col md:flex-row md:items-center justify-between gap-4 cursor-pointer group">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-blue-500/10 text-blue-500 flex items-center justify-center">
-                <Upload className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="text-sm font-bold text-foreground group-hover:text-primary transition-colors">
-                  Import data from ZIP
-                </h3>
-                <p className="text-xs text-muted-foreground">
-                  Restores an exported ZIP file.{" "}
-                  <span className="text-rose-500 font-bold">
-                    WARNING: Replaces current semester.
-                  </span>
-                </p>
-              </div>
-            </div>
-            <RunActionButton
-              action={async () => {
-                recordScroll();
-                csvInputRef.current?.click();
-              }}
-              disabled={isImportingCSV}
-              idleLabel="Import ZIP"
-              doneLabel="Ready"
-              subLabel="Importing"
-              idleIcon={
-                <Upload className="w-4 h-4 text-primary-foreground opacity-90" />
-              }
-              widths={{ idle: 140, running: 250, done: 140 }}
-              steps={[{ id: 1, label: "Awaiting File", icon: Upload }]}
-            />
-          </div>
-
-          {/* Peer Sync */}
-          <button
-            onClick={() => openSubView("sync")}
-            className="w-full text-left p-4 hover:bg-muted/50 transition-colors flex items-center justify-between cursor-pointer group"
-          >
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-purple-500/10 text-purple-500 flex items-center justify-center">
-                <RefreshCw className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="text-sm font-bold text-foreground group-hover:text-primary transition-colors">
-                  Peer Sync
-                </h3>
-                <p className="text-xs text-muted-foreground">
-                  Transfer schedule securely via 6-digit code.
-                </p>
-              </div>
-            </div>
-            <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
-          </button>
-
-          {/* Classrooms & Sections */}
-          <button
-            onClick={() => {
-
-              hapticSelection();
-              navigate("/classrooms");
-            }}
-            className="w-full text-left p-4 hover:bg-muted/50 transition-colors flex items-center justify-between cursor-pointer group"
-          >
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
-                <GraduationCap className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="text-sm font-bold text-foreground group-hover:text-emerald-500 transition-colors flex items-center gap-2">
-                  Classrooms & Sections
-                  <span className="text-[10px] font-mono font-bold uppercase px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/25">
-                    Batch Hub
-                  </span>
-                </h3>
-                <p className="text-xs text-muted-foreground">
-                  Synchronize batch timetables, lecture changes, and CR notices.
-                </p>
-              </div>
-            </div>
-            <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:translate-x-0.5 transition-transform shrink-0" />
-          </button>
-        </div>
-      </div>
-
-      {/* CATEGORY 4: Stored Documents */}
-      <div className="space-y-3">
-        <h2 className="text-xs font-bold text-muted-foreground uppercase tracking-wider px-1">
-          Stored Documents
-        </h2>
-        <div className="bg-card border border-border/70 rounded-2xl divide-y divide-border/50 shadow-md">
-          <div className="p-4 flex flex-col">
-            <div className="flex items-center justify-between w-full">
               <div className="flex items-center gap-3">
                 <div className="w-9 h-9 rounded-xl bg-purple-500/10 text-purple-500 flex items-center justify-center">
-                  <FileText className="w-5 h-5" />
+                  <RefreshCw className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-foreground">
-                    Timetable Documents
+                  <h3 className="text-sm font-bold text-foreground group-hover:text-primary transition-colors">
+                    Peer Sync
                   </h3>
                   <p className="text-xs text-muted-foreground">
-                    PDFs and images uploaded for schedule AI extraction.
+                    Transfer schedule securely via 6-digit code.
                   </p>
                 </div>
               </div>
-              {(Array.isArray(storedDocuments) ? storedDocuments : []).filter((d) => d && d.type === "TIMETABLE").length ===
-                0 && (
-                <span className="text-xs font-bold bg-muted text-muted-foreground px-2 py-1 rounded-md">
-                  Empty
-                </span>
-              )}
-            </div>
-            {renderDocuments("TIMETABLE")}
-          </div>
+              <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
+            </button>
 
-          <div className="p-4 flex flex-col">
-            <div className="flex items-center justify-between w-full">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl bg-indigo-500/10 text-indigo-500 flex items-center justify-center">
-                  <Calendar className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold text-foreground">
-                    Academic Calendars
-                  </h3>
-                  <p className="text-xs text-muted-foreground">
-                    PDFs uploaded for semester event AI extraction.
-                  </p>
-                </div>
-              </div>
-              {(Array.isArray(storedDocuments) ? storedDocuments : []).filter((d) => d && d.type === "CALENDAR").length ===
-                0 && (
-                <span className="text-xs font-bold bg-muted text-muted-foreground px-2 py-1 rounded-md">
-                  Empty
-                </span>
-              )}
-            </div>
-            {renderDocuments("CALENDAR")}
-          </div>
-
-          <div className="p-4 flex flex-col">
-            <div className="flex items-center justify-between w-full">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center">
-                  <FileArchive className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold text-foreground">
-                    Data Backups
-                  </h3>
-                  <p className="text-xs text-muted-foreground">
-                    ZIP files containing exported semester CSV data.
-                  </p>
-                </div>
-              </div>
-              {(Array.isArray(storedDocuments) ? storedDocuments : []).filter((d) => d && d.type === "BACKUP").length ===
-                0 && (
-                <span className="text-xs font-bold bg-muted text-muted-foreground px-2 py-1 rounded-md">
-                  Empty
-                </span>
-              )}
-            </div>
-            {renderDocuments("BACKUP")}
-          </div>
-        </div>
-      </div>
-
-      {/* CATEGORY 5: App */}
-      <div className="space-y-3">
-        <h2 className="text-xs font-bold text-muted-foreground uppercase tracking-wider px-1">
-          App
-        </h2>
-        <div className="bg-card border border-border/70 rounded-2xl divide-y divide-border/50 shadow-md">
-          {/* Share App */}
-          <button
-            onClick={async () => {
-              recordScroll();
-              const appLink = updateManifest?.appDownloadLink || "https://www.attendx.tech";
-              const shareText = `Download AttendX to manage your academic attendance easily!\n\n${appLink}`;
-              try {
-                const { Capacitor } = await import("@capacitor/core");
-                if (Capacitor.isNativePlatform()) {
-                  const { Share } = await import("@capacitor/share");
-                  await Share.share({ title: "Smart Attendance Manager", text: shareText, dialogTitle: "Share AttendX" });
-                } else if (navigator.share) {
-                  await navigator.share({ title: "Smart Attendance Manager", text: shareText });
-                } else {
-                  navigator.clipboard.writeText(shareText);
-                  toast.success("App link copied to clipboard!");
-                }
-              } catch (e) {
-                console.warn("Share failed", e);
-              }
-            }}
-            className="w-full text-left p-4 hover:bg-muted/50 transition-colors flex items-center gap-3 cursor-pointer"
-          >
-            <div className="w-9 h-9 rounded-xl bg-indigo-500/10 text-indigo-500 flex items-center justify-center">
-              <Share2 className="w-5 h-5" />
-            </div>
-            <span className="text-sm font-bold text-foreground">Share App</span>
-          </button>
-
-          {/* Contact us */}
-          <button
-            onClick={() => openSubView("contact")}
-            className="w-full text-left p-4 hover:bg-muted/50 transition-colors flex items-center justify-between cursor-pointer group"
-          >
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-cyan-500/10 text-cyan-500 flex items-center justify-center">
-                <Users className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="text-sm font-bold text-foreground group-hover:text-primary transition-colors">
-                  Contact us
-                </h3>
-                <p className="text-xs text-muted-foreground">
-                  Suggestions, bugs, questions
-                </p>
-              </div>
-            </div>
-            <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
-          </button>
-
-          {/* App info */}
-          <button
-            onClick={() => {
-              recordScroll();
-              setShowAppInfoModal(true);
-            }}
-            className="w-full text-left p-4 hover:bg-muted/50 transition-colors flex items-center justify-between gap-3 cursor-pointer group"
-          >
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-blue-500/10 text-blue-500 flex items-center justify-center group-hover:scale-105 transition-transform">
-                <Info className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="text-sm font-bold text-foreground group-hover:text-primary transition-colors">
-                  App info
-                </h3>
-                <p className="text-xs text-muted-foreground">
-                  Version v{currentAppVersion} & Developer details
-                </p>
-              </div>
-            </div>
-            <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
-          </button>
-
-          {/* Install APK */}
-          <a
-            href={updateManifest?.appDownloadLink || "#"}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="w-full text-left p-4 hover:bg-muted/50 transition-colors flex items-center justify-between gap-3 cursor-pointer group"
-          >
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl overflow-hidden shrink-0 group-hover:scale-105 transition-transform flex items-center justify-center bg-card">
-                <img src="/attendx_logo.png" alt="AttendX Logo" className="w-full h-full object-cover" />
-              </div>
-              <div>
-                <h3 className="text-sm font-bold text-foreground group-hover:text-primary transition-colors">
-                  Install AttendX
-                </h3>
-                <p className="text-xs text-muted-foreground">
-                  Download the latest APK for Android
-                </p>
-              </div>
-            </div>
-            <Download className="w-4 h-4 text-muted-foreground shrink-0" />
-          </a>
-        </div>
-      </div>
-
-            {/* CATEGORY: Support */}
-      <div className="space-y-3">
-        <h2 className="text-xs font-bold text-muted-foreground uppercase tracking-wider px-1">
-          Support
-        </h2>
-        <div className="bg-card border border-border/70 rounded-2xl divide-y divide-border/50 shadow-md">
-          <div onClick={() => { recordScroll(); setIsFeedbackOpen(true); }} className="w-full text-left p-4 hover:bg-muted/50 transition-colors flex items-center justify-between cursor-pointer group">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
-              </div>
-              <div>
-                <h3 className="text-sm font-bold text-foreground group-hover:text-primary transition-colors">
-                  Send feedback
-                </h3>
-                <p className="text-xs text-muted-foreground">
-                  Report an issue or suggest improvements.
-                </p>
-              </div>
-            </div>
-            <ChevronRight className="w-5 h-5 text-muted-foreground/50 group-hover:text-primary transition-colors" />
-          </div>
-          <div onClick={() => { recordScroll(); navigate("/settings/faq"); }} className="w-full text-left p-4 hover:bg-muted/50 transition-colors flex items-center justify-between cursor-pointer group">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg>
-              </div>
-              <div>
-                <h3 className="text-sm font-bold text-foreground group-hover:text-amber-500 transition-colors">
-                  FAQs & Help
-                </h3>
-                <p className="text-xs text-muted-foreground">
-                  Frequently asked questions and guides.
-                </p>
-              </div>
-            </div>
-            <ChevronRight className="w-5 h-5 text-muted-foreground/50 group-hover:text-amber-500 transition-colors" />
-          </div>
-          <div onClick={() => { recordScroll(); setIsChangelogOpen(true); }} className="w-full text-left p-4 hover:bg-muted/50 transition-colors flex items-center justify-between cursor-pointer group">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-purple-500/10 text-purple-500 flex items-center justify-center">
-                <History className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="text-sm font-bold text-foreground group-hover:text-purple-500 transition-colors">
-                  Update History
-                </h3>
-                <p className="text-xs text-muted-foreground">
-                  View changelogs and past release notes.
-                </p>
-              </div>
-            </div>
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 text-muted-foreground"><polyline points="9 18 15 12 9 6"/></svg>
-          </div>
-        </div>
-      </div>
-
-      {/* CATEGORY 4: Reset & Delete */}
-      <div className="space-y-3">
-        <h2 className="text-xs font-bold text-muted-foreground uppercase tracking-wider px-1">
-          Reset & Delete
-        </h2>
-        <div className="bg-card border border-border/70 rounded-2xl divide-y divide-border/50 shadow-md">
-          {/* Enable reset options toggle switch */}
-          <div className="p-4 flex items-center justify-between">
-            <div className="flex items-center gap-3 pr-3">
-              <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0" />
-              <div>
-                <h3 className="text-sm font-bold text-foreground">
-                  Enable reset options
-                </h3>
-                <p className="text-xs text-muted-foreground">
-                  Allows access to reset options below that permanently delete
-                  your data.
-                </p>
-              </div>
-            </div>
+            {/* Classrooms & Sections */}
             <button
-              type="button"
-              onClick={() => setEnableReset(!enableReset)}
-              className={`w-12 h-6 rounded-full p-1 transition-colors cursor-pointer relative shrink-0 ${
-                enableReset ? "bg-amber-500" : "bg-muted"
-              }`}
+              onClick={() => {
+                hapticSelection();
+                navigate("/classrooms");
+              }}
+              className="w-full text-left p-4 hover:bg-muted/50 transition-colors flex items-center justify-between cursor-pointer group"
             >
-              <div
-                className={`w-4 h-4 rounded-full bg-white transition-transform ${
-                  enableReset ? "translate-x-6" : "translate-x-0"
-                }`}
-              />
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+                  <GraduationCap className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-foreground group-hover:text-emerald-500 transition-colors flex items-center gap-2">
+                    Classrooms & Sections
+                    <span className="text-[10px] font-mono font-bold uppercase px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/25">
+                      Batch Hub
+                    </span>
+                  </h3>
+                  <p className="text-xs text-muted-foreground">
+                    Synchronize batch timetables, lecture changes, and CR
+                    notices.
+                  </p>
+                </div>
+              </div>
+              <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:translate-x-0.5 transition-transform shrink-0" />
             </button>
           </div>
-
-          {/* Option 1: Reset subject attendance */}
-          <button
-            disabled={!enableReset}
-            onClick={() => {
-              recordScroll();
-              setResetConfirmText("");
-              setResetError("");
-              fetchSubjectsForReset();
-              setResetModalType("subject");
-            }}
-            className={`w-full text-left p-4 flex items-start gap-3 transition-colors cursor-pointer border-b border-border/50 ${
-              enableReset
-                ? "hover:bg-muted/50 opacity-100"
-                : "opacity-40 cursor-not-allowed"
-            }`}
-          >
-            <div className="w-3 h-3 rounded-full bg-amber-500 mt-1 shrink-0" />
-            <div className="flex flex-col gap-0.5">
-              <span className="text-sm font-bold text-foreground">
-                Reset subject attendance
-              </span>
-              <span className="text-xs text-muted-foreground leading-relaxed">
-                Clears attendance for selected subjects. Timetable slots remain
-                intact, but all marked attendance logs for those subjects are
-                removed.
-              </span>
-            </div>
-          </button>
-
-          {/* Option: Semester Transition & Reset */}
-          <button
-            onClick={() => {
-              recordScroll();
-              setIsTransitionModalOpen(true);
-            }}
-            className="w-full text-left p-4 flex items-start gap-3 transition-colors cursor-pointer border-b border-border/50 hover:bg-muted/50"
-          >
-            <div className="w-3 h-3 rounded-full bg-emerald-500 mt-1 shrink-0" />
-            <div className="flex flex-col gap-0.5">
-              <span className="text-sm font-bold text-foreground flex items-center gap-2">
-                <span>Transition to Next Semester</span>
-                <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-primary/20 text-primary">New</span>
-              </span>
-              <span className="text-xs text-muted-foreground leading-relaxed">
-                Advances to your upcoming semester, resets previous semester attendance & schedule logs for a clean slate, and pre-loads official calendar and holidays.
-              </span>
-            </div>
-          </button>
-
-          {/* Option 2: Reset all attendance */}
-          <button
-            disabled={!enableReset}
-            onClick={() => {
-              recordScroll();
-              setResetConfirmText("");
-              setResetError("");
-              setResetModalType("attendance");
-            }}
-            className={`w-full text-left p-4 flex items-start gap-3 transition-colors cursor-pointer border-b border-border/50 ${
-              enableReset
-                ? "hover:bg-muted/50 opacity-100"
-                : "opacity-40 cursor-not-allowed"
-            }`}
-          >
-            <div className="w-3 h-3 rounded-full bg-amber-500 mt-1 shrink-0" />
-            <div className="flex flex-col gap-0.5">
-              <span className="text-sm font-bold text-foreground">
-                Reset all attendance
-              </span>
-              <span className="text-xs text-muted-foreground leading-relaxed">
-                Deletes all attendance records across all subjects. Subjects and
-                timetable slots remain untouched.
-              </span>
-            </div>
-          </button>
-
-          {/* Option 3: Clear Timetable Schedule */}
-          <button
-            disabled={!enableReset}
-            onClick={() => {
-              recordScroll();
-              setResetConfirmText("");
-              setResetError("");
-              setResetModalType("timetable");
-            }}
-            className={`w-full text-left p-4 flex items-start gap-3 transition-colors cursor-pointer border-b border-border/50 ${
-              enableReset
-                ? "hover:bg-muted/50 opacity-100"
-                : "opacity-40 cursor-not-allowed"
-            }`}
-          >
-            <div className="w-3 h-3 rounded-full bg-blue-500 mt-1 shrink-0" />
-            <div className="flex flex-col gap-0.5">
-              <span className="text-sm font-bold text-foreground">
-                Clear timetable schedule
-              </span>
-              <span className="text-xs text-muted-foreground leading-relaxed">
-                Removes all weekly scheduled class slots and overrides across
-                your active semester. Attendance logs and subjects will be
-                safely preserved.
-              </span>
-            </div>
-          </button>
-
-          {/* Option 4: Remove Semester Overview Calendar & Events */}
-          <button
-            disabled={!enableReset}
-            onClick={() => {
-              recordScroll();
-              setResetConfirmText("");
-              setResetError("");
-              setResetModalType("events");
-            }}
-            className={`w-full text-left p-4 flex items-start gap-3 transition-colors cursor-pointer border-b border-border/50 ${
-              enableReset
-                ? "hover:bg-muted/50 opacity-100"
-                : "opacity-40 cursor-not-allowed"
-            }`}
-          >
-            <div className="w-3 h-3 rounded-full bg-purple-500 mt-1 shrink-0" />
-            <div className="flex flex-col gap-0.5">
-              <span className="text-sm font-bold text-foreground">
-                Remove Academic Calendar & Events
-              </span>
-              <span className="text-xs text-muted-foreground leading-relaxed">
-                Deletes all imported academic events (midsems, endsems, fests,
-                holidays). Event badges and banners disappear across the app and
-                calendar.
-              </span>
-            </div>
-          </button>
-
-          {/* Option 4: Reset entire app */}
-          <button
-            disabled={!enableReset}
-            onClick={() => {
-              recordScroll();
-              setResetConfirmText("");
-              setResetError("");
-              setResetModalType("entire");
-            }}
-            className={`w-full text-left p-4 flex items-start gap-3 transition-colors cursor-pointer ${
-              enableReset
-                ? "hover:bg-muted/50 opacity-100"
-                : "opacity-40 cursor-not-allowed"
-            }`}
-          >
-            <div className="w-3 h-3 rounded-full bg-rose-500 mt-1 shrink-0" />
-            <div className="flex flex-col gap-0.5">
-              <span className="text-sm font-bold text-rose-500">
-                Reset entire app
-              </span>
-              <span className="text-xs text-muted-foreground leading-relaxed">
-                Permanently wipes all semesters, subjects, timetable slots,
-                attendance logs, and academic calendar events. Start completely
-                fresh.
-              </span>
-            </div>
-          </button>
         </div>
-      </div>
 
-      {/* RESET MODAL DIALOGS */}
-      {typeof document !== "undefined" && createPortal(
-        <AnimatePresence>
-          {resetModalType && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.16, ease: "easeOut" }}
-              className="theme-nova-green fixed inset-0 z-[100] flex items-center justify-center p-4 bg-white/60 dark:bg-black/80 backdrop-blur-md"
-            >
-              <motion.div
-                initial={{ opacity: 0, scale: 0.96, y: 12 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.96, y: 8 }}
-                transition={{ type: "spring", damping: 28, stiffness: 380, mass: 0.8 }}
-                className="bg-card border border-border/80 rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-5 will-change-transform"
-              >
+        {/* CATEGORY 4: Stored Documents */}
+        <div className="space-y-3">
+          <h2 className="text-xs font-bold text-muted-foreground uppercase tracking-wider px-1">
+            Stored Documents
+          </h2>
+          <div className="bg-card border border-border/70 rounded-2xl divide-y divide-border/50 shadow-md">
+            <div className="p-4 flex flex-col">
+              <div className="flex items-center justify-between w-full">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-2xl bg-rose-500/20 text-rose-500 flex items-center justify-center">
-                    <AlertTriangle className="w-5 h-5" />
+                  <div className="w-9 h-9 rounded-xl bg-purple-500/10 text-purple-500 flex items-center justify-center">
+                    <FileText className="w-5 h-5" />
                   </div>
                   <div>
-                    <h3 className="text-lg font-bold text-foreground">
-                      {resetModalType === "subject" && "Reset Subject Attendance"}
-                      {resetModalType === "attendance" && "Reset All Attendance"}
-                      {resetModalType === "timetable" && "Clear Timetable Schedule"}
-                      {resetModalType === "events" &&
-                        "Remove Academic Calendar & Events"}
-                      {resetModalType === "entire" && "Reset Entire App"}
+                    <h3 className="text-sm font-bold text-foreground">
+                      Timetable Documents
                     </h3>
-                    <p className="text-xs text-rose-500 font-semibold">
-                      Irreversible Action
+                    <p className="text-xs text-muted-foreground">
+                      PDFs and images uploaded for schedule AI extraction.
                     </p>
                   </div>
                 </div>
+                {(Array.isArray(storedDocuments) ? storedDocuments : []).filter(
+                  (d) => d && d.type === "TIMETABLE",
+                ).length === 0 && (
+                  <span className="text-xs font-bold bg-muted text-muted-foreground px-2 py-1 rounded-md">
+                    Empty
+                  </span>
+                )}
+              </div>
+              {renderDocuments("TIMETABLE")}
+            </div>
 
-                <>
-                  {/* Reset Subject Attendance Content */}
-                  {resetModalType === "subject" && (
-                    <div className="space-y-3">
-                      <p className="text-xs text-muted-foreground">
-                        Select subjects to reset attendance history for:
-                      </p>
-                      <div className="max-h-48 overflow-y-auto space-y-1.5 pr-1">
-                        {subjects.length === 0 ? (
-                          <p className="text-xs text-muted-foreground py-4 text-center">
-                            No subjects found.
-                          </p>
-                        ) : (
-                          subjects.map((sub) => {
-                            const isChecked = selectedSubjectIds.includes(sub.id);
-                            return (
-                              <button
-                                key={sub.id}
-                                type="button"
-                                onClick={() => {
-                                  if (isChecked) {
-                                    setSelectedSubjectIds(
-                                      selectedSubjectIds.filter(
-                                        (id) => id !== sub.id,
-                                      ),
-                                    );
-                                  } else {
-                                    setSelectedSubjectIds([
-                                      ...selectedSubjectIds,
-                                      sub.id,
-                                    ]);
-                                  }
-                                }}
-                                className={`w-full text-left px-3.5 py-2.5 rounded-xl border text-xs font-semibold flex items-center justify-between transition-colors cursor-pointer ${
-                                  isChecked
-                                    ? "bg-primary/10 border-primary text-primary"
-                                    : "bg-muted/40 border-border text-foreground hover:bg-muted"
-                                }`}
-                              >
-                                <span>{sub.name}</span>
-                                {isChecked && (
-                                  <Check className="w-4 h-4 text-primary" />
-                                )}
-                              </button>
-                            );
-                          })
-                        )}
+            <div className="p-4 flex flex-col">
+              <div className="flex items-center justify-between w-full">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-indigo-500/10 text-indigo-500 flex items-center justify-center">
+                    <Calendar className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-foreground">
+                      Academic Calendars
+                    </h3>
+                    <p className="text-xs text-muted-foreground">
+                      PDFs uploaded for semester event AI extraction.
+                    </p>
+                  </div>
+                </div>
+                {(Array.isArray(storedDocuments) ? storedDocuments : []).filter(
+                  (d) => d && d.type === "CALENDAR",
+                ).length === 0 && (
+                  <span className="text-xs font-bold bg-muted text-muted-foreground px-2 py-1 rounded-md">
+                    Empty
+                  </span>
+                )}
+              </div>
+              {renderDocuments("CALENDAR")}
+            </div>
+
+            <div className="p-4 flex flex-col">
+              <div className="flex items-center justify-between w-full">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center">
+                    <FileArchive className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-foreground">
+                      Data Backups
+                    </h3>
+                    <p className="text-xs text-muted-foreground">
+                      ZIP files containing exported semester CSV data.
+                    </p>
+                  </div>
+                </div>
+                {(Array.isArray(storedDocuments) ? storedDocuments : []).filter(
+                  (d) => d && d.type === "BACKUP",
+                ).length === 0 && (
+                  <span className="text-xs font-bold bg-muted text-muted-foreground px-2 py-1 rounded-md">
+                    Empty
+                  </span>
+                )}
+              </div>
+              {renderDocuments("BACKUP")}
+            </div>
+          </div>
+        </div>
+
+        {/* CATEGORY 5: App */}
+        <div className="space-y-3">
+          <h2 className="text-xs font-bold text-muted-foreground uppercase tracking-wider px-1">
+            App
+          </h2>
+          <div className="bg-card border border-border/70 rounded-2xl divide-y divide-border/50 shadow-md">
+            {/* Share App */}
+            <button
+              onClick={async () => {
+                recordScroll();
+                const appLink =
+                  updateManifest?.appDownloadLink || "https://www.attendx.tech";
+                const shareText = `Download AttendX to manage your academic attendance easily!\n\n${appLink}`;
+                try {
+                  const { Capacitor } = await import("@capacitor/core");
+                  if (Capacitor.isNativePlatform()) {
+                    const { Share } = await import("@capacitor/share");
+                    await Share.share({
+                      title: "Smart Attendance Manager",
+                      text: shareText,
+                      dialogTitle: "Share AttendX",
+                    });
+                  } else if (navigator.share) {
+                    await navigator.share({
+                      title: "Smart Attendance Manager",
+                      text: shareText,
+                    });
+                  } else {
+                    navigator.clipboard.writeText(shareText);
+                    toast.success("App link copied to clipboard!");
+                  }
+                } catch (e) {
+                  console.warn("Share failed", e);
+                }
+              }}
+              className="w-full text-left p-4 hover:bg-muted/50 transition-colors flex items-center gap-3 cursor-pointer"
+            >
+              <div className="w-9 h-9 rounded-xl bg-indigo-500/10 text-indigo-500 flex items-center justify-center">
+                <Share2 className="w-5 h-5" />
+              </div>
+              <span className="text-sm font-bold text-foreground">
+                Share App
+              </span>
+            </button>
+
+            {/* Contact us */}
+            <button
+              onClick={() => openSubView("contact")}
+              className="w-full text-left p-4 hover:bg-muted/50 transition-colors flex items-center justify-between cursor-pointer group"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-cyan-500/10 text-cyan-500 flex items-center justify-center">
+                  <Users className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-foreground group-hover:text-primary transition-colors">
+                    Contact us
+                  </h3>
+                  <p className="text-xs text-muted-foreground">
+                    Suggestions, bugs, questions
+                  </p>
+                </div>
+              </div>
+              <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
+            </button>
+
+            {/* App info */}
+            <button
+              onClick={() => {
+                recordScroll();
+                setShowAppInfoModal(true);
+              }}
+              className="w-full text-left p-4 hover:bg-muted/50 transition-colors flex items-center justify-between gap-3 cursor-pointer group"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-blue-500/10 text-blue-500 flex items-center justify-center group-hover:scale-105 transition-transform">
+                  <Info className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-foreground group-hover:text-primary transition-colors">
+                    App info
+                  </h3>
+                  <p className="text-xs text-muted-foreground">
+                    Version v{currentAppVersion} & Developer details
+                  </p>
+                </div>
+              </div>
+              <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
+            </button>
+
+            {/* System & Software Update Card */}
+            <div className="p-3">
+              <UpdateSettingsCard
+                updateInfo={UpdateManager.getActiveNativeUpdate()}
+                phase={UpdateManager.getPhase()}
+                onOpenSheet={() => {
+                  window.dispatchEvent(new CustomEvent("open-update-sheet"));
+                }}
+                onCheckAgain={async () => {
+                  await UpdateManager.checkForUpdates(true);
+                  window.dispatchEvent(new CustomEvent("open-update-sheet"));
+                }}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* CATEGORY: Support */}
+        <div className="space-y-3">
+          <h2 className="text-xs font-bold text-muted-foreground uppercase tracking-wider px-1">
+            Support
+          </h2>
+          <div className="bg-card border border-border/70 rounded-2xl divide-y divide-border/50 shadow-md">
+            <div
+              onClick={() => {
+                recordScroll();
+                setIsFeedbackOpen(true);
+              }}
+              className="w-full text-left p-4 hover:bg-muted/50 transition-colors flex items-center justify-between cursor-pointer group"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="24"
+                    height="24"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className="w-5 h-5"
+                  >
+                    <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-foreground group-hover:text-primary transition-colors">
+                    Send feedback
+                  </h3>
+                  <p className="text-xs text-muted-foreground">
+                    Report an issue or suggest improvements.
+                  </p>
+                </div>
+              </div>
+              <ChevronRight className="w-5 h-5 text-muted-foreground/50 group-hover:text-primary transition-colors" />
+            </div>
+            <div
+              onClick={() => {
+                recordScroll();
+                navigate("/settings/faq");
+              }}
+              className="w-full text-left p-4 hover:bg-muted/50 transition-colors flex items-center justify-between cursor-pointer group"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center">
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="24"
+                    height="24"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className="w-5 h-5"
+                  >
+                    <circle cx="12" cy="12" r="10" />
+                    <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+                    <path d="M12 17h.01" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-foreground group-hover:text-amber-500 transition-colors">
+                    FAQs & Help
+                  </h3>
+                  <p className="text-xs text-muted-foreground">
+                    Frequently asked questions and guides.
+                  </p>
+                </div>
+              </div>
+              <ChevronRight className="w-5 h-5 text-muted-foreground/50 group-hover:text-amber-500 transition-colors" />
+            </div>
+            <div
+              onClick={() => {
+                recordScroll();
+                setIsChangelogOpen(true);
+              }}
+              className="w-full text-left p-4 hover:bg-muted/50 transition-colors flex items-center justify-between cursor-pointer group"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-purple-500/10 text-purple-500 flex items-center justify-center">
+                  <History className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-foreground group-hover:text-purple-500 transition-colors">
+                    Update History
+                  </h3>
+                  <p className="text-xs text-muted-foreground">
+                    View changelogs and past release notes.
+                  </p>
+                </div>
+              </div>
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="w-4 h-4 text-muted-foreground"
+              >
+                <polyline points="9 18 15 12 9 6" />
+              </svg>
+            </div>
+          </div>
+        </div>
+
+        {/* CATEGORY 4: Reset & Delete */}
+        <div className="space-y-3">
+          <h2 className="text-xs font-bold text-muted-foreground uppercase tracking-wider px-1">
+            Reset & Delete
+          </h2>
+          <div className="bg-card border border-border/70 rounded-2xl divide-y divide-border/50 shadow-md">
+            {/* Enable reset options toggle switch */}
+            <div className="p-4 flex items-center justify-between">
+              <div className="flex items-center gap-3 pr-3">
+                <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0" />
+                <div>
+                  <h3 className="text-sm font-bold text-foreground">
+                    Enable reset options
+                  </h3>
+                  <p className="text-xs text-muted-foreground">
+                    Allows access to reset options below that permanently delete
+                    your data.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEnableReset(!enableReset)}
+                className={`w-12 h-6 rounded-full p-1 transition-colors cursor-pointer relative shrink-0 ${
+                  enableReset ? "bg-amber-500" : "bg-muted"
+                }`}
+              >
+                <div
+                  className={`w-4 h-4 rounded-full bg-white transition-transform ${
+                    enableReset ? "translate-x-6" : "translate-x-0"
+                  }`}
+                />
+              </button>
+            </div>
+
+            {/* Option 1: Reset subject attendance */}
+            <button
+              disabled={!enableReset}
+              onClick={() => {
+                recordScroll();
+                setResetConfirmText("");
+                setResetError("");
+                fetchSubjectsForReset();
+                setResetModalType("subject");
+              }}
+              className={`w-full text-left p-4 flex items-start gap-3 transition-colors cursor-pointer border-b border-border/50 ${
+                enableReset
+                  ? "hover:bg-muted/50 opacity-100"
+                  : "opacity-40 cursor-not-allowed"
+              }`}
+            >
+              <div className="w-3 h-3 rounded-full bg-amber-500 mt-1 shrink-0" />
+              <div className="flex flex-col gap-0.5">
+                <span className="text-sm font-bold text-foreground">
+                  Reset subject attendance
+                </span>
+                <span className="text-xs text-muted-foreground leading-relaxed">
+                  Clears attendance for selected subjects. Timetable slots
+                  remain intact, but all marked attendance logs for those
+                  subjects are removed.
+                </span>
+              </div>
+            </button>
+
+            {/* Option: Semester Transition & Reset */}
+            <button
+              onClick={() => {
+                recordScroll();
+                setIsTransitionModalOpen(true);
+              }}
+              className="w-full text-left p-4 flex items-start gap-3 transition-colors cursor-pointer border-b border-border/50 hover:bg-muted/50"
+            >
+              <div className="w-3 h-3 rounded-full bg-emerald-500 mt-1 shrink-0" />
+              <div className="flex flex-col gap-0.5">
+                <span className="text-sm font-bold text-foreground flex items-center gap-2">
+                  <span>Transition to Next Semester</span>
+                  <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-primary/20 text-primary">
+                    New
+                  </span>
+                </span>
+                <span className="text-xs text-muted-foreground leading-relaxed">
+                  Advances to your upcoming semester, resets previous semester
+                  attendance & schedule logs for a clean slate, and pre-loads
+                  official calendar and holidays.
+                </span>
+              </div>
+            </button>
+
+            {/* Option 2: Reset all attendance */}
+            <button
+              disabled={!enableReset}
+              onClick={() => {
+                recordScroll();
+                setResetConfirmText("");
+                setResetError("");
+                setResetModalType("attendance");
+              }}
+              className={`w-full text-left p-4 flex items-start gap-3 transition-colors cursor-pointer border-b border-border/50 ${
+                enableReset
+                  ? "hover:bg-muted/50 opacity-100"
+                  : "opacity-40 cursor-not-allowed"
+              }`}
+            >
+              <div className="w-3 h-3 rounded-full bg-amber-500 mt-1 shrink-0" />
+              <div className="flex flex-col gap-0.5">
+                <span className="text-sm font-bold text-foreground">
+                  Reset all attendance
+                </span>
+                <span className="text-xs text-muted-foreground leading-relaxed">
+                  Deletes all attendance records across all subjects. Subjects
+                  and timetable slots remain untouched.
+                </span>
+              </div>
+            </button>
+
+            {/* Option 3: Clear Timetable Schedule */}
+            <button
+              disabled={!enableReset}
+              onClick={() => {
+                recordScroll();
+                setResetConfirmText("");
+                setResetError("");
+                setResetModalType("timetable");
+              }}
+              className={`w-full text-left p-4 flex items-start gap-3 transition-colors cursor-pointer border-b border-border/50 ${
+                enableReset
+                  ? "hover:bg-muted/50 opacity-100"
+                  : "opacity-40 cursor-not-allowed"
+              }`}
+            >
+              <div className="w-3 h-3 rounded-full bg-blue-500 mt-1 shrink-0" />
+              <div className="flex flex-col gap-0.5">
+                <span className="text-sm font-bold text-foreground">
+                  Clear timetable schedule
+                </span>
+                <span className="text-xs text-muted-foreground leading-relaxed">
+                  Removes all weekly scheduled class slots and overrides across
+                  your active semester. Attendance logs and subjects will be
+                  safely preserved.
+                </span>
+              </div>
+            </button>
+
+            {/* Option 4: Remove Semester Overview Calendar & Events */}
+            <button
+              disabled={!enableReset}
+              onClick={() => {
+                recordScroll();
+                setResetConfirmText("");
+                setResetError("");
+                setResetModalType("events");
+              }}
+              className={`w-full text-left p-4 flex items-start gap-3 transition-colors cursor-pointer border-b border-border/50 ${
+                enableReset
+                  ? "hover:bg-muted/50 opacity-100"
+                  : "opacity-40 cursor-not-allowed"
+              }`}
+            >
+              <div className="w-3 h-3 rounded-full bg-purple-500 mt-1 shrink-0" />
+              <div className="flex flex-col gap-0.5">
+                <span className="text-sm font-bold text-foreground">
+                  Remove Academic Calendar & Events
+                </span>
+                <span className="text-xs text-muted-foreground leading-relaxed">
+                  Deletes all imported academic events (midsems, endsems, fests,
+                  holidays). Event badges and banners disappear across the app
+                  and calendar.
+                </span>
+              </div>
+            </button>
+
+            {/* Option 4: Reset entire app */}
+            <button
+              disabled={!enableReset}
+              onClick={() => {
+                recordScroll();
+                setResetConfirmText("");
+                setResetError("");
+                setResetModalType("entire");
+              }}
+              className={`w-full text-left p-4 flex items-start gap-3 transition-colors cursor-pointer ${
+                enableReset
+                  ? "hover:bg-muted/50 opacity-100"
+                  : "opacity-40 cursor-not-allowed"
+              }`}
+            >
+              <div className="w-3 h-3 rounded-full bg-rose-500 mt-1 shrink-0" />
+              <div className="flex flex-col gap-0.5">
+                <span className="text-sm font-bold text-rose-500">
+                  Reset entire app
+                </span>
+                <span className="text-xs text-muted-foreground leading-relaxed">
+                  Permanently wipes all semesters, subjects, timetable slots,
+                  attendance logs, and academic calendar events. Start
+                  completely fresh.
+                </span>
+              </div>
+            </button>
+          </div>
+        </div>
+
+        {/* RESET MODAL DIALOGS */}
+        {typeof document !== "undefined" &&
+          createPortal(
+            <AnimatePresence>
+              {resetModalType && (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.16, ease: "easeOut" }}
+                  className="theme-nova-green fixed inset-0 z-[100] flex items-center justify-center p-4 bg-white/60 dark:bg-black/80 backdrop-blur-md"
+                >
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.96, y: 12 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.96, y: 8 }}
+                    transition={{
+                      type: "spring",
+                      damping: 28,
+                      stiffness: 380,
+                      mass: 0.8,
+                    }}
+                    className="bg-card border border-border/80 rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-5 will-change-transform"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-2xl bg-rose-500/20 text-rose-500 flex items-center justify-center">
+                        <AlertTriangle className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h3 className="text-lg font-bold text-foreground">
+                          {resetModalType === "subject" &&
+                            "Reset Subject Attendance"}
+                          {resetModalType === "attendance" &&
+                            "Reset All Attendance"}
+                          {resetModalType === "timetable" &&
+                            "Clear Timetable Schedule"}
+                          {resetModalType === "events" &&
+                            "Remove Academic Calendar & Events"}
+                          {resetModalType === "entire" && "Reset Entire App"}
+                        </h3>
+                        <p className="text-xs text-rose-500 font-semibold">
+                          Irreversible Action
+                        </p>
                       </div>
                     </div>
-                  )}
 
-                  {/* Reset All Attendance Content */}
-                  {resetModalType === "attendance" && (
-                    <p className="text-sm text-muted-foreground leading-relaxed">
-                      This will delete all attendance logs and timetable overrides
-                      across all subjects and semesters. Your subjects and timetable
-                      slots will remain untouched.
-                    </p>
-                  )}
+                    <>
+                      {/* Reset Subject Attendance Content */}
+                      {resetModalType === "subject" && (
+                        <div className="space-y-3">
+                          <p className="text-xs text-muted-foreground">
+                            Select subjects to reset attendance history for:
+                          </p>
+                          <div className="max-h-48 overflow-y-auto space-y-1.5 pr-1">
+                            {subjects.length === 0 ? (
+                              <p className="text-xs text-muted-foreground py-4 text-center">
+                                No subjects found.
+                              </p>
+                            ) : (
+                              subjects.map((sub) => {
+                                const isChecked = selectedSubjectIds.includes(
+                                  sub.id,
+                                );
+                                return (
+                                  <button
+                                    key={sub.id}
+                                    type="button"
+                                    onClick={() => {
+                                      if (isChecked) {
+                                        setSelectedSubjectIds(
+                                          selectedSubjectIds.filter(
+                                            (id) => id !== sub.id,
+                                          ),
+                                        );
+                                      } else {
+                                        setSelectedSubjectIds([
+                                          ...selectedSubjectIds,
+                                          sub.id,
+                                        ]);
+                                      }
+                                    }}
+                                    className={`w-full text-left px-3.5 py-2.5 rounded-xl border text-xs font-semibold flex items-center justify-between transition-colors cursor-pointer ${
+                                      isChecked
+                                        ? "bg-primary/10 border-primary text-primary"
+                                        : "bg-muted/40 border-border text-foreground hover:bg-muted"
+                                    }`}
+                                  >
+                                    <span>{sub.name}</span>
+                                    {isChecked && (
+                                      <Check className="w-4 h-4 text-primary" />
+                                    )}
+                                  </button>
+                                );
+                              })
+                            )}
+                          </div>
+                        </div>
+                      )}
 
-                  {/* Clear Timetable Schedule Content */}
-                  {resetModalType === "timetable" && (
-                    <p className="text-sm text-muted-foreground leading-relaxed">
-                      This will clear all weekly schedule slots and overrides from
-                      your active timetable. Your subject records and past
-                      attendance history will remain safely intact.
-                    </p>
-                  )}
+                      {/* Reset All Attendance Content */}
+                      {resetModalType === "attendance" && (
+                        <p className="text-sm text-muted-foreground leading-relaxed">
+                          This will delete all attendance logs and timetable
+                          overrides across all subjects and semesters. Your
+                          subjects and timetable slots will remain untouched.
+                        </p>
+                      )}
 
-                  {/* Remove Events Content */}
-                  {resetModalType === "events" && (
-                    <p className="text-sm text-muted-foreground leading-relaxed">
-                      This will permanently remove all academic calendar events
-                      (exams, fests, holidays). Event rings and highlight banners
-                      will be removed across all calendar views.
-                    </p>
-                  )}
+                      {/* Clear Timetable Schedule Content */}
+                      {resetModalType === "timetable" && (
+                        <p className="text-sm text-muted-foreground leading-relaxed">
+                          This will clear all weekly schedule slots and
+                          overrides from your active timetable. Your subject
+                          records and past attendance history will remain safely
+                          intact.
+                        </p>
+                      )}
 
-                  {/* Reset Entire App Content */}
-                  {resetModalType === "entire" && (
-                    <div className="space-y-3">
-                      <p className="text-sm text-muted-foreground leading-relaxed">
-                        This will permanently wipe your semesters, subjects,
-                        timetable slots, attendance logs, and academic events.
-                      </p>
-                      <div>
-                        <label className="block text-xs text-muted-foreground font-medium mb-1.5">
-                          Type{" "}
-                          <span className="font-bold text-foreground">RESET</span>{" "}
-                          to confirm:
-                        </label>
-                        <input
-                          type="text"
-                          value={resetConfirmText}
-                          onChange={(e) => setResetConfirmText(e.target.value)}
-                          className="w-full px-4 py-2.5 rounded-xl bg-background border border-border text-foreground font-mono text-sm focus:outline-none focus:border-rose-500"
+                      {/* Remove Events Content */}
+                      {resetModalType === "events" && (
+                        <p className="text-sm text-muted-foreground leading-relaxed">
+                          This will permanently remove all academic calendar
+                          events (exams, fests, holidays). Event rings and
+                          highlight banners will be removed across all calendar
+                          views.
+                        </p>
+                      )}
+
+                      {/* Reset Entire App Content */}
+                      {resetModalType === "entire" && (
+                        <div className="space-y-3">
+                          <p className="text-sm text-muted-foreground leading-relaxed">
+                            This will permanently wipe your semesters, subjects,
+                            timetable slots, attendance logs, and academic
+                            events.
+                          </p>
+                          <div>
+                            <label className="block text-xs text-muted-foreground font-medium mb-1.5">
+                              Type{" "}
+                              <span className="font-bold text-foreground">
+                                RESET
+                              </span>{" "}
+                              to confirm:
+                            </label>
+                            <input
+                              type="text"
+                              value={resetConfirmText}
+                              onChange={(e) =>
+                                setResetConfirmText(e.target.value)
+                              }
+                              className="w-full px-4 py-2.5 rounded-xl bg-background border border-border text-foreground font-mono text-sm focus:outline-none focus:border-rose-500"
+                            />
+                          </div>
+                        </div>
+                      )}
+
+                      {resetError && (
+                        <p className="text-xs text-rose-500 bg-rose-500/10 p-2.5 rounded-lg border border-rose-500/20 font-semibold">
+                          {resetError}
+                        </p>
+                      )}
+
+                      <div className="flex items-center justify-end gap-3 pt-2">
+                        <button
+                          type="button"
+                          disabled={isResetting}
+                          onClick={() => {
+                            setResetModalType(null);
+                            restoreScrollPosition();
+                          }}
+                          className="px-4 py-2 rounded-xl text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                        >
+                          Cancel
+                        </button>
+                        <TimedUndoAction
+                          initialSeconds={5}
+                          deleteLabel="Confirm Reset"
+                          undoLabel="Cancel Reset"
+                          icon={<Trash2 className="w-4 h-4" />}
+                          onConfirm={async () => {
+                            await handlePerformReset();
+                          }}
+                          disabled={
+                            isResetting ||
+                            (resetModalType === "entire" &&
+                              resetConfirmText.trim() !== "RESET") ||
+                            (resetModalType === "subject" &&
+                              selectedSubjectIds.length === 0)
+                          }
                         />
                       </div>
-                    </div>
-                  )}
-
-                  {resetError && (
-                    <p className="text-xs text-rose-500 bg-rose-500/10 p-2.5 rounded-lg border border-rose-500/20 font-semibold">
-                      {resetError}
-                    </p>
-                  )}
-
-                  <div className="flex items-center justify-end gap-3 pt-2">
-                    <button
-                      type="button"
-                      disabled={isResetting}
-                      onClick={() => { setResetModalType(null); restoreScrollPosition(); }}
-                      className="px-4 py-2 rounded-xl text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
-                    >
-                      Cancel
-                    </button>
-                      <TimedUndoAction
-                        initialSeconds={5}
-                        deleteLabel="Confirm Reset"
-                        undoLabel="Cancel Reset"
-                        icon={<Trash2 className="w-4 h-4" />}
-                        onConfirm={async () => {
-                          await handlePerformReset();
-                        }}
-                        disabled={
-                          isResetting ||
-                          (resetModalType === "entire" &&
-                            resetConfirmText.trim() !== "RESET") ||
-                          (resetModalType === "subject" &&
-                            selectedSubjectIds.length === 0)
-                        }
-                      />
-                  </div>
-                </>
-              </motion.div>
-            </motion.div>
+                    </>
+                  </motion.div>
+                </motion.div>
+              )}
+            </AnimatePresence>,
+            document.body,
           )}
-        </AnimatePresence>,
-        document.body
-      )}
       </div>
-      
+
       {/* App Info Modal */}
-      {typeof document !== "undefined" && createPortal(
-        <AnimatePresence>
-          {showAppInfoModal && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.16, ease: "easeOut" }}
-              className="theme-nova-green fixed inset-0 bg-white/60 dark:bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4"
-            >
+      {typeof document !== "undefined" &&
+        createPortal(
+          <AnimatePresence>
+            {showAppInfoModal && (
               <motion.div
-                initial={{ opacity: 0, scale: 0.96, y: 12 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.96, y: 8 }}
-                transition={{ type: "spring", damping: 28, stiffness: 380, mass: 0.8 }}
-                className="bg-white/40 dark:bg-black/60 backdrop-blur-3xl border-2 border-black dark:border-[#333333] rounded-none max-w-md w-full p-6 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] dark:shadow-[8px_8px_0px_0px_#222222] space-y-6 relative overflow-hidden will-change-transform"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.16, ease: "easeOut" }}
+                className="theme-nova-green fixed inset-0 bg-white/60 dark:bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4"
               >
-                <button
-                  onClick={() => {
-                    setShowAppInfoModal(false);
-                    if (location.pathname !== "/settings") navigate("/settings", { replace: true });
-                    restoreScrollPosition();
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.96, y: 12 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.96, y: 8 }}
+                  transition={{
+                    type: "spring",
+                    damping: 28,
+                    stiffness: 380,
+                    mass: 0.8,
                   }}
-                  className="absolute top-4 right-4 p-2 rounded-full hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                  className="bg-white/40 dark:bg-black/60 backdrop-blur-3xl border-2 border-black dark:border-[#333333] rounded-none max-w-md w-full p-6 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] dark:shadow-[8px_8px_0px_0px_#222222] space-y-6 relative overflow-hidden will-change-transform"
                 >
-                  <X className="w-5 h-5" />
-                </button>
+                  <button
+                    onClick={() => {
+                      setShowAppInfoModal(false);
+                      if (location.pathname !== "/settings")
+                        navigate("/settings", { replace: true });
+                      restoreScrollPosition();
+                    }}
+                    className="absolute top-4 right-4 p-2 rounded-full hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
 
-                <div className="flex items-center gap-4 border-b border-border/50 pb-5">
-                  <img
-                    src="/attendx_logo.png"
-                    alt="AttendX Logo"
-                    className="w-14 h-14 rounded-none object-cover border-2 border-black shrink-0 bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] dark:shadow-[4px_4px_0px_0px_#222222]"
-                  />
-                  <div>
-                    <h2 className="text-xl font-extrabold text-foreground tracking-tight">
-                      AttendX
-                    </h2>
-                    <p className="text-xs font-semibold text-primary">
-                      Smart Attendance Manager <span className="md:hidden">• v{currentAppVersion}</span>
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      Built for IIITU Ecosystem
-                    </p>
-                  </div>
-                </div>
-
-                {/* Creator Profile */}
-                <div className="bg-white/40 dark:bg-black/40 backdrop-blur-md border-2 border-black dark:border-[#333333] rounded-none p-4 space-y-3 shadow-[4px_4px_0px_0px_rgba(0,0,0,0.1)] dark:shadow-[4px_4px_0px_0px_#050505]">
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-4 border-b border-border/50 pb-5">
                     <img
-                      src="/developer-photo.jpg"
-                      alt="Naman Rai"
-                      referrerPolicy="no-referrer"
-                      className={`w-14 h-14 rounded-none object-cover border-2 border-black dark:border-[#333333] shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] dark:shadow-[4px_4px_0px_0px_#222222] shrink-0 transition-all duration-300 ${appInfoColored ? 'grayscale-0 md:grayscale md:hover:grayscale-0' : 'grayscale hover:grayscale-0'}`}
-                      onError={(e) => {
-                        e.currentTarget.style.display = "none";
-                        if (e.currentTarget.nextElementSibling) {
-                          (
-                            e.currentTarget.nextElementSibling as HTMLElement
-                          ).style.display = "flex";
-                        }
-                      }}
+                      src="/attendx_logo.png"
+                      alt="AttendX Logo"
+                      className="w-14 h-14 rounded-none object-cover border-2 border-black shrink-0 bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] dark:shadow-[4px_4px_0px_0px_#222222]"
                     />
-                    <div className="w-14 h-14 rounded-full bg-primary/20 text-primary font-bold text-xl items-center justify-center hidden shrink-0">
-                      NR
-                    </div>
                     <div>
-                      <h3 className="text-base font-bold text-foreground">
-                        Naman Rai
-                      </h3>
-                      <p className="text-xs font-medium text-primary">
-                        Founder & Developer
+                      <h2 className="text-xl font-extrabold text-foreground tracking-tight">
+                        AttendX
+                      </h2>
+                      <p className="text-xs font-semibold text-primary">
+                        Smart Attendance Manager{" "}
+                        <span className="md:hidden">
+                          • v{currentAppVersion}
+                        </span>
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        Student at IIITU
+                        Built for IIITU Ecosystem
                       </p>
                     </div>
                   </div>
-                  <p className="text-xs text-muted-foreground leading-relaxed pt-1">
-                    AttendX was developed to eliminate manual attendance
-                    calculations, criteria tracking anxiety, and timetable
-                    fragmentation for college students.
-                  </p>
-                  <div className="flex flex-wrap gap-2 pt-2 border-t border-border/40 text-xs">
-                    <a
-                      href="https://mail.google.com/mail/?view=cm&fs=1&to=support@mail.attendx.tech"
-                      target="_blank"
-                      rel="noreferrer"
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-none bg-white/40 dark:bg-black/40 backdrop-blur-md border-2 border-black dark:border-[#333333] text-foreground hover:bg-white/60 dark:hover:bg-black/60 transition-colors font-bold shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_#222222] hover:-translate-y-0.5 hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] dark:hover:shadow-[4px_4px_0px_0px_#222222]"
-                    >
-                      <Mail className="w-3.5 h-3.5 text-primary" />
-                      <span>support@mail.attendx.tech</span>
-                    </a>
-                    <a
-                      href="tel:+918076408958"
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-none bg-white/40 dark:bg-black/40 backdrop-blur-md border-2 border-black dark:border-[#333333] text-foreground hover:bg-white/60 dark:hover:bg-black/60 transition-colors font-bold shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_#222222] hover:-translate-y-0.5 hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] dark:hover:shadow-[4px_4px_0px_0px_#222222]"
-                    >
-                      <Phone className="w-3.5 h-3.5 text-emerald-500" />
-                      <span>+91 8076408958</span>
-                    </a>
+
+                  {/* Creator Profile */}
+                  <div className="bg-white/40 dark:bg-black/40 backdrop-blur-md border-2 border-black dark:border-[#333333] rounded-none p-4 space-y-3 shadow-[4px_4px_0px_0px_rgba(0,0,0,0.1)] dark:shadow-[4px_4px_0px_0px_#050505]">
+                    <div className="flex items-center gap-3">
+                      <img
+                        src="/developer-photo.jpg"
+                        alt="Naman Rai"
+                        referrerPolicy="no-referrer"
+                        className={`w-14 h-14 rounded-none object-cover border-2 border-black dark:border-[#333333] shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] dark:shadow-[4px_4px_0px_0px_#222222] shrink-0 transition-all duration-300 ${appInfoColored ? "grayscale-0 md:grayscale md:hover:grayscale-0" : "grayscale hover:grayscale-0"}`}
+                        onError={(e) => {
+                          e.currentTarget.style.display = "none";
+                          if (e.currentTarget.nextElementSibling) {
+                            (
+                              e.currentTarget.nextElementSibling as HTMLElement
+                            ).style.display = "flex";
+                          }
+                        }}
+                      />
+                      <div className="w-14 h-14 rounded-full bg-primary/20 text-primary font-bold text-xl items-center justify-center hidden shrink-0">
+                        NR
+                      </div>
+                      <div>
+                        <h3 className="text-base font-bold text-foreground">
+                          Naman Rai
+                        </h3>
+                        <p className="text-xs font-medium text-primary">
+                          Founder & Developer
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          Student at IIITU
+                        </p>
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground leading-relaxed pt-1">
+                      AttendX was developed to eliminate manual attendance
+                      calculations, criteria tracking anxiety, and timetable
+                      fragmentation for college students.
+                    </p>
+                    <div className="flex flex-wrap gap-2 pt-2 border-t border-border/40 text-xs">
+                      <a
+                        href="https://mail.google.com/mail/?view=cm&fs=1&to=support@mail.attendx.tech"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-none bg-white/40 dark:bg-black/40 backdrop-blur-md border-2 border-black dark:border-[#333333] text-foreground hover:bg-white/60 dark:hover:bg-black/60 transition-colors font-bold shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_#222222] hover:-translate-y-0.5 hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] dark:hover:shadow-[4px_4px_0px_0px_#222222]"
+                      >
+                        <Mail className="w-3.5 h-3.5 text-primary" />
+                        <span>support@mail.attendx.tech</span>
+                      </a>
+                      <a
+                        href="tel:+918076408958"
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-none bg-white/40 dark:bg-black/40 backdrop-blur-md border-2 border-black dark:border-[#333333] text-foreground hover:bg-white/60 dark:hover:bg-black/60 transition-colors font-bold shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_#222222] hover:-translate-y-0.5 hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] dark:hover:shadow-[4px_4px_0px_0px_#222222]"
+                      >
+                        <Phone className="w-3.5 h-3.5 text-emerald-500" />
+                        <span>+91 8076408958</span>
+                      </a>
+                    </div>
                   </div>
-                </div>
 
-                {/* Key Features */}
-                <div className="space-y-2 text-xs">
-                  <h4 className="font-bold text-foreground text-xs uppercase tracking-wider">
-                    Key Capabilities
-                  </h4>
-                  <ul className="grid grid-cols-2 gap-2 text-muted-foreground font-medium">
-                    <li className="flex items-center gap-1.5 bg-white/40 dark:bg-black/40 backdrop-blur-md p-2 rounded-none border-2 border-black dark:border-[#333333] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_#222222]">
-                      <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-                      Dynamic Criteria Target
-                    </li>
-                    <li className="flex items-center gap-1.5 bg-white/40 dark:bg-black/40 backdrop-blur-md p-2 rounded-none border-2 border-black dark:border-[#333333] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_#222222]">
-                      <span className="w-2 h-2 rounded-full bg-blue-500"></span>
-                      Forecast Leave Calc
-                    </li>
-                    <li className="flex items-center gap-1.5 bg-white/40 dark:bg-black/40 backdrop-blur-md p-2 rounded-none border-2 border-black dark:border-[#333333] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_#222222]">
-                      <span className="w-2 h-2 rounded-full bg-purple-500"></span>
-                      OCR Timetable Importer
-                    </li>
-                    <li className="flex items-center gap-1.5 bg-white/40 dark:bg-black/40 backdrop-blur-md p-2 rounded-none border-2 border-black dark:border-[#333333] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_#222222]">
-                      <span className="w-2 h-2 rounded-full bg-amber-500"></span>
-                      Classroom Hub Sync
-                    </li>
-                  </ul>
-                </div>
+                  {/* Key Features */}
+                  <div className="space-y-2 text-xs">
+                    <h4 className="font-bold text-foreground text-xs uppercase tracking-wider">
+                      Key Capabilities
+                    </h4>
+                    <ul className="grid grid-cols-2 gap-2 text-muted-foreground font-medium">
+                      <li className="flex items-center gap-1.5 bg-white/40 dark:bg-black/40 backdrop-blur-md p-2 rounded-none border-2 border-black dark:border-[#333333] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_#222222]">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                        Dynamic Criteria Target
+                      </li>
+                      <li className="flex items-center gap-1.5 bg-white/40 dark:bg-black/40 backdrop-blur-md p-2 rounded-none border-2 border-black dark:border-[#333333] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_#222222]">
+                        <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                        Forecast Leave Calc
+                      </li>
+                      <li className="flex items-center gap-1.5 bg-white/40 dark:bg-black/40 backdrop-blur-md p-2 rounded-none border-2 border-black dark:border-[#333333] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_#222222]">
+                        <span className="w-2 h-2 rounded-full bg-purple-500"></span>
+                        OCR Timetable Importer
+                      </li>
+                      <li className="flex items-center gap-1.5 bg-white/40 dark:bg-black/40 backdrop-blur-md p-2 rounded-none border-2 border-black dark:border-[#333333] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_#222222]">
+                        <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+                        Classroom Hub Sync
+                      </li>
+                    </ul>
+                  </div>
 
-                <div className="pt-2 text-center">
-                  <button
-                    onClick={() => { 
-                      setShowAppInfoModal(false); 
-                      if (location.pathname !== "/settings") navigate("/settings", { replace: true });
-                      restoreScrollPosition(); 
-                    }}
-                    className="w-full py-4 rounded-none bg-[#48CAE4] text-[#050505] font-black uppercase tracking-widest text-xs border-2 border-black dark:border-none shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] dark:shadow-[4px_4px_0px_0px_#111111] hover:-translate-y-1 hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] dark:hover:shadow-[6px_6px_0px_0px_#111111] transition-all"
-                  >
-                    Close App Info
-                  </button>
-                </div>
+                  <div className="pt-2 text-center">
+                    <button
+                      onClick={() => {
+                        setShowAppInfoModal(false);
+                        if (location.pathname !== "/settings")
+                          navigate("/settings", { replace: true });
+                        restoreScrollPosition();
+                      }}
+                      className="w-full py-4 rounded-none bg-[#48CAE4] text-[#050505] font-black uppercase tracking-widest text-xs border-2 border-black dark:border-none shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] dark:shadow-[4px_4px_0px_0px_#111111] hover:-translate-y-1 hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] dark:hover:shadow-[6px_6px_0px_0px_#111111] transition-all"
+                    >
+                      Close App Info
+                    </button>
+                  </div>
+                </motion.div>
               </motion.div>
-            </motion.div>
-          )}
-        </AnimatePresence>,
-        document.body
-      )}
+            )}
+          </AnimatePresence>,
+          document.body,
+        )}
 
-      <FeedbackModal 
-        isOpen={isFeedbackOpen} 
-        onClose={() => { 
-          setIsFeedbackOpen(false); 
-          if (location.pathname !== "/settings" || searchParams.get("issue") || searchParams.get("description") || searchParams.get("desc")) {
+      <FeedbackModal
+        isOpen={isFeedbackOpen}
+        onClose={() => {
+          setIsFeedbackOpen(false);
+          if (
+            location.pathname !== "/settings" ||
+            searchParams.get("issue") ||
+            searchParams.get("description") ||
+            searchParams.get("desc")
+          ) {
             navigate("/settings", { replace: true });
           }
-          restoreScrollPosition(); 
-        }} 
+          restoreScrollPosition();
+        }}
         defaultIssue={searchParams.get("issue") || undefined}
-        defaultDescription={searchParams.get("description") || searchParams.get("desc") || undefined}
-        defaultTab={(searchParams.get("tab") as "issue" | "improvement") || "issue"}
+        defaultDescription={
+          searchParams.get("description") ||
+          searchParams.get("desc") ||
+          undefined
+        }
+        defaultTab={
+          (searchParams.get("tab") as "issue" | "improvement") || "issue"
+        }
       />
       <ChangelogModal
         isOpen={isChangelogOpen}
-        onClose={() => { 
-          setIsChangelogOpen(false); 
-          if (location.pathname !== "/settings") navigate("/settings", { replace: true });
-          restoreScrollPosition(); 
+        onClose={() => {
+          setIsChangelogOpen(false);
+          if (location.pathname !== "/settings")
+            navigate("/settings", { replace: true });
+          restoreScrollPosition();
         }}
         releases={updateManifest.changelog}
       />
-      <LinkedDevicesModal 
-        isOpen={isLinkedDevicesOpen} 
-        onClose={() => { 
-          setIsLinkedDevicesOpen(false); 
-          if (location.pathname !== "/settings") navigate("/settings", { replace: true });
-          restoreScrollPosition(); 
-        }} 
+      <LinkedDevicesModal
+        isOpen={isLinkedDevicesOpen}
+        onClose={() => {
+          setIsLinkedDevicesOpen(false);
+          if (location.pathname !== "/settings")
+            navigate("/settings", { replace: true });
+          restoreScrollPosition();
+        }}
       />
       <SemesterTransitionModal
         isOpen={isTransitionModalOpen}
-        onClose={() => { setIsTransitionModalOpen(false); restoreScrollPosition(); }}
+        onClose={() => {
+          setIsTransitionModalOpen(false);
+          restoreScrollPosition();
+        }}
         onSuccess={() => {
           useAttendanceStore.getState().fetchStats(true);
         }}

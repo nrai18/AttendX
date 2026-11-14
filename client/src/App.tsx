@@ -3,7 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate, useNavigate } from "react-route
 import { useSilentRefresh } from "./hooks/useSilentRefresh";
 import { useBackgroundSync } from "./hooks/useBackgroundSync";
 import { useTheme } from "./hooks/useTheme";
-import { useAuthStore } from "./stores/authStore";
+import { useAuthStore, isUserAuthenticated } from "./stores/authStore";
 import { useThemeStore } from "./stores/themeStore";
 import { useCacheStore } from "./stores/cacheStore";
 import { AppShell } from "./components/layout/AppShell";
@@ -26,12 +26,14 @@ import { Loader2 } from "lucide-react";
 import { ErrorBoundary } from "./components/common/ErrorBoundary";
 import { DynamicIslandHUD } from "./components/ui/dynamic-island-hud";
 import { ShockwaveCelebrationOverlay } from "./components/ui/shockwave-celebration";
+import { NativeUpdateSheet } from "./components/updates/NativeUpdateSheet";
+import { useNativeUpdates } from "./hooks/useNativeUpdates";
 
 // Protected Route Guard Component
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
-  const { isAuthenticated, isLoading, _hasHydrated } = useAuthStore();
+  const { isAuthenticated, user, isLoading, _hasHydrated } = useAuthStore();
 
   if (isLoading || !_hasHydrated) {
     return (
@@ -41,7 +43,12 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({
     );
   }
 
-  if (!isAuthenticated) {
+  // Cold-start offline safety: allow read-only offline viewing as long as cached credentials/user state exist in native storage, regardless of token expiry
+  const isOffline = typeof navigator !== "undefined" && !navigator.onLine;
+  const hasCachedUser = Boolean(user && user.id);
+  const isAuthorized = isAuthenticated || (isOffline && hasCachedUser) || isUserAuthenticated();
+
+  if (!isAuthorized) {
     return <Navigate to="/" replace />;
   }
 
@@ -59,13 +66,19 @@ import { useState, useEffect } from "react";
 import { LandingPage } from "./pages/marketing/LandingPage";
 import { PrivacyPage } from "./pages/marketing/PrivacyPage";
 import { TermsPage } from "./pages/marketing/TermsPage";
+import { PromoVideoPage } from "./pages/promo/PromoVideoPage";
 
 const RootRoute: React.FC = () => {
-  const { isAuthenticated, isLoading, _hasHydrated } = useAuthStore();
+  const { isAuthenticated, user, isLoading, _hasHydrated } = useAuthStore();
   if (!Capacitor.isNativePlatform() && !_hasHydrated) return null; // Wait for zustand to read Capacitor Preferences
   // If native platform, we can wait too to avoid Lottie crash in LandingPage while resolving auth
   if (!_hasHydrated || isLoading) return null;
-  return isAuthenticated ? <Navigate to="/today" replace /> : <LandingPage />;
+
+  const isOffline = typeof navigator !== "undefined" && !navigator.onLine;
+  const hasCachedUser = Boolean(user && user.id);
+  const isAuthorized = isAuthenticated || (isOffline && hasCachedUser) || isUserAuthenticated();
+
+  return isAuthorized ? <Navigate to="/today" replace /> : <LandingPage />;
 };
 
 const DEFAULT_APK_DOWNLOAD_URL = "https://github.com/nrai18/AttendX/releases/latest/download/AttendX.apk";
@@ -153,6 +166,23 @@ export function App() {
   useBackgroundSync();
   useTheme();
   const theme = useThemeStore((state) => state.theme);
+    const {
+      updateInfo,
+      phase,
+      progress,
+      errorMessage,
+      isSheetOpen,
+      setIsSheetOpen,
+      startDownload,
+      triggerInstall,
+      snooze,
+    } = useNativeUpdates();
+
+    useEffect(() => {
+      const handleOpen = () => setIsSheetOpen(true);
+      window.addEventListener("open-update-sheet", handleOpen);
+      return () => window.removeEventListener("open-update-sheet", handleOpen);
+    }, [setIsSheetOpen]);
   // We want the Lottie splash screen to play on mobile devices (web and native)
   // Only show it once per day, and bypass it for direct public deep-links (/privacy, /terms, /download)
   const [splashFinished, setSplashFinished] = useState(() => {
@@ -370,9 +400,7 @@ export function App() {
     <ErrorBoundary>
       <DynamicIslandHUD />
       <ShockwaveCelebrationOverlay />
-      {!splashFinished && (
-        <WebSplashScreen onComplete={handleSplashComplete} />
-      )}
+      {!splashFinished && <WebSplashScreen onComplete={handleSplashComplete} />}
       <Toaster
         position="top-center"
         theme={theme as any}
@@ -382,11 +410,22 @@ export function App() {
           className: "rounded-xl border border-border shadow-lg mt-4 md:mt-0",
         }}
       />
-      {Capacitor.isNativePlatform() && (
+      {Capacitor.isNativePlatform() && !updateInfo && (
         <OTAUpdateModal
           localVersion={localStorage.getItem("app_version") || "4.3.0"}
         />
       )}
+      <NativeUpdateSheet
+        isOpen={isSheetOpen}
+        onClose={() => setIsSheetOpen(false)}
+        updateInfo={updateInfo}
+        phase={phase}
+        progress={progress}
+        errorMessage={errorMessage}
+        onStartDownload={startDownload}
+        onInstall={triggerInstall}
+        onSnooze={snooze}
+      />
       {splashFinished && (
         <BrowserRouter>
           <DeepLinkHandler />
@@ -395,11 +434,18 @@ export function App() {
             {/* Public Landing Page */}
             <Route path="/" element={<RootRoute />} />
             <Route path="/download" element={<DownloadRedirect />} />
+            <Route path="/promo" element={<PromoVideoPage />} />
 
             {/* Auth Routes */}
             <Route path="/login" element={<LoginPage />} />
-            <Route path="/forgot-password" element={<LoginPage initialForgotPassword={true} />} />
-            <Route path="/reset-password" element={<LoginPage initialForgotPassword={true} />} />
+            <Route
+              path="/forgot-password"
+              element={<LoginPage initialForgotPassword={true} />}
+            />
+            <Route
+              path="/reset-password"
+              element={<LoginPage initialForgotPassword={true} />}
+            />
             <Route path="/signup" element={<SignupPage />} />
             <Route path="/privacy" element={<PrivacyPage />} />
             <Route path="/terms" element={<TermsPage />} />

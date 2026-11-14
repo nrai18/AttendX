@@ -7,6 +7,8 @@ import { Button } from "../ui/button";
 import { useAttendanceStore } from "../../stores/attendanceStore";
 import { useThemeStore } from "../../stores/themeStore";
 import { hapticLight, hapticWarning } from "../../utils/haptics";
+import { UpdateSnoozedIndicator } from "../updates/UpdateSnoozedIndicator";
+import { UpdateManager } from "../../services/updater/updateManager";
 
 interface TopBarProps {
   title?: string;
@@ -70,7 +72,9 @@ export const TopBar: React.FC<TopBarProps> = ({
     : "text-rose-500 dark:text-rose-400";
 
   return (
-    <header className={`${positionClass} z-40 backdrop-blur-md border-b px-4 py-3 pt-[calc(0.75rem+env(safe-area-inset-top))] transition-colors ${headerBg}`}>
+    <header
+      className={`${positionClass} z-40 backdrop-blur-md border-b px-4 py-3 pt-[calc(0.75rem+env(safe-area-inset-top))] transition-colors ${headerBg}`}
+    >
       <div className="flex items-center justify-between w-full">
         {/* Title / User Greeting */}
         <div>
@@ -78,17 +82,46 @@ export const TopBar: React.FC<TopBarProps> = ({
             {title || user?.name || "AttendX"}
           </h1>
         </div>
+        {/* Native Update Pending Capsule */}
+        {UpdateManager.getActiveNativeUpdate() && (
+          <UpdateSnoozedIndicator
+            tag={UpdateManager.getActiveNativeUpdate()?.tag}
+            onClick={() => {
+              window.dispatchEvent(new CustomEvent("open-update-sheet"));
+            }}
+          />
+        )}
 
         {/* Right Side Controls */}
         <div className="flex items-center gap-2">
           {/* Attendance Percentage Badge */}
           {hasActiveSemester && (
-            <div className={`flex items-center gap-1.5 border rounded-xl px-3 py-1.5 text-xs font-mono font-semibold ${badgeBg}`}>
-              <span className={`font-bold ${overallPercentage >= targetPercentage ? badgeGoodText : badgeBadText}`}>
+            <div
+              className={`flex items-center gap-1.5 border rounded-xl px-3 py-1.5 text-xs font-mono font-semibold ${badgeBg}`}
+            >
+              <span
+                className={`font-bold ${overallPercentage >= targetPercentage ? badgeGoodText : badgeBadText}`}
+              >
                 {(overallPercentage ?? 0).toFixed(2)}%
               </span>
-              <span className={(isReports || isPredictive) ? "text-[#74313A]/20 dark:text-[#EED3CF]/20" : "text-muted-foreground/40"}>|</span>
-              <span className={(isReports || isPredictive) ? "text-[#74313A]/50 dark:text-[#EED3CF]/50" : "text-muted-foreground"}>{targetPercentage}%</span>
+              <span
+                className={
+                  isReports || isPredictive
+                    ? "text-[#74313A]/20 dark:text-[#EED3CF]/20"
+                    : "text-muted-foreground/40"
+                }
+              >
+                |
+              </span>
+              <span
+                className={
+                  isReports || isPredictive
+                    ? "text-[#74313A]/50 dark:text-[#EED3CF]/50"
+                    : "text-muted-foreground"
+                }
+              >
+                {targetPercentage}%
+              </span>
             </div>
           )}
 
@@ -104,9 +137,23 @@ export const TopBar: React.FC<TopBarProps> = ({
             title={`Current: ${theme} theme. Click to toggle.`}
           >
             {theme === "light" ? (
-              <Sun className={(isReports || isPredictive) ? "w-4 h-4" : "w-4 h-4 text-amber-500"} />
+              <Sun
+                className={
+                  isReports || isPredictive
+                    ? "w-4 h-4"
+                    : "w-4 h-4 text-amber-500"
+                }
+              />
             ) : (
-              <Moon className={(isReports || isPredictive) ? "w-4 h-4" : isSubjects ? "w-4 h-4 text-indigo-400 dark:text-white/90" : "w-4 h-4 text-indigo-400"} />
+              <Moon
+                className={
+                  isReports || isPredictive
+                    ? "w-4 h-4"
+                    : isSubjects
+                      ? "w-4 h-4 text-indigo-400 dark:text-white/90"
+                      : "w-4 h-4 text-indigo-400"
+                }
+              />
             )}
           </Button>
 
@@ -131,7 +178,11 @@ export const TopBar: React.FC<TopBarProps> = ({
             className={`w-9 h-9 rounded-xl ${mutedTextColor} hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-500/10 cursor-pointer active:scale-90 transition-transform disabled:opacity-50`}
             title="Log Out"
           >
-            {isLoggingOut ? <Loader2 className="w-4 h-4 animate-spin" /> : <LogOut className="w-4 h-4" />}
+            {isLoggingOut ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <LogOut className="w-4 h-4" />
+            )}
           </Button>
         </div>
       </div>

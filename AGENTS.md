@@ -9,13 +9,15 @@ Whenever writing backend or frontend code referencing Gemini Developer API model
 ## Android Build Workflow
 - **APK Output Location**: Whenever you successfully compile or build the Android APK, you MUST automatically copy the resulting  app-debug.apk to C:\Users\Raina\OneDrive\Desktop\AttendX.apk. Do not make the user manually retrieve it from the build folders.
 
-## Final App Version & OTA Release Workflow (Strict Invariant)
-- **FINAL APP VERSION LOCKED AT v4.3.0**: `v4.3.0` is the permanent and final app version for AttendX. **NO VERSION BUMPS AHEAD.** Never bump or increment versions in `client/src/App.tsx`, `client/package.json`, or `server/src/controllers/system.controller.ts` above `v4.3.0`.
-- **Append to v4.3.0**: All new features, visual polish, bug fixes, and architectural adjustments MUST be appended directly under the `v4.3.0` changelog entry in `server/src/controllers/system.controller.ts`.
-- **Release Packaging**: Whenever updating the app:
-  1. Ensure `localVersion` in `client/src/App.tsx` and `latestVersion` in `server/src/controllers/system.controller.ts` remain strictly `"4.3.0"`.
-  2. Append new updates to the `v4.3.0` entry in `server/src/controllers/system.controller.ts`.
-  3. Run `npm run build` in the `client` directory, sync capacitor with `npx cap copy android`, then run `node zip_dist.cjs` in the `server` directory to bundle the latest frontend code into `server/uploads/update.zip`.
+## App Versioning & Dual-Channel Release Workflow (Native APK & OTA)
+- **Dynamic Versioning Permitted**: Version increments (e.g. `v4.3.1`, `v4.4.0`, etc.) are fully supported across `client/src/App.tsx`, `client/package.json`, `client/android/app/build.gradle`, and `server/src/controllers/system.controller.ts` to enable testing and release of the Native APK Updater (`GitHubUpdater` & `ApkUpdaterPlugin`) and Capgo OTA runtime.
+- **Changelog Tracking**: Document all new features, visual polish, bug fixes, and architectural adjustments under the corresponding version entry in `server/src/controllers/system.controller.ts` and in GitHub Release notes.
+- **Release Packaging**: Whenever packaging a release:
+  1. Increment or sync `localVersion` in `client/src/App.tsx` and `latestVersion` in `server/src/controllers/system.controller.ts`.
+  2. Run `npm run build` in the `client` directory.
+  3. Sync capacitor with `npx cap copy android`.
+  4. Run `node zip_dist.cjs` in the `server` directory to bundle frontend updates into `server/src/uploads/update.zip`.
+  5. When compiling native APKs, copy the resulting APK to `C:\Users\Raina\OneDrive\Desktop\AttendX.apk`.
 
 ## Anti-Slop Design Invariants
 Never generate UI that uses the following AI default tropes:

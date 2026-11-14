@@ -14,6 +14,7 @@
   <p>
     <a href="https://attendx.tech/download"><b>📥 Download Android APK</b></a> •
     <a href="https://attendx.tech"><b>🌐 Launch Web Application</b></a> •
+    <a href="#-modern-ecosystem-product-film"><b>🎬 Watch Film</b></a> •
     <a href="#-features-showcase--tabs"><b>📱 Explore Tabs</b></a> •
     <a href="#-engineering-grade-scalability-breakdown"><b>📊 Scalability Engine</b></a>
   </p>
@@ -44,6 +45,7 @@
 
 ## 📖 Table of Contents
 - [✨ What is AttendX?](#-what-is-attendx)
+- [🎬 Modern Ecosystem Product Film](#-modern-ecosystem-product-film)
 - [📱 Features Showcase & Tabs](#-features-showcase--tabs)
 - [📱 Native Android Home Screen Widgets](#-native-android-home-screen-widgets)
 - [🧠 Predictive Attendance & Leave Simulation Engine](#-predictive-attendance--leave-simulation-engine)
@@ -66,6 +68,22 @@
 **AttendX** eliminates the daily stress of college attendance tracking and timetable management. Built specifically around academic regulations (such as **IIIT Una Academic Regulation 6.1–6.10** mandating 75% attendance to appear for semester examinations), AttendX treats academic attendance not as a static spreadsheet, but as an active **mathematical optimization problem**.
 
 Whether dealing with shifting lecture halls, lab batches, unscheduled extra classes, gazetted holidays, or exam preparation leaves, AttendX forecasts exactly how many lectures you can safely skip, warns you before you enter the debar zone, and automatically synchronizes with classmates via encrypted peer-to-peer data transfers.
+
+---
+
+## 🎬 Modern Ecosystem Product Film
+
+<div align="center">
+  <video src="client/public/AttendX_Launch_Video.mp4" width="100%" controls="controls" poster="assets/screenshots/today.png" preload="metadata">
+    Your browser does not support the video tag. You can <a href="client/public/AttendX_Launch_Video.mp4">download the 1080p 60FPS MP4 film directly</a>.
+  </video>
+  <br/>
+  <p><b>AttendX: Modern Ecosystem</b> — <i>90-Second Cinematic Product Film & Interactive Feature Demonstration</i></p>
+  <p>
+    <a href="client/public/AttendX_Launch_Video.mp4"><b>📥 Download 1080p Film (13.1 MB)</b></a> •
+    <a href="https://attendx.tech/promo"><b>✨ Interactive 3D Web Studio (<code>/promo</code>)</b></a>
+  </p>
+</div>
 
 ---
 

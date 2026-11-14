@@ -28,6 +28,26 @@ export class SystemController {
               "title": "Delight Micro-Physics & Web Audio Synthesizer (4.0s - 5.0s Suite)",
               "items": [
                 {
+                  "icon": "🤖",
+                  "text": "Copilot Fast-Path Category Disambiguation & Past-Event Awareness: Decoupled midsem, endsem, break, exam, and holiday intent matchers so that exam queries never falsely fall back to unrelated public holidays (e.g. Diwali). When academic milestones like Mid-Semester Exams have concluded, the copilot immediately returns a factual completion response with exact dates and elapsed days (e.g. concluded on Sept 21–23, 46 days ago)."
+                },
+                {
+                  "icon": "📅",
+                  "text": "Calendar & Today Offline Attendance State Sync: Fixed discrepancy where marking classes as Off on Today's Schedule showed as Missed (Absent) on the Calendar. Calendar now inspects the active daily schedule cache and pending offline queue before stale historical logs, while TodayPage updates historyLogs and includes start times in cached day details to avoid forced cache bypasses."
+                },
+                {
+                  "icon": "🔄",
+                  "text": "Timezone-Harmonized Calendar Cache & Instant Invalidation: Solved IST (+5:30) vs UTC midnight mismatches in attendance log reconciliations. Added immediate Redis cache invalidation on attendance mutations so calendar overviews update synchronously without stale server cache fallbacks."
+                },
+                {
+                  "icon": "📎",
+                  "text": "Classroom Announcement Attachments & Zero-Bloat Compression: Integrated document and image attachments in section broadcast feeds with paperclip selector. Employs automatic client-side Canvas compression for images (max 1280px / 80% JPEG, reducing 5-10MB captures down to ~150-250KB) and strictly caps PDF study notes at ≤ 1.5MB to protect database storage boundaries. Features one-tap native downloads via Capacitor Filesystem and an obsidian image lightbox."
+                },
+                {
+                  "icon": "🛡️",
+                  "text": "Expired JWT Cold-Start Offline Access: Prevented cold-start lockouts when booting the app in airplane mode with an expired token. ProtectedRoute and RootRoute now authenticate via cached native Preferences credentials when offline, while Axios interceptors bypass /auth/refresh and auto-logout triggers until internet returns."
+                },
+                {
                   "icon": "🔕",
                   "text": "Native Android 14+ Pinned Mute Foreground Service: Implemented dedicated RingerForegroundService with FOREGROUND_SERVICE_TYPE_SPECIAL_USE keeping the app process active during lectures, ensuring the ongoing mute notification cannot be swiped away on Android 14+ and guaranteeing exact auto-unmuting."
                 },
@@ -867,6 +887,14 @@ export class SystemController {
                 {
                   "icon": "🔁",
                   "text": "Reversible Full Day Off: Added single-tap Undo Day Off to restore day status instantly across all views without manual toggling."
+                },
+                {
+                  "icon": "🌐",
+                  "text": "Timezone-Buffered Attendance Marking & 0ms UTC/IST Alignment: Re-architected markAttendance and markFullDay to query candidate records across a +/-14 hour window with toDbLocalIso date resolution. Guaranteed reliable matching and updates for existing attendance records regardless of whether timestamps are stored at UTC midnight or IST midnight in UTC, permanently eliminating stale MISSED status badge overwrites on the monthly calendar."
+                },
+                {
+                  "icon": "🎬",
+                  "text": "AttendX Modern Ecosystem 90s Film & In-App Studio: Authored the complete 9-act cinematic product film across PromoVideoPage.tsx and Remotion composition (video/out/AttendX-Launch.mp4), featuring real AttendX dark UI, single clean precision pointer, 3-theme live studio morph (Obsidian to Nova Green to Burgundy), 75% bunk calculation, AI copilot fast-path, 4x2 Android widget, synchronized electronic soundtrack, and 1-tap 1080p MP4 download."
                 }
               ]
             },

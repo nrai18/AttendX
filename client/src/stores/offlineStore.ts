@@ -41,6 +41,11 @@ export const useOfflineStore = create<OfflineState>()(
             },
           ],
         }));
+        if (typeof navigator !== 'undefined' && navigator.onLine) {
+          setTimeout(() => {
+            useOfflineStore.getState().flushQueue();
+          }, 2500);
+        }
       },
       dequeue: (id) => {
         set((state) => ({
@@ -51,6 +56,10 @@ export const useOfflineStore = create<OfflineState>()(
       flushQueue: async () => {
         const { queue, isSyncing, dequeue } = get();
         if (isSyncing || queue.length === 0) return;
+                console.group(
+                  `%c[AttendX Sync Engine] 🔄 Reconnected • Processing ${queue.length} Queued Action(s)`,
+                  "background: #0284c7; color: #ffffff; font-weight: bold; padding: 4px 8px; border-radius: 4px;",
+                );
 
         set({ isSyncing: true });
         let successCount = 0;
@@ -62,7 +71,7 @@ export const useOfflineStore = create<OfflineState>()(
           const deletedTempIds = new Set<string>();
           for (const req of queue) {
             if (req.method?.toLowerCase() === 'delete') {
-              const match = req.url.match(/(temp-[a-zA-Z0-9_-]+)/);
+              const match = req.url.match(/(temp[-_][a-zA-Z0-9_-]+)/);
               if (match) {
                 deletedTempIds.add(match[1]);
               }
@@ -72,7 +81,7 @@ export const useOfflineStore = create<OfflineState>()(
           const compactedQueue: QueuedRequest[] = [];
           if (deletedTempIds.size > 0) {
             for (const req of queue) {
-              const match = req.url.match(/(temp-[a-zA-Z0-9_-]+)/);
+              const match = req.url.match(/(temp[-_][a-zA-Z0-9_-]+)/);
               const urlTemp = match ? match[1] : null;
               const isCreatedWithDeletedTemp = Boolean(req.tempId && deletedTempIds.has(req.tempId));
               const isTargetingDeletedTemp = Boolean(urlTemp && deletedTempIds.has(urlTemp));
@@ -122,13 +131,29 @@ export const useOfflineStore = create<OfflineState>()(
                   }
                 }
               }
+                            console.log(
+                              `%c[Replaying #${successCount + 1}] %c${req.method.toUpperCase()} %c${resolvedUrl}`,
+                              "color: #a855f7; font-weight: bold;",
+                              "color: #38bdf8; font-weight: bold;",
+                              "color: #e2e8f0;",
+                              { payload: resolvedData, tempId: req.tempId },
+                            );
 
-              const res = await api.request({
-                method: req.method,
-                url: resolvedUrl,
-                data: resolvedData,
-                headers: { ...req.headers, 'X-Offline-Retry': 'true' },
-              });
+                            const res = await api.request({
+                              method: req.method,
+                              url: resolvedUrl,
+                              data: resolvedData,
+                              headers: {
+                                ...req.headers,
+                                "X-Offline-Retry": "true",
+                              },
+                            });
+
+                            console.log(
+                              `%c[Accepted] ✅ Server synced %c${req.method.toUpperCase()} ${resolvedUrl}`,
+                              "color: #22c55e; font-weight: bold;",
+                              "color: #94a3b8;",
+                            );
 
               dequeue(req.id);
               successCount++;
@@ -151,7 +176,7 @@ export const useOfflineStore = create<OfflineState>()(
                 if (
                   req.data?.id &&
                   typeof req.data.id === 'string' &&
-                  req.data.id.startsWith('temp-') &&
+                  /^temp[-_]/.test(req.data.id) &&
                   req.data.id !== realId
                 ) {
                   idMap.set(req.data.id, realId);
@@ -168,14 +193,27 @@ export const useOfflineStore = create<OfflineState>()(
               ) {
                 dequeue(req.id);
                 conflictCount++;
+              } else {
+                console.warn(
+                  `%c[DB Drop / Network Pause] ⚠️ Sync halted at ${req.method.toUpperCase()} ${req.url}. Retaining position in queue.`,
+                  "background: #ea580c; color: #ffffff; font-weight: bold; padding: 3px 6px; border-radius: 3px;",
+                  err?.message || err,
+                );
+                console.groupEnd();
+                break;
               }
-              // Otherwise keep it in the queue for next time
-              console.error("Offline sync failed for request", req.url, err);
             }
           }
 
           if (conflictCount > 0) {
-            toast.error(`${conflictCount} offline action(s) were rejected by the server and rolled back.`);
+            toast.error(
+              `${conflictCount} offline action(s) were rejected by the server and rolled back.`,
+            );
+          } else if (successCount > 0) {
+            toast.success(
+              `Synced ${successCount} offline action(s) with server!`,
+              { id: "offline-sync" },
+            );
           }
 
           // If we mutated anything (success or dropped conflict), force UI and stores to refresh
@@ -196,9 +234,22 @@ export const useOfflineStore = create<OfflineState>()(
     }
   )
 );
-
 if (typeof window !== 'undefined') {
   window.addEventListener('online', () => {
     useOfflineStore.getState().flushQueue();
   });
+  window.addEventListener('focus', () => {
+    useOfflineStore.getState().flushQueue();
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      useOfflineStore.getState().flushQueue();
+    }
+  });
+  // Periodic background sync heartbeat for recovered DB connections while tab remains focused
+  setInterval(() => {
+    if (typeof navigator !== 'undefined' && navigator.onLine && useOfflineStore.getState().queue.length > 0) {
+      useOfflineStore.getState().flushQueue();
+    }
+  }, 15000);
 }

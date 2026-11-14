@@ -397,8 +397,9 @@ export class NotificationService {
         window.dispatchEvent(new CustomEvent('fcm_classroom_deleted', { detail: { ...data, classroomId, type } }));
       }
 
-      if (type === 'ota_update') {
+      if (type === 'ota_update' || type === 'native_update' || type === 'app_update' || type === 'update') {
         window.dispatchEvent(new Event('check_ota_update'));
+        window.dispatchEvent(new CustomEvent('open-update-sheet'));
       } else if (targetRoute) {
         try {
           sessionStorage.setItem('pending_push_route', targetRoute);

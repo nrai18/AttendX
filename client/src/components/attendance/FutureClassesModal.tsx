@@ -31,17 +31,19 @@ export const FutureClassesModal: React.FC<FutureClassesModalProps> = ({
   let totalPresent = 0;
   let totalAbsent = 0;
   let totalOff = 0;
+  const safeBreakdown = Array.isArray(breakdown) ? breakdown : [];
 
-  breakdown.forEach(b => {
-    if (b.type === 'LOGGED') return;
-    const status = dateOverrides[b.date] || (b.type === 'HELD' ? 'PRESENT' : 'OFF');
-    if (status === 'PRESENT') totalPresent += b.count;
-    else if (status === 'ABSENT') totalAbsent += b.count;
-    else if (status === 'OFF') totalOff += b.count;
+  safeBreakdown.forEach((b) => {
+    if (b.type === "LOGGED") return;
+    const status =
+      dateOverrides[b.date] || (b.type === "HELD" ? "PRESENT" : "OFF");
+    if (status === "PRESENT") totalPresent += b.count;
+    else if (status === "ABSENT") totalAbsent += b.count;
+    else if (status === "OFF") totalOff += b.count;
   });
 
-  const loggedItems = breakdown.filter(b => b.type === 'LOGGED');
-  const simulatedItems = breakdown.filter(b => b.type !== 'LOGGED');
+  const loggedItems = safeBreakdown.filter(b => b.type === 'LOGGED');
+  const simulatedItems = safeBreakdown.filter(b => b.type !== 'LOGGED');
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-white/40 dark:bg-black/60 backdrop-blur-md">
@@ -79,7 +81,7 @@ export const FutureClassesModal: React.FC<FutureClassesModalProps> = ({
 
         {/* List */}
         <div className="flex-1 overflow-y-auto p-4 space-y-6 bg-transparent">
-          {breakdown.length === 0 ? (
+          {safeBreakdown.length === 0 ? (
             <p className="text-center text-sm text-slate-500 dark:text-slate-400 py-8">No scheduled classes found.</p>
           ) : (
             <>

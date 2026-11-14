@@ -138,7 +138,13 @@ export const useAuthStore = create<AuthState>()(
       name: "attendx-auth",
       storage: createJSONStorage(() => capacitorStorage),
       onRehydrateStorage: () => (state) => {
-        if (state) state.setHasHydrated(true);
+        if (state) {
+          // Cold-start offline safety: preserve authenticated session if user profile and credentials exist in storage
+          if (state.user && (state.accessToken || state.refreshToken)) {
+            state.isAuthenticated = true;
+          }
+          state.setHasHydrated(true);
+        }
       },
     }
   )
@@ -147,11 +153,19 @@ export const useAuthStore = create<AuthState>()(
 export const isUserAuthenticated = (): boolean => {
   const storeState = useAuthStore.getState();
   if (storeState.isAuthenticated) return true;
+  if (storeState.user && (storeState.accessToken || storeState.refreshToken)) return true;
   try {
     const raw = localStorage.getItem("attendx-auth");
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (parsed?.state?.isAuthenticated || parsed?.state?.accessToken) return true;
+      if (
+        parsed?.state?.isAuthenticated ||
+        parsed?.state?.accessToken ||
+        parsed?.state?.refreshToken ||
+        (parsed?.state?.user && parsed?.state?.user?.id)
+      ) {
+        return true;
+      }
     }
   } catch {}
   return false;

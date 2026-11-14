@@ -146,6 +146,7 @@ export const useCacheStore = create<CacheState>()(
 
         if (url.includes('/attendance/')) {
           set((state) => ({
+            calendar: {},
             mutationVersion: (state.mutationVersion || 0) + 1,
           }));
           return;

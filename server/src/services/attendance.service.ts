@@ -431,69 +431,81 @@ export class AttendanceService {
       throw new Error("Forbidden: Subject does not belong to user");
     }
 
-    const targetDate = new Date(data.date);
+    const [year, month, day] = data.date.split("-").map(Number);
+    const targetDate = new Date(Date.UTC(year, month - 1, day));
+    const targetDateStart = new Date(targetDate.getTime() - 14 * 3600 * 1000);
+    const targetDateEnd = new Date(targetDate.getTime() + 14 * 3600 * 1000);
+    const targetDateKey = data.date;
     
     // Check if record exists
-    let existing = null;
-    if (data.attendanceId && !data.attendanceId.startsWith("extra-")) {
+    let existing: any = null;
+    if (data.attendanceId && !data.attendanceId.startsWith("extra-") && !data.attendanceId.startsWith("today-") && !data.attendanceId.startsWith("unmarked-")) {
       existing = await prisma.attendance.findUnique({ where: { id: data.attendanceId } });
     }
     if (!existing) {
-      existing = await prisma.attendance.findFirst({
+      const candidates = await prisma.attendance.findMany({
         where: {
           userId,
           subjectId: data.subjectId,
-          date: targetDate,
-          // When a specific slot/override ID is given, match it exactly.
-          // Previously the OR also matched null-slot records, which "stole" orphan records
-          // and left a second floating row behind — causing a phantom extra class in the calendar.
+          date: { gte: targetDateStart, lte: targetDateEnd },
           ...(data.timetableSlotId
             ? { timetableSlotId: data.timetableSlotId }
             : data.overrideId
               ? { overrideId: data.overrideId }
-              : { timetableSlotId: null, overrideId: null }),
+              : {}),
         },
       });
+      existing = candidates.find(a => AttendanceService.toDbLocalIso(a.date) === targetDateKey) || null;
+      if (!existing && !data.timetableSlotId && !data.overrideId) {
+        // Fallback: match any record for the same subject on this day
+        existing = candidates.find(a => AttendanceService.toDbLocalIso(a.date) === targetDateKey && !a.timetableSlotId && !a.overrideId) || null;
+      }
     }
 
     if (data.status === "not_marked" || data.status === "clear") {
       let deleteCount = 0;
       
       // 1. Delete by exact ID if provided
-      if (data.attendanceId && !data.attendanceId.startsWith("extra-")) {
+      if (existing) {
         const exactDelete = await prisma.attendance.deleteMany({
-          where: { id: data.attendanceId }
+          where: { id: existing.id }
         });
         deleteCount += exactDelete.count;
       }
 
-      // 2. Also sweep by exact slot/override matching for target date
-      const sweepWhere: any = {
-        userId,
-        subjectId: data.subjectId,
-        date: targetDate,
-      };
-
-      if (data.timetableSlotId) {
-        sweepWhere.timetableSlotId = data.timetableSlotId;
-      } else if (data.overrideId) {
-        sweepWhere.overrideId = data.overrideId;
-      } else {
-        sweepWhere.timetableSlotId = null;
-        sweepWhere.overrideId = null;
-      }
-
-      const sweepDelete = await prisma.attendance.deleteMany({
-        where: sweepWhere
+      // 2. Also sweep by exact slot/override matching across the day's timezone window
+      const sweepCandidates = await prisma.attendance.findMany({
+        where: {
+          userId,
+          subjectId: data.subjectId,
+          date: { gte: targetDateStart, lte: targetDateEnd },
+          ...(data.timetableSlotId
+            ? { timetableSlotId: data.timetableSlotId }
+            : data.overrideId
+              ? { overrideId: data.overrideId }
+              : {}),
+        },
       });
-      deleteCount += sweepDelete.count;
+
+      const idsToDelete = sweepCandidates
+        .filter(a => AttendanceService.toDbLocalIso(a.date) === targetDateKey)
+        .map(a => a.id);
+
+      if (idsToDelete.length > 0) {
+        const sweepDelete = await prisma.attendance.deleteMany({
+          where: { id: { in: idsToDelete } }
+        });
+        deleteCount += sweepDelete.count;
+      }
       
+      CacheService.invalidateUser(userId).catch(() => {});
       return { message: "Attendance cleared", count: deleteCount, status: "not_marked" };
     }
 
     if (existing) {
       CacheService.set(userId, "pref:has_attendance", true).catch(() => {});
       CacheService.del(userId, "onboarding:status").catch(() => {});
+      CacheService.invalidateUser(userId).catch(() => {});
       return prisma.attendance.update({
         where: { id: existing.id },
         data: {
@@ -508,6 +520,7 @@ export class AttendanceService {
     try {
       CacheService.set(userId, "pref:has_attendance", true).catch(() => {});
       CacheService.del(userId, "onboarding:status").catch(() => {});
+      CacheService.invalidateUser(userId).catch(() => {});
       return await prisma.attendance.create({
       data: {
         userId,
@@ -549,6 +562,9 @@ export class AttendanceService {
   }) {
     const [year, month, day] = data.date.split("-").map(Number);
     const targetDate = new Date(Date.UTC(year, month - 1, day));
+    const targetDateStart = new Date(targetDate.getTime() - 14 * 3600 * 1000);
+    const targetDateEnd = new Date(targetDate.getTime() + 14 * 3600 * 1000);
+    const targetDateKey = data.date;
     const dayOfWeek = targetDate.getUTCDay() === 0 ? 6 : targetDate.getUTCDay() - 1; // 0=Mon, 6=Sun in our db
 
     // 1. Get active semester if not provided
@@ -563,13 +579,24 @@ export class AttendanceService {
 
     // 2. Undo / Clear: delete all attendance records on this date for this user
     if (data.status === "clear" || data.status === "not_marked") {
-      const deleted = await prisma.attendance.deleteMany({
+      const dayRecords = await prisma.attendance.findMany({
         where: {
           userId,
-          date: targetDate,
+          date: { gte: targetDateStart, lte: targetDateEnd },
         },
       });
-      return { success: true, cleared: true, count: deleted.count, status: "not_marked" };
+      const idsToDelete = dayRecords
+        .filter(a => AttendanceService.toDbLocalIso(a.date) === targetDateKey)
+        .map(a => a.id);
+      let count = 0;
+      if (idsToDelete.length > 0) {
+        const deleted = await prisma.attendance.deleteMany({
+          where: { id: { in: idsToDelete } },
+        });
+        count = deleted.count;
+      }
+      CacheService.invalidateUser(userId).catch(() => {});
+      return { success: true, cleared: true, count, status: "not_marked" };
     }
 
     // 3. Status is "present", "absent", or "off"
@@ -594,52 +621,61 @@ export class AttendanceService {
       ? await prisma.timetableOverride.findMany({
           where: {
             semesterId,
-            date: targetDate,
+            date: { gte: targetDateStart, lte: targetDateEnd },
             overrideType: { not: "cancelled" },
           },
           include: { subject: true },
         })
       : [];
+    const activeOverrides = overrides.filter(o => AttendanceService.toDbLocalIso(o.date) === targetDateKey);
 
     // Find all cancellations on targetDate
     const cancellations = semesterId
       ? await prisma.timetableOverride.findMany({
           where: {
             semesterId,
-            date: targetDate,
+            date: { gte: targetDateStart, lte: targetDateEnd },
             overrideType: "cancelled",
           },
-          select: { originalSlotId: true },
+          select: { originalSlotId: true, date: true },
         })
       : [];
-    const cancelledSlotIds = new Set(cancellations.map(c => c.originalSlotId).filter(Boolean));
+    const activeCancellations = cancellations.filter(c => AttendanceService.toDbLocalIso(c.date) === targetDateKey);
+    const cancelledSlotIds = new Set(activeCancellations.map(c => c.originalSlotId).filter(Boolean));
 
     // Active slots excluding cancelled ones
     const activeSlots = slots.filter(s => !cancelledSlotIds.has(s.id));
 
-    // Existing attendance records on this date
-    const existingAttendance = await prisma.attendance.findMany({
+    // Existing attendance records on this date across the timezone window
+    const rawExistingAttendance = await prisma.attendance.findMany({
       where: {
         userId,
-        date: targetDate,
+        date: { gte: targetDateStart, lte: targetDateEnd },
       },
     });
+    const existingAttendance = rawExistingAttendance.filter(a => AttendanceService.toDbLocalIso(a.date) === targetDateKey);
 
     const results = [];
     const processedKeys = new Set<string>();
+    const handledExistingIds = new Set<string>();
 
     // A. Process active timetable slots
     for (const slot of activeSlots) {
       if (!slot.subjectId) continue;
       processedKeys.add(`slot:${slot.id}`);
 
-      const existing = existingAttendance.find(a => a.timetableSlotId === slot.id);
+      let existing = existingAttendance.find(a => !handledExistingIds.has(a.id) && a.timetableSlotId === slot.id);
+      if (!existing) {
+        existing = existingAttendance.find(a => !handledExistingIds.has(a.id) && a.subjectId === slot.subjectId);
+      }
       if (existing) {
+        handledExistingIds.add(existing.id);
         const updated = await prisma.attendance.update({
           where: { id: existing.id },
           data: {
             status: data.status as any,
             remarks: data.remarks || null,
+            ...(slot.id && !existing.timetableSlotId ? { timetableSlotId: slot.id } : {}),
           },
         });
         results.push(updated);
@@ -659,17 +695,22 @@ export class AttendanceService {
     }
 
     // B. Process overrides (extra classes on targetDate)
-    for (const override of overrides) {
+    for (const override of activeOverrides) {
       if (!override.subjectId) continue;
       processedKeys.add(`override:${override.id}`);
 
-      const existing = existingAttendance.find(a => a.overrideId === override.id);
+      let existing = existingAttendance.find(a => !handledExistingIds.has(a.id) && a.overrideId === override.id);
+      if (!existing) {
+        existing = existingAttendance.find(a => !handledExistingIds.has(a.id) && a.subjectId === override.subjectId);
+      }
       if (existing) {
+        handledExistingIds.add(existing.id);
         const updated = await prisma.attendance.update({
           where: { id: existing.id },
           data: {
             status: data.status as any,
             remarks: data.remarks || null,
+            ...(override.id && !existing.overrideId ? { overrideId: override.id } : {}),
           },
         });
         results.push(updated);
@@ -706,6 +747,7 @@ export class AttendanceService {
 
     CacheService.set(userId, "pref:has_attendance", true).catch(() => {});
     CacheService.del(userId, "onboarding:status").catch(() => {});
+    CacheService.invalidateUser(userId).catch(() => {});
 
     return { success: true, count: results.length, status: data.status };
   }
@@ -1400,47 +1442,47 @@ export class AttendanceService {
     }
 
     // Fetch regularSlots (including all archived timetable versions for the semester), globalEvents, overrides, and attendances in 1 parallel round-trip
-    const [regularSlots, overrides, attendances, allUserSemesterEvents] = await Promise.all([
-      CacheService.getOrSet(
-        userId,
-        `timetable:all_sem_slots_v2:${activeSemester.id}`,
-        () =>
-          prisma.timetableSlot.findMany({
-            where: {
-              semesterId: activeSemester.id,
-            },
-            include: { subject: true },
-          })
-      ),
-      prisma.timetableOverride.findMany({
-        where: {
-          semesterId: activeSemester.id,
-          date: { gte: startDate, lte: endDate },
-        },
-        include: { subject: true },
-      }),
-      prisma.attendance.findMany({
-        where: {
+    const [regularSlots, overrides, attendances, allUserSemesterEvents] =
+      await Promise.all([
+        CacheService.getOrSet(
           userId,
-          date: { gte: startDate, lte: endDate },
-          subject: { semesterId: activeSemester.id },
-        },
-        include: {
-          subject: true,
-        },
-      }),
-      CacheService.getOrSet(
-        userId,
-        `events:all:${activeSemester.id}`,
-        () =>
+          `timetable:all_sem_slots_v2:${activeSemester.id}`,
+          () =>
+            prisma.timetableSlot.findMany({
+              where: {
+                semesterId: activeSemester.id,
+              },
+              include: { subject: true },
+            }),
+        ),
+        prisma.timetableOverride.findMany({
+          where: {
+            semesterId: activeSemester.id,
+            date: { gte: startDate, lte: endDate },
+          },
+          include: { subject: true },
+        }),
+        prisma.attendance.findMany({
+          where: {
+            userId,
+            date: {
+              gte: new Date(startDate.getTime() - 24 * 3600 * 1000),
+              lte: new Date(endDate.getTime() + 24 * 3600 * 1000),
+            },
+          },
+          include: {
+            subject: true,
+          },
+        }),
+        CacheService.getOrSet(userId, `events:all:${activeSemester.id}`, () =>
           prisma.event.findMany({
             where: {
               userId,
               OR: [{ semesterId: activeSemester.id }, { semesterId: null }],
             },
-          })
-      ),
-    ]);
+          }),
+        ),
+      ]);
 
     const globalEvents = allUserSemesterEvents.filter((e) => new Date(e.date) <= endDate);
     const totalEventsCount = allUserSemesterEvents.filter((e) => e.semesterId === activeSemester.id).length;
@@ -1564,10 +1606,8 @@ export class AttendanceService {
         if (over && (over.overrideType === "holiday" || over.overrideType === "cancelled")) {
           // skip
         } else {
-          if (!isGlobalOff) {
-            expectedClasses++;
-            expectedSubjectIds.add(slot.subjectId);
-          }
+          expectedClasses++;
+          expectedSubjectIds.add(slot.subjectId);
         }
       }
       
@@ -1593,33 +1633,29 @@ export class AttendanceService {
           expectedClasses++;
         }
       }
+       // Get today's date string in IST (+5:30)
+      const now = new Date();
+      const istTime = new Date(now.getTime() + (5.5 * 60 * 60 * 1000));
+      const localTodayStr = istTime.toISOString().split("T")[0];
+
 
       let status = "off";
 
-      if (expectedClasses === 0) {
-        status = "off";
-        // Note: we still check unmapped attendances if someone manually marks an off day
-        const allDayAtts = attendances.filter(a => AttendanceService.toDbLocalIso(a.date) === dateKey);
-        if (allDayAtts.length > 0) {
-          let presentCount = 0;
-          let absentCount = 0;
-          for (const a of allDayAtts) {
-            if (a.status === "present" || a.status === "medical" || a.status === "od") presentCount++;
-            else if (a.status === "absent") absentCount++;
-          }
-          if (presentCount > 0 && absentCount === 0) status = "attended";
-          else if (absentCount > 0 && presentCount === 0) status = "missed";
-          else if (presentCount > 0 && absentCount > 0) status = "mixed";
-        }
-      } else if (dayAtts.length < expectedClasses) {
-        status = "not_marked";
-      } else {
+      const totalExpected = expectedClasses;
+      const isFullyMarked = totalExpected > 0 && dayAtts.length >= totalExpected;
+
+      if (isFullyMarked) {
         let presentCount = 0;
         let absentCount = 0;
         let offCount = 0;
 
         for (const a of dayAtts) {
-          if (a.status === "present" || a.status === "medical" || a.status === "od") presentCount++;
+          if (
+            a.status === "present" ||
+            a.status === "medical" ||
+            a.status === "od"
+          )
+            presentCount++;
           else if (a.status === "absent") absentCount++;
           else if (a.status === "off" || a.status === "cancelled") offCount++;
         }
@@ -1627,14 +1663,14 @@ export class AttendanceService {
         if (presentCount > 0 && absentCount === 0) status = "attended";
         else if (absentCount > 0 && presentCount === 0) status = "missed";
         else if (presentCount > 0 && absentCount > 0) status = "mixed";
-        else status = "off";
+        else if (offCount > 0) status = "off";
+        else status = dateKey > localTodayStr ? "future" : "not_marked";
+      } else if (totalExpected === 0) {
+        status = "off";
+      } else {
+        // Partially marked or unmarked: stays grey dot
+        status = dateKey > localTodayStr ? "future" : "not_marked";
       }
-
-      // Get today's date string in IST (+5:30)
-      const now = new Date();
-      // IST is UTC+5:30. We add 5.5 hours to the UTC timestamp.
-      const istTime = new Date(now.getTime() + (5.5 * 60 * 60 * 1000));
-      const localTodayStr = istTime.toISOString().split("T")[0];
       
       if (dateKey > localTodayStr) {
         if (status === "not_marked") status = "future";
@@ -1648,28 +1684,21 @@ export class AttendanceService {
       for (const slot of daySlots) {
         const over = dayOverrides.find(o => o.originalSlotId === slot.id);
         if (over && (over.overrideType === "holiday" || over.overrideType === "cancelled")) continue;
-        if (!isGlobalOff) {
           let att = dayAtts.find(a => a.timetableSlotId === slot.id);
-          if (!att) {
-            // Fallback: match any unhandled attendance for the same subject on this day.
-            // This covers the case where a slot was swapped/edited (new UUID created) but
-            // the existing attendance record still references the old slot UUID.
-            // Requiring !a.timetableSlotId here would leave those records orphaned and cause
-            // a duplicate "Not Marked" row + stale absent row in the calendar bottom sheet.
-            att = dayAtts.find(a => !handledAttendanceIds.has(a.id) && a.subjectId === slot.subjectId);
-          }
-          if (att) handledAttendanceIds.add(att.id);
-          dayAgenda.push({
-            id: att ? att.id : `unmarked-${slot.id}-${dateKey}`,
-            subjectId: slot.subjectId,
-            subjectName: slot.subject?.name || "Subject",
-            startTime: slot.startTime || "00:00",
-            endTime: slot.endTime || "00:00",
-            isExtra: false,
-            status: att ? att.status : (dateKey > localTodayStr ? "future" : "not_marked"),
-            remarks: att ? att.remarks : null,
-          });
+        if (!att) {
+          att = dayAtts.find(a => !handledAttendanceIds.has(a.id) && a.subjectId === slot.subjectId);
         }
+        if (att) handledAttendanceIds.add(att.id);
+        dayAgenda.push({
+          id: att ? att.id : `unmarked-${slot.id}-${dateKey}`,
+          subjectId: slot.subjectId,
+          subjectName: slot.subject?.name || "Subject",
+          startTime: slot.startTime || "00:00",
+          endTime: slot.endTime || "00:00",
+          status: att ? att.status : (dateKey > localTodayStr ? "future" : "not_marked"),
+          remarks: att ? att.remarks : null,
+          isExtra: false,
+        });
       }
 
       for (const o of extras) {

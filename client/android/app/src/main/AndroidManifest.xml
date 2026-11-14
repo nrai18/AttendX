@@ -151,4 +151,7 @@
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
     <!-- Allows re-scheduling the unmute alarm after a device reboot -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+        <!-- Allows prompting the user to install verified APK updates -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 </manifest>

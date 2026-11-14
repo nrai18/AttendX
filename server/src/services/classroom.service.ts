@@ -208,6 +208,7 @@ export class ClassroomService {
         ...ann,
         content: ann.body,
         importance: ann.isPinned ? "high" : "low",
+        attachmentUrls: ann.attachmentUrls || [],
       })),
       assignments,
     };
@@ -417,6 +418,7 @@ export class ClassroomService {
     title: string;
     content: string;
     importance?: "low" | "medium" | "high";
+    attachmentUrls?: string[];
   }) {
     const member = await prisma.classroomMember.findUnique({
       where: {
@@ -476,6 +478,7 @@ export class ClassroomService {
         category: "academic",
         isPinned: isHigh,
         createdById: userId,
+        attachmentUrls: Array.isArray(data.attachmentUrls) ? data.attachmentUrls : [],
       },
       include: {
         createdBy: {

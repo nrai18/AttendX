@@ -286,14 +286,14 @@ export const CalendarImportModal: React.FC<CalendarImportModalProps> = ({ isOpen
                     <div className={`relative overflow-hidden flex flex-col items-center justify-center p-7 border-2 border-dashed rounded-2xl transition-colors ${file ? 'border-primary/50 bg-primary/5' : 'border-border hover:border-primary/30 bg-muted/30'}`}>
                       {isParsing && (
                         <motion.div
-                          className="absolute left-0 right-0 h-1 bg-gradient-to-r from-transparent via-primary to-transparent opacity-80 pointer-events-none"
+                          className="absolute left-0 right-0 h-1 bg-linear-to-r from-transparent via-primary to-transparent opacity-80 pointer-events-none"
                           initial={{ top: "0%" }}
                           animate={{ top: ["0%", "96%", "0%"] }}
                           transition={{ duration: 2.2, repeat: Infinity, ease: "easeInOut" }}
                         />
                       )}
                       <Upload className={`w-10 h-10 mb-3 ${file ? 'text-primary' : 'text-muted-foreground'} ${isParsing ? 'animate-bounce' : ''}`} />
-                      <p className="text-sm font-medium text-foreground mb-1 truncate max-w-[280px]">
+                      <p className="text-sm font-medium text-foreground mb-1 truncate max-w-70">
                         {file ? file.name : "Click or drag to upload"}
                       </p>
                       <p className="text-xs text-muted-foreground">
@@ -394,7 +394,7 @@ export const CalendarImportModal: React.FC<CalendarImportModalProps> = ({ isOpen
                         <button
                           key={i}
                           onClick={() => handleGroupChange(i)}
-                          className={`flex-1 min-w-[100px] py-2 px-3 text-sm font-medium rounded-xl border transition-all ${
+                          className={`flex-1 min-w-25 py-2 px-3 text-sm font-medium rounded-xl border transition-all ${
                             selectedGroupIndex === i 
                               ? 'bg-primary text-primary-foreground border-primary shadow-sm' 
                               : 'bg-background border-border text-foreground hover:bg-muted/50 hover:border-border/80'
@@ -432,7 +432,7 @@ export const CalendarImportModal: React.FC<CalendarImportModalProps> = ({ isOpen
                                 : 'bg-background border-border hover:border-border/80 cursor-pointer'
                           }`}
                         >
-                          <div className={`mt-0.5 flex-shrink-0 w-5 h-5 rounded border flex items-center justify-center ${
+                          <div className={`mt-0.5 shrink-0 w-5 h-5 rounded border flex items-center justify-center ${
                             isMandatory 
                               ? 'bg-muted border-muted-foreground/30 text-muted-foreground'
                               : selectedIndices.has(idx) 

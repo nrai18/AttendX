@@ -16,9 +16,15 @@ import {
   GraduationCap,
   Users,
   Lock,
-  ShieldCheck
+  ShieldCheck,
+  Paperclip,
+  FileText,
+  Image as ImageIcon,
+  Download,
+  ExternalLink
 } from "lucide-react";
 import { ClassroomRosterModal } from "../../components/classroom/ClassroomRosterModal";
+import { downloadBlob } from "../../lib/download";
 import { api } from "../../lib/api";
 import { toast } from "sonner";
 import { SoundFX } from "../../utils/soundEffects";
@@ -28,6 +34,13 @@ import { useBackHandlerStore } from "../../stores/backHandlerStore";
 import { getClassroomBannerTheme } from "../../components/classroom/ClassroomBanner";
 import { useCacheStore } from "../../stores/cacheStore";
 
+export interface AnnouncementAttachment {
+  name: string;
+  type: string;
+  size: number;
+  url: string;
+}
+
 interface Announcement {
   id: string;
   title: string;
@@ -36,6 +49,7 @@ interface Announcement {
   importance?: "low" | "medium" | "high";
   isPinned?: boolean;
   category?: string;
+  attachmentUrls?: string[];
   createdAt: string;
   createdBy?: { name: string };
   author?: { name: string };
@@ -61,6 +75,99 @@ interface FeedData {
   announcements: Announcement[];
 }
 
+const formatFileSize = (bytes: number): string => {
+  if (!bytes || bytes <= 0) return "";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+};
+
+const compressImage = (file: File): Promise<AnnouncementAttachment> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        let width = img.width;
+        let height = img.height;
+        const maxDim = 1280;
+
+        if (width > maxDim || height > maxDim) {
+          if (width > height) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          } else {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+        }
+
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          resolve({
+            name: file.name,
+            type: file.type || "image/jpeg",
+            size: file.size,
+            url: e.target?.result as string,
+          });
+          return;
+        }
+
+        ctx.drawImage(img, 0, 0, width, height);
+        const compressedUrl = canvas.toDataURL("image/jpeg", 0.8);
+        const approxSize = Math.round((compressedUrl.length * 3) / 4);
+        resolve({
+          name: file.name.replace(/\.[^/.]+$/, "") + ".jpg",
+          type: "image/jpeg",
+          size: approxSize,
+          url: compressedUrl,
+        });
+      };
+      img.onerror = () => reject(new Error("Unable to decode image"));
+      img.src = e.target?.result as string;
+    };
+    reader.onerror = () => reject(new Error("Unable to read file"));
+    reader.readAsDataURL(file);
+  });
+};
+
+const readPdf = (file: File): Promise<AnnouncementAttachment> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      resolve({
+        name: file.name,
+        type: "application/pdf",
+        size: file.size,
+        url: e.target?.result as string,
+      });
+    };
+    reader.onerror = () => reject(new Error("Unable to read PDF"));
+    reader.readAsDataURL(file);
+  });
+};
+
+const parseAttachment = (raw: string): AnnouncementAttachment | null => {
+  if (!raw) return null;
+  if (raw.startsWith("{")) {
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return null;
+    }
+  }
+  const isPdf = raw.includes("application/pdf") || raw.toLowerCase().endsWith(".pdf");
+  return {
+    name: isPdf ? "Document.pdf" : "Attachment.jpg",
+    type: isPdf ? "application/pdf" : "image/jpeg",
+    size: 0,
+    url: raw,
+  };
+};
+
 export const ClassroomFeedPage = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -74,6 +181,10 @@ export const ClassroomFeedPage = () => {
   const [newTitle, setNewTitle] = useState("");
   const [newContent, setNewContent] = useState("");
   const [newImportance, setNewImportance] = useState<"low" | "medium" | "high">("low");
+  const [attachments, setAttachments] = useState<AnnouncementAttachment[]>([]);
+  const [isProcessingFile, setIsProcessingFile] = useState(false);
+  const fileInputRef = React.useRef<HTMLInputElement | null>(null);
+  const [previewAttachment, setPreviewAttachment] = useState<AnnouncementAttachment | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Classroom Management & Transition Modals
@@ -200,6 +311,10 @@ export const ClassroomFeedPage = () => {
   // Hardware back button support for open modals
   useEffect(() => {
     const unregister = useBackHandlerStore.getState().register(() => {
+      if (previewAttachment) {
+        setPreviewAttachment(null);
+        return true;
+      }
       if (showRosterModal) {
         setShowRosterModal(false);
         return true;
@@ -219,7 +334,91 @@ export const ClassroomFeedPage = () => {
       return false;
     });
     return unregister;
-  }, [showRosterModal, showCreateModal, showDeleteModal, showTransitionModal]);
+  }, [previewAttachment, showRosterModal, showCreateModal, showDeleteModal, showTransitionModal]);
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (attachments.length >= 2) {
+      toast.error("Maximum 2 attachments allowed per announcement");
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
+
+    const fileType = file.type.toLowerCase();
+    const fileName = file.name.toLowerCase();
+    const isImage = fileType.startsWith("image/") || /\.(jpg|jpeg|png|webp)$/i.test(fileName);
+    const isPdf = fileType === "application/pdf" || fileName.endsWith(".pdf");
+
+    if (!isImage && !isPdf) {
+      toast.error("Only image (JPG, PNG, WebP) and PDF files are allowed");
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
+
+    try {
+      setIsProcessingFile(true);
+      if (isPdf) {
+        // Enforce strict 1.5MB limit to prevent database storage bloat
+        if (file.size > 1.5 * 1024 * 1024) {
+          toast.error("PDF exceeds 1.5MB limit. Please compress before attaching.");
+          return;
+        }
+        const pdfAttachment = await readPdf(file);
+        setAttachments((prev) => [...prev, pdfAttachment]);
+        hapticLight();
+        toast.success(`Attached ${file.name}`);
+      } else {
+        // Image compression via Canvas (scales to max 1280px, 80% JPEG)
+        const imgAttachment = await compressImage(file);
+        if (imgAttachment.size > 2 * 1024 * 1024) {
+          toast.error("Compressed image exceeds size limit. Please choose a smaller image.");
+          return;
+        }
+        setAttachments((prev) => [...prev, imgAttachment]);
+        hapticLight();
+        toast.success(`Attached ${file.name}`);
+      }
+    } catch (err: any) {
+      console.error("Failed to process attachment:", err);
+      toast.error("Could not process file. Please try another.");
+    } finally {
+      setIsProcessingFile(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  const handleRemoveAttachment = (index: number) => {
+    hapticLight();
+    setAttachments((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleDownloadAttachment = async (att: AnnouncementAttachment) => {
+    try {
+      hapticLight();
+      let blob: Blob;
+      if (att.url.startsWith("data:")) {
+        const parts = att.url.split(",");
+        const mime = parts[0].match(/:(.*?);/)?.[1] || att.type || "application/octet-stream";
+        const bstr = atob(parts[1]);
+        let n = bstr.length;
+        const u8arr = new Uint8Array(n);
+        while (n--) {
+          u8arr[n] = bstr.charCodeAt(n);
+        }
+        blob = new Blob([u8arr], { type: mime });
+      } else {
+        const res = await fetch(att.url);
+        blob = await res.blob();
+      }
+      await downloadBlob(blob, att.name || "document");
+      toast.success(`Downloaded ${att.name || "file"}`);
+    } catch (err) {
+      console.error("Error downloading attachment:", err);
+      toast.error("Failed to download attachment");
+    }
+  };
 
   const handleCreateAnnouncement = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -230,6 +429,7 @@ export const ClassroomFeedPage = () => {
 
     try {
       setIsSubmitting(true);
+      const serializedAttachments = attachments.map((att) => JSON.stringify(att));
       const optimisticAnnouncement = {
         id: `temp-${Date.now()}`,
         title: newTitle.trim(),
@@ -237,6 +437,7 @@ export const ClassroomFeedPage = () => {
         body: newContent.trim(),
         importance: newImportance,
         isPinned: false,
+        attachmentUrls: serializedAttachments,
         createdAt: new Date().toISOString(),
         createdBy: { name: "You" },
         author: { name: "You" },
@@ -249,6 +450,7 @@ export const ClassroomFeedPage = () => {
         title: newTitle.trim(),
         content: newContent.trim(),
         importance: newImportance,
+        attachmentUrls: serializedAttachments,
       });
 
       hapticSuccess();
@@ -263,6 +465,7 @@ export const ClassroomFeedPage = () => {
       setNewTitle("");
       setNewContent("");
       setNewImportance("low");
+      setAttachments([]);
       fetchFeed();
     } catch (error: any) {
       toast.error(error.response?.data?.message || "Failed to post announcement");
@@ -598,6 +801,91 @@ export const ClassroomFeedPage = () => {
                     {contentText}
                   </p>
 
+                  {/* Broadcast Attachments (Images & PDFs) */}
+                  {(() => {
+                    const rawAttachments = ann.attachmentUrls || [];
+                    const parsed = rawAttachments
+                      .map(parseAttachment)
+                      .filter(Boolean) as AnnouncementAttachment[];
+
+                    if (parsed.length === 0) return null;
+
+                    return (
+                      <div className="mt-3.5 pt-3 border-t border-border/40 space-y-2">
+                        <div className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                          <Paperclip className="w-3 h-3 text-neutral-500 dark:text-neutral-400" />
+                          <span>Attached Documents ({parsed.length})</span>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                          {parsed.map((att, idx) => {
+                            const isPdf = att.type === "application/pdf" || att.name.toLowerCase().endsWith(".pdf");
+
+                            if (isPdf) {
+                              return (
+                                <div
+                                  key={idx}
+                                  className="flex items-center justify-between p-3 rounded-xl bg-neutral-50 dark:bg-white/[0.03] border border-neutral-200 dark:border-white/10 hover:border-neutral-300 dark:hover:border-white/20 transition-all text-xs group"
+                                >
+                                  <div className="flex items-center gap-2.5 min-w-0 pr-2">
+                                    <div className="w-8 h-8 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-500 flex items-center justify-center shrink-0">
+                                      <FileText className="w-4 h-4" />
+                                    </div>
+                                    <div className="min-w-0">
+                                      <p className="font-semibold text-foreground truncate text-xs" title={att.name}>
+                                        {att.name}
+                                      </p>
+                                      <p className="text-[10px] text-muted-foreground font-mono">
+                                        {formatFileSize(att.size) || "PDF Document"}
+                                      </p>
+                                    </div>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDownloadAttachment(att)}
+                                    title="Download PDF Document"
+                                    className="p-2 rounded-lg bg-white dark:bg-white/5 border border-neutral-200 dark:border-white/10 hover:bg-neutral-100 dark:hover:bg-white/10 text-neutral-700 dark:text-neutral-300 transition-all active:scale-95 shrink-0 cursor-pointer shadow-2xs"
+                                  >
+                                    <Download className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              );
+                            }
+
+                            // Compressed Image Attachment
+                            return (
+                              <div
+                                key={idx}
+                                className="relative rounded-xl overflow-hidden border border-neutral-200 dark:border-white/10 group bg-neutral-900 shadow-2xs"
+                              >
+                                <img
+                                  src={att.url}
+                                  alt={att.name}
+                                  onClick={() => setPreviewAttachment(att)}
+                                  className="w-full h-36 object-cover cursor-pointer transition-transform duration-300 group-hover:scale-105"
+                                  loading="lazy"
+                                />
+                                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent pointer-events-none" />
+                                <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between text-white pointer-events-auto">
+                                  <span className="text-[11px] font-medium truncate max-w-[70%] drop-shadow-xs">
+                                    {att.name}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDownloadAttachment(att)}
+                                    title="Download Image"
+                                    className="p-1.5 rounded-lg bg-black/60 hover:bg-black/80 text-white backdrop-blur-md transition-all active:scale-95 cursor-pointer border border-white/20"
+                                  >
+                                    <Download className="w-3 h-3" />
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })()}
+
                   <div className="mt-3.5 pt-3 border-t border-border/40 text-[11px] font-mono text-muted-foreground flex items-center justify-between">
                     <span className="flex items-center gap-1.5">
                       <User className="w-3 h-3 text-neutral-500 dark:text-neutral-400" />
@@ -704,6 +992,83 @@ export const ClassroomFeedPage = () => {
                   className="w-full bg-neutral-50 dark:bg-[#050507] border border-neutral-300 dark:border-white/15 rounded-xl p-3.5 text-foreground text-sm focus:border-neutral-900 dark:focus:border-white focus:ring-1 focus:ring-neutral-900/10 dark:focus:ring-white/10 outline-none transition-all resize-none"
                   required
                 />
+              </div>
+
+              {/* Attachments Section */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-mono uppercase tracking-wider text-muted-foreground">
+                    Attachments ({attachments.length}/2)
+                  </label>
+                  <span className="text-[10px] text-muted-foreground font-mono">
+                    PDF ≤ 1.5MB • Images auto-compressed
+                  </span>
+                </div>
+
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,application/pdf"
+                  onChange={handleFileSelect}
+                  className="hidden"
+                />
+
+                {attachments.length < 2 && (
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={isProcessingFile}
+                    className="w-full py-2.5 px-3.5 rounded-xl border border-dashed border-neutral-300 dark:border-white/20 hover:border-neutral-400 dark:hover:border-white/30 bg-neutral-50/50 dark:bg-white/[0.02] hover:bg-neutral-100/50 dark:hover:bg-white/[0.04] text-xs font-medium text-foreground transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-[0.99] disabled:opacity-50"
+                  >
+                    {isProcessingFile ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />
+                        <span>Compressing & reading file...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Paperclip className="w-3.5 h-3.5 text-neutral-500 dark:text-neutral-400" />
+                        <span>Attach Document or Image</span>
+                      </>
+                    )}
+                  </button>
+                )}
+
+                {attachments.length > 0 && (
+                  <div className="space-y-1.5 pt-1">
+                    {attachments.map((att, idx) => {
+                      const isPdf = att.type === "application/pdf" || att.name.toLowerCase().endsWith(".pdf");
+                      return (
+                        <div
+                          key={idx}
+                          className="flex items-center justify-between p-2.5 rounded-xl bg-neutral-100 dark:bg-white/5 border border-neutral-200 dark:border-white/10 text-xs"
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0 pr-2">
+                            <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${
+                              isPdf ? "bg-rose-500/10 text-rose-500" : "bg-sky-500/10 text-sky-500"
+                            }`}>
+                              {isPdf ? <FileText className="w-4 h-4" /> : <ImageIcon className="w-4 h-4" />}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="font-medium text-foreground truncate text-xs">{att.name}</p>
+                              <p className="text-[10px] text-muted-foreground font-mono">
+                                {formatFileSize(att.size)}
+                              </p>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveAttachment(idx)}
+                            className="p-1 rounded-lg hover:bg-neutral-200 dark:hover:bg-white/10 text-muted-foreground hover:text-rose-500 transition-colors"
+                            title="Remove attachment"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
               <div className="flex justify-end gap-2.5 pt-2">
@@ -893,6 +1258,52 @@ export const ClassroomFeedPage = () => {
             fetchFeed();
           }}
         />
+      )}
+
+      {/* Attachment Image Preview Lightbox */}
+      {previewAttachment && (
+        <div 
+          onClick={() => setPreviewAttachment(null)}
+          className="fixed inset-0 z-50 flex flex-col items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-in fade-in duration-200 cursor-pointer"
+        >
+          <div 
+            onClick={(e) => e.stopPropagation()} 
+            className="relative max-w-3xl w-full flex flex-col items-center gap-3 cursor-default"
+          >
+            {/* Top Toolbar */}
+            <div className="w-full flex items-center justify-between px-3 py-2 rounded-2xl bg-black/60 backdrop-blur-md border border-white/15 text-white">
+              <span className="text-xs font-mono truncate max-w-[60%]">
+                {previewAttachment.name}
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleDownloadAttachment(previewAttachment)}
+                  className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-medium transition-all inline-flex items-center gap-1.5 active:scale-95 cursor-pointer"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Download</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPreviewAttachment(null)}
+                  className="w-7 h-7 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition-all cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Lightbox Image */}
+            <div className="relative rounded-2xl overflow-hidden border border-white/10 shadow-2xl max-h-[80vh] flex items-center justify-center bg-black/40">
+              <img
+                src={previewAttachment.url}
+                alt={previewAttachment.name}
+                className="max-h-[80vh] w-auto max-w-full object-contain rounded-2xl select-none"
+              />
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

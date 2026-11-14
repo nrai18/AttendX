@@ -1448,30 +1448,39 @@ const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'vo
           /^(what('s|\s+is)\s+(my\s+)?)?(next|upcoming)\s+(event|events|holiday|vacation|break|exam|midsem|endsem|milestone|festival|fest)s?$/i.test(lower) ||
           /\b(when\s+is\s+(the\s+)?next\s+(event|holiday|exam|break|vacation)|tell\s+me\s+(the\s+)?next\s+upcoming\s+event|upcoming\s+events?|next\s+holiday)\b/i.test(lower) ||
           /\b(how\s+many\s+days\s+(until|to|left\s+for|before)|days\s+(left\s+)?(until|to|for)|countdown\s+to|time\s+until)\s+(the\s+)?(next\s+)?(exam|midsem|endsem|holiday|vacation|break|event)s?\b/i.test(lower) ||
-          /\b(when\s+(is|are)\s+(the\s+)?(next\s+)?(exam|midsem|endsem|test|quiz)s?)\b/i.test(lower)
+          /\b(when\s+(is|are|was|were)\s+(the\s+)?(next\s+)?(exam|midsem|endsem|test|quiz)s?)\b/i.test(lower) ||
+          /^(when\s+(is|are|was|were)|countdown\s+to)\s+(midsem|endsem)s?$/i.test(lower)
         ) {
           const todayMidnight = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
-          const upcoming = (currentEvents || [])
-            .map((e: any) => {
-              const rawStart = e.date || e.startDate;
-              const rawEnd = e.endDate || rawStart;
-              const dStr = rawStart ? String(rawStart).split("T")[0] : "";
-              const endStr = rawEnd ? String(rawEnd).split("T")[0] : dStr;
-              const startObj = dStr ? new Date(`${dStr}T00:00:00`) : new Date(NaN);
-              const endObj = endStr ? new Date(`${endStr}T23:59:59`) : startObj;
-              const daysUntil = !isNaN(startObj.getTime())
-                ? Math.max(0, Math.round((startObj.getTime() - todayMidnight) / (1000 * 60 * 60 * 24)))
-                : 999;
-              return {
-                title: e.title || e.name || "Academic Event",
-                date: dStr,
-                endDate: endStr !== dStr ? endStr : undefined,
-                daysUntil,
-                endMs: !isNaN(endObj.getTime()) ? endObj.getTime() : 0,
-                eventType: String(e.eventType || "other").toLowerCase(),
-              };
-            })
-            .filter((e: any) => e.date && e.endMs >= todayMidnight)
+          
+          const allParsedEvents = (currentEvents || []).map((e: any) => {
+            const rawStart = e.date || e.startDate;
+            const rawEnd = e.endDate || rawStart;
+            const dStr = rawStart ? String(rawStart).split("T")[0] : "";
+            const endStr = rawEnd ? String(rawEnd).split("T")[0] : dStr;
+            const startObj = dStr ? new Date(`${dStr}T00:00:00`) : new Date(NaN);
+            const endObj = endStr ? new Date(`${endStr}T23:59:59`) : startObj;
+            const daysUntil = !isNaN(startObj.getTime())
+              ? Math.round((startObj.getTime() - todayMidnight) / (1000 * 60 * 60 * 24))
+              : 999;
+            const daysAgo = !isNaN(endObj.getTime()) && endObj.getTime() < todayMidnight
+              ? Math.max(1, Math.round((todayMidnight - endObj.getTime()) / (1000 * 60 * 60 * 24)))
+              : 0;
+            return {
+              title: e.title || e.name || "Academic Event",
+              date: dStr,
+              endDate: endStr !== dStr ? endStr : undefined,
+              daysUntil,
+              daysAgo,
+              isPast: !isNaN(endObj.getTime()) && endObj.getTime() < todayMidnight,
+              endMs: !isNaN(endObj.getTime()) ? endObj.getTime() : 0,
+              startMs: !isNaN(startObj.getTime()) ? startObj.getTime() : 0,
+              eventType: String(e.eventType || "other").toLowerCase(),
+            };
+          }).filter((e: any) => Boolean(e.date));
+
+          const upcoming = allParsedEvents
+            .filter((e: any) => !e.isPast)
             .sort((a: any, b: any) => a.date.localeCompare(b.date));
 
           const isExamEvent = (e: any): boolean => {
@@ -1490,54 +1499,192 @@ const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'vo
           const wantsHoliday = /\b(holidays?|fests?|festivals?)\b/i.test(lower);
           const wantsExam = (/\b(exams?|tests?|quiz(?:zes)?|assessments?)\b/i.test(lower) || wantsEndsem || wantsMidsem) && !wantsBreak && !wantsHoliday;
 
-          let categoryLabel = "event";
-          let filtered: any[] = [];
-
-          if (wantsEndsem) {
-            categoryLabel = "end-semester exam";
-            filtered = upcoming.filter((e: any) => {
-              const type = String(e.eventType || "").toLowerCase();
-              const title = String(e.title || "").toLowerCase();
-              return (type.includes("endsem") || /\bend\s*sem(ester)?\b/i.test(title)) && !type.includes("break") && !title.includes("break") && !type.includes("holiday");
-            });
-          } else if (wantsMidsem) {
-            categoryLabel = "mid-semester exam";
-            filtered = upcoming.filter((e: any) => {
+          if (wantsMidsem) {
+            const upcomingMidsems = upcoming.filter((e: any) => {
               const type = String(e.eventType || "").toLowerCase();
               const title = String(e.title || "").toLowerCase();
               return (type.includes("midsem") || /\bmid\s*sem(ester)?\b/i.test(title)) && !type.includes("break") && !title.includes("break") && !type.includes("holiday");
             });
-          } else if (wantsBreak) {
-            categoryLabel = "break / vacation";
-            filtered = upcoming.filter((e: any) => {
+
+            if (upcomingMidsems.length > 0) {
+              const top = upcomingMidsems[0];
+              const countdownText = top.daysUntil === 0 ? "today" : top.daysUntil === 1 ? "tomorrow (in 1 day)" : `in **${top.daysUntil} days**`;
+              const moreList = upcomingMidsems
+                .slice(1, 4)
+                .map((e: any) => `• **${e.title}** — ${e.date}${e.endDate ? ` to ${e.endDate}` : ""} (${e.daysUntil === 0 ? "Today" : `in ${e.daysUntil}d`})`)
+                .join("\n");
+              return {
+                reply: `Your next upcoming mid-semester exam is **${top.title}** on **${top.date}${top.endDate ? ` – ${top.endDate}` : ""}** (${countdownText}).${moreList ? `\n\n**Following up:**\n${moreList}` : ""}`,
+              };
+            }
+
+            // Check if midsem exams already occurred in the past
+            const pastMidsems = allParsedEvents
+              .filter((e: any) => {
+                const type = String(e.eventType || "").toLowerCase();
+                const title = String(e.title || "").toLowerCase();
+                return e.isPast && (type.includes("midsem") || /\bmid\s*sem(ester)?\b/i.test(title)) && !type.includes("break") && !title.includes("break") && !type.includes("holiday");
+              })
+              .sort((a: any, b: any) => b.date.localeCompare(a.date));
+
+            if (pastMidsems.length > 0) {
+              const past = pastMidsems[0];
+              const daysAgoText = past.daysAgo === 0 ? "today" : past.daysAgo === 1 ? "yesterday (1 day ago)" : `${past.daysAgo} days ago`;
+              return {
+                reply: `The **${past.title}** for this semester has already concluded. It took place on **${past.date}${past.endDate ? ` – ${past.endDate}` : ""}** (${daysAgoText}).`,
+              };
+            }
+
+            return {
+              reply: "You don't have any mid-semester exams recorded in your active semester calendar.",
+            };
+          }
+
+          if (wantsEndsem) {
+            const upcomingEndsems = upcoming.filter((e: any) => {
+              const type = String(e.eventType || "").toLowerCase();
+              const title = String(e.title || "").toLowerCase();
+              return (type.includes("endsem") || /\bend\s*sem(ester)?\b/i.test(title)) && !type.includes("break") && !title.includes("break") && !type.includes("holiday");
+            });
+
+            if (upcomingEndsems.length > 0) {
+              const top = upcomingEndsems[0];
+              const countdownText = top.daysUntil === 0 ? "today" : top.daysUntil === 1 ? "tomorrow (in 1 day)" : `in **${top.daysUntil} days**`;
+              const moreList = upcomingEndsems
+                .slice(1, 4)
+                .map((e: any) => `• **${e.title}** — ${e.date}${e.endDate ? ` to ${e.endDate}` : ""} (${e.daysUntil === 0 ? "Today" : `in ${e.daysUntil}d`})`)
+                .join("\n");
+              return {
+                reply: `Your next upcoming end-semester exam is **${top.title}** on **${top.date}${top.endDate ? ` – ${top.endDate}` : ""}** (${countdownText}).${moreList ? `\n\n**Following up:**\n${moreList}` : ""}`,
+              };
+            }
+
+            const pastEndsems = allParsedEvents
+              .filter((e: any) => {
+                const type = String(e.eventType || "").toLowerCase();
+                const title = String(e.title || "").toLowerCase();
+                return e.isPast && (type.includes("endsem") || /\bend\s*sem(ester)?\b/i.test(title)) && !type.includes("break") && !title.includes("break") && !type.includes("holiday");
+              })
+              .sort((a: any, b: any) => b.date.localeCompare(a.date));
+
+            if (pastEndsems.length > 0) {
+              const past = pastEndsems[0];
+              const daysAgoText = past.daysAgo === 0 ? "today" : past.daysAgo === 1 ? "yesterday (1 day ago)" : `${past.daysAgo} days ago`;
+              return {
+                reply: `The **${past.title}** for this semester has already concluded. It took place on **${past.date}${past.endDate ? ` – ${past.endDate}` : ""}** (${daysAgoText}).`,
+              };
+            }
+
+            return {
+              reply: "You don't have any end-semester exams recorded in your active semester calendar.",
+            };
+          }
+
+          if (wantsBreak) {
+            const upcomingBreaks = upcoming.filter((e: any) => {
               const type = String(e.eventType || "").toLowerCase();
               const title = String(e.title || "").toLowerCase();
               return type.includes("vacation") || type.includes("break") || /\b(break|vacation)\b/i.test(title);
             });
-          } else if (wantsExam) {
-            categoryLabel = "exam";
-            filtered = upcoming.filter(isExamEvent);
-          } else if (wantsHoliday) {
-            categoryLabel = "holiday";
-            filtered = upcoming.filter((e: any) => {
+
+            if (upcomingBreaks.length > 0) {
+              const top = upcomingBreaks[0];
+              const countdownText = top.daysUntil === 0 ? "today" : top.daysUntil === 1 ? "tomorrow (in 1 day)" : `in **${top.daysUntil} days**`;
+              const moreList = upcomingBreaks
+                .slice(1, 4)
+                .map((e: any) => `• **${e.title}** — ${e.date}${e.endDate ? ` to ${e.endDate}` : ""} (${e.daysUntil === 0 ? "Today" : `in ${e.daysUntil}d`})`)
+                .join("\n");
+              return {
+                reply: `Your next upcoming break / vacation is **${top.title}** on **${top.date}${top.endDate ? ` – ${top.endDate}` : ""}** (${countdownText}).${moreList ? `\n\n**Following up:**\n${moreList}` : ""}`,
+              };
+            }
+
+            const pastBreaks = allParsedEvents
+              .filter((e: any) => {
+                const type = String(e.eventType || "").toLowerCase();
+                const title = String(e.title || "").toLowerCase();
+                return e.isPast && (type.includes("vacation") || type.includes("break") || /\b(break|vacation)\b/i.test(title));
+              })
+              .sort((a: any, b: any) => b.date.localeCompare(a.date));
+
+            if (pastBreaks.length > 0) {
+              const past = pastBreaks[0];
+              const daysAgoText = past.daysAgo === 0 ? "today" : past.daysAgo === 1 ? "yesterday (1 day ago)" : `${past.daysAgo} days ago`;
+              return {
+                reply: `The **${past.title}** has already ended. It ran from **${past.date}${past.endDate ? ` to ${past.endDate}` : ""}** (${daysAgoText}).`,
+              };
+            }
+
+            return {
+              reply: "You don't have any breaks or vacations recorded in your active semester calendar.",
+            };
+          }
+
+          if (wantsExam) {
+            const upcomingExams = upcoming.filter(isExamEvent);
+
+            if (upcomingExams.length > 0) {
+              const top = upcomingExams[0];
+              const countdownText = top.daysUntil === 0 ? "today" : top.daysUntil === 1 ? "tomorrow (in 1 day)" : `in **${top.daysUntil} days**`;
+              const moreList = upcomingExams
+                .slice(1, 4)
+                .map((e: any) => `• **${e.title}** — ${e.date}${e.endDate ? ` to ${e.endDate}` : ""} (${e.daysUntil === 0 ? "Today" : `in ${e.daysUntil}d`})`)
+                .join("\n");
+              return {
+                reply: `Your next upcoming exam is **${top.title}** on **${top.date}${top.endDate ? ` – ${top.endDate}` : ""}** (${countdownText}).${moreList ? `\n\n**Following up:**\n${moreList}` : ""}`,
+              };
+            }
+
+            const pastExams = allParsedEvents.filter((e: any) => e.isPast && isExamEvent(e)).sort((a: any, b: any) => b.date.localeCompare(a.date));
+            if (pastExams.length > 0) {
+              const past = pastExams[0];
+              const daysAgoText = past.daysAgo === 0 ? "today" : past.daysAgo === 1 ? "yesterday (1 day ago)" : `${past.daysAgo} days ago`;
+              return {
+                reply: `All examinations and assessments for this term have concluded. The last conducted exam was **${past.title}** on **${past.date}${past.endDate ? ` – ${past.endDate}` : ""}** (${daysAgoText}).`,
+              };
+            }
+
+            return {
+              reply: "You don't have any upcoming exams or tests recorded in your active semester calendar.",
+            };
+          }
+
+          if (wantsHoliday) {
+            const upcomingHolidays = upcoming.filter((e: any) => {
               const type = String(e.eventType || "").toLowerCase();
               const title = String(e.title || "").toLowerCase();
               return type.includes("holiday") || /\b(holiday|diwali|puja|jayanti|chaturdasi|duj|christmas)\b/i.test(title);
             });
+
+            if (upcomingHolidays.length > 0) {
+              const top = upcomingHolidays[0];
+              const countdownText = top.daysUntil === 0 ? "today" : top.daysUntil === 1 ? "tomorrow (in 1 day)" : `in **${top.daysUntil} days**`;
+              const moreList = upcomingHolidays
+                .slice(1, 4)
+                .map((e: any) => `• **${e.title}** — ${e.date}${e.endDate ? ` to ${e.endDate}` : ""} (${e.daysUntil === 0 ? "Today" : `in ${e.daysUntil}d`})`)
+                .join("\n");
+              return {
+                reply: `Your next upcoming holiday is **${top.title}** on **${top.date}${top.endDate ? ` – ${top.endDate}` : ""}** (${countdownText}).${moreList ? `\n\n**Following up:**\n${moreList}` : ""}`,
+              };
+            }
+
+            return {
+              reply: "You don't have any more upcoming holidays recorded in your active semester calendar.",
+            };
           }
 
-          const list = filtered.length > 0 ? filtered : upcoming;
-          if (list.length === 0) {
-            return { reply: `You don't have any upcoming ${categoryLabel}s recorded in your active semester calendar.` };
+          // General next event
+          if (upcoming.length === 0) {
+            return { reply: "You don't have any upcoming events recorded in your active semester calendar." };
           }
-          const top = list[0];
+          const top = upcoming[0];
           const countdownText = top.daysUntil === 0 ? "today" : top.daysUntil === 1 ? "tomorrow (in 1 day)" : `in **${top.daysUntil} days**`;
-          const moreList = list
+          const moreList = upcoming
             .slice(1, 4)
             .map((e: any) => `• **${e.title}** — ${e.date}${e.endDate ? ` to ${e.endDate}` : ""} (${e.daysUntil === 0 ? "Today" : `in ${e.daysUntil}d`})`)
             .join("\n");
           return {
-            reply: `Your next upcoming ${categoryLabel} is **${top.title}** on **${top.date}${top.endDate ? ` – ${top.endDate}` : ""}** (${countdownText}).${moreList ? `\n\n**Following up:**\n${moreList}` : ""}`,
+            reply: `Your next upcoming event is **${top.title}** on **${top.date}${top.endDate ? ` – ${top.endDate}` : ""}** (${countdownText}).${moreList ? `\n\n**Following up:**\n${moreList}` : ""}`,
           };
         }
 

@@ -38,7 +38,7 @@ const inFlightGetRequests = new Map<string, Promise<any>>();
 const originalGet = api.get.bind(api);
 (api as any).get = function <T = any, R = AxiosResponse<T>, D = any>(url: string, config?: AxiosRequestConfig<D>): Promise<R> {
   if (config?.responseType === 'blob') {
-    return originalGet(url, config);
+    return originalGet(url, config) as Promise<R>;
   }
   const paramsCopy = { ...(config?.params || {}) };
   delete paramsCopy._t;
@@ -54,7 +54,7 @@ const originalGet = api.get.bind(api);
     // Shared network request without single-caller signal so concurrent listeners share the promise
     const sharedConfig = { ...config };
     delete sharedConfig.signal;
-    basePromise = originalGet<T, R, D>(url, sharedConfig)
+    basePromise = (originalGet(url, sharedConfig) as Promise<R>)
       .finally(() => {
         setTimeout(() => {
           inFlightGetRequests.delete(cacheKey);
@@ -177,9 +177,7 @@ export function detectRealHostOS(): string {
 api.interceptors.request.use(
   async (config) => {
     if (typeof navigator !== "undefined" && !navigator.onLine) {
-      if (config.method?.toLowerCase() === 'get' || config.url?.includes('/transfer/')) {
-        return Promise.reject(new axios.AxiosError("Network Error: Device is offline", "ERR_NETWORK", config));
-      }
+      return Promise.reject(new axios.AxiosError("Network Error: Device is offline", "ERR_NETWORK", config));
     }
 
     // Global cache buster for GET requests to bypass buggy WebView 304 caches
@@ -255,12 +253,17 @@ api.interceptors.request.use(
 
     let token = useAuthStore.getState().accessToken;
 
-    if (token && isTokenExpired(token)) {
-      if (typeof navigator !== 'undefined' && !navigator.onLine) {
-        // When offline, DO NOT attempt /auth/refresh (which deadlocks offline requests); bypass refresh and let cached/offline requests proceed
+    const isOffline = typeof navigator !== 'undefined' && !navigator.onLine;
+
+    if (isOffline) {
+      // When offline, DO NOT attempt /auth/refresh (which deadlocks or fails offline requests); bypass refresh and let cached/offline requests proceed
+      if (token) {
         config.headers.Authorization = `Bearer ${token}`;
-        return config;
       }
+      return config;
+    }
+
+    if (token && isTokenExpired(token)) {
       if (!isRefreshing) {
         isRefreshing = true;
         try {
@@ -274,7 +277,8 @@ api.interceptors.request.use(
         } catch (error: any) {
           processQueue(error, null);
           const isNetworkError = !error.response || error.response.status === 0 || error.response.status >= 500 || error.code === 'ECONNABORTED' || error.message === 'Network Error' || (error.message && error.message.toLowerCase().includes('timeout'));
-          if (!isNetworkError) {
+          const isOfflineNow = typeof navigator !== 'undefined' && !navigator.onLine;
+          if (!isNetworkError && !isOfflineNow) {
             useAuthStore.getState().logout();
             token = null;
           }
@@ -350,6 +354,11 @@ api.interceptors.response.use(
       !originalRequest.url?.includes("/auth/login") && !originalRequest.url?.includes("/auth/google") &&
       !originalRequest.url?.includes("/auth/register") && !originalRequest.url?.includes("/auth/refresh")
     ) {
+      if (typeof navigator !== 'undefined' && !navigator.onLine) {
+        // If offline, do NOT attempt network token refresh or trigger session logout
+        return Promise.reject(error);
+      }
+
       if (isRefreshing) {
         return new Promise((resolve, reject) => {
           failedQueue.push({
@@ -384,13 +393,15 @@ api.interceptors.response.use(
         if (refreshToken) useAuthStore.getState().setRefreshToken(refreshToken);
 
         processQueue(null, accessToken);
+        useOfflineStore.getState().flushQueue();
         originalRequest.headers.Authorization = `Bearer ${accessToken}`;
         return api(originalRequest);
       
       } catch (refreshError: any) {
         processQueue(refreshError, null);
         const isNetworkError = !refreshError.response || refreshError.response.status === 0 || refreshError.response.status >= 500 || refreshError.code === 'ECONNABORTED' || refreshError.message === 'Network Error' || (refreshError.message && refreshError.message.toLowerCase().includes('timeout'));
-        if (!isNetworkError) {
+        const isOfflineNow = typeof navigator !== 'undefined' && !navigator.onLine;
+        if (!isNetworkError && !isOfflineNow) {
           useAuthStore.getState().logout();
         }
         return Promise.reject(refreshError);
@@ -407,7 +418,7 @@ api.interceptors.response.use(
       error.code === "ERR_NETWORK" ||
       error.code === "ECONNABORTED" ||
       (typeof navigator !== "undefined" && !navigator.onLine) ||
-      [502, 503, 504].includes(error.response?.status);
+      [500, 502, 503, 504].includes(error.response?.status);
 
     if (isNetworkOrOfflineError) {
       // Offline mutation interceptor
@@ -429,10 +440,10 @@ api.interceptors.response.use(
           } catch (e) {}
         }
 
-        // Determine temporary entity ID for re-keying and optimistic UI tracking
+        // Determine temporary entity ID for re-keying and optimistic UI tracking (supports both temp- and temp_)
         let tempId = parsedData?.tempId || parsedData?.id;
-        if (!tempId || typeof tempId !== "string" || !tempId.startsWith("temp-")) {
-          const urlTempMatch = originalRequest.url?.match(/(temp-[a-zA-Z0-9_-]+)/);
+        if (!tempId || typeof tempId !== "string" || !/^temp[-_]/.test(tempId)) {
+          const urlTempMatch = originalRequest.url?.match(/(temp[-_][a-zA-Z0-9_-]+)/);
           if (urlTempMatch) {
             tempId = urlTempMatch[1];
           } else {

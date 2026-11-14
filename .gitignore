@@ -34,6 +34,8 @@ yarn-error.log*
 client/android/app/build/
 client/android/build/
 client/android/.gradle/
+client/android/.kotlin/
+.kotlin/
 client/android/captures/
 *.apk
 *.aab
@@ -64,5 +66,12 @@ briefing*
 handoff*
 progress*
 .agents/
+video/.agents/
+**/.claude/
+**/skills/
+**/skills-lock.json
+skills-lock.json
+video/test.mp4
+video/output_temp.mp4
 
 COMMANDS.md
