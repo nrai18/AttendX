@@ -151,16 +151,31 @@ export class OfflineZipService {
         ? cacheState.semester.events
         : (attendanceState.events || []);
 
-    // Flatten attendance logs from cache
+    // Flatten attendance logs from cache (handling both raw arrays and { logs, subjects } cache entries)
     let logs: any[] = [];
     if (cacheState.all_logs && Array.isArray(cacheState.all_logs)) {
       logs = cacheState.all_logs;
     } else if (cacheState.subject_logs) {
-      const flattened: any[] = [];
-      Object.values(cacheState.subject_logs).forEach((subLogs: any) => {
-        if (Array.isArray(subLogs)) flattened.push(...subLogs);
-      });
-      logs = flattened;
+      const allEntry = cacheState.subject_logs["all"] || cacheState.subject_logs["overall"];
+      if (Array.isArray(allEntry)) {
+        logs = allEntry;
+      } else if (Array.isArray(allEntry?.logs)) {
+        logs = allEntry.logs;
+      } else {
+        const seenLogKeys = new Set<string>();
+        const flattened: any[] = [];
+        Object.values(cacheState.subject_logs).forEach((subEntry: any) => {
+          const arr = Array.isArray(subEntry) ? subEntry : (Array.isArray(subEntry?.logs) ? subEntry.logs : []);
+          for (const item of arr) {
+            const k = item?.id || `${item?.date}_${item?.subjectId}_${item?.startTime || ""}`;
+            if (!seenLogKeys.has(k)) {
+              seenLogKeys.add(k);
+              flattened.push(item);
+            }
+          }
+        });
+        logs = flattened;
+      }
     }
 
     // 1. subject_stats.csv
@@ -265,13 +280,14 @@ export class OfflineZipService {
     ];
 
     const logRows = logs.map((log: any, idx: number) => {
-      const subName = log.subject?.name || subjects.find((s: any) => s.id === log.subjectId)?.name || "Class";
+      const subName = log.subjectName || log.subject?.name || subjects.find((s: any) => s.id === log.subjectId)?.name || "Class";
       let attStatus = "Attended";
-      if (log.status === "absent") attStatus = "Missed";
-      else if (log.status === "off") attStatus = "Off";
-      else if (log.status === "cancelled") attStatus = "Cancelled";
-      else if (log.status === "medical") attStatus = "Medical";
-      else if (log.status === "od") attStatus = "OD";
+      const st = String(log.status || "").toLowerCase();
+      if (st === "absent" || st === "missed") attStatus = "Missed";
+      else if (st === "off") attStatus = "Off";
+      else if (st === "cancelled") attStatus = "Cancelled";
+      else if (st === "medical") attStatus = "Medical";
+      else if (st === "od") attStatus = "OD";
 
       const slotTimeStr = log.startTime && log.endTime ? `${normalizeTimeStr(log.startTime)} - ${normalizeTimeStr(log.endTime)}` : "";
 
@@ -418,7 +434,21 @@ export class OfflineZipService {
       }
     }
 
-    const activeSemesterId = `restored_sem_${Date.now()}`;
+    const existingAttSem = useAttendanceStore.getState().activeSemesterId;
+    const existingCacheSem = useCacheStore.getState().semester?.activeSemester?.id;
+    const isRealSem = (id?: string | null) =>
+      Boolean(
+        id &&
+          !id.startsWith("temp") &&
+          !id.startsWith("restored_") &&
+          id !== "active-semester",
+      );
+    const resolvedRealSemId = isRealSem(existingAttSem)
+      ? existingAttSem!
+      : isRealSem(existingCacheSem)
+        ? existingCacheSem!
+        : null;
+    const activeSemesterId = resolvedRealSemId || `temp-sem-${Date.now()}`;
     const restoredSemester = {
       id: activeSemesterId,
       name: semesterMeta.name,
@@ -599,17 +629,40 @@ export class OfflineZipService {
     });
     useCacheStore.getState().setCache("subject_logs", subjectLogsMap);
 
-    // 8. Queue an offline background sync payload so when online, backend DB imports it
+    // 8. Queue an offline background sync payload aligned with TimetableService.importTimetable schema
     try {
-      useOfflineStore.getState().enqueue({
+      const queueStore = useOfflineStore.getState();
+      if (!resolvedRealSemId) {
+        queueStore.enqueue({
+          method: "POST",
+          url: "/semesters",
+          tempId: activeSemesterId,
+          data: {
+            tempId: activeSemesterId,
+            name: restoredSemester.name,
+            startDate: restoredSemester.startDate,
+            endDate: restoredSemester.endDate,
+            isActive: true,
+          },
+        });
+      }
+      queueStore.enqueue({
         method: "POST",
         url: "/timetable/import/" + activeSemesterId,
         data: {
           semester: restoredSemester,
           subjects: restoredSubjects,
-          timetable: restoredSlots,
-          logs: restoredLogs,
-          events: restoredEvents,
+          slots: restoredSlots.map((sl) => ({
+            ...sl,
+            subjectName: sl.subject?.name,
+            subjectCode: sl.subject?.code,
+          })),
+          lectureLogs: restoredLogs.map((lg) => ({
+            ...lg,
+            subjectName: lg.subject?.name,
+            subjectCode: lg.subject?.code,
+          })),
+          academicCalendar: restoredEvents,
         },
       });
     } catch (e) {}

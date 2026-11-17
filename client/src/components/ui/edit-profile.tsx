@@ -344,6 +344,10 @@ export const EditProfile: React.FC<EditProfileProps> = ({ isOpen, onClose, initi
                                 <button
                                   type="button"
                                   onClick={async () => {
+                                    if (typeof navigator !== "undefined" && !navigator.onLine) {
+                                      toast.error("Internet connection required to update password.");
+                                      return;
+                                    }
                                     if (!passwords.newPassword || passwords.newPassword.length < 6) {
                                       toast.error("Password must be at least 6 characters");
                                       return;
@@ -352,10 +356,14 @@ export const EditProfile: React.FC<EditProfileProps> = ({ isOpen, onClose, initi
                                       toast.error("Current password is required");
                                       return;
                                     }
-                                    await onSave(formData, passwords);
-                                    setPasswords({ oldPassword: '', newPassword: '' });
-                                    setShowPasswordSection(false);
-                                    toast.success(initialData.hasPassword ? 'Password updated successfully' : 'Password created successfully');
+                                    try {
+                                      await onSave(formData, passwords);
+                                      setPasswords({ oldPassword: '', newPassword: '' });
+                                      setShowPasswordSection(false);
+                                      toast.success(initialData.hasPassword ? 'Password updated successfully' : 'Password created successfully');
+                                    } catch {
+                                      // Parent onSave already surfaced the specific error toast
+                                    }
                                   }}
                                   className="px-6 py-2.5 rounded-2xl text-sm font-bold font-mono bg-[#4A1711] text-[#E6E1D6] hover:bg-[#4A1711]/90 dark:bg-[#E6E1D6] dark:text-[#0F0A09] dark:hover:bg-[#E6E1D6]/90 transition-colors"
                                 >
@@ -373,10 +381,18 @@ export const EditProfile: React.FC<EditProfileProps> = ({ isOpen, onClose, initi
                     <button
                       type="button"
                       onClick={() => {
+                        if (typeof navigator !== "undefined" && !navigator.onLine) {
+                          toast.error("Internet connection required to delete your account.");
+                          return;
+                        }
                         toast("Are you absolutely sure you want to permanently delete your account?", {
                           action: {
                             label: "Delete Permanently",
                             onClick: async () => {
+                              if (typeof navigator !== "undefined" && !navigator.onLine) {
+                                toast.error("Internet connection required to delete your account.");
+                                return;
+                              }
                               try {
                                 await api.delete("/users/me");
                                 useAuthStore.getState().logout(true);

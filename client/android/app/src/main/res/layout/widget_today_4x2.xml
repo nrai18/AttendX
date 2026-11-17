@@ -387,23 +387,30 @@
         android:visibility="gone">
 
         <TextView
+            android:id="@+id/text_empty_emoji"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="🎉"
             android:textSize="22sp" />
 
         <TextView
+            android:id="@+id/text_empty_title"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp"
+            android:ellipsize="end"
+            android:maxLines="1"
             android:text="No Classes Scheduled Today"
             android:textColor="#F8FAFC"
             android:textSize="12sp"
             android:textStyle="bold" />
 
         <TextView
+            android:id="@+id/text_empty_subtitle"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxLines="1"
             android:text="Tap to review calendar or manage schedule"
             android:textColor="#64748B"
             android:textSize="10sp" />

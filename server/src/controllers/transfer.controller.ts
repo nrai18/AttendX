@@ -195,6 +195,8 @@ export class TransferController {
           retrieverEmail: retrieverEmail ?? "",
           avatarUrl: safeAvatar,
           imageUrl: safeAvatar,
+          route: "/today",
+          url: "/today",
         },
         safeAvatar   // imageUrl — shows retriever's photo in the notification
       ).catch((err) => console.error("[ConfirmSync] FCM error:", err));

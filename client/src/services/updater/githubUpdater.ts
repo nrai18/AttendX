@@ -5,20 +5,50 @@ const GITHUB_OWNER = import.meta.env.VITE_GITHUB_OWNER || "nrai18";
 const GITHUB_REPO = import.meta.env.VITE_GITHUB_REPO || "AttendX";
 const GITHUB_API_URL = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest`;
 
+/**
+ * Compares two semantic version strings (e.g. "4.3.0" vs "4.3.1", "v4.4.0" vs "4.3.1").
+ * Returns true strictly if remoteVersion is newer than localVersion.
+ */
+export function isVersionNewer(remoteVersion: string, localVersion: string): boolean {
+  if (!remoteVersion || !localVersion) return false;
+
+  const [remoteCore, remotePre = ""] = remoteVersion.replace(/^v/i, "").trim().split("-");
+  const [localCore, localPre = ""] = localVersion.replace(/^v/i, "").trim().split("-");
+
+  const rParts = remoteCore.split(".").map((p) => parseInt(p, 10));
+  const lParts = localCore.split(".").map((p) => parseInt(p, 10));
+
+  const maxLen = Math.max(rParts.length, lParts.length);
+  for (let i = 0; i < maxLen; i++) {
+    const r = isNaN(rParts[i]) ? 0 : rParts[i];
+    const l = isNaN(lParts[i]) ? 0 : lParts[i];
+    if (r > l) return true;
+    if (r < l) return false;
+  }
+
+  if (!remotePre && localPre) return true;
+  if (remotePre && !localPre) return false;
+  if (remotePre && localPre) return remotePre.localeCompare(localPre) > 0;
+  return false;
+}
+
+export type ReleaseFetchStatus = "ok" | "up-to-date" | "rate-limited" | "network-error";
+
 export class GitHubUpdater {
   private static cachedRelease: GitHubRelease | null = null;
   private static lastCheckTime = 0;
 
-  static async fetchLatestRelease(
-    force = false,
-  ): Promise<GitHubRelease | null> {
+  static async fetchLatestReleaseWithStatus(force = false): Promise<{
+    release: GitHubRelease | null;
+    status: ReleaseFetchStatus;
+  }> {
     const now = Date.now();
     if (
       !force &&
       this.cachedRelease &&
       now - this.lastCheckTime < 10 * 60 * 1000
     ) {
-      return this.cachedRelease;
+      return { release: this.cachedRelease, status: "ok" };
     }
 
     try {
@@ -36,64 +66,87 @@ export class GitHubUpdater {
 
       if (res.status === 403 || res.status === 429) {
         console.warn("[GitHubUpdater] GitHub API rate limit reached.");
-        return this.cachedRelease;
+        return { release: this.cachedRelease, status: "rate-limited" };
       }
 
       if (!res.ok) {
-        return null;
+        return { release: null, status: "network-error" };
       }
 
       const release: GitHubRelease = await res.json();
       if (release.draft || release.prerelease) {
-        return null;
+        return { release: null, status: "up-to-date" };
       }
 
       this.cachedRelease = release;
       this.lastCheckTime = now;
-      return release;
+      return { release, status: "ok" };
     } catch (err) {
       console.warn("[GitHubUpdater] Failed to query releases:", err);
-      return this.cachedRelease;
+      return { release: force ? null : this.cachedRelease, status: "network-error" };
     }
   }
 
-  static async checkForNativeUpdate(
-    force = false,
-  ): Promise<NativeUpdateInfo | null> {
+  static async fetchLatestRelease(force = false): Promise<GitHubRelease | null> {
+    const { release } = await this.fetchLatestReleaseWithStatus(force);
+    return release;
+  }
+
+  static async checkForNativeUpdateWithStatus(force = false): Promise<{
+    info: NativeUpdateInfo | null;
+    status: ReleaseFetchStatus;
+  }> {
+    if (!nativeUpdater.isAvailable()) return { info: null, status: "up-to-date" };
     const appInfo = await nativeUpdater.getAppInfo();
-    if (!appInfo) return null;
+    if (!appInfo) return { info: null, status: "network-error" };
 
-    const release = await this.fetchLatestRelease(force);
-    if (!release) return null;
+    const { release, status } = await this.fetchLatestReleaseWithStatus(force);
+    if (!release) return { info: null, status };
 
-    // Look for AttendX.apk in assets
-    const apkAsset = release.assets.find(
+    const assets = Array.isArray(release.assets) ? release.assets : [];
+    const apkAsset = assets.find(
       (a) => a.name.toLowerCase() === "attendx.apk" || a.name.endsWith(".apk"),
     );
+    if (!apkAsset) return { info: null, status: "up-to-date" };
 
-    if (!apkAsset) return null;
-
-    // Extract SHA-256 digest from release body if tagged
+    // Null-safe SHA-256 extraction
+    const bodyText = typeof release.body === "string" ? release.body : "";
     let sha256: string | undefined;
-    const shaMatch = release.body.match(/sha256[:\s]+([a-fA-F0-9]{64})/i);
+    const shaMatch = bodyText.match(/sha256[:\s]+([a-fA-F0-9]{64})/i);
     if (shaMatch) {
       sha256 = shaMatch[1].toLowerCase();
     }
 
-    const releaseVersion = release.tag_name.replace(/^v/, "").trim();
+    const releaseVersion = release.tag_name.replace(/^v/i, "").trim();
+    const installedVersion = (appInfo.versionName || "").replace(/^v/i, "").trim();
+
+    if (!isVersionNewer(releaseVersion, installedVersion)) {
+      console.log(
+        `[GitHubUpdater] Installed build (v${installedVersion}) is up to date or newer than remote (v${releaseVersion}). Skipping update prompt.`,
+      );
+      return { info: null, status: "up-to-date" };
+    }
 
     return {
-      tag: release.tag_name,
-      versionName: releaseVersion,
-      releaseTitle: release.name || `AttendX ${release.tag_name}`,
-      changelogMarkdown:
-        release.body || "Performance improvements and maintenance fixes.",
-      publishedAt: release.published_at,
-      apkUrl: apkAsset.browser_download_url,
-      apkSizeMb: Number((apkAsset.size / (1024 * 1024)).toFixed(1)),
-      expectedSha256: sha256,
-      installedVersionCode: appInfo.versionCode,
-      installedVersionName: appInfo.versionName,
+      status: "ok",
+      info: {
+        tag: release.tag_name,
+        versionName: releaseVersion,
+        releaseTitle: release.name || `AttendX ${release.tag_name}`,
+        changelogMarkdown:
+          bodyText || "Performance improvements and maintenance fixes.",
+        publishedAt: release.published_at,
+        apkUrl: apkAsset.browser_download_url,
+        apkSizeMb: Number((apkAsset.size / (1024 * 1024)).toFixed(1)),
+        expectedSha256: sha256,
+        installedVersionCode: appInfo.versionCode,
+        installedVersionName: appInfo.versionName,
+      },
     };
+  }
+
+  static async checkForNativeUpdate(force = false): Promise<NativeUpdateInfo | null> {
+    const { info } = await this.checkForNativeUpdateWithStatus(force);
+    return info;
   }
 }

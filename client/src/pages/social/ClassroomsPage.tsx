@@ -72,6 +72,14 @@ export const ClassroomsPage = () => {
   const [newlyCreatedHubId, setNewlyCreatedHubId] = useState<string | null>(null);
 
   const fetchClassrooms = async (silent = false) => {
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      const fallback = useCacheStore.getState().classrooms;
+      if (Array.isArray(fallback)) {
+        setClassrooms(fallback);
+      }
+      setIsLoading(false);
+      return;
+    }
     try {
       if (!silent && classrooms.length === 0) {
         setIsLoading(true);
@@ -98,6 +106,12 @@ export const ClassroomsPage = () => {
       fetchClassrooms(true);
     };
 
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") {
+        fetchClassrooms(true);
+      }
+    };
+
     const unsubCache = useCacheStore.subscribe((state) => {
       if (Array.isArray(state.classrooms) && state.classrooms.length > 0) {
         setClassrooms((prev) => {
@@ -109,17 +123,31 @@ export const ClassroomsPage = () => {
       }
     });
 
+    // 1. Event-driven updates (FCM pushes, tab focus, visibility change)
     window.addEventListener("fcm_classroom_broadcast", handleLiveEvent);
     window.addEventListener("fcm_classroom_access_updated", handleLiveEvent);
     window.addEventListener("fcm_classroom_deleted", handleLiveEvent);
     window.addEventListener("focus", handleLiveEvent);
+    document.addEventListener("visibilitychange", handleVisibility);
+
+    // 2. High-frequency 3.5s polling loop for live zero-refresh updates when online
+    const interval = setInterval(() => {
+      if (
+        document.visibilityState === "visible" &&
+        (typeof navigator === "undefined" || navigator.onLine)
+      ) {
+        fetchClassrooms(true);
+      }
+    }, 3500);
 
     return () => {
+      clearInterval(interval);
       unsubCache();
       window.removeEventListener("fcm_classroom_broadcast", handleLiveEvent);
       window.removeEventListener("fcm_classroom_access_updated", handleLiveEvent);
       window.removeEventListener("fcm_classroom_deleted", handleLiveEvent);
       window.removeEventListener("focus", handleLiveEvent);
+      document.removeEventListener("visibilitychange", handleVisibility);
     };
   }, []);
 
@@ -161,6 +189,10 @@ export const ClassroomsPage = () => {
 
   const handleJoin = async (e: React.FormEvent, codeToUse?: string) => {
     e.preventDefault();
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      toast.error("Connect to the internet to join a classroom hub");
+      return;
+    }
     const targetCode = (codeToUse || joinCodeInput || inlineJoinCode).trim().toUpperCase();
     if (!targetCode) {
       toast.error("Please enter a 6-character join code");
@@ -169,6 +201,10 @@ export const ClassroomsPage = () => {
     try {
       setIsSubmitting(true);
       const res = await api.post("/classrooms/join", { joinCode: targetCode });
+      if (res.data?._queued) {
+        toast.error("Unable to verify join code offline. Check your connection.");
+        return;
+      }
       await fetchClassrooms(true);
       setShowJoinModal(false);
       setJoinCodeInput("");
@@ -200,6 +236,10 @@ export const ClassroomsPage = () => {
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      toast.error("Connect to the internet to create a classroom hub");
+      return;
+    }
     if (!newClassName.trim()) {
       toast.error("Classroom name is required");
       return;
@@ -213,6 +253,10 @@ export const ClassroomsPage = () => {
         department: newDepartment.trim() || undefined,
         batch: newBatch.trim() || undefined,
       });
+      if (res.data?._queued) {
+        toast.error("Unable to create classroom hub offline. Check your connection.");
+        return;
+      }
       await fetchClassrooms(true);
       setShowCreateModal(false);
       if (res.data?.id) {
@@ -257,7 +301,20 @@ export const ClassroomsPage = () => {
       setWhooshingHubIds(prev => [...prev, classroomId]);
       setDeleteConfirmClassroom(null);
 
-      // 3. Dynamic Island HUD notification as card whooshes off
+      // 3. Fire API immediately & sync cacheStore so reloading/offline state never loses deletion
+      setIsSubmitting(true);
+      const nextCached = (useCacheStore.getState().classrooms || classrooms).filter((c) => c.id !== classroomId);
+      useCacheStore.getState().cacheClassrooms(nextCached);
+
+      const deletePromise = api.delete(`/classrooms/${classroomId}`).catch((error: any) => {
+        if (targetClassroom) {
+          const restored = [...(useCacheStore.getState().classrooms || []), targetClassroom];
+          useCacheStore.getState().cacheClassrooms(restored);
+        }
+        throw error;
+      });
+
+      // 4. Dynamic Island HUD notification as card whooshes off
       setTimeout(() => {
         triggerDynamicHUD({
           type: "trash",
@@ -267,13 +324,12 @@ export const ClassroomsPage = () => {
         });
       }, 550);
 
-      // 4. Commit deletion after full 1.25s whoosh flight completes
+      // 5. Commit UI removal after full 1.25s whoosh flight completes
       setTimeout(async () => {
         setClassrooms(prev => prev.filter(c => c.id !== classroomId));
         setWhooshingHubIds(prev => prev.filter(id => id !== classroomId));
         try {
-          setIsSubmitting(true);
-          await api.delete(`/classrooms/${classroomId}`);
+          await deletePromise;
           fetchClassrooms(true);
         } catch (error: any) {
           toast.error(error.response?.data?.message || "Failed to disband classroom");
@@ -299,6 +355,18 @@ export const ClassroomsPage = () => {
       // 2. Whoosh trajectory on the card
       setWhooshingHubIds(prev => [...prev, classroomId]);
 
+      setIsSubmitting(true);
+      const nextCached = (useCacheStore.getState().classrooms || classrooms).filter((c) => c.id !== classroomId);
+      useCacheStore.getState().cacheClassrooms(nextCached);
+
+      const leavePromise = api.delete(`/classrooms/${classroomId}/leave`).catch((error: any) => {
+        if (targetClassroom) {
+          const restored = [...(useCacheStore.getState().classrooms || []), targetClassroom];
+          useCacheStore.getState().cacheClassrooms(restored);
+        }
+        throw error;
+      });
+
       // 3. Dynamic Island HUD notification
       setTimeout(() => {
         triggerDynamicHUD({
@@ -309,13 +377,12 @@ export const ClassroomsPage = () => {
         });
       }, 550);
 
-      // 4. Commit removal after full 1.25s whoosh flight completes
+      // 4. Commit UI removal after full 1.25s whoosh flight completes
       setTimeout(async () => {
         setClassrooms(prev => prev.filter(c => c.id !== classroomId));
         setWhooshingHubIds(prev => prev.filter(id => id !== classroomId));
         try {
-          setIsSubmitting(true);
-          await api.delete(`/classrooms/${classroomId}/leave`);
+          await leavePromise;
           fetchClassrooms(true);
         } catch (error: any) {
           toast.error(error.response?.data?.message || "Failed to remove classroom");

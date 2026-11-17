@@ -82,7 +82,7 @@ export const HolidayGreetingOverlay: React.FC<HolidayGreetingOverlayProps> = ({
             )}
             
             <motion.h2 
-              className="text-4xl font-extrabold text-white drop-shadow-[0_0_15px_rgba(255,255,255,0.3)] mb-4"
+              className="text-4xl font-extrabold text-slate-900 dark:text-white drop-shadow-sm dark:drop-shadow-[0_0_15px_rgba(255,255,255,0.3)] mb-4"
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.5 }}
@@ -91,7 +91,7 @@ export const HolidayGreetingOverlay: React.FC<HolidayGreetingOverlayProps> = ({
             </motion.h2>
             {holidaySubtitle && (
               <motion.p
-                className="text-base md:text-lg font-medium text-white/85 drop-shadow-sm mb-4 max-w-sm"
+                className="text-base md:text-lg font-medium text-slate-600 dark:text-white/85 drop-shadow-sm mb-4 max-w-sm"
                 initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.45 }}
@@ -107,13 +107,13 @@ export const HolidayGreetingOverlay: React.FC<HolidayGreetingOverlayProps> = ({
                   animate={{ opacity: 1, height: "auto" }}
                   className="mt-8 space-y-6 w-full overflow-hidden"
                 >
-                  <p className="text-lg text-white/80 font-medium">
+                  <p className="text-lg text-slate-700 dark:text-white/80 font-medium">
                     Do you want to mark all your classes off for today?
                   </p>
                   <div className="flex flex-col gap-3">
                     <Button 
                       size="lg" 
-                      className="w-full text-lg rounded-xl h-14 font-semibold shadow-[0_0_20px_rgba(255,255,255,0.1)] bg-white text-black hover:bg-white/90 border border-transparent hover:border-white/20 transition-all cursor-pointer"
+                      className="w-full text-lg rounded-xl h-14 font-semibold shadow-md dark:shadow-[0_0_20px_rgba(255,255,255,0.1)] bg-slate-900 text-white hover:bg-slate-800 dark:bg-white dark:text-black dark:hover:bg-white/90 border border-slate-700/20 dark:border-transparent transition-all cursor-pointer"
                       onClick={() => {
                         onMarkOff();
                         onClose();
@@ -124,7 +124,7 @@ export const HolidayGreetingOverlay: React.FC<HolidayGreetingOverlayProps> = ({
                     <Button 
                       variant="ghost" 
                       size="lg" 
-                      className="w-full text-white/60 hover:text-white hover:bg-white/10 h-12 rounded-xl transition-colors cursor-pointer"
+                      className="w-full text-slate-500 hover:text-slate-900 hover:bg-slate-200/60 dark:text-white/60 dark:hover:text-white dark:hover:bg-white/10 h-12 rounded-xl transition-colors cursor-pointer"
                       onClick={onClose}
                     >
                       No, I'll do it manually

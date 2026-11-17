@@ -80,6 +80,7 @@ export function AddEventModal({
     try {
       const res = await api.post("/events/save-wizard", {
         semesterId,
+        clientTempIds: [tempId],
         events: [
           {
             title: optimisticEvent.title,
@@ -89,14 +90,19 @@ export function AddEventModal({
           }
         ]
       });
-      useCacheStore.getState().setCache("calendar", null);
+      const isQueued = Boolean(res.data?._queued);
+      if (!isQueued) {
+        useCacheStore.getState().setCache("calendar", null);
+      }
       window.dispatchEvent(new Event("events-updated"));
-      const returnedEvents = (res.data?.events && res.data.events.length > 0)
+      const returnedEvents = (!isQueued && res.data?.events && res.data.events.length > 0)
         ? res.data.events
-        : [{ ...optimisticEvent, id: res.data?.id || tempId }];
+        : [{ ...optimisticEvent, id: (!isQueued && res.data?.id) || tempId }];
       onSaved(returnedEvents, tempId);
-      // Refresh global stats quietly in background without duplicate event-storm refetches
-      useAttendanceStore.getState().fetchStats(true).catch(() => {});
+      // Refresh global stats quietly in background when online without duplicate event-storm refetches
+      if (!isQueued) {
+        useAttendanceStore.getState().fetchStats(true).catch(() => {});
+      }
     } catch (err: any) {
       console.error(err);
       onErrorRollback?.(tempId);

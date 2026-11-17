@@ -59,6 +59,24 @@ public class WidgetPlugin extends Plugin {
             if (call.hasOption("api_base_url")) {
                 editor.putString("api_base_url", call.getString("api_base_url"));
             }
+            if (call.hasOption("schedule_date")) {
+                editor.putString("schedule_date", call.getString("schedule_date"));
+            }
+            if (call.hasOption("weekly_slots_json")) {
+                editor.putString("weekly_slots_json", call.getString("weekly_slots_json"));
+            }
+            if (call.hasOption("events_json")) {
+                editor.putString("events_json", call.getString("events_json"));
+            }
+            if (call.hasOption("semester_end_date")) {
+                editor.putString("semester_end_date", call.getString("semester_end_date"));
+            }
+            if (call.hasOption("today_is_holiday")) {
+                editor.putBoolean("today_is_holiday", Boolean.TRUE.equals(call.getBoolean("today_is_holiday", false)));
+            }
+            if (call.hasOption("today_holiday_title")) {
+                editor.putString("today_holiday_title", call.getString("today_holiday_title"));
+            }
 
             // Next class specific options
             if (call.hasOption("next_room")) {
@@ -97,24 +115,34 @@ public class WidgetPlugin extends Plugin {
     public void getPendingMutations(PluginCall call) {
         try {
             Context context = getContext();
-            SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
-            String rawMutations = prefs.getString("attendx_offline_mutations", "[]");
-            JSONArray arr = new JSONArray(rawMutations);
+            JSONArray arr;
+            synchronized (WidgetActionReceiver.MUTATION_LOCK) {
+                SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+                String rawMutations = prefs.getString("attendx_offline_mutations", "[]");
+                arr = new JSONArray(rawMutations);
+                prefs.edit().remove("attendx_offline_mutations").apply();
+            }
 
             JSArray resultArr = new JSArray();
             for (int i = 0; i < arr.length(); i++) {
                 JSONObject obj = arr.getJSONObject(i);
                 JSObject jsObj = new JSObject();
+                if (obj.has("id") && !obj.isNull("id")) {
+                    jsObj.put("id", obj.optString("id"));
+                }
                 jsObj.put("subjectId", obj.optString("subjectId"));
-                jsObj.put("timetableSlotId", obj.optString("timetableSlotId"));
+                if (obj.has("timetableSlotId") && !obj.isNull("timetableSlotId")) {
+                    jsObj.put("timetableSlotId", obj.optString("timetableSlotId"));
+                }
+                if (obj.has("overrideId") && !obj.isNull("overrideId")) {
+                    jsObj.put("overrideId", obj.optString("overrideId"));
+                }
                 jsObj.put("date", obj.optString("date"));
                 jsObj.put("status", obj.optString("status"));
                 jsObj.put("timestamp", obj.optLong("timestamp"));
+                jsObj.put("synced", obj.optBoolean("synced", false));
                 resultArr.put(jsObj);
             }
-
-            // Clear mutations after fetching to avoid duplicate reprocessing
-            prefs.edit().remove("attendx_offline_mutations").apply();
 
             JSObject res = new JSObject();
             res.put("mutations", resultArr);
@@ -131,8 +159,10 @@ public class WidgetPlugin extends Plugin {
     public void clearPendingMutations(PluginCall call) {
         try {
             Context context = getContext();
-            SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
-            prefs.edit().remove("attendx_offline_mutations").apply();
+            synchronized (WidgetActionReceiver.MUTATION_LOCK) {
+                SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+                prefs.edit().remove("attendx_offline_mutations").apply();
+            }
             JSObject res = new JSObject();
             res.put("success", true);
             call.resolve(res);

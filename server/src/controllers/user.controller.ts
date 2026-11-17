@@ -172,10 +172,20 @@ export class UserController {
       const { fcmToken, ...userData } = req.body;
       
       if (fcmToken !== undefined) {
+        const normalizedToken = typeof fcmToken === 'string' && fcmToken.trim() ? fcmToken.trim() : null;
+        if (normalizedToken) {
+          await prisma.refreshToken.updateMany({
+            where: {
+              fcmToken: normalizedToken,
+              ...(sessionId ? { id: { not: sessionId } } : { userId: { not: userId } }),
+            },
+            data: { fcmToken: null }
+          });
+        }
         if (sessionId) {
           await prisma.refreshToken.update({
             where: { id: sessionId },
-            data: { fcmToken: fcmToken === null ? null : fcmToken }
+            data: { fcmToken: normalizedToken }
           });
         } else {
           const latestSession = await prisma.refreshToken.findFirst({
@@ -185,7 +195,7 @@ export class UserController {
           if (latestSession) {
             await prisma.refreshToken.update({
               where: { id: latestSession.id },
-              data: { fcmToken: fcmToken === null ? null : fcmToken }
+              data: { fcmToken: normalizedToken }
             });
           }
         }

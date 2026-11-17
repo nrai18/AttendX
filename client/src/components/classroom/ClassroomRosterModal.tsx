@@ -15,6 +15,7 @@ import {
   AlertCircle
 } from "lucide-react";
 import { api } from "../../lib/api";
+import { useCacheStore } from "../../stores/cacheStore";
 import { toast } from "sonner";
 import { SoundFX } from "../../utils/soundEffects";
 import { hapticLight, hapticMedium, hapticSuccess, hapticSelection } from "../../utils/haptics";
@@ -98,17 +99,32 @@ export const ClassroomRosterModal: React.FC<ClassroomRosterModalProps> = ({
       setSelectedAllowedIds(initialAllowedPosterIds);
       setSelectedDeniedIds(initialDeniedPosterIds);
     }
-  }, [isOpen, classroomId, initialPermission]);
+  }, [isOpen, classroomId, initialPermission, initialAllowedPosterIds, initialDeniedPosterIds]);
 
   const fetchMembers = async () => {
+    const cacheKey = `classroom_members_${classroomId}`;
+    const cached = (useCacheStore.getState() as any)[cacheKey];
+    if (Array.isArray(cached) && cached.length > 0) {
+      setMembers(cached);
+      setIsLoading(false);
+    }
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      setIsLoading(false);
+      return;
+    }
     try {
-      setIsLoading(true);
+      if (!Array.isArray(cached) || cached.length === 0) {
+        setIsLoading(true);
+      }
       const res = await api.get(`/classrooms/${classroomId}/members`);
       const data = Array.isArray(res.data?.members) ? res.data.members : [];
       setMembers(data);
+      useCacheStore.getState().setCache(cacheKey, data);
     } catch (error) {
       console.error("Failed to fetch classroom members:", error);
-      toast.error("Failed to load section classmates");
+      if (!Array.isArray(cached) || cached.length === 0) {
+        toast.error("Failed to load section classmates");
+      }
     } finally {
       setIsLoading(false);
     }
@@ -140,6 +156,10 @@ export const ClassroomRosterModal: React.FC<ClassroomRosterModalProps> = ({
   };
 
   const handleSavePermissions = async () => {
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      toast.error("Connect to the internet to update broadcast permissions");
+      return;
+    }
     try {
       setIsSavingPermissions(true);
       SoundFX.playWhooshSound(0.24);

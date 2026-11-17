@@ -49,7 +49,8 @@ export class BirthdayService {
         await PushNotificationService.sendToUser(
           user.id,
           'Happy Birthday! 🎉',
-          `Wishing you a fantastic birthday from the AttendX team, ${user.name}! 🎂`
+          `Wishing you a fantastic birthday from the AttendX team, ${user.name}! 🎂`,
+          { type: 'birthday', route: '/today', url: '/today' }
         ).catch(e => console.error('[Push] Failed to send birthday push:', e));
       }
 
@@ -92,7 +93,8 @@ export class BirthdayService {
           await PushNotificationService.sendToUser(
             user.id,
             'Happy Birthday! 🎉',
-            `Wishing you a fantastic birthday from the AttendX team, ${user.name}! 🎂`
+            `Wishing you a fantastic birthday from the AttendX team, ${user.name}! 🎂`,
+            { type: 'birthday', route: '/today', url: '/today' }
           ).catch(e => console.error('[Push] Failed to send birthday push:', e));
         }
 

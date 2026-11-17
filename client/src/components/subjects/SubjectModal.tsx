@@ -72,8 +72,8 @@ export const SubjectModal: React.FC<SubjectModalProps> = ({ isOpen, onClose, onS
       const targetSemId = semesterId || useAttendanceStore.getState().activeSemesterId || undefined;
       const payload: any = {
         name: name.trim(),
-        code: code.trim() || undefined,
-        faculty: faculty.trim() || undefined,
+        code: code.trim() || (subject?.id ? null : undefined),
+        faculty: faculty.trim() || (subject?.id ? null : undefined),
         colorHex,
         targetAttendance: targetAttendance !== "" ? Number(targetAttendance) : null,
         ...(targetSemId ? { semesterId: targetSemId } : {}),
@@ -82,13 +82,16 @@ export const SubjectModal: React.FC<SubjectModalProps> = ({ isOpen, onClose, onS
       let savedSubject: any = null;
       if (subject?.id) {
         const res = await api.patch(`/subjects/${subject.id}`, payload);
-        savedSubject = { ...subject, ...payload, ...(res.data || {}) };
+        const serverData = res.data && !res.data._queued ? res.data : {};
+        savedSubject = { ...subject, ...payload, ...serverData };
         hapticSuccess();
         SoundFX.playSnapPopSound();
         triggerDynamicHUD({ type: "sparkle", label: "Subject Updated" });
       } else {
         const res = await api.post("/subjects", payload);
-        const tempSubId = res.data?.id || `temp-sub-${Date.now()}`;
+        const isQueued = Boolean(res.data?._queued);
+        const tempSubId = (!isQueued && res.data?.id) || res.data?.tempId || `temp-sub-${Date.now()}`;
+        const serverData = res.data && !isQueued ? res.data : {};
         savedSubject = {
           id: tempSubId,
           ...payload,
@@ -97,7 +100,7 @@ export const SubjectModal: React.FC<SubjectModalProps> = ({ isOpen, onClose, onS
           off: 0,
           total: 0,
           percentage: 0,
-          ...(res.data || {}),
+          ...serverData,
         };
         hapticSuccess();
         SoundFX.playSnapPopSound();
@@ -106,20 +109,35 @@ export const SubjectModal: React.FC<SubjectModalProps> = ({ isOpen, onClose, onS
 
       // Optimistically update cache & attendanceStore for robust offline persistence
       try {
-        const curCache = useCacheStore.getState().subjects;
-        if (curCache) {
-          const list = curCache.subjects || [];
-          const updatedList = subject?.id
-            ? list.map((s: any) => (s.id === savedSubject.id ? { ...s, ...savedSubject } : s))
-            : [...list, savedSubject];
-          useCacheStore.getState().setCache("subjects", { ...curCache, subjects: updatedList });
-        }
+        const curCache = useCacheStore.getState().subjects || {
+          subjects: [],
+          stats: [],
+          activeSemesterId: targetSemId || null,
+        };
+        const list = curCache.subjects || [];
+        const updatedList = subject?.id
+          ? list.map((s: any) => (s.id === savedSubject.id ? { ...s, ...savedSubject } : s))
+          : [...list, savedSubject];
+        const statsList = curCache.stats || [];
+        const updatedStats = subject?.id
+          ? statsList.map((s: any) =>
+              s.id === savedSubject.id
+                ? { ...s, name: savedSubject.name, code: savedSubject.code, colorHex: savedSubject.colorHex, target: savedSubject.targetAttendance ?? s.target }
+                : s
+            )
+          : [...statsList, { ...savedSubject, target: savedSubject.targetAttendance ?? useAuthStore.getState().user?.targetAttendance ?? 75 }];
+        useCacheStore.getState().setCache("subjects", {
+          ...curCache,
+          subjects: updatedList,
+          stats: updatedStats,
+          activeSemesterId: curCache.activeSemesterId || targetSemId || null,
+        });
         useAttendanceStore.setState((state) => {
-          const list = state.subjects || [];
-          const updatedList = subject?.id
-            ? list.map((s: any) => (s.id === savedSubject.id ? { ...s, ...savedSubject } : s))
-            : [...list, savedSubject];
-          return { subjects: updatedList };
+          const storeList = state.subjects || [];
+          const updatedStoreList = subject?.id
+            ? storeList.map((s: any) => (s.id === savedSubject.id ? { ...s, ...savedSubject } : s))
+            : [...storeList, savedSubject];
+          return { subjects: updatedStoreList };
         });
       } catch (e) {}
 

@@ -2,12 +2,14 @@ import { LocalNotifications } from '@capacitor/local-notifications';
 import { PushNotifications } from '@capacitor/push-notifications';
 import { Capacitor } from '@capacitor/core';
 import { App as CapacitorApp } from '@capacitor/app';
-import { mutePhone, unmutePhone, checkAndReconcileRinger, setScheduledUnmuteTime, PERMISSION_WARNING_NOTIF_ID, requestDndPermission } from '../lib/ringer';
+import { mutePhone, unmutePhone, checkAndReconcileRinger, setScheduledUnmuteTime, getScheduledUnmuteTime, PERMISSION_WARNING_NOTIF_ID, requestDndPermission } from '../lib/ringer';
+import { nativeUpdater } from "./updater/nativeUpdater";
 import { useAttendanceStore } from '../stores/attendanceStore';
 import { useAssignmentStore } from '../stores/assignmentStore';
 import { useNotificationStore } from '../stores/notificationStore';
 import { useAuthStore } from '../stores/authStore';
 import { useCacheStore } from '../stores/cacheStore';
+import { useOfflineStore } from '../stores/offlineStore';
 import { api } from '../lib/api';
 import { toast } from 'sonner';
 import { triggerDynamicHUD } from '../components/ui/dynamic-island-hud';
@@ -237,7 +239,67 @@ export function calculateNextSummaryDates(
   return results;
 }
 
+export function getOffDayEventForDate(
+  events: any[],
+  date: Date,
+): { title: string; isExam: boolean } | null {
+  const dayEvents = (events || []).filter((e) => isEventActiveOnDate(e, date));
+  for (const e of dayEvents) {
+    const lowerTitle = (e.title || "").toLowerCase();
+    const typeLower = (e.type || e.eventType || "").toLowerCase();
+    if (
+      typeLower === "restricted" ||
+      typeLower === "restricted_holiday" ||
+      lowerTitle.includes("restricted")
+    ) {
+      continue;
+    }
+    if (typeLower === "holiday" || lowerTitle.includes("holiday")) {
+      return { title: e.title || "Holiday", isExam: false };
+    }
+    if (lowerTitle.includes("vacation") || lowerTitle.includes("break")) {
+      return { title: e.title || "Break", isExam: false };
+    }
+    if (
+      typeLower === "exam" ||
+      /\b(midsem|mid[\s-]?sem|midterm|mid[\s-]?term|endsem|end[\s-]?sem|exam)\b/i.test(
+        lowerTitle,
+      )
+    ) {
+      return { title: e.title || "Exam", isExam: true };
+    }
+  }
+  return null;
+}
+
+export function getInstructionalCutoffIso(
+  events: any[],
+  activeSemester?: any,
+): string | null {
+  let ltdIso: string | null = null;
+  for (const e of events || []) {
+    const lowerTitle = (e?.title || "").toLowerCase();
+    if (
+      lowerTitle.includes("last teaching day") ||
+      lowerTitle.includes("last working day")
+    ) {
+      const raw = e.endDate || e.date;
+      if (raw) {
+        const iso = formatLocalDate(parseLocalDate(raw));
+        if (!ltdIso || iso > ltdIso) ltdIso = iso;
+      }
+    }
+  }
+  let semEndIso: string | null = null;
+  if (activeSemester?.endDate) {
+    semEndIso = formatLocalDate(parseLocalDate(activeSemester.endDate));
+  }
+  if (ltdIso && semEndIso) return ltdIso < semEndIso ? ltdIso : semEndIso;
+  return ltdIso || semEndIso;
+}
+
 export class NotificationService {
+  private static readonly SYNCED_FCM_TOKEN_KEY = "attendx_synced_fcm_token";
   private static isInitialized = false;
   private static isSchedulingTimetable = false;
   private static hasQueuedTimetableRun = false;
@@ -245,38 +307,56 @@ export class NotificationService {
   private static hasQueuedAssignmentsRun = false;
   private static isSchedulingAcademic = false;
   private static hasQueuedAcademicRun = false;
-  private static lastAcademicFrequency: { type: string; subValue?: string } | null = null;
+  private static lastResumeScheduleAt = 0;
+  private static lastProactiveSyncAt = 0;
+  private static lastStatsSyncAt = 0;
+  private static inFlightProactiveSync: Promise<void> | null = null;
+  private static lastAcademicFrequency: {
+    type: string;
+    subValue?: string;
+  } | null = null;
+  private static unmuteTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
-  static async waitForStoreHydration(timeoutMs: number = 2000): Promise<boolean> {
-    if (useAttendanceStore.persist?.hasHydrated?.()) return true;
-    if (useAttendanceStore.getState().activeSemesterId) return true;
+  static async waitForStoreHydration(
+    timeoutMs: number = 2000,
+  ): Promise<boolean> {
+    const stores = [
+      useAuthStore,
+      useAttendanceStore,
+      useCacheStore,
+      useNotificationStore,
+      useAssignmentStore,
+    ];
+    const allHydrated = () =>
+      stores.every((store) => store.persist?.hasHydrated?.() !== false);
+
+    if (allHydrated()) return true;
 
     return new Promise<boolean>((resolve) => {
       let resolved = false;
+      const tryFinish = () => {
+        if (!resolved && allHydrated()) {
+          resolved = true;
+          clearTimeout(timer);
+          resolve(true);
+        }
+      };
+
       const timer = setTimeout(() => {
         if (!resolved) {
           resolved = true;
-          resolve(Boolean(useAttendanceStore.getState().activeSemesterId || useAttendanceStore.persist?.hasHydrated?.()));
+          resolve(
+            Boolean(
+              allHydrated() || useAttendanceStore.getState().activeSemesterId,
+            ),
+          );
         }
       }, timeoutMs);
 
-      if (useAttendanceStore.persist?.onFinishHydration) {
-        useAttendanceStore.persist.onFinishHydration(() => {
-          if (!resolved) {
-            resolved = true;
-            clearTimeout(timer);
-            resolve(true);
-          }
-        });
-      } else {
-        const unsub = useAttendanceStore.subscribe((state) => {
-          if (state.activeSemesterId && !resolved) {
-            resolved = true;
-            clearTimeout(timer);
-            unsub();
-            resolve(true);
-          }
-        });
+      for (const store of stores) {
+        if (store.persist?.hasHydrated?.() === false && store.persist?.onFinishHydration) {
+          store.persist.onFinishHydration(tryFinish);
+        }
       }
     });
   }
@@ -287,151 +367,282 @@ export class NotificationService {
     if (!Capacitor.isNativePlatform() || this.pushListenersRegistered) return;
     this.pushListenersRegistered = true;
 
-    PushNotifications.addListener('registration', async (token) => {
-      console.log('[FCM] Push registration success, token: ' + token.value);
-      localStorage.setItem('fcm_token', token.value);
+    PushNotifications.addListener("registration", async (token) => {
+      console.log("[FCM] Push registration success, token: " + token.value);
+      localStorage.setItem("fcm_token", token.value);
       try {
         if (useAuthStore.getState().isAuthenticated) {
-          await api.patch('/users/me', { fcmToken: token.value });
-          console.log('[FCM] Successfully synced FCM token to backend.');
+          const lastSynced = localStorage.getItem(this.SYNCED_FCM_TOKEN_KEY);
+          if (lastSynced !== token.value) {
+            await api.patch("/users/me", { fcmToken: token.value });
+            localStorage.setItem(this.SYNCED_FCM_TOKEN_KEY, token.value);
+            console.log("[FCM] Successfully synced FCM token to backend.");
+          }
         }
       } catch (error) {
-        console.error('[FCM] Failed to sync FCM token to backend (will retry on login):', error);
+        console.error(
+          "[FCM] Failed to sync FCM token to backend (will retry on login):",
+          error,
+        );
       }
     });
 
-    PushNotifications.addListener('registrationError', (error: any) => {
-      console.error('[FCM] Error on registration: ' + JSON.stringify(error));
+    PushNotifications.addListener("registrationError", (error: any) => {
+      console.error("[FCM] Error on registration: " + JSON.stringify(error));
     });
 
-    PushNotifications.addListener('pushNotificationReceived', (notification) => {
-      console.log('[FCM] Push received in foreground: ', notification);
-      let rawData = notification.data || (notification as any)?.notification?.data || {};
-      if (typeof rawData === 'string') {
-        try {
-          rawData = JSON.parse(rawData);
-        } catch (_) {}
-      }
-      const data = typeof rawData === 'object' && rawData !== null ? rawData : {};
-      const type = String(data.type || data.notification_type || '').toLowerCase();
-      const classroomId = String(data.classroomId || data.classroom_id || data.id || '');
-      const title = notification.title || data.title || 'Classroom Broadcast';
-      const body = notification.body || data.body || '';
-      const targetRoute = data.route || data.url || (classroomId ? `/classrooms/${classroomId}` : type === 'classroom_deleted' ? '/classrooms' : null);
-
-      if (type === 'classroom_announcement' || type === 'classroom_broadcast' || type === 'announcement') {
-        if (classroomId) {
-          const annObj = {
-            id: data.announcementId || data.id || `fcm-${Date.now()}`,
-            title: title || data.title || 'Classroom Notice',
-            content: data.content || data.body || body || '',
-            body: data.content || data.body || body || '',
-            importance: data.importance || 'low',
-            isPinned: Boolean(data.isPinned && data.isPinned !== 'false'),
-            createdAt: data.createdAt || new Date().toISOString(),
-            authorName: data.authorName || 'Classroom Admin',
-          };
-          useCacheStore.getState().appendClassroomAnnouncement(classroomId, annObj);
+    PushNotifications.addListener(
+      "pushNotificationReceived",
+      (notification) => {
+        console.log("[FCM] Push received in foreground: ", notification);
+        let rawData =
+          notification.data || (notification as any)?.notification?.data || {};
+        if (typeof rawData === "string") {
+          try {
+            rawData = JSON.parse(rawData);
+          } catch (_) {}
         }
-        window.dispatchEvent(new CustomEvent('fcm_classroom_broadcast', { detail: { ...data, classroomId, type } }));
-        triggerDynamicHUD({
-          type: 'plane',
-          label: title,
-          subtitle: body,
-          durationMs: 5000,
-          route: targetRoute || undefined,
-        });
-      } else if (type === 'classroom_access_updated' || type === 'broadcast_permission_updated') {
-        window.dispatchEvent(new CustomEvent('fcm_classroom_access_updated', { detail: { ...data, classroomId, type } }));
-        triggerDynamicHUD({
-          type: 'success',
-          label: title,
-          subtitle: body,
-          durationMs: 4000,
-          route: targetRoute || undefined,
-        });
-      } else if (type === 'classroom_deleted' || type === 'classroom_disbanded') {
-        window.dispatchEvent(new CustomEvent('fcm_classroom_deleted', { detail: { ...data, classroomId, type } }));
-        triggerDynamicHUD({
-          type: 'trash',
-          label: title,
-          subtitle: body,
-          durationMs: 5000,
-          route: '/classrooms',
-        });
-      }
-    });
+        const data =
+          typeof rawData === "object" && rawData !== null ? rawData : {};
+        const type = String(
+          data.type || data.notification_type || "",
+        ).toLowerCase();
+        const classroomId = String(
+          data.classroomId || data.classroom_id || data.id || "",
+        );
+        const title =
+          notification.title || data.pushTitle || data.title || "Notification";
+        const body = notification.body || data.pushBody || data.body || "";
+        const targetRoute =
+          data.route ||
+          data.url ||
+          (classroomId
+            ? `/classrooms/${classroomId}`
+            : type === "classroom_deleted"
+              ? "/classrooms"
+              : type === "semester_transition"
+                ? "/today?promptSemesterTransition=true"
+                : type === "birthday" || type === "peer_sync_redeemed"
+                  ? "/today"
+                  : null);
 
-    PushNotifications.addListener('pushNotificationActionPerformed', (notification) => {
-      console.log('[FCM] Push action performed: ', notification);
-      let rawData = notification.notification?.data || (notification as any)?.data || {};
-      if (typeof rawData === 'string') {
-        try {
-          rawData = JSON.parse(rawData);
-        } catch (_) {}
-      }
-      const data = typeof rawData === 'object' && rawData !== null ? rawData : {};
-      const type = String(data.type || data.notification_type || '').toLowerCase();
-      const classroomId = String(data.classroomId || data.classroom_id || data.id || '');
-      const targetRoute = data.route || data.url || (classroomId ? `/classrooms/${classroomId}` : type === 'classroom_deleted' ? '/classrooms' : null);
-
-      // Re-dispatch live events when user taps notification from tray
-      if (type === 'classroom_announcement' || type === 'classroom_broadcast' || type === 'announcement') {
-        if (classroomId) {
-          const annObj = {
-            id: data.announcementId || data.id || `fcm-${Date.now()}`,
-            title: data.title || 'Classroom Notice',
-            content: data.content || data.body || '',
-            body: data.content || data.body || '',
-            importance: data.importance || 'low',
-            isPinned: Boolean(data.isPinned && data.isPinned !== 'false'),
-            createdAt: data.createdAt || new Date().toISOString(),
-            authorName: data.authorName || 'Classroom Admin',
-          };
-          useCacheStore.getState().appendClassroomAnnouncement(classroomId, annObj);
+        if (
+          type === "classroom_announcement" ||
+          type === "classroom_broadcast" ||
+          type === "announcement"
+        ) {
+          if (classroomId) {
+            const annObj = {
+              id: data.announcementId || data.id || `fcm-${Date.now()}`,
+              title: data.title || title || "Classroom Notice",
+              content: data.content || data.body || body || "",
+              body: data.content || data.body || body || "",
+              importance: data.importance || "low",
+              isPinned: Boolean(data.isPinned && data.isPinned !== "false"),
+              createdAt: data.createdAt || new Date().toISOString(),
+              authorName: data.authorName || "Classroom Admin",
+            };
+            useCacheStore
+              .getState()
+              .appendClassroomAnnouncement(classroomId, annObj);
+          }
+          window.dispatchEvent(
+            new CustomEvent("fcm_classroom_broadcast", {
+              detail: { ...data, classroomId, type },
+            }),
+          );
+          triggerDynamicHUD({
+            type: "plane",
+            label: title,
+            subtitle: body,
+            durationMs: 5000,
+            route: targetRoute || undefined,
+          });
+        } else if (
+          type === "classroom_access_updated" ||
+          type === "broadcast_permission_updated"
+        ) {
+          window.dispatchEvent(
+            new CustomEvent("fcm_classroom_access_updated", {
+              detail: { ...data, classroomId, type },
+            }),
+          );
+          triggerDynamicHUD({
+            type: "success",
+            label: title,
+            subtitle: body,
+            durationMs: 4000,
+            route: targetRoute || undefined,
+          });
+        } else if (
+          type === "classroom_deleted" ||
+          type === "classroom_disbanded"
+        ) {
+          window.dispatchEvent(
+            new CustomEvent("fcm_classroom_deleted", {
+              detail: { ...data, classroomId, type },
+            }),
+          );
+          triggerDynamicHUD({
+            type: "trash",
+            label: title,
+            subtitle: body,
+            durationMs: 5000,
+            route: "/classrooms",
+          });
+        } else if (
+          type === "native_update" ||
+          type === "ota_update" ||
+          type === "app_update" ||
+          type === "update"
+        ) {
+          triggerDynamicHUD({
+            type: "sparkle",
+            label: title,
+            subtitle: body,
+            durationMs: 5000,
+          });
+          if (nativeUpdater.isAvailable()) {
+            window.dispatchEvent(new CustomEvent("open-update-sheet"));
+          }
+        } else if (
+          type === "semester_transition" ||
+          type === "peer_sync_redeemed" ||
+          type === "birthday" ||
+          notification.title ||
+          data.title ||
+          data.pushTitle
+        ) {
+          triggerDynamicHUD({
+            type: type === "peer_sync_redeemed" ? "success" : "sparkle",
+            label: title,
+            subtitle: body,
+            durationMs: 5000,
+            route: targetRoute || undefined,
+          });
         }
-        window.dispatchEvent(new CustomEvent('fcm_classroom_broadcast', { detail: { ...data, classroomId, type } }));
-      } else if (type === 'classroom_access_updated' || type === 'broadcast_permission_updated') {
-        window.dispatchEvent(new CustomEvent('fcm_classroom_access_updated', { detail: { ...data, classroomId, type } }));
-      } else if (type === 'classroom_deleted' || type === 'classroom_disbanded') {
-        window.dispatchEvent(new CustomEvent('fcm_classroom_deleted', { detail: { ...data, classroomId, type } }));
-      }
+      },
+    );
 
-      if (type === 'ota_update' || type === 'native_update' || type === 'app_update' || type === 'update') {
-        window.dispatchEvent(new Event('check_ota_update'));
-        window.dispatchEvent(new CustomEvent('open-update-sheet'));
-      } else if (targetRoute) {
-        try {
-          sessionStorage.setItem('pending_push_route', targetRoute);
-        } catch (_) {}
-        window.dispatchEvent(new CustomEvent('push_route', { detail: targetRoute }));
-      }
-    });
+    PushNotifications.addListener(
+      "pushNotificationActionPerformed",
+      (notification) => {
+        console.log("[FCM] Push action performed: ", notification);
+        let rawData =
+          notification.notification?.data || (notification as any)?.data || {};
+        if (typeof rawData === "string") {
+          try {
+            rawData = JSON.parse(rawData);
+          } catch (_) {}
+        }
+        const data =
+          typeof rawData === "object" && rawData !== null ? rawData : {};
+        const type = String(
+          data.type || data.notification_type || "",
+        ).toLowerCase();
+        const classroomId = String(
+          data.classroomId || data.classroom_id || data.id || "",
+        );
+        const targetRoute =
+          data.route ||
+          data.url ||
+          (classroomId
+            ? `/classrooms/${classroomId}`
+            : type === "classroom_deleted"
+              ? "/classrooms"
+              : type === "semester_transition"
+                ? "/today?promptSemesterTransition=true"
+                : type === "birthday" || type === "peer_sync_redeemed"
+                  ? "/today"
+                  : null);
+
+        // Re-dispatch live events when user taps notification from tray
+        if (
+          type === "classroom_announcement" ||
+          type === "classroom_broadcast" ||
+          type === "announcement"
+        ) {
+          if (classroomId) {
+            const annObj = {
+              id: data.announcementId || data.id || `fcm-${Date.now()}`,
+              title: data.title || "Classroom Notice",
+              content: data.content || data.body || "",
+              body: data.content || data.body || "",
+              importance: data.importance || "low",
+              isPinned: Boolean(data.isPinned && data.isPinned !== "false"),
+              createdAt: data.createdAt || new Date().toISOString(),
+              authorName: data.authorName || "Classroom Admin",
+            };
+            useCacheStore
+              .getState()
+              .appendClassroomAnnouncement(classroomId, annObj);
+          }
+          window.dispatchEvent(
+            new CustomEvent("fcm_classroom_broadcast", {
+              detail: { ...data, classroomId, type },
+            }),
+          );
+        } else if (
+          type === "classroom_access_updated" ||
+          type === "broadcast_permission_updated"
+        ) {
+          window.dispatchEvent(
+            new CustomEvent("fcm_classroom_access_updated", {
+              detail: { ...data, classroomId, type },
+            }),
+          );
+        } else if (
+          type === "classroom_deleted" ||
+          type === "classroom_disbanded"
+        ) {
+          window.dispatchEvent(
+            new CustomEvent("fcm_classroom_deleted", {
+              detail: { ...data, classroomId, type },
+            }),
+          );
+        }
+
+        if (type === "native_update" || type === "ota_update" || type === "app_update" || type === "update") {
+          if (nativeUpdater.isAvailable()) {
+            window.dispatchEvent(new CustomEvent("open-update-sheet"));
+          }
+        } else if (targetRoute) {
+          try {
+            sessionStorage.setItem("pending_push_route", targetRoute);
+          } catch (_) {}
+          window.dispatchEvent(
+            new CustomEvent("push_route", { detail: targetRoute }),
+          );
+        }
+      },
+    );
   }
 
-  static async checkPermissions(): Promise<'prompt' | 'prompt-with-rationale' | 'granted' | 'denied'> {
+  static async checkPermissions(): Promise<
+    "prompt" | "prompt-with-rationale" | "granted" | "denied"
+  > {
     if (!Capacitor.isNativePlatform()) {
-      if (typeof window !== 'undefined' && 'Notification' in window) {
-        if (Notification.permission === 'granted') return 'granted';
-        if (Notification.permission === 'denied') return 'denied';
-        return 'prompt';
+      if (typeof window !== "undefined" && "Notification" in window) {
+        if (Notification.permission === "granted") return "granted";
+        if (Notification.permission === "denied") return "denied";
+        return "prompt";
       }
-      return 'granted';
+      return "granted";
     }
     try {
       const perm = await LocalNotifications.checkPermissions();
       return perm.display;
     } catch {
-      return 'denied';
+      return "denied";
     }
   }
 
   static async requestPermissions(): Promise<boolean> {
     if (!Capacitor.isNativePlatform()) {
-      if (typeof window !== 'undefined' && 'Notification' in window) {
+      if (typeof window !== "undefined" && "Notification" in window) {
         try {
           const res = await Notification.requestPermission();
-          return res === 'granted';
+          return res === "granted";
         } catch {
           return false;
         }
@@ -440,10 +651,10 @@ export class NotificationService {
     }
     try {
       let perm = await LocalNotifications.checkPermissions();
-      if (perm.display !== 'granted') {
+      if (perm.display !== "granted") {
         perm = await LocalNotifications.requestPermissions();
       }
-      const isGranted = perm.display === 'granted';
+      const isGranted = perm.display === "granted";
       if (isGranted) {
         await this.registerPushNotifications();
         await this.syncFcmToken();
@@ -463,12 +674,12 @@ export class NotificationService {
       this.setupPushListeners();
       let permStatus = await PushNotifications.checkPermissions();
 
-      if (permStatus.receive === 'prompt') {
+      if (permStatus.receive === "prompt") {
         permStatus = await PushNotifications.requestPermissions();
       }
 
-      if (permStatus.receive !== 'granted') {
-        console.warn('User denied push notification permissions.');
+      if (permStatus.receive !== "granted") {
+        console.warn("User denied push notification permissions.");
         return;
       }
 
@@ -478,22 +689,31 @@ export class NotificationService {
     }
   }
 
-  static async syncFcmToken() {
-    const token = localStorage.getItem('fcm_token');
+  static async syncFcmToken(force = false) {
+    const token = localStorage.getItem("fcm_token");
     if (token) {
       try {
-        await api.patch('/users/me', { fcmToken: token });
-        console.log('[FCM] Successfully synced FCM token to backend after login.');
+        const lastSynced = localStorage.getItem(this.SYNCED_FCM_TOKEN_KEY);
+        if (!force && lastSynced === token) return;
+        await api.patch("/users/me", { fcmToken: token });
+        localStorage.setItem(this.SYNCED_FCM_TOKEN_KEY, token);
+        console.log(
+          "[FCM] Successfully synced FCM token to backend after login.",
+        );
       } catch (error) {
-        console.error('[FCM] Failed to sync FCM token:', error);
+        console.error("[FCM] Failed to sync FCM token:", error);
       }
     } else {
       this.setupPushListeners();
-      console.log('[FCM] Token is null at sync. Re-registering push to force token emission.');
+      console.log(
+        "[FCM] Token is null at sync. Re-registering push to force token emission.",
+      );
       if (Capacitor.isNativePlatform()) {
-        import('@capacitor/push-notifications').then(({ PushNotifications }) => {
-          PushNotifications.register().catch(() => {});
-        });
+        import("@capacitor/push-notifications").then(
+          ({ PushNotifications }) => {
+            PushNotifications.register().catch(() => {});
+          },
+        );
       }
     }
   }
@@ -501,73 +721,67 @@ export class NotificationService {
   static async init() {
     if (!Capacitor.isNativePlatform() || this.isInitialized) return;
     this.isInitialized = true;
-    
+
     // Request basic permissions safely without blocking initialization on failure
     try {
       const perm = await LocalNotifications.checkPermissions();
-      if (perm.display !== 'granted') {
+      if (perm.display !== "granted") {
         await LocalNotifications.requestPermissions();
       }
 
       // Initialize Push Notifications
       await this.registerPushNotifications();
     } catch (permErr) {
-      console.warn("Could not check/request notification permissions:", permErr);
+      console.warn(
+        "Could not check/request notification permissions:",
+        permErr,
+      );
     }
 
     // Create premium notification channels with defensive error handling
     try {
       await LocalNotifications.createChannel({
-        id: 'class_alerts',
-        name: 'Class Reminders',
-        description: 'Heads-up alerts before your class begins.',
-        importance: 5, 
-        visibility: 1, 
+        id: "class_alerts",
+        name: "Class Reminders",
+        description: "Heads-up alerts before your class begins.",
+        importance: 5,
+        visibility: 1,
         lights: true,
-        lightColor: '#6366F1', 
+        lightColor: "#6366F1",
         vibration: true,
       });
 
       await LocalNotifications.createChannel({
-        id: 'silent_mode',
-        name: 'Active Silent Mode',
-        description: 'Pinned notification while class is actively running and phone is muted.',
-        importance: 3, // Default importance: displays pinned notification in shade without DND hiding it
-        visibility: 1, 
-        lights: false,
-        vibration: false,
-      });
-
-      await LocalNotifications.createChannel({
-        id: 'academic_briefings',
-        name: 'Academic Summaries',
-        description: 'Daily, weekly, and monthly briefing summaries and attendance reviews.',
+        id: "academic_briefings",
+        name: "Academic Summaries",
+        description:
+          "Daily, weekly, and monthly briefing summaries and attendance reviews.",
         importance: 3,
         visibility: 1,
         lights: true,
-        lightColor: '#3B82F6',
+        lightColor: "#3B82F6",
         vibration: false,
       });
 
       await LocalNotifications.createChannel({
-        id: 'assignment_alerts',
-        name: 'Assignment Deadlines',
-        description: 'Reminders for upcoming coursework and project deadlines.',
+        id: "assignment_alerts",
+        name: "Assignment Deadlines",
+        description: "Reminders for upcoming coursework and project deadlines.",
         importance: 4,
         visibility: 1,
         lights: true,
-        lightColor: '#EF4444',
+        lightColor: "#EF4444",
         vibration: true,
       });
 
       await LocalNotifications.createChannel({
-        id: 'system_alerts',
-        name: 'System Alerts',
-        description: 'Administrative warnings and device permission prompts.',
+        id: "system_alerts",
+        name: "System Alerts",
+        description: "Administrative warnings and device permission prompts.",
         importance: 4,
         visibility: 1,
         lights: true,
-        lightColor: '#F59E0B',
+        lightColor: "#F59E0B",
         vibration: true,
       });
     } catch (e) {
@@ -578,28 +792,28 @@ export class NotificationService {
       await LocalNotifications.registerActionTypes({
         types: [
           {
-            id: 'CLASS_SILENT_ACTIONS',
+            id: "CLASS_SILENT_ACTIONS",
             actions: [
               {
-                id: 'UNMUTE_ACTION',
-                title: '\uD83D\uDD0A Unmute Phone',
+                id: "UNMUTE_ACTION",
+                title: "\uD83D\uDD0A Unmute Phone",
                 foreground: false,
-                destructive: false
-              }
-            ]
+                destructive: false,
+              },
+            ],
           },
           {
-            id: 'CLASS_REMINDER_ACTIONS',
+            id: "CLASS_REMINDER_ACTIONS",
             actions: [
               {
-                id: 'MUTE_ACTION',
-                title: '\uD83D\uDD15 Mute Phone for Class',
-                foreground: false,
-                destructive: false
-              }
-            ]
-          }
-        ]
+                id: "MUTE_ACTION",
+                title: "\uD83D\uDD15 Mute Phone for Class",
+                foreground: true,
+                destructive: false,
+              },
+            ],
+          },
+        ],
       });
     } catch (e) {
       console.warn("Could not register notification action types:", e);
@@ -610,41 +824,57 @@ export class NotificationService {
 
     // Reconcile ringer and synchronize notifications when app returns to foreground from background
     try {
-      CapacitorApp.addListener('appStateChange', async ({ isActive }) => {
+      CapacitorApp.addListener("appStateChange", async ({ isActive }) => {
         if (isActive) {
           await checkAndReconcileRinger(PINNED_MUTE_NOTIF_ID);
 
           // If user was prompted to enable DND permission and returned, fulfill the pending mute request
           try {
-            const pendingMuteRaw = localStorage.getItem('attendx_pending_mute_request');
+            const pendingMuteRaw = localStorage.getItem(
+              "attendx_pending_mute_request",
+            );
             if (pendingMuteRaw) {
               const pendingMute = JSON.parse(pendingMuteRaw);
               if (pendingMute.endTimeMs && pendingMute.endTimeMs > Date.now()) {
-                const { checkDndPermission, mutePhone } = await import('../lib/ringer');
+                const { checkDndPermission, mutePhone } =
+                  await import("../lib/ringer");
                 const hasDnd = await checkDndPermission();
                 if (hasDnd) {
-                  localStorage.removeItem('attendx_pending_mute_request');
-                  const muted = await mutePhone(pendingMute.endTimeMs, pendingMute.classTitle || "Class");
+                  localStorage.removeItem("attendx_pending_mute_request");
+                  const muted = await mutePhone(
+                    pendingMute.endTimeMs,
+                    pendingMute.classTitle || "Class",
+                  );
                   if (muted) {
-                    await this.triggerPinnedClassMute(pendingMute.classTitle || "Class", new Date(pendingMute.endTimeMs));
-                    const { toast } = await import('sonner');
+                    await this.triggerPinnedClassMute(
+                      pendingMute.classTitle || "Class",
+                      new Date(pendingMute.endTimeMs),
+                      true,
+                    );
                     // Phone muted via pinned notification
                   }
                 }
               } else {
-                localStorage.removeItem('attendx_pending_mute_request');
+                localStorage.removeItem("attendx_pending_mute_request");
               }
             }
           } catch (pendingErr) {
-            console.warn("Failed to process pending mute on app resume:", pendingErr);
+            console.warn(
+              "Failed to process pending mute on app resume:",
+              pendingErr,
+            );
           }
 
           try {
             const perm = await LocalNotifications.checkPermissions();
-            if (perm.display === 'granted') {
+            if (perm.display === "granted") {
               await this.registerPushNotifications();
               await this.syncFcmToken();
-              await this.scheduleAllProactiveNotifications();
+              const now = Date.now();
+              if (now - this.lastResumeScheduleAt > 15 * 1000) {
+                this.lastResumeScheduleAt = now;
+                await this.scheduleAllProactiveNotifications();
+              }
             }
           } catch {}
         }
@@ -653,8 +883,8 @@ export class NotificationService {
       console.warn("Could not register appStateChange listener:", e);
     }
 
-    if (typeof window !== 'undefined') {
-      window.addEventListener('focus', () => {
+    if (typeof window !== "undefined") {
+      window.addEventListener("focus", () => {
         checkAndReconcileRinger(PINNED_MUTE_NOTIF_ID).catch(() => {});
       });
     }
@@ -662,8 +892,8 @@ export class NotificationService {
     const navigateInApp = (url: string) => {
       try {
         if (window.location.pathname !== url) {
-          window.history.pushState(null, '', url);
-          window.dispatchEvent(new PopStateEvent('popstate'));
+          window.history.pushState(null, "", url);
+          window.dispatchEvent(new PopStateEvent("popstate"));
         }
       } catch {
         window.location.href = url;
@@ -672,141 +902,210 @@ export class NotificationService {
 
     // Listen for unmute/mute actions and notification body taps
     try {
-      LocalNotifications.addListener('localNotificationActionPerformed', async (action) => {
-        try {
-          // Tap on the notification body itself
-          if (action.actionId === 'tap' || action.actionId === 'ACADEMIC_UPDATE_OPEN') {
-            const extra = action.notification.extra;
-            if (Number(action.notification.id) === PERMISSION_WARNING_NOTIF_ID || (extra && extra.type === 'dnd_permission')) {
-               navigateInApp('/settings');
-               await requestDndPermission();
-               return;
-            }
-            if (extra && extra.type === 'ota_update') {
-               window.dispatchEvent(new Event('check_ota_update'));
-               return;
-            }
-            if (extra && (extra.route || extra.url)) {
-               navigateInApp(extra.route || extra.url);
-               return;
-            }
-            const id = Number(action.notification.id);
-            // Academic updates series (8800..8899)
-            if (id >= ACADEMIC_UPDATES_START_ID && id <= ACADEMIC_UPDATES_END_ID) {
-              navigateInApp('/report');
-              return;
-            }
-            // Assignment series (9000..69999)
-            if (id >= ASSIGNMENT_REMINDERS_START_ID && id <= ASSIGNMENT_REMINDERS_END_ID) {
-              navigateInApp('/assignments');
-              return;
-            }
-            // Timetable classes & events
-            if (isManagedTimetableNotificationId(id)) {
-              navigateInApp('/today');
-              return;
-            }
-          }
-
-          if (action.actionId === 'UNMUTE_ACTION') {
-            const success = await unmutePhone();
-            if (success) {
-              await LocalNotifications.cancel({ notifications: [{ id: PINNED_MUTE_NOTIF_ID }, { id: 8888 }] });
-              try {
-                // @ts-ignore
-                if (typeof LocalNotifications.removeDeliveredNotifications === 'function') {
-                  await LocalNotifications.removeDeliveredNotifications({ notifications: [{ id: PINNED_MUTE_NOTIF_ID }, { id: 8888 }] as any });
-                }
-              } catch {}
-              // Pinned notification dismissed; no web toast needed
-            }
-          } else if (action.actionId === 'MUTE_ACTION') {
-            let rawExtra = action.notification.extra;
-            if (typeof rawExtra === 'string') {
-              try { rawExtra = JSON.parse(rawExtra); } catch {}
-            }
-            const { classTitle, endTimeStr, startTimeStr, endTimeMs } = rawExtra || {};
-            
-            let endTime = new Date();
-            let classEnded = false;
-
-            if (endTimeMs && typeof endTimeMs === 'number' && !isNaN(endTimeMs) && endTimeMs > 0) {
-              endTime = new Date(endTimeMs);
-              if (endTime.getTime() <= Date.now()) {
-                classEnded = true;
+      LocalNotifications.addListener(
+        "localNotificationActionPerformed",
+        async (action) => {
+          try {
+            // Tap on the notification body itself
+            if (
+              action.actionId === "tap" ||
+              action.actionId === "ACADEMIC_UPDATE_OPEN"
+            ) {
+              const extra = action.notification.extra;
+              if (
+                Number(action.notification.id) ===
+                  PERMISSION_WARNING_NOTIF_ID ||
+                (extra && extra.type === "dnd_permission")
+              ) {
+                navigateInApp("/settings");
+                await requestDndPermission();
+                return;
               }
-            } else if (endTimeStr) {
-              const parsedEnd = parseTimeOnDate(new Date(), endTimeStr);
-              if (parsedEnd) {
-                endTime = parsedEnd;
-                // Check if class crossed midnight (e.g. start 23:00, end 01:00)
-                let crossesMidnight = false;
-                if (startTimeStr) {
-                  const parsedStart = parseTimeOnDate(new Date(), startTimeStr);
-                  if (parsedStart && parsedStart.getTime() > parsedEnd.getTime()) {
-                    crossesMidnight = true;
-                  }
+              if (extra && (extra.type === "ota_update" || extra.type === "native_update" || extra.type === "app_update" || extra.type === "update")) {
+                if (nativeUpdater.isAvailable()) {
+                  window.dispatchEvent(new CustomEvent("open-update-sheet"));
                 }
-                if (crossesMidnight) {
-                  if (endTime.getTime() < Date.now()) endTime = addDays(endTime, 1);
-                } else if (endTime.getTime() <= Date.now()) {
+                return;
+              }
+              if (extra && (extra.route || extra.url)) {
+                navigateInApp(extra.route || extra.url);
+                return;
+              }
+              const id = Number(action.notification.id);
+              // Academic updates series (8800..8899)
+              if (
+                id >= ACADEMIC_UPDATES_START_ID &&
+                id <= ACADEMIC_UPDATES_END_ID
+              ) {
+                navigateInApp("/report");
+                return;
+              }
+              // Assignment series (9000..69999)
+              if (
+                id >= ASSIGNMENT_REMINDERS_START_ID &&
+                id <= ASSIGNMENT_REMINDERS_END_ID
+              ) {
+                navigateInApp("/assignments");
+                return;
+              }
+              // Timetable classes & events
+              if (isManagedTimetableNotificationId(id)) {
+                navigateInApp("/today");
+                return;
+              }
+            }
+
+            if (action.actionId === "UNMUTE_ACTION") {
+              const success = await unmutePhone();
+              if (success) {
+                await LocalNotifications.cancel({
+                  notifications: [{ id: PINNED_MUTE_NOTIF_ID }, { id: 8888 }],
+                });
+                try {
+                  // @ts-ignore
+                  if (
+                    typeof LocalNotifications.removeDeliveredNotifications ===
+                    "function"
+                  ) {
+                    await LocalNotifications.removeDeliveredNotifications({
+                      notifications: [
+                        { id: PINNED_MUTE_NOTIF_ID },
+                        { id: 8888 },
+                      ] as any,
+                    });
+                  }
+                } catch {}
+                // Pinned notification dismissed; no web toast needed
+              }
+            } else if (action.actionId === "MUTE_ACTION") {
+              let rawExtra = action.notification.extra;
+              if (typeof rawExtra === "string") {
+                try {
+                  rawExtra = JSON.parse(rawExtra);
+                } catch {}
+              }
+              const { classTitle, endTimeStr, startTimeStr, endTimeMs } =
+                rawExtra || {};
+
+              let endTime = new Date();
+              let classEnded = false;
+
+              if (
+                endTimeMs &&
+                typeof endTimeMs === "number" &&
+                !isNaN(endTimeMs) &&
+                endTimeMs > 0
+              ) {
+                endTime = new Date(endTimeMs);
+                if (endTime.getTime() <= Date.now()) {
                   classEnded = true;
+                }
+              } else if (endTimeStr) {
+                const parsedEnd = parseTimeOnDate(new Date(), endTimeStr);
+                if (parsedEnd) {
+                  endTime = parsedEnd;
+                  // Check if class crossed midnight (e.g. start 23:00, end 01:00)
+                  let crossesMidnight = false;
+                  if (startTimeStr) {
+                    const parsedStart = parseTimeOnDate(
+                      new Date(),
+                      startTimeStr,
+                    );
+                    if (
+                      parsedStart &&
+                      parsedStart.getTime() > parsedEnd.getTime()
+                    ) {
+                      crossesMidnight = true;
+                    }
+                  }
+                  if (crossesMidnight) {
+                    if (endTime.getTime() < Date.now())
+                      endTime = addDays(endTime, 1);
+                  } else if (endTime.getTime() <= Date.now()) {
+                    classEnded = true;
+                  }
+                } else {
+                  endTime = addMinutes(new Date(), 60);
                 }
               } else {
                 endTime = addMinutes(new Date(), 60);
               }
-            } else {
-              endTime = addMinutes(new Date(), 60);
-            }
 
-            if (classEnded) {
-              // Class already ended; dismiss notification silently
-              try {
-                await LocalNotifications.cancel({ notifications: [{ id: Number(action.notification.id) }] });
-                // @ts-ignore
-                if (typeof LocalNotifications.removeDeliveredNotifications === 'function') {
-                  await LocalNotifications.removeDeliveredNotifications({ notifications: [action.notification as any] });
-                }
-              } catch {}
-              return;
-            }
+              if (classEnded) {
+                // Class already ended; dismiss notification silently
+                try {
+                  await LocalNotifications.cancel({
+                    notifications: [{ id: Number(action.notification.id) }],
+                  });
+                  // @ts-ignore
+                  if (
+                    typeof LocalNotifications.removeDeliveredNotifications ===
+                    "function"
+                  ) {
+                    await LocalNotifications.removeDeliveredNotifications({
+                      notifications: [action.notification as any],
+                    });
+                  }
+                } catch {}
+                return;
+              }
 
-            // Try muting with scheduled unmute epoch
-            const success = await mutePhone(endTime.getTime(), classTitle || "Class");
-            if (!success) {
-              // Store pending request so as soon as user grants DND in Settings and returns, it automatically mutes!
-              localStorage.setItem('attendx_pending_mute_request', JSON.stringify({
-                classTitle: classTitle || "Class",
-                endTimeMs: endTime.getTime(),
-                endTimeStr,
-                startTimeStr,
-              }));
-              toast.error("DND Permission required. Please enable Do Not Disturb access in Settings.");
-              return;
-            }
-            localStorage.removeItem('attendx_pending_mute_request');
+              // Try muting with scheduled unmute epoch
+              const success = await mutePhone(
+                endTime.getTime(),
+                classTitle || "Class",
+              );
+              if (!success) {
+                // Store pending request so as soon as user grants DND in Settings and returns, it automatically mutes!
+                localStorage.setItem(
+                  "attendx_pending_mute_request",
+                  JSON.stringify({
+                    classTitle: classTitle || "Class",
+                    endTimeMs: endTime.getTime(),
+                    endTimeStr,
+                    startTimeStr,
+                  }),
+                );
+                toast.error(
+                  "DND Permission required. Please enable Do Not Disturb access in Settings.",
+                );
+                return;
+              }
+              localStorage.removeItem("attendx_pending_mute_request");
 
-            // Pinned notification triggered below; no duplicate web toast needed
-            await this.triggerPinnedClassMute(classTitle || "Class", endTime);
+              // Pinned notification triggered below; no duplicate web toast needed
+              await this.triggerPinnedClassMute(
+                classTitle || "Class",
+                endTime,
+                true,
+              );
+            }
+          } catch (actionErr) {
+            console.error("Error processing notification action:", actionErr);
           }
-        } catch (actionErr) {
-          console.error("Error processing notification action:", actionErr);
-        }
-      });
+        },
+      );
     } catch (e) {
-      console.warn("Could not register localNotificationActionPerformed listener:", e);
+      console.warn(
+        "Could not register localNotificationActionPerformed listener:",
+        e,
+      );
     }
 
     // Sweep for any stuck DND notifications from previous sessions
     try {
       const delivered = await LocalNotifications.getDeliveredNotifications();
-      const stuckMute = delivered.notifications.find(n => Number(n.id) === PINNED_MUTE_NOTIF_ID || Number(n.id) === 8888);
+      const stuckMute = delivered.notifications.find(
+        (n) => Number(n.id) === PINNED_MUTE_NOTIF_ID || Number(n.id) === 8888,
+      );
       if (stuckMute) {
         await checkAndReconcileRinger(PINNED_MUTE_NOTIF_ID);
         try {
           // @ts-ignore
           if (LocalNotifications.removeDeliveredNotifications) {
-            await LocalNotifications.removeDeliveredNotifications({ notifications: [stuckMute] });
+            await LocalNotifications.removeDeliveredNotifications({
+              notifications: [stuckMute],
+            });
           }
         } catch (e) {}
       }
@@ -822,7 +1121,7 @@ export class NotificationService {
     location?: string,
     endTimeStr?: string,
     slotId: string = "slot",
-    type: 'standard' | 'headsup' = 'standard'
+    type: "standard" | "headsup" = "standard",
   ) {
     if (!Capacitor.isNativePlatform()) return;
     if (isNaN(actualStartTime.getTime()) || isNaN(notifyTime.getTime())) return;
@@ -830,79 +1129,95 @@ export class NotificationService {
 
     try {
       const cleanTitle = (classTitle || "Class").trim();
-      const timeStr = actualStartTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      const notifId = getNotificationIdForSlot(slotId, formatLocalDate(actualStartTime), type);
-      const endObj = endTimeStr ? parseTimeOnDate(actualStartTime, endTimeStr) : null;
-      const calculatedEndMs = endObj ? endObj.getTime() : (actualStartTime.getTime() + 60 * 60 * 1000);
+      const scheduledDate = formatLocalDate(actualStartTime);
+      const rawStartTimeStr = `${String(actualStartTime.getHours()).padStart(2, "0")}:${String(actualStartTime.getMinutes()).padStart(2, "0")}`;
+      const timeStr = actualStartTime.toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+      const notifId = getNotificationIdForSlot(
+        slotId,
+        scheduledDate,
+        type,
+      );
+      let endObj = endTimeStr
+        ? parseTimeOnDate(actualStartTime, endTimeStr)
+        : null;
+      if (endObj && endObj.getTime() <= actualStartTime.getTime()) {
+        endObj = addDays(endObj, 1);
+      }
+      const calculatedEndMs = endObj
+        ? endObj.getTime()
+        : actualStartTime.getTime() + 60 * 60 * 1000;
 
       await LocalNotifications.schedule({
         notifications: [
           {
             id: notifId,
-            title: type === 'headsup' ? `Upcoming (Heads Up): ${cleanTitle}` : `Upcoming: ${cleanTitle}`,
-            body: `Starts at ${timeStr} ${location ? `| ${location.trim()}` : ''}`,
-            largeBody: type === 'headsup'
-              ? `\uD83D\uDCDA Class: ${cleanTitle}\n\u23F0 Time: ${timeStr} - ${endTimeStr || 'TBD'}\n\uD83D\uDCCD Room: ${location ? location.trim() : 'N/A'}\n\nHeads up: Your upcoming class starts soon. Tap below to mute your phone for this class.`
-              : `\uD83D\uDCDA Class: ${cleanTitle}\n\u23F0 Time: ${timeStr} - ${endTimeStr || 'TBD'}\n\uD83D\uDCCD Room: ${location ? location.trim() : 'N/A'}\n\nTap the action button below to instantly mute your phone for the duration of this class.`,
+            title:
+              type === "headsup"
+                ? `Upcoming (Heads Up): ${cleanTitle}`
+                : `Upcoming: ${cleanTitle}`,
+            body: `Starts at ${timeStr} ${location ? `| ${location.trim()}` : ""}`,
+            largeBody:
+              type === "headsup"
+                ? `\uD83D\uDCDA Class: ${cleanTitle}\n\u23F0 Time: ${timeStr} - ${endTimeStr || "TBD"}\n\uD83D\uDCCD Room: ${location ? location.trim() : "N/A"}\n\nHeads up: Your upcoming class starts soon. Tap below to mute your phone for this class.`
+                : `\uD83D\uDCDA Class: ${cleanTitle}\n\u23F0 Time: ${timeStr} - ${endTimeStr || "TBD"}\n\uD83D\uDCCD Room: ${location ? location.trim() : "N/A"}\n\nTap the action button below to instantly mute your phone for the duration of this class.`,
             summaryText: "Class Reminder",
             smallIcon: "ic_stat_attendx",
             largeIcon: "attendx_notification_icon",
-            iconColor: "#6366F1", 
-            channelId: 'class_alerts',
+            iconColor: "#6366F1",
+            channelId: "class_alerts",
             foreground: true,
-            actionTypeId: 'CLASS_REMINDER_ACTIONS',
-            extra: { classTitle: cleanTitle, endTimeStr, startTimeStr: timeStr, endTimeMs: calculatedEndMs },
-            schedule: { 
-              at: notifyTime,
-              allowWhileIdle: true
+            actionTypeId: "CLASS_REMINDER_ACTIONS",
+            extra: {
+              classTitle: cleanTitle,
+              endTimeStr,
+              startTimeStr: rawStartTimeStr,
+              endTimeMs: calculatedEndMs,
+              scheduledDate,
             },
-          }
-        ]
+            schedule: {
+              at: notifyTime,
+              allowWhileIdle: true,
+            },
+          },
+        ],
       });
     } catch (e) {
       console.warn("Failed to schedule class reminder:", e);
     }
   }
 
-  static async triggerPinnedClassMute(className: string, endTime: Date) {
+  static async triggerPinnedClassMute(
+    className: string,
+    endTime: Date,
+    alreadyMuted: boolean = false,
+  ) {
     if (isNaN(endTime.getTime())) return;
     setScheduledUnmuteTime(endTime.getTime());
     if (!Capacitor.isNativePlatform()) return;
-    
+
     try {
       const cleanClassName = (className || "Class").trim();
-      const timeStr = endTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-      // Trigger native ringer plugin to silence and register native resurrection
-      await mutePhone(endTime.getTime(), cleanClassName);
-
-      // On native Android, mutePhone already registers the un-swipeable native pinned notification with FLAG_NO_CLEAR.
-      // We only schedule via Capacitor LocalNotifications if NOT on native platform (e.g. web environment fallback).
-      if (!Capacitor.isNativePlatform()) {
-        await LocalNotifications.schedule({
-          notifications: [
-            {
-              id: PINNED_MUTE_NOTIF_ID,
-              title: `Class in Session`,
-              body: `Phone is silenced until ${timeStr}`,
-              largeBody: `\uD83D\uDD15 Current Class: ${cleanClassName}\n\nYour phone has been muted via AttendX. It will restore to normal volume automatically at ${timeStr}, or you can unmute manually below.`,
-              summaryText: "Do Not Disturb Active",
-              smallIcon: "ic_stat_attendx",
-              largeIcon: "attendx_notification_icon",
-              iconColor: "#10B981", 
-              channelId: 'silent_mode',
-              ongoing: true,
-              autoCancel: false,
-              actionTypeId: 'CLASS_SILENT_ACTIONS',
-              schedule: { at: new Date(Date.now() + 1000), allowWhileIdle: true }
-            }
-          ]
-        });
+      if (!alreadyMuted) {
+        const ok = await mutePhone(endTime.getTime(), cleanClassName);
+        if (!ok) return;
       }
 
-      const timeUntilEnd = Math.min(Math.max(0, endTime.getTime() - Date.now()), 2147483647);
+      if (this.unmuteTimeoutId) {
+        clearTimeout(this.unmuteTimeoutId);
+        this.unmuteTimeoutId = null;
+      }
+
+      const timeUntilEnd = Math.min(
+        Math.max(0, endTime.getTime() - Date.now()),
+        2147483647,
+      );
       if (timeUntilEnd > 0) {
-        setTimeout(async () => {
+        this.unmuteTimeoutId = setTimeout(async () => {
+          this.unmuteTimeoutId = null;
           await checkAndReconcileRinger(PINNED_MUTE_NOTIF_ID);
         }, timeUntilEnd);
       }
@@ -914,7 +1229,7 @@ export class NotificationService {
   static async scheduleHolidayNotification(
     holidayName: string | undefined,
     date: Date,
-    customMessage: string = "No classes scheduled! Enjoy your day off."
+    customMessage: string = "No classes scheduled! Enjoy your day off.",
   ) {
     if (!Capacitor.isNativePlatform()) return;
     let targetDate = new Date(date);
@@ -932,17 +1247,19 @@ export class NotificationService {
         notifications: [
           {
             id: notifId,
-            title: cleanHolidayName.toLowerCase().includes("holiday") ? "Holiday Today: " + cleanHolidayName : "Event Today: " + cleanHolidayName,
+            title: cleanHolidayName.toLowerCase().includes("holiday")
+              ? "Holiday Today: " + cleanHolidayName
+              : "Event Today: " + cleanHolidayName,
             body: customMessage,
             largeBody: "\u2728 " + cleanHolidayName + "\n\n" + customMessage,
             summaryText: "Holiday Event",
             smallIcon: "ic_stat_attendx",
             largeIcon: "attendx_notification_icon",
-            iconColor: "#10B981", 
+            iconColor: "#10B981",
             channelId: "class_alerts",
-            schedule: { at: targetDate, allowWhileIdle: true }
-          }
-        ]
+            schedule: { at: targetDate, allowWhileIdle: true },
+          },
+        ],
       });
     } catch (e) {
       console.warn("Failed to schedule holiday notification:", e);
@@ -961,14 +1278,17 @@ export class NotificationService {
     try {
       let cleanName = (name || "Friend").trim();
       cleanName = cleanName
-        .replace(/^(?:happy\s+)?birthday\s+of\s+/i, '')
-        .replace(/^(?:happy\s+)?birthday\s+/i, '')
-        .replace(/(?:'s|s)?\s*birthday.*$/i, '')
-        .replace(/^(?:of\s+)/i, '')
+        .replace(/^(?:happy\s+)?birthday\s+of\s+/i, "")
+        .replace(/^(?:happy\s+)?birthday\s+/i, "")
+        .replace(/(?:'s|s)?\s*birthday.*$/i, "")
+        .replace(/^(?:of\s+)/i, "")
         .trim();
       if (!cleanName) cleanName = "Friend";
 
-      const notifId = getBirthdayNotificationId(cleanName, formatLocalDate(targetDate));
+      const notifId = getBirthdayNotificationId(
+        cleanName,
+        formatLocalDate(targetDate),
+      );
 
       await LocalNotifications.schedule({
         notifications: [
@@ -980,43 +1300,220 @@ export class NotificationService {
             summaryText: "Birthday Event",
             smallIcon: "ic_stat_attendx",
             largeIcon: "attendx_notification_icon",
-            iconColor: "#F59E0B", 
+            iconColor: "#F59E0B",
             channelId: "class_alerts",
-            schedule: { at: targetDate, allowWhileIdle: true }
-          }
-        ]
+            schedule: { at: targetDate, allowWhileIdle: true },
+          },
+        ],
       });
     } catch (e) {
       console.warn("Failed to schedule birthday notification:", e);
     }
   }
 
+  private static mapServerEvents(rawEvents: any[]): any[] {
+    if (!Array.isArray(rawEvents)) return [];
+    return rawEvents.map((ev: any) => ({
+      id: ev.id,
+      title: ev.title || "Event",
+      type: ev.eventType || "academic",
+      eventType: ev.eventType || "academic",
+      date: ev.date ? ev.date.split("T")[0] + "T00:00:00" : "",
+      endDate: ev.endDate ? ev.endDate.split("T")[0] + "T00:00:00" : undefined,
+      description: ev.description,
+    }));
+  }
+
+  private static normalizeTimetableSlots(raw: any): any[] {
+    const arr = Array.isArray(raw) ? raw : raw?.slots || [];
+    if (!Array.isArray(arr)) return [];
+    return arr.map((s: any) => ({
+      ...s,
+      startTime:
+        typeof s.startTime === "string" ? s.startTime.slice(0, 5) : s.startTime,
+      endTime:
+        typeof s.endTime === "string" ? s.endTime.slice(0, 5) : s.endTime,
+    }));
+  }
+
+  private static async syncProactiveNotificationSources(
+    force: boolean = false,
+  ): Promise<void> {
+    if (typeof navigator !== "undefined" && !navigator.onLine) return;
+    const authState = useAuthStore.getState();
+    if (!authState.isAuthenticated && !authState.accessToken) return;
+
+    const now = Date.now();
+    if (!force && this.lastProactiveSyncAt > 0 && now - this.lastProactiveSyncAt < 30_000) {
+      return;
+    }
+    if (this.inFlightProactiveSync && !force) {
+      return this.inFlightProactiveSync;
+    }
+
+    const runSync = (async () => {
+      try {
+        this.lastProactiveSyncAt = Date.now();
+
+        const [semSettled, assignSettled] = await Promise.allSettled([
+          api.get("/semesters/active"),
+          api.get("/assignments"),
+        ]);
+
+        if (
+          assignSettled.status === "fulfilled" &&
+          Array.isArray(assignSettled.value?.data)
+        ) {
+          useAssignmentStore
+            .getState()
+            .mergeFetchedAssignments(assignSettled.value.data);
+        }
+
+        const cachedSem =
+          useCacheStore.getState().semester?.activeSemester ||
+          useCacheStore.getState().timetable?.activeSemester ||
+          null;
+        const activeSem =
+          semSettled.status === "fulfilled" && semSettled.value?.data?.id
+            ? semSettled.value.data
+            : cachedSem;
+
+        if (!activeSem?.id) return;
+
+        useAttendanceStore.setState({
+          activeSemesterId: activeSem.id,
+          hasActiveSemester: true,
+        });
+        const existingSemCache = useCacheStore.getState().semester || {};
+        useCacheStore.getState().setCache("semester", {
+          ...existingSemCache,
+          activeSemester: activeSem,
+        });
+
+        const shouldRefreshStats =
+          force ||
+          useAttendanceStore.getState().subjects.length === 0 ||
+          Date.now() - this.lastStatsSyncAt > 60_000;
+
+        const [ttSettled, evSettled, statsSettled] = await Promise.allSettled([
+          api.get(`/timetable/${activeSem.id}`),
+          api.get(`/events?semesterId=${activeSem.id}`),
+          shouldRefreshStats
+            ? api.get(`/attendance/stats?semesterId=${activeSem.id}`)
+            : Promise.resolve(null),
+        ]);
+
+        const pendingQueue = useOfflineStore.getState().queue;
+        const hasPendingTimetable = pendingQueue.some((q) =>
+          q.url.includes("/timetable")
+        );
+        const hasPendingEvents = pendingQueue.some((q) =>
+          q.url.includes("/events")
+        );
+        const hasPendingAttendanceOrSubjects = pendingQueue.some(
+          (q) => q.url.includes("/attendance") || q.url.includes("/subjects")
+        );
+
+        if (
+          !hasPendingTimetable &&
+          ttSettled.status === "fulfilled" &&
+          ttSettled.value?.data
+        ) {
+          const slots = this.normalizeTimetableSlots(ttSettled.value.data);
+          const existingTt = useCacheStore.getState().timetable || {};
+          useCacheStore.getState().setCache("timetable", {
+            ...existingTt,
+            activeSemester: activeSem,
+            slots,
+          });
+        }
+
+        if (
+          !hasPendingEvents &&
+          evSettled.status === "fulfilled" &&
+          Array.isArray(evSettled.value?.data)
+        ) {
+          const mappedEvents = this.mapServerEvents(evSettled.value.data);
+          useAttendanceStore.setState({ events: mappedEvents });
+          const curSemCache = useCacheStore.getState().semester || {};
+          useCacheStore.getState().setCache("semester", {
+            ...curSemCache,
+            activeSemester: activeSem,
+            events: evSettled.value.data,
+          });
+        }
+
+        if (
+          !hasPendingAttendanceOrSubjects &&
+          statsSettled.status === "fulfilled" &&
+          statsSettled.value?.data
+        ) {
+          const rawStats = Array.isArray(statsSettled.value.data)
+            ? statsSettled.value.data
+            : statsSettled.value.data?.subjects || [];
+          if (Array.isArray(rawStats) && rawStats.length > 0) {
+            this.lastStatsSyncAt = Date.now();
+            const curSubCache = useCacheStore.getState().subjects || {};
+            useCacheStore.getState().setCache("subjects", {
+              ...curSubCache,
+              stats: rawStats,
+              activeSemesterId: activeSem.id,
+            });
+          }
+        }
+      } catch (e) {
+        console.warn("NotificationService: proactive source sync failed:", e);
+      }
+    })();
+
+    this.inFlightProactiveSync = runSync;
+    try {
+      await runSync;
+    } finally {
+      if (this.inFlightProactiveSync === runSync) {
+        this.inFlightProactiveSync = null;
+      }
+    }
+  }
+
   /**
    * Proactively checks permissions, onboarding/semester state, timetable slots,
-   * events, and summary preferences, and schedules ALL notifications (classes, events,
-   * and all 4 academic summaries) without waiting for the user to open any specific page.
+   * events, subjects, assignments, and summary preferences, and schedules ALL
+   * notifications without waiting for the user to open any specific page.
    */
-  static async scheduleAllProactiveNotifications(force: boolean = false): Promise<void> {
+  static async scheduleAllProactiveNotifications(
+    force: boolean = false,
+  ): Promise<void> {
     if (!Capacitor.isNativePlatform()) return;
 
     try {
+      await this.waitForStoreHydration(2000);
+
       // 1. Prior check: Check notification permissions
       const perm = await this.checkPermissions();
-      if (perm !== 'granted') {
+      if (perm !== "granted") {
         return;
       }
 
-      // 2. Schedule Timetable Classes & Semester Events (does prior checks for semester, slots, and events)
+      // 2. Sync fresh semester, timetable, events, subject stats, and assignments when online
+      await this.syncProactiveNotificationSources(force);
+
+      // 3. Schedule Timetable Classes, Holidays, Birthdays, Campus Events & EOD Summaries
       await this.autoScheduleFromTimetable();
 
-      // 3. Schedule All Academic Summaries (Daily, Weekly, Monthly)
-      const activeFreq = useCacheStore.getState().reminderFrequency || { type: 'Daily' };
+      // 4. Schedule All Academic Summaries (Daily, Weekly, Monthly)
+      const activeFreq = useCacheStore.getState().reminderFrequency || {
+        type: "Daily",
+      };
       await this.scheduleAcademicUpdates(activeFreq);
 
-      // 4. Schedule Assignment Reminders
+      // 5. Schedule Assignment Reminders
       await this.scheduleAssignmentReminders();
     } catch (e) {
-      console.warn("NotificationService: scheduleAllProactiveNotifications error:", e);
+      console.warn(
+        "NotificationService: scheduleAllProactiveNotifications error:",
+        e,
+      );
     }
   }
 
@@ -1043,27 +1540,42 @@ export class NotificationService {
   private static async _executeAutoScheduleFromTimetable(): Promise<void> {
     try {
       await this.waitForStoreHydration(2000);
-      let activeSemesterId = useAttendanceStore.getState().activeSemesterId;
-      if (!activeSemesterId) {
-        const cached = useCacheStore.getState().timetable;
-        if (cached?.activeSemester?.id) {
-          activeSemesterId = cached.activeSemester.id;
-        }
-      }
-      if (!activeSemesterId) {
+      let activeSemester =
+        useCacheStore.getState().semester?.activeSemester ||
+        useCacheStore.getState().timetable?.activeSemester ||
+        null;
+      let activeSemesterId =
+        useAttendanceStore.getState().activeSemesterId ||
+        activeSemester?.id ||
+        null;
+      if (!activeSemesterId || !activeSemester) {
         try {
           const semRes = await api.get("/semesters/active");
           if (semRes.data?.id) {
+            activeSemester = semRes.data;
             activeSemesterId = semRes.data.id;
-            useAttendanceStore.setState({ activeSemesterId: semRes.data.id, hasActiveSemester: true });
+            useAttendanceStore.setState({
+              activeSemesterId: semRes.data.id,
+              hasActiveSemester: true,
+            });
+            const curSem = useCacheStore.getState().semester || {};
+            useCacheStore.getState().setCache("semester", {
+              ...curSem,
+              activeSemester: semRes.data,
+            });
           }
         } catch (e) {
-          console.warn("NotificationService: could not fetch active semester", e);
+          console.warn(
+            "NotificationService: could not fetch active semester",
+            e,
+          );
         }
       }
       if (!activeSemesterId) return;
 
-      console.log("Auto-scheduling local notifications for upcoming classes and events...");
+      console.log(
+        "Auto-scheduling local notifications for upcoming classes and events...",
+      );
 
       let rawSlots: any = useCacheStore.getState().timetable?.slots;
       let events = useAttendanceStore.getState().events || [];
@@ -1072,32 +1584,36 @@ export class NotificationService {
       const prefetchTasks: Promise<any>[] = [];
       if (!rawSlots || rawSlots.length === 0) {
         prefetchTasks.push(
-          api.get(`/timetable/${activeSemesterId}`)
-            .then(res => {
-              rawSlots = res.data;
-              const slotsArr = Array.isArray(rawSlots) ? rawSlots : (rawSlots?.slots || []);
+          api
+            .get(`/timetable/${activeSemesterId}`)
+            .then((res) => {
+              const slotsArr = this.normalizeTimetableSlots(res.data);
+              rawSlots = slotsArr;
               if (slotsArr.length > 0) {
-                useCacheStore.getState().setTimetable({ slots: slotsArr });
+                const existingTt = useCacheStore.getState().timetable || {};
+                useCacheStore.getState().setCache("timetable", {
+                  ...existingTt,
+                  ...(activeSemester ? { activeSemester } : {}),
+                  slots: slotsArr,
+                });
               }
             })
-            .catch(e => console.warn("Failed to fetch timetable for auto-scheduling", e))
+            .catch((e) =>
+              console.warn("Failed to fetch timetable for auto-scheduling", e),
+            ),
         );
       }
       if (events.length === 0) {
         prefetchTasks.push(
-          api.get(`/events?semesterId=${activeSemesterId}`)
-            .then(evRes => {
+          api
+            .get(`/events?semesterId=${activeSemesterId}`)
+            .then((evRes) => {
               if (Array.isArray(evRes.data)) {
-                events = evRes.data.map((ev: any) => ({
-                  title: ev.title || "Event",
-                  type: ev.eventType || "academic",
-                  date: ev.date ? ev.date.split('T')[0] + "T00:00:00" : "",
-                  endDate: ev.endDate ? ev.endDate.split('T')[0] + "T00:00:00" : undefined
-                }));
+                events = this.mapServerEvents(evRes.data);
                 useAttendanceStore.setState({ events });
               }
             })
-            .catch(() => {})
+            .catch(() => {}),
         );
       }
 
@@ -1105,16 +1621,24 @@ export class NotificationService {
         await Promise.allSettled(prefetchTasks);
       }
 
-      const slots: any[] = Array.isArray(rawSlots) ? rawSlots : (rawSlots?.slots || []);
+      const allSlots: any[] = Array.isArray(rawSlots)
+        ? rawSlots
+        : rawSlots?.slots || [];
+      const slots: any[] = allSlots.filter((s) => !s?.validUntil);
       const allEvents = [...events];
+      const cutoffIso = getInstructionalCutoffIso(allEvents, activeSemester);
 
       // If both slots and events are completely empty, nothing to schedule
       if (slots.length === 0 && allEvents.length === 0) return;
-      
+
       const pending = await LocalNotifications.getPending();
-      const toCancel = pending.notifications.filter(n => isManagedTimetableNotificationId(Number(n.id)));
+      const toCancel = pending.notifications.filter((n) =>
+        isManagedTimetableNotificationId(Number(n.id)),
+      );
       if (toCancel.length > 0) {
-        await LocalNotifications.cancel({ notifications: toCancel.map(n => ({ id: Number(n.id) })) });
+        await LocalNotifications.cancel({
+          notifications: toCancel.map((n) => ({ id: Number(n.id) })),
+        });
       }
 
       const today = startOfDay(new Date());
@@ -1122,65 +1646,85 @@ export class NotificationService {
       const notificationsToSchedule: any[] = [];
 
       const config = useNotificationStore.getState().config;
-      const reminderOffset = (config && typeof config.classReminderOffset === 'number') ? config.classReminderOffset : 10;
-      const user = useAuthStore.getState().user;
+      const reminderOffset =
+        config && typeof config.classReminderOffset === "number"
+          ? config.classReminderOffset
+          : 10;
 
       for (let i = 0; i < 14; i++) {
         const currentDay = addDays(today, i);
-        
+        const currentIso = formatLocalDate(currentDay);
+        const isPastCutoff = Boolean(cutoffIso && currentIso > cutoffIso);
+
         // Note: Self Birthday notifications are dispatched as official FCM Push Notifications from the backend at 8:00 AM IST.
         // Local notification scheduling for Self Birthday is disabled to eliminate duplicate alerts.
 
         // Multi-day event support: check if currentDay falls anywhere within event date range
-        const dayEvents = allEvents.filter(e => isEventActiveOnDate(e, currentDay));
+        const dayEvents = allEvents.filter((e) =>
+          isEventActiveOnDate(e, currentDay),
+        );
 
-        let isClassOff = false;
+        let isClassOff = getOffDayEventForDate(allEvents, currentDay) !== null;
         let eventNotifIndex = 0;
-        
+
         for (const e of dayEvents) {
           const lowerTitle = (e.title || "").toLowerCase();
           const typeLower = (e.type || e.eventType || "").toLowerCase();
-          
-          let eventCancelsClasses = false;
+          const isRestricted =
+            typeLower === "restricted" ||
+            typeLower === "restricted_holiday" ||
+            lowerTitle.includes("restricted");
+          const isExamEvent =
+            !lowerTitle.includes("break") &&
+            !lowerTitle.includes("vacation") &&
+            (typeLower === "exam" ||
+              /\b(midsem|mid[\s-]?sem|midterm|mid[\s-]?term|endsem|end[\s-]?sem|exam)\b/i.test(
+                lowerTitle,
+              ));
+          const isBreakEvent =
+            lowerTitle.includes("vacation") || lowerTitle.includes("break");
+          const isHolidayEvent =
+            !isRestricted &&
+            (typeLower === "holiday" || lowerTitle.includes("holiday"));
+
+          const eventCancelsClasses =
+            isHolidayEvent || isExamEvent || isBreakEvent;
           let specialMessage = "You have an event today.";
-          
-          if (typeLower === 'holiday' || lowerTitle.includes('holiday')) {
-            if (typeLower !== 'restricted' && typeLower !== 'restricted_holiday' && !lowerTitle.includes('restricted')) {
-              eventCancelsClasses = true;
-              specialMessage = "No classes scheduled! Enjoy your day off.";
-            } else {
-              specialMessage = "Restricted Holiday today.";
-            }
-          } else if (
-            (!lowerTitle.includes('break') && !lowerTitle.includes('vacation')) && (
-              typeLower === 'exam' || 
-            lowerTitle.includes('midsem') || lowerTitle.includes('mid sem') || lowerTitle.includes('mid-sem') || lowerTitle.includes('midterm') || lowerTitle.includes('mid term') ||
-            lowerTitle.includes('endsem') || lowerTitle.includes('end sem') || lowerTitle.includes('end-sem') ||
-            lowerTitle.includes('exam')
-          )
-          ) {
-            eventCancelsClasses = true;
+          if (isHolidayEvent) {
+            specialMessage = "No classes scheduled! Enjoy your day off.";
+          } else if (isRestricted) {
+            specialMessage = "Restricted Holiday today.";
+          } else if (isExamEvent) {
             specialMessage = "All the best for your exams!";
-          } else if (lowerTitle.includes('vacation') || lowerTitle.includes('break')) {
-            eventCancelsClasses = true;
+          } else if (isBreakEvent) {
             specialMessage = "Enjoy your vacation!";
           }
 
           if (eventCancelsClasses) isClassOff = true;
 
           // 1. Handle Birthdays (Exclude public holidays with "Birthday" in the title)
-          if (lowerTitle.includes("birthday") && !typeLower.includes('holiday')) {
+          if (
+            lowerTitle.includes("birthday") &&
+            !typeLower.includes("holiday")
+          ) {
             const notifyTime = setHours(currentDay, 9);
             if (notifyTime.getTime() > Date.now()) {
               let cleanName = (e.title || "Friend").trim();
               cleanName = cleanName
-                .replace(/^(?:happy\s+)?birthday\s+of\s+/i, '')
-                .replace(/^(?:happy\s+)?birthday\s+/i, '')
-                .replace(/(?:'s|s)?\s*birthday.*$/i, '')
-                .replace(/^(?:of\s+)/i, '')
+                .replace(/^(?:happy\s+)?birthday\s+of\s+/i, "")
+                .replace(/^(?:happy\s+)?birthday\s+/i, "")
+                .replace(/(?:'s|s)?\s*birthday.*$/i, "")
+                .replace(/^(?:of\s+)/i, "")
                 .trim();
               if (!cleanName) cleanName = "Friend";
-              const notifId = getBirthdayNotificationId(cleanName, formatLocalDate(currentDay)) + eventNotifIndex;
+              const baseBdayId = getBirthdayNotificationId(
+                cleanName,
+                currentIso,
+              );
+              const notifId =
+                BIRTHDAY_NOTIF_START_ID +
+                (((baseBdayId - BIRTHDAY_NOTIF_START_ID) + eventNotifIndex) %
+                  5000);
               notificationsToSchedule.push({
                 id: notifId,
                 title: "\ud83c\udf82 Happy Birthday!",
@@ -1189,62 +1733,77 @@ export class NotificationService {
                 summaryText: "Birthday Event",
                 smallIcon: "ic_stat_attendx",
                 largeIcon: "attendx_notification_icon",
-                iconColor: "#F59E0B", 
+                iconColor: "#F59E0B",
                 channelId: "class_alerts",
-                schedule: { at: notifyTime, allowWhileIdle: true }
+                schedule: { at: notifyTime, allowWhileIdle: true },
               });
               scheduledCount++;
               eventNotifIndex++;
             }
-            continue; 
+            continue;
           }
 
           // 2. Generic Event / Holiday Notification
           const notifyTime = setHours(currentDay, 8);
           if (notifyTime.getTime() > Date.now()) {
             const cleanHolidayName = (e.title || "Event").trim();
-            const notifId = getHolidayNotificationId(formatLocalDate(currentDay)) + eventNotifIndex;
+            const baseHolidayId = getHolidayNotificationId(currentIso);
+            const notifId =
+              HOLIDAY_NOTIF_START_ID +
+              (((baseHolidayId - HOLIDAY_NOTIF_START_ID) + eventNotifIndex) %
+                5000);
             notificationsToSchedule.push({
               id: notifId,
-              title: (eventCancelsClasses || typeLower.includes('holiday') || lowerTitle.includes('holiday')) ? "\ud83c\udf89 Holiday: " + cleanHolidayName : "\ud83d\udcc6 Event: " + cleanHolidayName,
+              title:
+                eventCancelsClasses ||
+                typeLower.includes("holiday") ||
+                lowerTitle.includes("holiday")
+                  ? "\ud83c\udf89 Holiday: " + cleanHolidayName
+                  : "\ud83d\udcc6 Event: " + cleanHolidayName,
               body: specialMessage,
               largeBody: "\u2728 " + cleanHolidayName + "\n\n" + specialMessage,
-              summaryText: eventCancelsClasses ? "Holiday Event" : "Calendar Event",
+              summaryText: eventCancelsClasses
+                ? "Holiday Event"
+                : "Calendar Event",
               smallIcon: "ic_stat_attendx",
               largeIcon: "attendx_notification_icon",
-              iconColor: eventCancelsClasses ? "#10B981" : "#3B82F6", 
+              iconColor: eventCancelsClasses ? "#10B981" : "#3B82F6",
               channelId: "class_alerts",
-              schedule: { at: notifyTime, allowWhileIdle: true }
+              schedule: { at: notifyTime, allowWhileIdle: true },
             });
             scheduledCount++;
             eventNotifIndex++;
           }
         }
 
-        if (isClassOff || i >= 7 || slots.length === 0) {
-          continue; 
+        if (isClassOff || isPastCutoff || i >= 7 || slots.length === 0) {
+          continue;
         }
 
         let dbDay = currentDay.getDay() - 1;
-        if (dbDay === -1) dbDay = 6; 
+        if (dbDay === -1) dbDay = 6;
 
-        const daySlots = slots.filter(s => s.dayOfWeek === dbDay);
+        const daySlots = slots.filter((s) => s.dayOfWeek === dbDay);
         daySlots.sort((a, b) => a.startTime.localeCompare(b.startTime));
-        
+
         let maxEndTimeObj: Date | null = null;
-        
+
         for (let j = 0; j < daySlots.length; j++) {
           const slot = daySlots[j];
           const prevSlot = j > 0 ? daySlots[j - 1] : null;
 
-          const subjectName = (slot.subject?.name || slot.subject?.code || "Class").trim();
-          const startTimeStr = slot.startTime; 
-          const endTimeStr = slot.endTime; 
+          const subjectName = (
+            slot.subject?.name ||
+            slot.subject?.code ||
+            "Class"
+          ).trim();
+          const startTimeStr = slot.startTime;
+          const endTimeStr = slot.endTime;
           const slotId = slot.id || `slot_${dbDay}_${j}`;
 
           const classStartObj = parseTimeOnDate(currentDay, startTimeStr);
           if (!classStartObj) continue;
-          
+
           const standardNotifyTime = addMinutes(classStartObj, -reminderOffset);
           let headsUpTime: Date | null = null;
 
@@ -1252,59 +1811,95 @@ export class NotificationService {
             const prevEndObj = parseTimeOnDate(currentDay, prevSlot.endTime);
             if (prevEndObj) {
               // Fire heads-up when the previous class ends, provided it ends before the standard notification time
-              if (prevEndObj.getTime() <= (standardNotifyTime.getTime() - 5 * 60 * 1000)) {
+              if (
+                prevEndObj.getTime() <=
+                standardNotifyTime.getTime() - 5 * 60 * 1000
+              ) {
                 headsUpTime = prevEndObj;
               }
             }
           }
 
-          const timeStr = classStartObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-          const roomStr = (config?.showLocation && slot.room) ? slot.room.trim() : '';
-          const classEndObj = endTimeStr ? parseTimeOnDate(currentDay, endTimeStr) : null;
-          const calculatedEndMs = classEndObj ? classEndObj.getTime() : (classStartObj.getTime() + 60 * 60 * 1000);
-
+          const timeStr = classStartObj.toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
+          });
+          const roomStr =
+            config?.showLocation && slot.room ? slot.room.trim() : "";
+          let classEndObj = endTimeStr
+            ? parseTimeOnDate(currentDay, endTimeStr)
+            : null;
+          if (
+            classEndObj &&
+            classEndObj.getTime() <= classStartObj.getTime()
+          ) {
+            classEndObj = addDays(classEndObj, 1);
+          }
+          const calculatedEndMs = classEndObj
+            ? classEndObj.getTime()
+            : classStartObj.getTime() + 60 * 60 * 1000;
           if (reminderOffset > -1) {
             if (headsUpTime && headsUpTime.getTime() > Date.now()) {
-              const headsUpId = getNotificationIdForSlot(slotId, formatLocalDate(currentDay), 'headsup');
+              const headsUpId = getNotificationIdForSlot(
+                slotId,
+                currentIso,
+                "headsup",
+              );
               notificationsToSchedule.push({
                 id: headsUpId,
                 title: `Upcoming (Heads Up): ${subjectName}`,
-                body: `Starts at ${timeStr} ${roomStr ? `| ${roomStr}` : ''}`,
-                largeBody: `\uD83D\uDCDA Class: ${subjectName}\n\u23F0 Time: ${timeStr} - ${endTimeStr || 'TBD'}\n\uD83D\uDCCD Room: ${roomStr || 'N/A'}\n\nHeads up: Your upcoming class starts soon. Tap below to mute your phone for this class.`,
+                body: `Starts at ${timeStr} ${roomStr ? `| ${roomStr}` : ""}`,
+                largeBody: `\uD83D\uDCDA Class: ${subjectName}\n\u23F0 Time: ${timeStr} - ${endTimeStr || "TBD"}\n\uD83D\uDCCD Room: ${roomStr || "N/A"}\n\nHeads up: Your upcoming class starts soon. Tap below to mute your phone for this class.`,
                 summaryText: "Class Reminder",
                 smallIcon: "ic_stat_attendx",
                 largeIcon: "attendx_notification_icon",
-                iconColor: "#6366F1", 
-                channelId: 'class_alerts',
+                iconColor: "#6366F1",
+                channelId: "class_alerts",
                 foreground: true,
-                actionTypeId: 'CLASS_REMINDER_ACTIONS',
-                extra: { classTitle: subjectName, endTimeStr, startTimeStr, endTimeMs: calculatedEndMs },
-                schedule: { at: headsUpTime, allowWhileIdle: true }
+                actionTypeId: "CLASS_REMINDER_ACTIONS",
+                extra: {
+                  classTitle: subjectName,
+                  endTimeStr,
+                  startTimeStr,
+                  endTimeMs: calculatedEndMs,
+                  scheduledDate: currentIso,
+                },
+                schedule: { at: headsUpTime, allowWhileIdle: true },
               });
               scheduledCount++;
             }
 
             if (standardNotifyTime.getTime() > Date.now()) {
-              const standardId = getNotificationIdForSlot(slotId, formatLocalDate(currentDay), 'standard');
+              const standardId = getNotificationIdForSlot(
+                slotId,
+                currentIso,
+                "standard",
+              );
               notificationsToSchedule.push({
                 id: standardId,
                 title: `Upcoming: ${subjectName}`,
-                body: `Starts at ${timeStr} ${roomStr ? `| ${roomStr}` : ''}`,
-                largeBody: `\uD83D\uDCDA Class: ${subjectName}\n\u23F0 Time: ${timeStr} - ${endTimeStr || 'TBD'}\n\uD83D\uDCCD Room: ${roomStr || 'N/A'}\n\nTap the action button below to instantly mute your phone for the duration of this class.`,
+                body: `Starts at ${timeStr} ${roomStr ? `| ${roomStr}` : ""}`,
+                largeBody: `\uD83D\uDCDA Class: ${subjectName}\n\u23F0 Time: ${timeStr} - ${endTimeStr || "TBD"}\n\uD83D\uDCCD Room: ${roomStr || "N/A"}\n\nTap the action button below to instantly mute your phone for the duration of this class.`,
                 summaryText: "Class Reminder",
                 smallIcon: "ic_stat_attendx",
                 largeIcon: "attendx_notification_icon",
-                iconColor: "#6366F1", 
-                channelId: 'class_alerts',
+                iconColor: "#6366F1",
+                channelId: "class_alerts",
                 foreground: true,
-                actionTypeId: 'CLASS_REMINDER_ACTIONS',
-                extra: { classTitle: subjectName, endTimeStr, startTimeStr, endTimeMs: calculatedEndMs },
-                schedule: { at: standardNotifyTime, allowWhileIdle: true }
+                actionTypeId: "CLASS_REMINDER_ACTIONS",
+                extra: {
+                  classTitle: subjectName,
+                  endTimeStr,
+                  startTimeStr,
+                  endTimeMs: calculatedEndMs,
+                  scheduledDate: currentIso,
+                },
+                schedule: { at: standardNotifyTime, allowWhileIdle: true },
               });
               scheduledCount++;
             }
           }
-          
+
           if (classEndObj && (!maxEndTimeObj || classEndObj > maxEndTimeObj)) {
             maxEndTimeObj = classEndObj;
           }
@@ -1314,55 +1909,52 @@ export class NotificationService {
           if (maxEndTimeObj.getTime() > Date.now()) {
             let endOfDayTitle = "Done for the day!";
             let endOfDayBody = "All classes have ended. Enjoy your evening!";
-            let endOfDayLargeBody = "\uD83C\uDF19 All classes for today have concluded. You can pack up and enjoy the rest of your day. See you tomorrow!";
+            let endOfDayLargeBody =
+              "\uD83C\uDF19 All classes for today have concluded. You can pack up and enjoy the rest of your day. See you tomorrow!";
 
             const tomorrow = addDays(currentDay, 1);
-            const tomorrowEvents = allEvents.filter(e => isEventActiveOnDate(e, tomorrow));
-            
-            let tomorrowHolidayTitle: string | null = null;
-            for (const e of tomorrowEvents) {
-              const lowerTitle = (e.title || "").toLowerCase();
-              const typeLower = (e.type || e.eventType || "").toLowerCase();
-              if (typeLower === 'holiday' || typeLower === 'exam' || lowerTitle.includes('holiday') || lowerTitle.includes('exam') || lowerTitle.includes('break') || lowerTitle.includes('vacation')) {
-                if (typeLower !== 'restricted' && typeLower !== 'restricted_holiday' && !lowerTitle.includes('restricted')) {
-                  tomorrowHolidayTitle = e.title;
-                  break;
-                }
-              }
-            }
+            const tomorrowIso = formatLocalDate(tomorrow);
+            const tomorrowPastCutoff = Boolean(cutoffIso && tomorrowIso > cutoffIso);
+            const tomorrowOff = getOffDayEventForDate(allEvents, tomorrow);
 
             const getSlotsForDay = (d: Date) => {
               let dDay = d.getDay() - 1;
               if (dDay === -1) dDay = 6;
-              return slots.filter(s => s.dayOfWeek === dDay);
+              return slots.filter((s) => s.dayOfWeek === dDay);
             };
 
             const tomorrowSlots = getSlotsForDay(tomorrow);
-            const tomorrowIsOff = tomorrowHolidayTitle !== null || tomorrowSlots.length === 0;
+            const tomorrowIsOff =
+              tomorrowPastCutoff ||
+              tomorrowOff !== null ||
+              tomorrowSlots.length === 0;
 
-            if (tomorrowHolidayTitle) {
-              endOfDayLargeBody = `\u2728 All classes for today have concluded. Prepare for the upcoming ${tomorrowHolidayTitle} tomorrow!`;
-              endOfDayBody = `Classes ended. Enjoy ${tomorrowHolidayTitle} tomorrow!`;
-            } else if (currentDay.getDay() === 5) { // Friday
+            if (tomorrowOff) {
+              if (tomorrowOff.isExam) {
+                endOfDayLargeBody = `\u2728 All classes for today have concluded. All the best for ${tomorrowOff.title} tomorrow!`;
+                endOfDayBody = `Classes ended. Best of luck for ${tomorrowOff.title} tomorrow!`;
+              } else {
+                endOfDayLargeBody = `\u2728 All classes for today have concluded. Prepare for ${tomorrowOff.title} tomorrow!`;
+                endOfDayBody = `Classes ended. Enjoy ${tomorrowOff.title} tomorrow!`;
+              }
+            } else if (currentDay.getDay() === 5) {
+              // Friday
               const saturdaySlots = tomorrowSlots;
               const sunday = addDays(currentDay, 2);
+              const sundayIso = formatLocalDate(sunday);
               const sundaySlots = getSlotsForDay(sunday);
-              const sundayEvents = allEvents.filter(e => isEventActiveOnDate(e, sunday));
-              let sundayHoliday = false;
-              for (const e of sundayEvents) {
-                const lowerTitle = (e.title || "").toLowerCase();
-                const typeLower = (e.type || e.eventType || "").toLowerCase();
-                if (typeLower === 'holiday' || typeLower === 'exam' || lowerTitle.includes('holiday')) {
-                  if (typeLower !== 'restricted' && typeLower !== 'restricted_holiday') sundayHoliday = true;
-                }
-              }
-              const sundayIsOff = sundayHoliday || sundaySlots.length === 0;
+              const sundayOff = getOffDayEventForDate(allEvents, sunday);
+              const sundayIsOff =
+                Boolean(cutoffIso && sundayIso > cutoffIso) ||
+                sundayOff !== null ||
+                sundaySlots.length === 0;
 
-              if (saturdaySlots.length === 0 && sundayIsOff) {
+              if ((tomorrowPastCutoff || saturdaySlots.length === 0) && sundayIsOff) {
                 endOfDayLargeBody = `\uD83C\uDF89 All classes for the week have concluded. Pack up and enjoy your weekend!`;
                 endOfDayBody = `All classes ended. Enjoy the weekend!`;
               }
-            } else if (currentDay.getDay() === 6 && tomorrowIsOff) { // Saturday
+            } else if (currentDay.getDay() === 6 && tomorrowIsOff) {
+              // Saturday
               endOfDayLargeBody = `\uD83C\uDF89 All classes for today have concluded. Pack up and enjoy your Sunday off!`;
               endOfDayBody = `All classes ended. Enjoy your day off tomorrow!`;
             } else if (tomorrowIsOff) {
@@ -1370,7 +1962,11 @@ export class NotificationService {
               endOfDayBody = `All classes ended. Enjoy your day off tomorrow!`;
             }
 
-            const endOfDayId = getNotificationIdForSlot("eod", formatLocalDate(currentDay), 'endofday');
+            const endOfDayId = getNotificationIdForSlot(
+              "eod",
+              currentIso,
+              "endofday",
+            );
 
             notificationsToSchedule.push({
               id: endOfDayId,
@@ -1382,7 +1978,7 @@ export class NotificationService {
               smallIcon: "ic_stat_attendx",
               largeIcon: "attendx_notification_icon",
               iconColor: "#3B82F6",
-              channelId: 'class_alerts'
+              channelId: "class_alerts",
             });
             scheduledCount++;
           }
@@ -1396,16 +1992,24 @@ export class NotificationService {
         let finalId = notif.id;
         let bandStart = TIMETABLE_NOTIF_START_ID;
         let bandEnd = TIMETABLE_NOTIF_END_ID;
-        if (finalId >= HOLIDAY_NOTIF_START_ID && finalId <= HOLIDAY_NOTIF_END_ID) {
+        if (
+          finalId >= HOLIDAY_NOTIF_START_ID &&
+          finalId <= HOLIDAY_NOTIF_END_ID
+        ) {
           bandStart = HOLIDAY_NOTIF_START_ID;
           bandEnd = HOLIDAY_NOTIF_END_ID;
-        } else if (finalId >= BIRTHDAY_NOTIF_START_ID && finalId <= BIRTHDAY_NOTIF_END_ID) {
+        } else if (
+          finalId >= BIRTHDAY_NOTIF_START_ID &&
+          finalId <= BIRTHDAY_NOTIF_END_ID
+        ) {
           bandStart = BIRTHDAY_NOTIF_START_ID;
           bandEnd = BIRTHDAY_NOTIF_END_ID;
         }
         const bandSize = bandEnd - bandStart + 1;
         while (usedBatchIds.has(finalId)) {
-          finalId = (((finalId - bandStart + 1) % bandSize) + bandSize) % bandSize + bandStart;
+          finalId =
+            ((((finalId - bandStart + 1) % bandSize) + bandSize) % bandSize) +
+            bandStart;
         }
         notif.id = finalId;
         usedBatchIds.add(finalId);
@@ -1417,12 +2021,21 @@ export class NotificationService {
         await LocalNotifications.schedule({ notifications: dedupedBatch });
       }
 
-      // Prune past delivered class alerts whose class has already ended today
+      // Prune past delivered class alerts across days via endTimeMs or scheduledDate
       try {
         const delivered = await LocalNotifications.getDeliveredNotifications();
-        const staleClassNotifs = delivered.notifications.filter(n => {
+        const todayIso = formatLocalDate(new Date());
+        const staleClassNotifs = delivered.notifications.filter((n) => {
           const id = Number(n.id);
           if (id >= TIMETABLE_NOTIF_START_ID && id <= TIMETABLE_NOTIF_END_ID) {
+            const endTimeMs = Number(n.extra?.endTimeMs);
+            if (Number.isFinite(endTimeMs) && endTimeMs > 0) {
+              return endTimeMs <= Date.now();
+            }
+            const scheduledDate = n.extra?.scheduledDate;
+            if (typeof scheduledDate === "string" && scheduledDate < todayIso) {
+              return true;
+            }
             const endTimeStr = n.extra?.endTimeStr;
             if (endTimeStr) {
               const endObj = parseTimeOnDate(new Date(), endTimeStr);
@@ -1435,15 +2048,22 @@ export class NotificationService {
         });
         if (staleClassNotifs.length > 0) {
           // @ts-ignore
-          if (typeof LocalNotifications.removeDeliveredNotifications === 'function') {
-            await LocalNotifications.removeDeliveredNotifications({ notifications: staleClassNotifs });
+          if (
+            typeof LocalNotifications.removeDeliveredNotifications ===
+            "function"
+          ) {
+            await LocalNotifications.removeDeliveredNotifications({
+              notifications: staleClassNotifs,
+            });
           }
         }
       } catch (e) {
         console.warn("Could not prune delivered class alerts:", e);
       }
-      
-      console.log(`Successfully scheduled ${scheduledCount} notifications for the next 7 days.`);
+
+      console.log(
+        `Successfully scheduled ${scheduledCount} notifications for the next 7 days.`,
+      );
     } catch (err) {
       console.error("Failed to auto-schedule timetable notifications:", err);
     }
@@ -1452,15 +2072,26 @@ export class NotificationService {
   static async cancelAssignmentReminders(assignmentId: string): Promise<void> {
     if (!Capacitor.isNativePlatform() || !assignmentId) return;
     try {
-      const idsToCancel = [0, 1, 2].map(idx => getAssignmentNotificationId(assignmentId, idx));
-      await LocalNotifications.cancel({ notifications: idsToCancel.map(id => ({ id })) });
+      const idsToCancel = [0, 1, 2].map((idx) =>
+        getAssignmentNotificationId(assignmentId, idx),
+      );
+      await LocalNotifications.cancel({
+        notifications: idsToCancel.map((id) => ({ id })),
+      });
       try {
         const delivered = await LocalNotifications.getDeliveredNotifications();
-        const deliveredToClear = delivered.notifications.filter(n => idsToCancel.includes(Number(n.id)));
+        const deliveredToClear = delivered.notifications.filter((n) =>
+          idsToCancel.includes(Number(n.id)),
+        );
         if (deliveredToClear.length > 0) {
           // @ts-ignore
-          if (typeof LocalNotifications.removeDeliveredNotifications === 'function') {
-            await LocalNotifications.removeDeliveredNotifications({ notifications: deliveredToClear });
+          if (
+            typeof LocalNotifications.removeDeliveredNotifications ===
+            "function"
+          ) {
+            await LocalNotifications.removeDeliveredNotifications({
+              notifications: deliveredToClear,
+            });
           }
         }
       } catch (e) {}
@@ -1492,20 +2123,28 @@ export class NotificationService {
   private static async _executeScheduleAssignmentReminders(): Promise<void> {
     try {
       const pending = await LocalNotifications.getPending();
-      const toCancel = pending.notifications.filter(n => {
+      const toCancel = pending.notifications.filter((n) => {
         const id = Number(n.id);
-        return id >= ASSIGNMENT_REMINDERS_START_ID && id <= ASSIGNMENT_REMINDERS_END_ID;
+        return (
+          id >= ASSIGNMENT_REMINDERS_START_ID &&
+          id <= ASSIGNMENT_REMINDERS_END_ID
+        );
       });
       if (toCancel.length > 0) {
-        await LocalNotifications.cancel({ notifications: toCancel.map(n => ({ id: Number(n.id) })) });
+        await LocalNotifications.cancel({
+          notifications: toCancel.map((n) => ({ id: Number(n.id) })),
+        });
       }
 
       // Read from local store first for instant, offline-safe state
       let assignments: any[] = useAssignmentStore.getState().assignments || [];
       if (assignments.length === 0) {
         try {
-          const res = await api.get('/assignments');
-          assignments = res.data || [];
+          const res = await api.get("/assignments");
+          assignments = Array.isArray(res.data) ? res.data : [];
+          if (assignments.length > 0) {
+            useAssignmentStore.setState({ assignments });
+          }
         } catch {
           // Keep empty if offline
         }
@@ -1514,35 +2153,55 @@ export class NotificationService {
       const notifications = [];
 
       for (const assignment of assignments) {
-        if (!assignment || (assignment.completions && assignment.completions.length > 0)) continue;
-        
+        if (
+          !assignment ||
+          (assignment.completions && assignment.completions.length > 0)
+        )
+          continue;
+
         const deadline = new Date(assignment.deadline);
-        if (isNaN(deadline.getTime()) || deadline.getTime() <= Date.now()) continue;
+        if (isNaN(deadline.getTime()) || deadline.getTime() <= Date.now())
+          continue;
 
         const cleanTitle = (assignment.title || "Assignment").trim();
 
         // Schedule cascade reminders
         const reminders = [
-          { time: deadline.getTime() - 24 * 60 * 60 * 1000, title: "Assignment Due Tomorrow", text: "due tomorrow" },
-          { time: deadline.getTime() - 2 * 60 * 60 * 1000, title: "Assignment Due in 2 Hours", text: "due in 2 hours" },
-          { time: deadline.getTime() - 15 * 60 * 1000, title: "Assignment Due Soon", text: "due in 15 minutes!" }
+          {
+            time: deadline.getTime() - 24 * 60 * 60 * 1000,
+            title: "Assignment Due Tomorrow",
+            text: "due tomorrow",
+          },
+          {
+            time: deadline.getTime() - 2 * 60 * 60 * 1000,
+            title: "Assignment Due in 2 Hours",
+            text: "due in 2 hours",
+          },
+          {
+            time: deadline.getTime() - 15 * 60 * 1000,
+            title: "Assignment Due Soon",
+            text: "due in 15 minutes!",
+          },
         ];
 
         for (let remIdx = 0; remIdx < reminders.length; remIdx++) {
           const rem = reminders[remIdx];
           const remDate = new Date(rem.time);
           if (remDate.getTime() > Date.now()) {
-            const notifId = getAssignmentNotificationId(assignment.id || cleanTitle, remIdx);
+            const notifId = getAssignmentNotificationId(
+              assignment.id || cleanTitle,
+              remIdx,
+            );
             notifications.push({
               id: notifId,
               title: rem.title,
               body: cleanTitle,
-              largeBody: `\u23F0 Reminder: "${cleanTitle}" is ${rem.text} at ${deadline.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`,
+              largeBody: `\u23F0 Reminder: "${cleanTitle}" is ${rem.text} at ${deadline.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}.`,
               channelId: "assignment_alerts",
               smallIcon: "ic_stat_attendx",
               largeIcon: "attendx_notification_icon",
               iconColor: "#EF4444",
-              schedule: { at: remDate, allowWhileIdle: true }
+              schedule: { at: remDate, allowWhileIdle: true },
             });
           }
         }
@@ -1551,12 +2210,17 @@ export class NotificationService {
       // Ensure zero internal ID collisions within the assignment batch via deterministic linear probing
       const usedAssignmentBatchIds = new Set<number>();
       const dedupedAssignmentBatch: any[] = [];
-      const bandSize = ASSIGNMENT_REMINDERS_END_ID - ASSIGNMENT_REMINDERS_START_ID + 1;
+      const bandSize =
+        ASSIGNMENT_REMINDERS_END_ID - ASSIGNMENT_REMINDERS_START_ID + 1;
 
       for (const notif of notifications) {
         let finalId = notif.id;
         while (usedAssignmentBatchIds.has(finalId)) {
-          finalId = (((finalId - ASSIGNMENT_REMINDERS_START_ID + 1) % bandSize) + bandSize) % bandSize + ASSIGNMENT_REMINDERS_START_ID;
+          finalId =
+            ((((finalId - ASSIGNMENT_REMINDERS_START_ID + 1) % bandSize) +
+              bandSize) %
+              bandSize) +
+            ASSIGNMENT_REMINDERS_START_ID;
         }
         notif.id = finalId;
         usedAssignmentBatchIds.add(finalId);
@@ -1564,31 +2228,47 @@ export class NotificationService {
       }
 
       if (dedupedAssignmentBatch.length > 0) {
-        await LocalNotifications.schedule({ notifications: dedupedAssignmentBatch });
+        await LocalNotifications.schedule({
+          notifications: dedupedAssignmentBatch,
+        });
       }
 
       // Remove delivered notifications for assignments that are now completed or deleted
       try {
         const delivered = await LocalNotifications.getDeliveredNotifications();
-        const deliveredAssignmentAlerts = delivered.notifications.filter(n => {
-          const id = Number(n.id);
-          return id >= ASSIGNMENT_REMINDERS_START_ID && id <= ASSIGNMENT_REMINDERS_END_ID;
-        });
+        const deliveredAssignmentAlerts = delivered.notifications.filter(
+          (n) => {
+            const id = Number(n.id);
+            return (
+              id >= ASSIGNMENT_REMINDERS_START_ID &&
+              id <= ASSIGNMENT_REMINDERS_END_ID
+            );
+          },
+        );
 
         if (deliveredAssignmentAlerts.length > 0) {
           const activeNotificationIds = new Set<number>();
           for (const a of assignments) {
             if (!a || (a.completions && a.completions.length > 0)) continue;
             for (let remIdx = 0; remIdx < 3; remIdx++) {
-              activeNotificationIds.add(getAssignmentNotificationId(a.id || a.title, remIdx));
+              activeNotificationIds.add(
+                getAssignmentNotificationId(a.id || a.title, remIdx),
+              );
             }
           }
 
-          const staleDelivered = deliveredAssignmentAlerts.filter(n => !activeNotificationIds.has(Number(n.id)));
+          const staleDelivered = deliveredAssignmentAlerts.filter(
+            (n) => !activeNotificationIds.has(Number(n.id)),
+          );
           if (staleDelivered.length > 0) {
             // @ts-ignore
-            if (typeof LocalNotifications.removeDeliveredNotifications === 'function') {
-              await LocalNotifications.removeDeliveredNotifications({ notifications: staleDelivered });
+            if (
+              typeof LocalNotifications.removeDeliveredNotifications ===
+              "function"
+            ) {
+              await LocalNotifications.removeDeliveredNotifications({
+                notifications: staleDelivered,
+              });
             }
           }
         }
@@ -1600,7 +2280,10 @@ export class NotificationService {
     }
   }
 
-  static async scheduleAcademicUpdates(frequency: { type: string; subValue?: string }): Promise<void> {
+  static async scheduleAcademicUpdates(frequency: {
+    type: string;
+    subValue?: string;
+  }): Promise<void> {
     if (!Capacitor.isNativePlatform()) return;
     this.lastAcademicFrequency = frequency;
 
@@ -1613,7 +2296,9 @@ export class NotificationService {
     try {
       do {
         this.hasQueuedAcademicRun = false;
-        await this._executeScheduleAcademicUpdates(this.lastAcademicFrequency || frequency);
+        await this._executeScheduleAcademicUpdates(
+          this.lastAcademicFrequency || frequency,
+        );
       } while (this.hasQueuedAcademicRun);
     } finally {
       this.isSchedulingAcademic = false;
@@ -1621,20 +2306,26 @@ export class NotificationService {
     }
   }
 
-  private static async _executeScheduleAcademicUpdates(frequency: { type: string; subValue?: string }): Promise<void> {
+  private static async _executeScheduleAcademicUpdates(frequency: {
+    type: string;
+    subValue?: string;
+  }): Promise<void> {
     try {
       const pending = await LocalNotifications.getPending();
-      const toCancel = pending.notifications.filter(n => {
+      const toCancel = pending.notifications.filter((n) => {
         const id = Number(n.id);
         return id >= ACADEMIC_UPDATES_START_ID && id <= ACADEMIC_UPDATES_END_ID;
       });
       if (toCancel.length > 0) {
-        await LocalNotifications.cancel({ notifications: toCancel.map(n => ({ id: Number(n.id) })) });
+        await LocalNotifications.cancel({
+          notifications: toCancel.map((n) => ({ id: Number(n.id) })),
+        });
       }
 
       const cacheState = useCacheStore.getState();
-      const activeFreq = frequency || cacheState.reminderFrequency || { type: 'Weekly' };
-      if (!activeFreq || activeFreq.type === 'Never') return;
+      const activeFreq = frequency ||
+        cacheState.reminderFrequency || { type: "Weekly" };
+      if (!activeFreq || activeFreq.type === "Never") return;
 
       const memory = cacheState.frequencyMemory || {};
       const config = useNotificationStore.getState().config;
@@ -1642,89 +2333,152 @@ export class NotificationService {
       const now = new Date();
 
       let allEvents = useAttendanceStore.getState().events || [];
-      const subjects = useAttendanceStore.getState().subjects || [];
-      let attended = 0;
-      let total = 0;
-      subjects.forEach(s => { attended += (s.attended || 0); total += (s.total || 0); });
-      const overallPct = total === 0 ? 100 : Math.round((attended / total) * 100);
+      const storeSubjects = useAttendanceStore.getState().subjects || [];
+      let subjects: any[] =
+        storeSubjects.length > 0
+          ? storeSubjects
+          : Array.isArray(cacheState.subjects?.stats)
+            ? cacheState.subjects.stats
+            : Array.isArray(cacheState.subjects_overview)
+              ? cacheState.subjects_overview
+              : [];
 
-            let cachedSlots: any[] = cacheState.timetable?.slots || [];
+      let cachedSlots: any[] = (cacheState.timetable?.slots || []).filter(
+        (s: any) => !s?.validUntil,
+      );
 
-      // Proactively fetch events and slots if missing in memory so summaries have full context
-      const activeSemId = useAttendanceStore.getState().activeSemesterId || cacheState.semester?.activeSemester?.id;
-      if (activeSemId && (allEvents.length === 0 || cachedSlots.length === 0)) {
+      // Proactively fetch events, slots, and subject stats if missing in memory so summaries have full context
+      const activeSemId =
+        useAttendanceStore.getState().activeSemesterId ||
+        cacheState.semester?.activeSemester?.id;
+      if (
+        activeSemId &&
+        (allEvents.length === 0 ||
+          cachedSlots.length === 0 ||
+          subjects.length === 0)
+      ) {
         try {
-          const [evSettled, ttSettled] = await Promise.allSettled([
-            allEvents.length === 0 ? api.get(`/events?semesterId=${activeSemId}`) : Promise.resolve(null),
-            cachedSlots.length === 0 ? api.get(`/timetable/${activeSemId}`) : Promise.resolve(null),
+          const [evSettled, ttSettled, statsSettled] = await Promise.allSettled([
+            allEvents.length === 0
+              ? api.get(`/events?semesterId=${activeSemId}`)
+              : Promise.resolve(null),
+            cachedSlots.length === 0
+              ? api.get(`/timetable/${activeSemId}`)
+              : Promise.resolve(null),
+            subjects.length === 0
+              ? api.get(`/attendance/stats?semesterId=${activeSemId}`)
+              : Promise.resolve(null),
           ]);
-          if (evSettled.status === 'fulfilled' && evSettled.value?.data && Array.isArray(evSettled.value.data)) {
-            allEvents = evSettled.value.data.map((ev: any) => ({
-              title: ev.title || "Event",
-              type: ev.eventType || "academic",
-              date: ev.date ? ev.date.split('T')[0] + "T00:00:00" : "",
-              endDate: ev.endDate ? ev.endDate.split('T')[0] + "T00:00:00" : undefined
-            }));
+          if (
+            evSettled.status === "fulfilled" &&
+            evSettled.value?.data &&
+            Array.isArray(evSettled.value.data)
+          ) {
+            allEvents = this.mapServerEvents(evSettled.value.data);
             useAttendanceStore.setState({ events: allEvents });
           }
-          if (ttSettled.status === 'fulfilled' && ttSettled.value?.data) {
-            const raw = Array.isArray(ttSettled.value.data) ? ttSettled.value.data : (ttSettled.value.data?.slots || []);
-            if (raw.length > 0) {
-              cachedSlots = raw;
-              useCacheStore.getState().setTimetable({ slots: raw });
+          if (ttSettled.status === "fulfilled" && ttSettled.value?.data) {
+            const normalized = this.normalizeTimetableSlots(
+              ttSettled.value.data,
+            );
+            if (normalized.length > 0) {
+              cachedSlots = normalized.filter((s: any) => !s?.validUntil);
+              const existingTt = useCacheStore.getState().timetable || {};
+              useCacheStore.getState().setCache("timetable", {
+                ...existingTt,
+                slots: normalized,
+              });
+            }
+          }
+          if (statsSettled.status === "fulfilled" && statsSettled.value?.data) {
+            const rawStats = Array.isArray(statsSettled.value.data)
+              ? statsSettled.value.data
+              : statsSettled.value.data?.subjects || [];
+            if (Array.isArray(rawStats) && rawStats.length > 0) {
+              subjects = rawStats;
+              const curSubCache = useCacheStore.getState().subjects || {};
+              useCacheStore.getState().setCache("subjects", {
+                ...curSubCache,
+                stats: rawStats,
+                activeSemesterId: activeSemId,
+              });
             }
           }
         } catch (_) {}
       }
 
+      let attended = 0;
+      let total = 0;
+      subjects.forEach((s: any) => {
+        attended += Number(s?.attended) || 0;
+        total += Number(s?.total) || 0;
+      });
+      const overallPct =
+        total === 0 ? 100 : Math.round((attended / total) * 100);
+
+      const activeSemester =
+        cacheState.semester?.activeSemester ||
+        (cacheState.timetable as any)?.activeSemester;
+      const cutoffIso = getInstructionalCutoffIso(allEvents, activeSemester);
+
       // Independent, distinct delivery times for each summary tier
-      const dailyTime = config?.dailySummaryTime || config?.summaryTime || "18:00";
+      const dailyTime =
+        config?.dailySummaryTime || config?.summaryTime || "18:00";
       const weeklyTime = config?.weeklySummaryTime || "18:00";
       const monthlyTime = config?.monthlySummaryTime || "19:00";
 
       // 1. Daily Academic Briefings: scheduled for the next 7 days at dailyTime
-      const dailyDates = calculateNextSummaryDates({ type: 'Daily' }, dailyTime, now);
+      const dailyDates = calculateNextSummaryDates(
+        { type: "Daily" },
+        dailyTime,
+        now,
+      ).slice(0, 10);
       for (let i = 0; i < dailyDates.length; i++) {
         const notifyDate = dailyDates[i];
         const isMorningBriefing = notifyDate.getHours() < 14;
-        const targetDay = isMorningBriefing ? notifyDate : addDays(notifyDate, 1);
+        const targetDay = isMorningBriefing
+          ? notifyDate
+          : addDays(notifyDate, 1);
         const dayLabel = isMorningBriefing ? "Today" : "Tomorrow";
         const dayLabelPossessive = isMorningBriefing ? "Today's" : "Tomorrow's";
         const dayLabelLower = isMorningBriefing ? "today" : "tomorrow";
 
-        const targetEvents = allEvents.filter(e => isEventActiveOnDate(e, targetDay));
-        let targetHolidayTitle: string | null = null;
-        for (const e of targetEvents) {
-          const lowerTitle = (e.title || "").toLowerCase();
-          const typeLower = (e.type || e.eventType || "").toLowerCase();
-          if (typeLower === 'holiday' || typeLower === 'exam' || lowerTitle.includes('holiday') || lowerTitle.includes('break') || lowerTitle.includes('vacation')) {
-            if (typeLower !== 'restricted' && typeLower !== 'restricted_holiday' && !lowerTitle.includes('restricted')) {
-              targetHolidayTitle = e.title;
-              break;
-            }
-          }
-        }
+        const targetOff = getOffDayEventForDate(allEvents, targetDay);
+        const isPastCutoff = Boolean(
+          cutoffIso && formatLocalDate(targetDay) > cutoffIso,
+        );
 
         let dbTargetDay = targetDay.getDay() === 0 ? 6 : targetDay.getDay() - 1;
-        const targetSlots = cachedSlots.filter((s: any) => s.dayOfWeek === dbTargetDay);
-        const targetHasClasses = targetSlots.length > 0 && !targetHolidayTitle;
+        const targetSlots = isPastCutoff
+          ? []
+          : cachedSlots.filter((s: any) => s.dayOfWeek === dbTargetDay);
+        const targetHasClasses = targetSlots.length > 0 && !targetOff;
 
         let title = "Tomorrow's Briefing";
         let body = "You have classes coming up tomorrow.";
-        let largeBody = "🎒 Prepare for Tomorrow\n\nYou have classes scheduled. Tap to review your timetable, check for assignments, and pack your bag!";
+        let largeBody =
+          "🎒 Prepare for Tomorrow\n\nYou have classes scheduled. Tap to review your timetable, check for assignments, and pack your bag!";
 
-        if (targetHolidayTitle) {
-          title = `${dayLabel}: ${targetHolidayTitle}`;
-          body = `No regular classes scheduled ${dayLabelLower} for ${targetHolidayTitle}. Enjoy your day off!`;
-          largeBody = `✨ ${dayLabelPossessive} Briefing\n\n${dayLabel} is ${targetHolidayTitle}! No regular classes are scheduled. Enjoy your day!`;
-        } else if (!targetHasClasses) {
+        if (targetOff?.isExam) {
+          title = `${dayLabel}: ${targetOff.title}`;
+          body = `Regular classes suspended ${dayLabelLower} for ${targetOff.title}. All the best!`;
+          largeBody = `📝 ${dayLabelPossessive} Briefing\n\n${dayLabel} has ${targetOff.title} scheduled. Regular classes are suspended — all the best!`;
+        } else if (targetOff) {
+          title = `${dayLabel}: ${targetOff.title}`;
+          body = `No regular classes scheduled ${dayLabelLower} for ${targetOff.title}. Enjoy your day off!`;
+          largeBody = `✨ ${dayLabelPossessive} Briefing\n\n${dayLabel} is ${targetOff.title}! No regular classes are scheduled. Enjoy your day!`;
+        } else if (isPastCutoff || !targetHasClasses) {
           title = `${dayLabelPossessive} Briefing: Day Off`;
-          body = `No classes scheduled for ${dayLabelLower}. Take some time to relax or catch up on studies!`;
-          largeBody = `🎒 ${dayLabelPossessive} Briefing\n\nYou have no classes scheduled for ${dayLabelLower}. Enjoy your day off or review your coursework!`;
+          body = isPastCutoff
+            ? `Semester classes have concluded — no regular classes scheduled ${dayLabelLower}.`
+            : `No classes scheduled for ${dayLabelLower}. Take some time to relax or catch up on studies!`;
+          largeBody = isPastCutoff
+            ? `🎓 ${dayLabelPossessive} Briefing\n\nSemester classes have concluded. No regular classes are scheduled ${dayLabelLower}.`
+            : `🎒 ${dayLabelPossessive} Briefing\n\nYou have no classes scheduled for ${dayLabelLower}. Enjoy your day off or review your coursework!`;
         } else {
           title = `${dayLabelPossessive} Briefing`;
-          body = `You have ${targetSlots.length} class${targetSlots.length === 1 ? '' : 'es'} scheduled ${dayLabelLower}.`;
-          largeBody = `🎒 Prepare for ${dayLabel}\n\nYou have ${targetSlots.length} class${targetSlots.length === 1 ? '' : 'es'} scheduled ${dayLabelLower}. Tap to review your schedule!`;
+          body = `You have ${targetSlots.length} class${targetSlots.length === 1 ? "" : "es"} scheduled ${dayLabelLower}.`;
+          largeBody = `🎒 Prepare for ${dayLabel}\n\nYou have ${targetSlots.length} class${targetSlots.length === 1 ? "" : "es"} scheduled ${dayLabelLower}. Tap to review your schedule!`;
         }
 
         notificationsToSchedule.push({
@@ -1737,26 +2491,44 @@ export class NotificationService {
           largeIcon: "attendx_notification_icon",
           iconColor: "#3B82F6",
           channelId: "academic_briefings",
-          schedule: { at: notifyDate, allowWhileIdle: true }
+          schedule: { at: notifyDate, allowWhileIdle: true },
         });
       }
 
       // 2. Weekly Academic Review: scheduled for the next 4 weeks at weeklyTime on chosen weekly day
-      const weeklyDay = memory.Weekly || (activeFreq.type === 'Weekly' ? activeFreq.subValue : 'Sun') || 'Sun';
-      const weeklyDates = calculateNextSummaryDates({ type: 'Weekly', subValue: weeklyDay }, weeklyTime, now);
+      const weeklyDay =
+        memory.Weekly ||
+        (activeFreq.type === "Weekly" ? activeFreq.subValue : "Sun") ||
+        "Sun";
+      const weeklyDates = calculateNextSummaryDates(
+        { type: "Weekly", subValue: weeklyDay },
+        weeklyTime,
+        now,
+      );
       for (let i = 0; i < weeklyDates.length; i++) {
         const notifyDate = weeklyDates[i];
         const endOfWeekDay = addDays(notifyDate, -1);
         const startOfWeekDay = addDays(endOfWeekDay, -6);
-        const weekEvents = allEvents.filter(e => {
+        const weekEvents = allEvents.filter((e) => {
           if (!e.date) return false;
           const start = parseLocalDate(e.date);
           const end = e.endDate ? parseLocalDate(e.endDate) : start;
-          return start.getTime() <= endOfWeekDay.getTime() && end.getTime() >= startOfWeekDay.getTime();
+          return (
+            start.getTime() <= endOfWeekDay.getTime() &&
+            end.getTime() >= startOfWeekDay.getTime()
+          );
         });
-        let largeBody = "📅 Weekly Review\n\nTake a look back at your attendance performance this week and plan ahead for the upcoming week.";
-        if (weekEvents.some(e => (e.eventType || e.type || "").toLowerCase() === "holiday" || (e.title || "").toLowerCase().includes("holiday"))) {
-          largeBody = "📅 Weekly Review\n\nIt was a short week with some holidays! Check how your attendance was impacted and review your targets.";
+        let largeBody =
+          "📅 Weekly Review\n\nTake a look back at your attendance performance this week and plan ahead for the upcoming week.";
+        if (
+          weekEvents.some(
+            (e) =>
+              (e.eventType || e.type || "").toLowerCase() === "holiday" ||
+              (e.title || "").toLowerCase().includes("holiday"),
+          )
+        ) {
+          largeBody =
+            "📅 Weekly Review\n\nIt was a short week with some holidays! Check how your attendance was impacted and review your targets.";
         }
         notificationsToSchedule.push({
           id: 8810 + i,
@@ -1768,13 +2540,20 @@ export class NotificationService {
           largeIcon: "attendx_notification_icon",
           iconColor: "#8B5CF6",
           channelId: "academic_briefings",
-          schedule: { at: notifyDate, allowWhileIdle: true }
+          schedule: { at: notifyDate, allowWhileIdle: true },
         });
       }
 
       // 3. Monthly Attendance Summary: scheduled for the next 3 months at monthlyTime on chosen monthly day
-      const monthlyDay = memory.Monthly || (activeFreq.type === 'Monthly' ? activeFreq.subValue : '1') || '1';
-      const monthlyDates = calculateNextSummaryDates({ type: 'Monthly', subValue: monthlyDay }, monthlyTime, now);
+      const monthlyDay =
+        memory.Monthly ||
+        (activeFreq.type === "Monthly" ? activeFreq.subValue : "1") ||
+        "1";
+      const monthlyDates = calculateNextSummaryDates(
+        { type: "Monthly", subValue: monthlyDay },
+        monthlyTime,
+        now,
+      );
       for (let i = 0; i < monthlyDates.length; i++) {
         const notifyDate = monthlyDates[i];
         notificationsToSchedule.push({
@@ -1787,14 +2566,15 @@ export class NotificationService {
           largeIcon: "attendx_notification_icon",
           iconColor: "#EC4899",
           channelId: "academic_briefings",
-          schedule: { at: notifyDate, allowWhileIdle: true }
+          schedule: { at: notifyDate, allowWhileIdle: true },
         });
       }
 
       if (notificationsToSchedule.length > 0) {
-        await LocalNotifications.schedule({ notifications: notificationsToSchedule });
+        await LocalNotifications.schedule({
+          notifications: notificationsToSchedule,
+        });
       }
-
     } catch (error) {
       console.error("Failed to schedule academic updates:", error);
     }
@@ -1803,25 +2583,38 @@ export class NotificationService {
   static async cancelAll(): Promise<void> {
     if (!Capacitor.isNativePlatform()) return;
     try {
-      if (typeof LocalNotifications.cancelAll === 'function') {
+      if (typeof LocalNotifications.cancelAll === "function") {
         await LocalNotifications.cancelAll();
       } else {
         const pending = await LocalNotifications.getPending();
         if (pending.notifications.length > 0) {
           await LocalNotifications.cancel({
-            notifications: pending.notifications.map(n => ({ id: Number(n.id) }))
+            notifications: pending.notifications.map((n) => ({
+              id: Number(n.id),
+            })),
           });
         }
       }
       try {
-        if (typeof LocalNotifications.removeAllDeliveredNotifications === 'function') {
+        if (
+          typeof LocalNotifications.removeAllDeliveredNotifications ===
+          "function"
+        ) {
           await LocalNotifications.removeAllDeliveredNotifications();
         }
       } catch (e) {
-        console.warn("Could not remove delivered notifications on cancelAll:", e);
+        console.warn(
+          "Could not remove delivered notifications on cancelAll:",
+          e,
+        );
+      }
+      if (getScheduledUnmuteTime() !== null) {
+        await unmutePhone().catch(() => {});
       }
       setScheduledUnmuteTime(null);
-      console.log("All local notifications and delivered alerts purged successfully.");
+      console.log(
+        "All local notifications and delivered alerts purged successfully.",
+      );
     } catch (e) {
       console.error("Failed to cancel all notifications:", e);
     }
@@ -1831,16 +2624,20 @@ export class NotificationService {
     if (!Capacitor.isNativePlatform()) return false;
     try {
       let perm = await LocalNotifications.checkPermissions();
-      if (perm.display !== 'granted') {
+      if (perm.display !== "granted") {
         perm = await LocalNotifications.requestPermissions();
-        if (perm.display !== 'granted') return false;
+        if (perm.display !== "granted") return false;
       }
 
       const subjects = useAttendanceStore.getState().subjects || [];
       let attended = 0;
       let total = 0;
-      subjects.forEach(s => { attended += (s.attended || 0); total += (s.total || 0); });
-      const overallPct = total === 0 ? 100 : Math.round((attended / total) * 100);
+      subjects.forEach((s) => {
+        attended += s.attended || 0;
+        total += s.total || 0;
+      });
+      const overallPct =
+        total === 0 ? 100 : Math.round((attended / total) * 100);
 
       await LocalNotifications.schedule({
         notifications: [
@@ -1855,8 +2652,8 @@ export class NotificationService {
             iconColor: "#3B82F6",
             channelId: "academic_briefings",
             schedule: { at: new Date(Date.now() + 1000), allowWhileIdle: true },
-          }
-        ]
+          },
+        ],
       });
       return true;
     } catch (e) {
@@ -1868,7 +2665,7 @@ export class NotificationService {
   static async triggerTestMuteNotification(): Promise<boolean> {
     if (!Capacitor.isNativePlatform()) return false;
     try {
-      const { testMuteNotification } = await import('../lib/ringer');
+      const { testMuteNotification } = await import("../lib/ringer");
       return await testMuteNotification();
     } catch (e) {
       console.error("Failed to trigger test mute notification", e);

@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { X, History } from "lucide-react";
 import { useHardwareBack } from "../../hooks/useHardwareBack";
 import { useScrollLock } from "../../hooks/useScrollLock";
+import { OFFLINE_CHANGELOG } from "../../constants/offlineChangelog";
 
 export interface ChangelogItem {
   icon: string;
@@ -33,6 +34,8 @@ export const ChangelogModal = ({
 }) => {
   useHardwareBack(isOpen, onClose);
   useScrollLock(isOpen);
+
+  const displayReleases = releases && releases.length > 0 ? releases : OFFLINE_CHANGELOG;
 
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
@@ -76,12 +79,13 @@ export const ChangelogModal = ({
             </div>
 
             <div className="p-4 md:p-6 overflow-y-auto space-y-8 pb-20 bg-background text-foreground overscroll-contain">
-              {releases.length === 0 && (
-                 <div className="text-center py-8 text-muted-foreground text-sm">
-                   Loading changelog...
-                 </div>
+              {!navigator.onLine && (
+                <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-muted/40 border border-border/50 text-xs text-muted-foreground font-mono">
+                  <span>📶</span>
+                  <span>Viewing offline cached update history</span>
+                </div>
               )}
-              {releases.map((release, i) => (
+              {displayReleases.map((release, i) => (
                 <div key={release.version} className="relative pl-6 border-l-2 border-border/50">
                   <div className={`absolute -left-[9px] top-1 w-4 h-4 rounded-full border-4 border-card ${i === 0 ? "bg-primary" : "bg-muted-foreground/30"}`} />
                   

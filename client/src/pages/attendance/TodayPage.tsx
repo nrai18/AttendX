@@ -32,6 +32,7 @@ interface AgendaItem {
   id: string;
   type: "slot" | "override" | "manual";
   isExtra?: boolean;
+  overrideType?: string;
   subject: {
     id: string;
     name: string;
@@ -168,19 +169,22 @@ export const TodayPage = () => {
             };
           const calMatch = calendarDetails.find(
             (c: any) =>
-              (c.subjectId && c.subjectId === slot.subjectId) ||
-              String(c.subjectName || "")
-                .trim()
-                .toLowerCase() ===
-                String(subject.name || "")
+              !c.isExtra &&
+              ((c.subjectId && c.subjectId === slot.subjectId) ||
+                String(c.subjectName || "")
                   .trim()
-                  .toLowerCase(),
+                  .toLowerCase() ===
+                  String(subject.name || "")
+                    .trim()
+                    .toLowerCase()) &&
+              (c.startTime === slot.startTime || !c.startTime || c.startTime === "00:00"),
           );
           const logMatch = logsForDay.find(
             (l: any) =>
-              l.timetableSlotId === slot.id ||
-              (l.subjectId === slot.subjectId &&
-                (l.startTime === slot.startTime || l.startTime === "00:00")),
+              !l.isExtra &&
+              (l.timetableSlotId === slot.id ||
+                (l.subjectId === slot.subjectId &&
+                  (l.startTime === slot.startTime || !l.startTime || l.startTime === "00:00"))),
           );
           const resolvedStatus =
             calMatch && calMatch.status !== "not_marked"
@@ -211,8 +215,8 @@ export const TodayPage = () => {
       // Fallback for dates preceding current timetable (e.g. July 31)
       if (pseudoAgenda.length === 0 && calendarDetails.length > 0) {
         pseudoAgenda = calendarDetails.map((detail: any, idx: number) => ({
-          id: detail.id || `cal_${idx}`,
-          type: detail.isExtra ? "override" : "slot",
+          id: detail.timetableSlotId || detail.overrideId || detail.id || `cal_${idx}`,
+          type: detail.isExtra || detail.overrideId ? "override" : "slot",
           isExtra: Boolean(detail.isExtra),
           subject: {
             id: detail.subjectId || `sub_${idx}`,
@@ -231,11 +235,23 @@ export const TodayPage = () => {
       }
 
       logsForDay.forEach((l: any) => {
+        const lIsExtra = Boolean(l.isExtra || l.slotType === "Extra");
         const existingItem = pseudoAgenda.find(
-          (item) =>
-            item.id === l.timetableSlotId ||
-            item.subject?.id === l.subjectId ||
-            (l.overrideId && item.id === l.overrideId),
+          (item) => {
+            const itemIsExtra = Boolean(item.type === "override" || item.isExtra);
+            if (lIsExtra !== itemIsExtra) return false;
+            if (l.timetableSlotId && item.id === l.timetableSlotId) return true;
+            if (l.overrideId && item.id === l.overrideId) return true;
+            if (l.id && (item.id === l.id || item.attendanceId === l.id)) return true;
+            if (item.subject?.id && item.subject.id === l.subjectId) {
+              if (l.startTime && item.startTime && l.startTime !== "00:00" && item.startTime !== "00:00") {
+                return l.startTime === item.startTime;
+              }
+              if (item.status && (item.status as any) !== "not_marked") return false;
+              return true;
+            }
+            return false;
+          }
         );
         if (existingItem) {
           if (!existingItem.status && l.status && l.status !== "not_marked") {
@@ -304,10 +320,158 @@ export const TodayPage = () => {
       pseudoAgenda.sort((a, b) =>
         (a.startTime || "").localeCompare(b.startTime || ""),
       );
-      return pseudoAgenda;
+      return applyOfflineQueueToAgenda(pseudoAgenda, dateStr);
     } catch {
       return [];
     }
+  };
+
+  const applyOfflineQueueToAgenda = (
+    baseAgenda: AgendaItem[],
+    dateStr: string,
+  ): AgendaItem[] => {
+    let result = [...baseAgenda];
+    const offlineQueue = useOfflineStore.getState().queue || [];
+
+    offlineQueue.forEach((q) => {
+      const endpoint = String(q.url || "");
+      const p = q.data || {};
+
+      // 1. Extra class deletion
+      if (
+        (endpoint.includes("/timetable/extra-class/") ||
+          endpoint.includes("/timetable/extra-class")) &&
+        (q.method === "DELETE" || String(q.method || "").toLowerCase() === "delete")
+      ) {
+        const deletedId = endpoint.split("/").pop();
+        result = result.filter(
+          (item) => item.id !== deletedId && item.id !== `today-${deletedId}`,
+        );
+        return;
+      }
+
+      // 2. Extra class creation
+      if (
+        endpoint.includes("/timetable/extra-class") &&
+        p.date === dateStr &&
+        (!q.method || String(q.method).toLowerCase() === "post")
+      ) {
+        const extraId = p.tempId || q.tempId || `temp_extra_${q.id}`;
+        const alreadyPresent = result.some(
+          (item) =>
+            item.id === extraId ||
+            (Boolean(item.isExtra || item.type === "override") &&
+              item.subject?.id === p.subjectId &&
+              (item.startTime === p.startTime ||
+                !item.startTime ||
+                !p.startTime ||
+                item.startTime === "00:00")),
+        );
+        if (!alreadyPresent) {
+          const cacheSubs = useCacheStore.getState().subjects;
+          const fallbackPool =
+            useCacheStore.getState().subjects_overview?.length > 0
+              ? useCacheStore.getState().subjects_overview
+              : useAttendanceStore.getState().subjects?.length > 0
+                ? useAttendanceStore.getState().subjects
+                : Array.isArray(cacheSubs)
+                  ? cacheSubs
+                  : cacheSubs?.subjects?.length > 0
+                    ? cacheSubs.subjects
+                    : cacheSubs?.stats || [];
+          const sub = fallbackPool.find(
+            (s: any) => s.id === p.subjectId || s.subjectId === p.subjectId,
+          ) || {
+            id: p.subjectId,
+            name: "Extra Class",
+          };
+          result.push({
+            id: extraId,
+            type: "override",
+            isExtra: true,
+            subject: {
+              id: sub.id || sub.subjectId || p.subjectId,
+              name: sub.name || "Extra Class",
+              code: sub.code,
+              colorHex: sub.colorHex,
+            },
+            startTime: p.startTime || "09:00",
+            endTime: p.endTime || "10:00",
+            slotType: p.reason?.toLowerCase().includes("practical")
+              ? "Practical"
+              : "Lecture",
+            status: null,
+            remarks: p.reason || "Extra Class",
+            attendanceId: null,
+          });
+        }
+      }
+
+      // 3. Attendance mark
+      if (endpoint.includes("/attendance/mark") && matchLogDate(p.date, dateStr)) {
+        const markStatus = String(p.status || "").toLowerCase();
+        result = result.map((item) => {
+          const matchById =
+            (p.overrideId &&
+              (item.id === p.overrideId ||
+                item.id === `today-${p.overrideId}`)) ||
+            (p.timetableSlotId &&
+              (item.id === p.timetableSlotId ||
+                item.id === `today-${p.timetableSlotId}`)) ||
+            (p.attendanceId && item.id === p.attendanceId);
+          const matchByExtraSubject =
+            !p.overrideId &&
+            !p.timetableSlotId &&
+            Boolean(item.isExtra || item.type === "override") &&
+            p.subjectId &&
+            item.subject?.id === p.subjectId;
+          const matchByRegularSubject =
+            !p.overrideId &&
+            !p.timetableSlotId &&
+            !item.isExtra &&
+            item.type !== "override" &&
+            p.subjectId &&
+            item.subject?.id === p.subjectId;
+
+          const hasSpecificTarget = Boolean(p.overrideId || p.timetableSlotId || p.attendanceId);
+          if (
+            matchById ||
+            (!hasSpecificTarget && (item.isExtra ? matchByExtraSubject : matchByRegularSubject))
+          ) {
+            return {
+              ...item,
+              status: (markStatus === "clear" ? null : markStatus) as any,
+              remarks: p.remarks !== undefined ? p.remarks : item.remarks,
+            };
+          }
+          return item;
+        });
+      }
+
+      // 4. Mark full day or undo day
+      if (endpoint.includes("/attendance/mark-day") && p.date === dateStr) {
+        const fullDayStatus = String(p.status || "").toLowerCase();
+        result = result.map((item) => ({
+          ...item,
+          status: (fullDayStatus === "clear" ? null : fullDayStatus) as any,
+          remarks: p.remark !== undefined ? p.remark : item.remarks,
+        }));
+      } else if (
+        endpoint.includes("/attendance/undo-day") &&
+        p.date === dateStr
+      ) {
+        result = result.map((item) => ({
+          ...item,
+          status: null,
+          remarks: null,
+        }));
+      }
+    });
+
+    result.sort((a, b) =>
+      (a.startTime || "").localeCompare(b.startTime || ""),
+    );
+    return result;
   };
 
   const computeLocalTodayStatus = (dateStr: string) => {
@@ -394,22 +558,30 @@ export const TodayPage = () => {
   };
 
   const resolveInitialAgenda = (dateStr: string): AgendaItem[] => {
+    let agenda: AgendaItem[] = [];
     const dc = useCacheStore.getState().today?.[dateStr];
-    if (dc?.agenda && dc.agenda.length > 0) return dc.agenda;
-    const monthStr = dateStr.slice(0, 7);
-    const calDetails =
-      useCacheStore.getState().calendar?.[monthStr]?.details?.[dateStr];
-    if (calDetails && calDetails.length > 0) {
-      return buildLocalFallbackAgenda(dateStr);
+    if (dc?.agenda && dc.agenda.length > 0) {
+      agenda = dc.agenda;
+    } else {
+      const monthStr = dateStr.slice(0, 7);
+      const calDetails =
+        useCacheStore.getState().calendar?.[monthStr]?.details?.[dateStr];
+      if (calDetails && calDetails.length > 0) {
+        agenda = buildLocalFallbackAgenda(dateStr);
+      } else {
+        const sem =
+          dc?.activeSemester ||
+          useCacheStore.getState().semester?.activeSemester ||
+          null;
+        if (sem) {
+          const localSt = dc?.todayStatus || computeLocalTodayStatus(dateStr);
+          if (!(localSt?.isHoliday || localSt?.isExam)) {
+            agenda = buildLocalFallbackAgenda(dateStr, sem);
+          }
+        }
+      }
     }
-    const sem =
-      dc?.activeSemester ||
-      useCacheStore.getState().semester?.activeSemester ||
-      null;
-    if (!sem) return [];
-    const localSt = dc?.todayStatus || computeLocalTodayStatus(dateStr);
-    if (localSt?.isHoliday || localSt?.isExam) return [];
-    return buildLocalFallbackAgenda(dateStr, sem);
+    return applyOfflineQueueToAgenda(agenda, dateStr);
   };
 
   const [agenda, setAgenda] = useState<AgendaItem[]>(() =>
@@ -501,15 +673,29 @@ export const TodayPage = () => {
     initialActiveSemester ? initialTodayStatus : null,
   );
 
-  // Sync Android Home Screen Widgets whenever agenda or todayStatus changes
+  const storeSubjectsForWidget = useAttendanceStore((state) => state.subjects);
+  const storeOverallPctForWidget = useAttendanceStore(
+    (state) => state.overallPercentage,
+  );
+
+  // Sync Android Home Screen Widgets whenever today's agenda, todayStatus, or attendance stats change
   useEffect(() => {
+    const localTodayStr = format(new Date(), "yyyy-MM-dd");
+    if (targetDateStr !== localTodayStr) return;
     WidgetBridgeService.syncFromAppState({
       agenda,
-      overallPercentage: useAttendanceStore.getState().overallPercentage,
-      subjects: useAttendanceStore.getState().subjects,
+      overallPercentage: storeOverallPctForWidget,
+      subjects: storeSubjectsForWidget,
       todayStatus,
+      weeklySlots: useCacheStore.getState().timetable?.slots || [],
     });
-  }, [agenda, todayStatus]);
+  }, [
+    agenda,
+    todayStatus,
+    targetDateStr,
+    storeOverallPctForWidget,
+    storeSubjectsForWidget,
+  ]);
   const rawActiveEvent = activeSemester
     ? todayStatus?.activeEvent || null
     : null;
@@ -592,6 +778,9 @@ export const TodayPage = () => {
   const [isTransitionModalOpen, setIsTransitionModalOpen] = useState(false);
   const [transitionStatus, setTransitionStatus] = useState<any>(null);
   const [glidingExtraId, setGlidingExtraId] = useState<string | null>(null);
+  const [dyingExtras, setDyingExtras] = useState<
+    Array<{ item: AgendaItem; index: number }>
+  >([]);
   const [poppingExtraId, setPoppingExtraId] = useState<string | null>(null);
   const [hasUsedVoiceMode, setHasUsedVoiceMode] = useState<boolean>(() => {
     return (
@@ -1292,51 +1481,6 @@ export const TodayPage = () => {
     try {
       const normalizedStatus = status === "clear" ? null : (status as any);
 
-      // --- OFFLINE OPTIMISTIC UPDATE ---
-      const store = useAttendanceStore.getState();
-      const subjects = [...store.subjects];
-      agenda.forEach((item) => {
-        const subjectIndex = subjects.findIndex(
-          (s) => s.subjectId === item.subject?.id || s.id === item.subject?.id,
-        );
-        if (subjectIndex !== -1) {
-          const s = { ...subjects[subjectIndex] };
-          if (
-            item.status === "present" ||
-            item.status === "medical" ||
-            item.status === "od"
-          ) {
-            s.attended -= 1;
-            s.total -= 1;
-          } else if (item.status === "absent") {
-            s.total -= 1;
-          }
-          if (status === "present") {
-            s.attended += 1;
-            s.total += 1;
-          } else if (status === "absent") {
-            s.total += 1;
-          }
-          s.percentage =
-            s.total > 0 ? Number(((s.attended / s.total) * 100).toFixed(1)) : 0;
-          subjects[subjectIndex] = s;
-        }
-      });
-      const totalAttended = subjects.reduce(
-        (sum, sub) => sum + sub.attended,
-        0,
-      );
-      const totalClasses = subjects.reduce((sum, sub) => sum + sub.total, 0);
-      const overallPercentage =
-        totalClasses > 0 ? (totalAttended / totalClasses) * 100 : 0;
-      useAttendanceStore.setState({
-        subjects,
-        totalAttended,
-        totalClasses,
-        overallPercentage,
-      });
-      // ---------------------------------
-
       // Optimistically update agenda
       const nextAgenda = agenda.map((a) => ({
         ...a,
@@ -1357,14 +1501,10 @@ export const TodayPage = () => {
       const nextTodayEntry: any = {
         ...currentTodayEntry,
         agenda: nextAgenda,
+        todayStatus: currentTodayEntry.todayStatus ?? todayStatus ?? null,
         activeSemester,
         onboarding: onboardingStatus,
       };
-      if (status === "off") {
-        nextTodayEntry.todayStatus = "off";
-      } else {
-        delete nextTodayEntry.todayStatus;
-      }
       state.setCache("today", {
         ...state.today,
         [targetDateStr]: nextTodayEntry,
@@ -1413,7 +1553,7 @@ export const TodayPage = () => {
                       ? "absent"
                       : "off",
               remarks: remark || item.remarks || null,
-              isExtra: item.type === "override",
+              isExtra: Boolean(item.isExtra || (item as any).overrideType === "extra_class"),
             })),
           },
         },
@@ -1445,9 +1585,20 @@ export const TodayPage = () => {
         filteredHistory = [...newHistoryEntries, ...filteredHistory];
       }
       // Synchronous optimistic recalculation of attendance store & subject stats
-      const currentStoreSubjects = [
+      let currentStoreSubjects = [
         ...(useAttendanceStore.getState().subjects || []),
       ];
+      // Ground-truth fallback: If store subjects have 0 total classes, hydrate from cacheStore
+      const storeTotal = currentStoreSubjects.reduce((acc, s: any) => acc + (Number(s.total) || 0), 0);
+      if (storeTotal === 0) {
+        const cachedStats = useCacheStore.getState().subjects?.stats || [];
+        const cachedTotal = (Array.isArray(cachedStats) ? cachedStats : []).reduce(
+          (acc: number, s: any) => acc + (Number(s.total) || 0), 0
+        );
+        if (cachedTotal > 0) {
+          currentStoreSubjects = [...cachedStats];
+        }
+      }
       const targetPct = useAuthStore.getState().user?.targetAttendance ?? 75;
 
       const updatedStoreSubjects = currentStoreSubjects.map((sub: any) => {
@@ -1642,6 +1793,7 @@ export const TodayPage = () => {
         logs: updatedAllLogs,
         subjects: updatedStoreSubjects,
       };
+      currentSubjCache["overall"] = currentSubjCache["all"];
 
       nextAgenda.forEach((item) => {
         if (!item.subject?.id) return;
@@ -1662,6 +1814,20 @@ export const TodayPage = () => {
         currentSubjCache[subId] = { ...subCache, logs: filteredSubLogs };
       });
       state.setCache("subject_logs", currentSubjCache);
+      state.setCache("today", {
+        ...state.today,
+        [targetDateStr]: {
+          ...state.today?.[targetDateStr],
+          agenda: nextAgenda,
+          todayStatus: state.today?.[targetDateStr]?.todayStatus ?? todayStatus ?? null,
+          activeSemester,
+          onboarding: {
+            ...(onboardingStatus || {}),
+            hasAttendance:
+              status !== "clear" ? true : onboardingStatus?.hasAttendance,
+          },
+        },
+      });
       if (status === "present") {
         localStorage.setItem("onboarding_attendance", "true");
         setOnboardingStatus((prev: any) => ({
@@ -1755,19 +1921,9 @@ export const TodayPage = () => {
         });
       } catch (batchErr) {
         console.warn(
-          "mark-day endpoint failed or timed out, enqueuing to offline store:",
+          "mark-day endpoint failed (handled by offline store interceptor):",
           batchErr,
         );
-        useOfflineStore.getState().enqueue({
-          method: "POST",
-          url: "/attendance/mark-day",
-          data: {
-            date: targetDateStr,
-            status,
-            remarks: remark,
-            semesterId: activeSemester?.id,
-          },
-        });
       }
 
       fetchStats();
@@ -1787,19 +1943,32 @@ export const TodayPage = () => {
   };
 
   const openAddExtraModal = async () => {
+    const cacheSubsObj = useCacheStore.getState().subjects;
+    const storeSubs = useAttendanceStore.getState().subjects;
     const cachedSubs =
-      useAttendanceStore.getState().subjects &&
-      useAttendanceStore.getState().subjects.length > 0
-        ? useAttendanceStore.getState().subjects
-        : useCacheStore.getState().subjects || [];
+      Array.isArray(storeSubs) && storeSubs.length > 0
+        ? storeSubs
+        : Array.isArray(cacheSubsObj)
+          ? cacheSubsObj
+          : cacheSubsObj?.subjects?.length > 0
+            ? cacheSubsObj.subjects
+            : cacheSubsObj?.stats?.length > 0
+              ? cacheSubsObj.stats
+              : useCacheStore.getState().subjects_overview || [];
     if (cachedSubs.length > 0) {
       setSubjectsForExtra(cachedSubs);
     }
     setIsAddExtraModalOpen(true);
+    if (typeof navigator !== "undefined" && !navigator.onLine) return;
     try {
       const res = await api.get("/subjects");
-      if (Array.isArray(res.data) && res.data.length > 0) {
-        setSubjectsForExtra(res.data);
+      const raw = Array.isArray(res.data)
+        ? res.data
+        : Array.isArray(res.data?.subjects)
+          ? res.data.subjects
+          : [];
+      if (raw.length > 0) {
+        setSubjectsForExtra(raw);
       }
     } catch (err) {
       console.warn("Using offline cached subjects for extra class modal:", err);
@@ -1877,7 +2046,7 @@ export const TodayPage = () => {
             a.status ||
             (targetDateStr > todayDateStr ? "future" : "not_marked"),
           remarks: a.remarks || null,
-          isExtra: Boolean(a.type === "override" || a.isExtra),
+          isExtra: Boolean(a.isExtra || a.overrideType === "extra_class" || (a.type === "override" && a.isExtra)),
         }));
         cacheState.setCache("calendar", {
           ...cacheState.calendar,
@@ -1917,18 +2086,41 @@ export const TodayPage = () => {
         endTime: resolvedEnd,
         reason: reasonLabel,
       });
-      const realId = res.data?.id;
+      const realId = !res.data?._queued ? res.data?.id : null;
       if (realId) {
         setAgenda((prev) => {
           const next = prev.map((item) =>
             item.id === tempId ? { ...item, id: realId } : item,
           );
           agendaRef.current = next;
-          const existing = useCacheStore.getState().today?.[targetDateStr];
+          const cacheState = useCacheStore.getState();
+          const existing = cacheState.today?.[targetDateStr];
           if (existing) {
-            useCacheStore.getState().setCache("today", {
-              ...useCacheStore.getState().today,
+            cacheState.setCache("today", {
+              ...cacheState.today,
               [targetDateStr]: { ...existing, agenda: next },
+            });
+          }
+          const monthStr = targetDateStr.substring(0, 7);
+          const existingMonth = cacheState.calendar?.[monthStr];
+          if (existingMonth?.details?.[targetDateStr]) {
+            cacheState.setCache("calendar", {
+              ...cacheState.calendar,
+              [monthStr]: {
+                ...existingMonth,
+                details: {
+                  ...existingMonth.details,
+                  [targetDateStr]: existingMonth.details[targetDateStr].map((d: any) =>
+                    d.id === tempId || d.id === `today-${tempId}` || d.overrideId === tempId
+                      ? {
+                          ...d,
+                          id: d.id === `today-${tempId}` ? `today-${realId}` : realId,
+                          overrideId: d.overrideId === tempId ? realId : d.overrideId,
+                        }
+                      : d,
+                  ),
+                },
+              },
             });
           }
           return next;
@@ -1949,10 +2141,38 @@ export const TodayPage = () => {
           err?.code === "ERR_NETWORK");
       if (!isOffline) {
         toast.error("Failed to add extra lecture");
-        // Roll back optimistic card
+        // Roll back optimistic card across UI, today cache, and calendar cache
         setAgenda((prev) => {
           const reverted = prev.filter((item) => item.id !== tempId);
           agendaRef.current = reverted;
+          const cacheState = useCacheStore.getState();
+          const existingToday = cacheState.today?.[targetDateStr];
+          if (existingToday) {
+            cacheState.setCache("today", {
+              ...cacheState.today,
+              [targetDateStr]: { ...existingToday, agenda: reverted },
+            });
+          }
+          const monthStr = targetDateStr.substring(0, 7);
+          const existingMonth = cacheState.calendar?.[monthStr];
+          if (existingMonth?.details?.[targetDateStr]) {
+            const revertedDetails = existingMonth.details[targetDateStr].filter(
+              (d: any) =>
+                d.id !== tempId &&
+                d.id !== `today-${tempId}` &&
+                d.overrideId !== tempId,
+            );
+            cacheState.setCache("calendar", {
+              ...cacheState.calendar,
+              [monthStr]: {
+                ...existingMonth,
+                details: {
+                  ...existingMonth.details,
+                  [targetDateStr]: revertedDetails,
+                },
+              },
+            });
+          }
           return reverted;
         });
       }
@@ -1962,9 +2182,11 @@ export const TodayPage = () => {
   };
 
   const handleDeleteExtraClass = async (overrideId: string) => {
-    const itemToDelete = agendaRef.current.find(
+    const itemIndex = agendaRef.current.findIndex(
       (item) => item.id === overrideId,
     );
+    const itemToDelete =
+      itemIndex >= 0 ? agendaRef.current[itemIndex] : undefined;
     confirmDeleteToast({
       title: "Delete Extra Class",
       description:
@@ -1974,291 +2196,311 @@ export const TodayPage = () => {
         : undefined,
       confirmLabel: "Delete Class",
       onConfirm: async () => {
-        // 1. Trigger 4.0s Paper Aeroplane Glider Deletion choreography
+        // 1. Trigger 4.0s Paper Aeroplane Glider Deletion choreography on snapshot
         hapticSuccess();
         setGlidingExtraId(overrideId);
+        if (itemToDelete) {
+          setDyingExtras((prev) =>
+            prev.some((d) => d.item.id === overrideId)
+              ? prev
+              : [...prev, { item: itemToDelete, index: Math.max(0, itemIndex) }],
+          );
+        }
         SoundFX.playPaperAirplaneSound();
         triggerDynamicHUD({
           type: "plane",
           label: "Extra Class Glided Away",
           durationMs: 4500,
         });
+        setTimeout(() => {
+          setDyingExtras((prev) =>
+            prev.filter((d) => d.item.id !== overrideId),
+          );
+          setGlidingExtraId((curr) => (curr === overrideId ? null : curr));
+        }, 4000);
 
-        setTimeout(async () => {
-          let updatedAgenda: AgendaItem[] = [];
-          setAgenda((prev) => {
-            const next = prev.filter((item) => item.id !== overrideId);
-            updatedAgenda = next;
-            agendaRef.current = next;
-            const existing = useCacheStore.getState().today?.[targetDateStr];
-            if (existing) {
-              useCacheStore.getState().setCache("today", {
-                ...useCacheStore.getState().today,
-                [targetDateStr]: { ...existing, agenda: next },
-              });
-            }
-
-            // 1. Evict from subject_logs cache
-            const evictFromSubjectLogs = (cacheKey: string) => {
-              const subjCache =
-                useCacheStore.getState().subject_logs?.[cacheKey];
-              if (subjCache && subjCache.logs) {
-                const nextLogs = subjCache.logs.filter((l: any) => {
-                  if (
-                    l.date !== targetDateStr ||
-                    l.subjectId !== itemToDelete?.subject?.id
-                  )
-                    return true;
-                  if (l.overrideId) return l.overrideId !== overrideId;
-                  if (
-                    itemToDelete?.attendanceId &&
-                    l.id === itemToDelete.attendanceId
-                  )
-                    return false;
-                  if (
-                    !l.overrideId &&
-                    !l.slotId &&
-                    itemToDelete?.startTime &&
-                    l.time === itemToDelete.startTime
-                  )
-                    return false;
-                  return true;
-                });
-                useCacheStore.getState().setCache("subject_logs", {
-                  ...useCacheStore.getState().subject_logs,
-                  [cacheKey]: { ...subjCache, logs: nextLogs },
-                });
-              }
-            };
-            evictFromSubjectLogs("all");
-            if (itemToDelete?.subject?.id)
-              evictFromSubjectLogs(itemToDelete.subject.id);
-
-            return next;
-          });
-          setGlidingExtraId(null);
-
-          // 2. Roll back attendance stats in useAttendanceStore and useCacheStore (immediately updates TopBar)
-          if (itemToDelete && Boolean(itemToDelete.status)) {
-            const store = useAttendanceStore.getState();
-            const subjects = [...store.subjects];
-            const subIndex = subjects.findIndex(
-              (s) =>
-                s.id === itemToDelete.subject?.id ||
-                s.subjectId === itemToDelete.subject?.id,
-            );
-            if (subIndex !== -1) {
-              const s = { ...subjects[subIndex] };
-              const st = String(itemToDelete.status || "").toLowerCase();
-              if (["present", "attended", "medical", "od"].includes(st)) {
-                s.attended = Math.max(0, (Number(s.attended) || 0) - 1);
-                s.total = Math.max(0, (Number(s.total) || 0) - 1);
-              } else if (["absent", "missed"].includes(st)) {
-                s.missed = Math.max(0, (Number(s.missed) || 0) - 1);
-                s.total = Math.max(0, (Number(s.total) || 0) - 1);
-              } else if (["off", "cancelled"].includes(st)) {
-                s.off = Math.max(0, (Number(s.off) || 0) - 1);
-              }
-              s.percentage =
-                s.total > 0
-                  ? Number(((s.attended / s.total) * 100).toFixed(1))
-                  : 0;
-              const target =
-                Number(s.target) ||
-                (useAuthStore.getState().user?.targetAttendance ?? 75);
-              const canMiss =
-                s.percentage >= target && target > 0
-                  ? Math.floor(
-                      (s.attended - (target / 100) * s.total) / (target / 100),
-                    )
-                  : 0;
-              const needAttend =
-                s.percentage < target && target < 100
-                  ? Math.ceil(
-                      ((target / 100) * s.total - s.attended) /
-                        (1 - target / 100),
-                    )
-                  : 0;
-              s.canMiss = canMiss;
-              s.needAttend = needAttend;
-              s.statusText =
-                s.total === 0
-                  ? "No classes recorded yet"
-                  : canMiss > 0
-                    ? `can miss ${canMiss} lecture${canMiss > 1 ? "s" : ""}`
-                    : needAttend > 0
-                      ? `need ${needAttend} lecture${needAttend > 1 ? "s" : ""}`
-                      : "on track";
-              subjects[subIndex] = s;
-
-              const totalAttended = subjects.reduce(
-                (sum, sub) => sum + (sub.attended || 0),
-                0,
-              );
-              const totalClasses = subjects.reduce(
-                (sum, sub) => sum + (sub.total || 0),
-                0,
-              );
-              const overallPercentage =
-                totalClasses > 0 ? (totalAttended / totalClasses) * 100 : 0;
-
-              useAttendanceStore.setState({
-                subjects,
-                totalAttended,
-                totalClasses,
-                overallPercentage,
-              });
-              useCacheStore.getState().setCache("subjects", {
-                ...(useCacheStore.getState().subjects || {}),
-                stats: subjects,
-                subjects: useCacheStore.getState().subjects?.subjects || [],
-                activeSemesterId: activeSemester?.id || null,
-              });
-            }
+        // 2. Immediately update Agenda, Caches, Stores & Backend at 0ms
+        setAgenda((prev) => {
+          const next = prev.filter((item) => item.id !== overrideId);
+          agendaRef.current = next;
+          const cacheState = useCacheStore.getState();
+          const existing = cacheState.today?.[targetDateStr];
+          if (existing) {
+            cacheState.setCache("today", {
+              ...cacheState.today,
+              [targetDateStr]: { ...existing, agenda: next },
+            });
           }
+          return next;
+        });
 
-          // 3. Evict from useAttendanceStore historyLogs
-          const currentHistory = (
-            useAttendanceStore.getState().historyLogs || []
-          ).filter((l: any) => {
-            if (String(l.date || "").slice(0, 10) !== targetDateStr)
+        // Evict from subject_logs cache
+        const evictFromSubjectLogs = (cacheKey: string) => {
+          const subjCache = useCacheStore.getState().subject_logs?.[cacheKey];
+          if (subjCache && subjCache.logs) {
+            const nextLogs = subjCache.logs.filter((l: any) => {
+              if (!matchLogDate(l.date, targetDateStr)) return true;
+              if (
+                itemToDelete?.subject?.id &&
+                l.subjectId &&
+                l.subjectId !== itemToDelete.subject.id
+              )
+                return true;
+              if (l.overrideId) return l.overrideId !== overrideId;
+              if (
+                itemToDelete?.attendanceId &&
+                l.id === itemToDelete.attendanceId
+              )
+                return false;
+              if (l.id === overrideId) return false;
+              if (
+                !l.overrideId &&
+                !l.slotId &&
+                itemToDelete?.startTime &&
+                l.time &&
+                (l.time === itemToDelete.startTime ||
+                  String(l.time).startsWith(itemToDelete.startTime))
+              )
+                return false;
               return true;
-            if (l.overrideId && l.overrideId === overrideId) return false;
+            });
+            useCacheStore.getState().setCache("subject_logs", {
+              ...useCacheStore.getState().subject_logs,
+              [cacheKey]: { ...subjCache, logs: nextLogs },
+            });
+          }
+        };
+        evictFromSubjectLogs("all");
+        evictFromSubjectLogs("overall");
+        if (itemToDelete?.subject?.id) {
+          evictFromSubjectLogs(itemToDelete.subject.id);
+        }
+
+        // Roll back attendance stats in useAttendanceStore and useCacheStore
+        if (itemToDelete && Boolean(itemToDelete.status)) {
+          const store = useAttendanceStore.getState();
+          const subjects = [...store.subjects];
+          const subIndex = subjects.findIndex(
+            (s) =>
+              s.id === itemToDelete.subject?.id ||
+              s.subjectId === itemToDelete.subject?.id,
+          );
+          if (subIndex !== -1) {
+            const s = { ...subjects[subIndex] };
+            const st = String(itemToDelete.status || "").toLowerCase();
+            if (["present", "attended", "medical", "od"].includes(st)) {
+              s.attended = Math.max(0, (Number(s.attended) || 0) - 1);
+              s.total = Math.max(0, (Number(s.total) || 0) - 1);
+            } else if (["absent", "missed"].includes(st)) {
+              s.missed = Math.max(0, (Number(s.missed) || 0) - 1);
+              s.total = Math.max(0, (Number(s.total) || 0) - 1);
+            } else if (["off", "cancelled"].includes(st)) {
+              s.off = Math.max(0, (Number(s.off) || 0) - 1);
+            }
+            s.percentage =
+              s.total > 0
+                ? Number(((s.attended / s.total) * 100).toFixed(1))
+                : 0;
+            const target =
+              Number((s as any).target ?? (s as any).targetPercentage) ||
+              (useAuthStore.getState().user?.targetAttendance ?? 75);
+            const canMiss =
+              s.percentage >= target && target > 0
+                ? Math.floor(
+                    (s.attended - (target / 100) * s.total) / (target / 100),
+                  )
+                : 0;
+            const needAttend =
+              s.percentage < target && target < 100
+                ? Math.ceil(
+                    ((target / 100) * s.total - s.attended) /
+                      (1 - target / 100),
+                  )
+                : 0;
+            s.canMiss = canMiss;
+            s.needAttend = needAttend;
+            s.statusText =
+              s.total === 0
+                ? "No classes recorded yet"
+                : canMiss > 0
+                  ? `can miss ${canMiss} lecture${canMiss > 1 ? "s" : ""}`
+                  : needAttend > 0
+                    ? `need ${needAttend} lecture${needAttend > 1 ? "s" : ""}`
+                    : "on track";
+            subjects[subIndex] = s;
+
+            const totalAttended = subjects.reduce(
+              (sum, sub) => sum + (sub.attended || 0),
+              0,
+            );
+            const totalClasses = subjects.reduce(
+              (sum, sub) => sum + (sub.total || 0),
+              0,
+            );
+            const overallPercentage =
+              totalClasses > 0 ? (totalAttended / totalClasses) * 100 : 0;
+
+            useAttendanceStore.setState({
+              subjects,
+              totalAttended,
+              totalClasses,
+              overallPercentage,
+            });
+            useCacheStore.getState().setCache("subjects", {
+              ...(useCacheStore.getState().subjects || {}),
+              stats: subjects,
+              subjects: useCacheStore.getState().subjects?.subjects || [],
+              activeSemesterId: activeSemester?.id || null,
+            });
+          }
+        }
+
+        // Evict from useAttendanceStore historyLogs
+        const currentHistory = (
+          useAttendanceStore.getState().historyLogs || []
+        ).filter((l: any) => {
+          if (!matchLogDate(l.date, targetDateStr)) return true;
+          if (l.overrideId && l.overrideId === overrideId) return false;
+          if (
+            itemToDelete?.attendanceId &&
+            l.id === itemToDelete.attendanceId
+          )
+            return false;
+          if (
+            l.subject === itemToDelete?.subject?.name &&
+            (!itemToDelete?.startTime ||
+              l.time === itemToDelete.startTime ||
+              String(l.time || "").startsWith(itemToDelete.startTime))
+          )
+            return false;
+          return true;
+        });
+        useAttendanceStore.setState({ historyLogs: currentHistory });
+
+        // Evict from Calendar Cache using local date
+        const monthStr = targetDateStr.substring(0, 7);
+        const existingMonth = useCacheStore.getState().calendar?.[monthStr];
+        if (existingMonth && existingMonth.details?.[targetDateStr]) {
+          const filteredDetails = (
+            existingMonth.details[targetDateStr] || []
+          ).filter((d: any) => {
             if (
-              itemToDelete?.attendanceId &&
-              l.id === itemToDelete.attendanceId
+              d.id === overrideId ||
+              d.id === `today-${overrideId}` ||
+              d.id === `unmarked-${overrideId}` ||
+              d.id === itemToDelete?.attendanceId
             )
               return false;
+            if (d.overrideId && d.overrideId === overrideId) return false;
             if (
-              l.subject === itemToDelete?.subject?.name &&
-              l.time === itemToDelete?.startTime
+              d.isExtra &&
+              d.subjectId === itemToDelete?.subject?.id &&
+              d.startTime === itemToDelete?.startTime
             )
               return false;
             return true;
           });
-          useAttendanceStore.setState({ historyLogs: currentHistory });
 
-          // 4. Evict from Calendar Cache
-          const monthStr = targetDateStr.substring(0, 7);
-          const existingMonth = useCacheStore.getState().calendar?.[monthStr];
-          if (existingMonth && existingMonth.details?.[targetDateStr]) {
-            const filteredDetails = (
-              existingMonth.details[targetDateStr] || []
-            ).filter((d: any) => {
-              if (
-                d.id === overrideId ||
-                d.id === `today-${overrideId}` ||
-                d.id === `unmarked-${overrideId}`
-              )
-                return false;
-              if (d.overrideId && d.overrideId === overrideId) return false;
-              if (
-                d.isExtra &&
-                d.subjectId === itemToDelete?.subject?.id &&
-                d.startTime === itemToDelete?.startTime
-              )
-                return false;
-              return true;
-            });
-
-            const todayDateStr = new Date().toISOString().slice(0, 10);
-            const marked = filteredDetails.filter(
-              (d: any) =>
-                d.status && d.status !== "not_marked" && d.status !== "future",
+          const todayDateStr = format(new Date(), "yyyy-MM-dd");
+          const marked = filteredDetails.filter(
+            (d: any) =>
+              d.status && d.status !== "not_marked" && d.status !== "future",
+          );
+          const isFullyMarked =
+            filteredDetails.length > 0 &&
+            marked.length === filteredDetails.length;
+          let nextDayStatus =
+            targetDateStr > todayDateStr ? "future" : "not_marked";
+          if (isFullyMarked) {
+            const hasAttended = marked.some((d: any) =>
+              ["present", "attended", "medical", "od"].includes(
+                String(d.status).toLowerCase(),
+              ),
             );
-            const isFullyMarked =
-              filteredDetails.length > 0 &&
-              marked.length === filteredDetails.length;
-            let nextDayStatus =
-              targetDateStr > todayDateStr ? "future" : "not_marked";
-            if (isFullyMarked) {
-              const hasAttended = marked.some((d: any) =>
-                ["present", "attended", "medical", "od"].includes(
-                  String(d.status).toLowerCase(),
-                ),
-              );
-              const hasMissed = marked.some((d: any) =>
-                ["absent", "missed"].includes(String(d.status).toLowerCase()),
-              );
-              const allOff = marked.every((d: any) =>
-                ["off", "cancelled"].includes(String(d.status).toLowerCase()),
-              );
-              if (allOff) nextDayStatus = "off";
-              else if (hasAttended && hasMissed) nextDayStatus = "mixed";
-              else if (hasAttended) nextDayStatus = "attended";
-              else if (hasMissed) nextDayStatus = "missed";
-              else nextDayStatus = "off";
-            }
+            const hasMissed = marked.some((d: any) =>
+              ["absent", "missed"].includes(String(d.status).toLowerCase()),
+            );
+            const allOff = marked.every((d: any) =>
+              ["off", "cancelled"].includes(String(d.status).toLowerCase()),
+            );
+            if (allOff) nextDayStatus = "off";
+            else if (hasAttended && hasMissed) nextDayStatus = "mixed";
+            else if (hasAttended) nextDayStatus = "attended";
+            else if (hasMissed) nextDayStatus = "missed";
+            else nextDayStatus = "off";
+          }
 
-            useCacheStore.getState().setCache("calendar", {
-              ...useCacheStore.getState().calendar,
-              [monthStr]: {
-                ...existingMonth,
-                days: {
-                  ...(existingMonth.days || {}),
-                  [targetDateStr]: nextDayStatus,
-                },
-                details: {
-                  ...(existingMonth.details || {}),
-                  [targetDateStr]: filteredDetails,
-                },
+          useCacheStore.getState().setCache("calendar", {
+            ...useCacheStore.getState().calendar,
+            [monthStr]: {
+              ...existingMonth,
+              days: {
+                ...(existingMonth.days || {}),
+                [targetDateStr]: nextDayStatus,
               },
-            });
-          }
+              details: {
+                ...(existingMonth.details || {}),
+                [targetDateStr]: filteredDetails,
+              },
+            },
+          });
+        }
 
-          // 5. Purge from Offline Queue or Enqueue Network Deletion
-          useOfflineStore.setState((state) => ({
-            queue: state.queue.filter((req) => {
-              const reqStr = JSON.stringify(req.data || {});
-              if (
-                req.url.includes("/timetable/extra-class") &&
-                (reqStr.includes(overrideId) || req.tempId === overrideId)
-              ) {
-                return false;
-              }
-              if (
-                req.url.includes("/attendance/mark") &&
-                reqStr.includes(overrideId)
-              ) {
-                return false;
-              }
-              return true;
-            }),
-          }));
+        // Purge unsynced offline creations/marks for this extra class
+        useOfflineStore.setState((state) => ({
+          queue: state.queue.filter((req) => {
+            const reqStr = JSON.stringify(req.data || {});
+            if (
+              req.url.includes("/timetable/extra-class") &&
+              (reqStr.includes(overrideId) || req.tempId === overrideId)
+            ) {
+              return false;
+            }
+            if (
+              req.url.includes("/attendance/mark") &&
+              reqStr.includes(overrideId)
+            ) {
+              return false;
+            }
+            return true;
+          }),
+        }));
 
-          if (!overrideId.startsWith("temp")) {
-            try {
-              await api.delete(`/timetable/extra-class/${overrideId}`);
-            } catch (delErr) {
-              console.warn(
-                "Offline deletion of extra class, enqueued:",
-                delErr,
+        if (!overrideId.startsWith("temp")) {
+          try {
+            await api.delete(`/timetable/extra-class/${overrideId}`);
+          } catch (delErr: any) {
+            if (delErr?.response?.status !== 404) {
+              toast.error(
+                delErr?.response?.data?.message ||
+                  "Failed to delete extra class",
               );
-              useOfflineStore.getState().enqueue({
-                method: "DELETE",
-                url: `/timetable/extra-class/${overrideId}`,
-              });
+              delete inFlightFetchPromiseRef.current[targetDateStr];
+              fetchData(targetDateStr, undefined, true);
+              fetchStats(true);
+              return;
             }
           }
+        }
 
-          window.dispatchEvent(
-            new CustomEvent("attendance-updated", {
-              detail: { source: "today-page" },
-            }),
-          );
-          window.dispatchEvent(
-            new CustomEvent("timetable-updated", {
-              detail: { source: "today-page" },
-            }),
-          );
-        }, 4000);
+        fetchStats();
+        window.dispatchEvent(
+          new CustomEvent("attendance-updated", {
+            detail: { source: "today-page" },
+          }),
+        );
+        window.dispatchEvent(
+          new CustomEvent("timetable-updated", {
+            detail: { source: "today-page" },
+          }),
+        );
       },
     });
   };
 
-  const fetchData = async (overrideDate?: string, signal?: AbortSignal) => {
+  const fetchData = async (overrideDate?: string, signal?: AbortSignal, force = false) => {
     const reqDate = overrideDate || targetDateStrRef.current;
-    if (inFlightFetchPromiseRef.current[reqDate] && !signal?.aborted) {
+    if (inFlightFetchPromiseRef.current[reqDate] && !signal?.aborted && !force) {
       return inFlightFetchPromiseRef.current[reqDate];
     }
     delete inFlightFetchPromiseRef.current[reqDate];
@@ -2303,7 +2545,7 @@ export const TodayPage = () => {
               `/events/today-status?${knownSemesterId ? `semesterId=${knownSemesterId}&` : ""}date=${reqDate}`,
               { signal },
             ),
-            api.get(`/attendance/today?date=${reqDate}`, { signal }),
+            api.get(`/attendance/today?date=${reqDate}${force ? "&force=true" : ""}`, { signal }),
             api.get("/users/onboarding-status", { signal }),
           ]);
 
@@ -2414,6 +2656,7 @@ export const TodayPage = () => {
               }
             }
           }
+          nextAgenda = applyOfflineQueueToAgenda(nextAgenda, reqDate);
           if (inFlightMarksCountRef.current > 0) {
             setAgenda((prev) => {
               const merged = nextAgenda.map((serverItem) => {
@@ -2630,13 +2873,17 @@ export const TodayPage = () => {
           todayCache.agenda.length > 0 &&
           resolvedActiveSemester
         ) {
-          setAgenda(todayCache.agenda);
-          agendaRef.current = todayCache.agenda;
+          const overlaid = applyOfflineQueueToAgenda(todayCache.agenda, reqDate);
+          setAgenda(overlaid);
+          agendaRef.current = overlaid;
           setTodayStatus(todayCache.todayStatus || null);
         } else {
-          const pseudoAgenda = buildLocalFallbackAgenda(
+          const pseudoAgenda = applyOfflineQueueToAgenda(
+            buildLocalFallbackAgenda(
+              reqDate,
+              resolvedActiveSemester,
+            ),
             reqDate,
-            resolvedActiveSemester,
           );
           setAgenda(pseudoAgenda);
           agendaRef.current = pseudoAgenda;
@@ -2684,15 +2931,17 @@ export const TodayPage = () => {
     const nextInitialAgenda = resolveInitialAgenda(targetDateStr);
     const localStatus = computeLocalTodayStatus(targetDateStr);
     const effectiveStatus = cachedDay?.todayStatus || localStatus;
+    const effectiveCachedAgenda = cachedDay?.agenda
+      ? applyOfflineQueueToAgenda(cachedDay.agenda, targetDateStr)
+      : nextInitialAgenda;
 
     if (
-      cachedDay?.agenda ||
-      nextInitialAgenda.length > 0 ||
+      effectiveCachedAgenda.length > 0 ||
       effectiveStatus?.isHoliday ||
       effectiveStatus?.isExam
     ) {
-      setAgenda(cachedDay?.agenda || nextInitialAgenda);
-      agendaRef.current = cachedDay?.agenda || nextInitialAgenda;
+      setAgenda(effectiveCachedAgenda);
+      agendaRef.current = effectiveCachedAgenda;
       setTodayStatus(resolvedSem ? effectiveStatus : null);
       setActiveSemester(resolvedSem);
       if (cachedDay?.onboarding) setOnboardingStatus(cachedDay.onboarding);
@@ -2718,7 +2967,7 @@ export const TodayPage = () => {
         clearTimeout(debounceUpdateTimerRef.current);
       debounceUpdateTimerRef.current = setTimeout(() => {
         delete inFlightFetchPromiseRef.current[targetDateStrRef.current];
-        fetchData(targetDateStrRef.current);
+        fetchData(targetDateStrRef.current, undefined, true);
         fetchStats();
       }, 100);
     };
@@ -2919,13 +3168,15 @@ export const TodayPage = () => {
           ...(existingMonthCache.details || {}),
           [targetDateStr]: updatedAgenda.map((a) => ({
             id: a.attendanceId || `today-${a.id}`,
+            timetableSlotId: a.type === "slot" ? a.id : undefined,
+            overrideId: a.type === "override" ? a.id : undefined,
             subjectId: a.subject?.id,
             subjectName: a.subject?.name || "Class",
             startTime: a.startTime || "00:00",
             endTime: a.endTime || "00:00",
             status: a.status || "not_marked",
             remarks: a.remarks || null,
-            isExtra: a.type === "override",
+            isExtra: Boolean(a.isExtra || a.overrideType === "extra_class" || (a.type === "override" && a.isExtra)),
           })),
         },
       },
@@ -2933,7 +3184,25 @@ export const TodayPage = () => {
 
     // --- OFFLINE OPTIMISTIC STATS UPDATE ---
     const store = useAttendanceStore.getState();
-    const subjects = [...store.subjects];
+    const cacheSubLogs = useCacheStore.getState().subject_logs?.["all"]?.logs || [];
+    let subjects = [...store.subjects];
+
+    // If store has 0 classes, recover base counts from ground-truth logs first
+    const totalClassesInStore = subjects.reduce((sum, s) => sum + (Number(s.total) || 0), 0);
+    if (totalClassesInStore === 0 && cacheSubLogs.length > 0) {
+      const cachedSubs = useCacheStore.getState().subjects?.subjects || subjects;
+      subjects = cachedSubs.map((sub: any) => {
+        const subLogs = cacheSubLogs.filter((l: any) => l.subjectId === sub.id || l.subject?.id === sub.id);
+        let a = 0; let t = 0; let m = 0; let o = 0;
+        subLogs.forEach((l: any) => {
+          const st = String(l.status || "").toLowerCase();
+          if (["present", "attended", "medical", "od"].includes(st)) { a++; t++; }
+          else if (["absent", "missed"].includes(st)) { m++; t++; }
+          else if (["off", "cancelled"].includes(st)) { o++; }
+        });
+        return { ...sub, attended: a, total: t, missed: m, off: o, percentage: t > 0 ? Number(((a/t)*100).toFixed(1)) : 0 };
+      });
+    }
     const subjectIndex = subjects.findIndex(
       (s) => s.subjectId === item.subject?.id || s.id === item.subject?.id,
     );
@@ -3009,7 +3278,13 @@ export const TodayPage = () => {
     ];
     const matchIdx = currentHistoryLogs.findIndex((l: any) => {
       if (!matchLogDate(l.date, targetDateStr)) return false;
-      if (item.startTime && l.time) return l.time === item.startTime;
+      if (item.attendanceId && l.id === item.attendanceId) return true;
+      if (
+        item.startTime &&
+        l.time &&
+        (l.time === item.startTime || String(l.time).startsWith(item.startTime))
+      )
+        return true;
       return l.subject === item.subject?.name;
     });
     if (status === "clear") {
@@ -3053,7 +3328,7 @@ export const TodayPage = () => {
       year: "numeric",
     });
     const logTimestamp = new Date(targetDateStr + "T00:00:00Z").getTime();
-    const itemIsExtra = Boolean(item.type === "override" || item.isExtra);
+    const itemIsExtra = Boolean(item.isExtra || item.overrideType === "extra_class" || (item.type === "override" && item.isExtra));
     const rawSlotType = item.slotType || "Lecture";
     const formattedSlotType =
       rawSlotType.charAt(0).toUpperCase() + rawSlotType.slice(1);
@@ -3159,6 +3434,7 @@ export const TodayPage = () => {
       });
     };
     upsertSubjectLogCache("all");
+    upsertSubjectLogCache("overall");
     if (item.subject?.id) upsertSubjectLogCache(item.subject.id);
     // ---------------------------------
 
@@ -3275,9 +3551,12 @@ export const TodayPage = () => {
         status,
         remarks,
         timetableSlotId: item.type === "slot" ? item.id : undefined,
-        overrideId: item.type === "override" ? item.id : undefined,
+        overrideId:
+          item.type === "override" ? (item as any).overrideId || item.id : undefined,
         attendanceId: item.attendanceId,
       });
+
+      const savedAttendanceId = !res.data?._queued ? res.data?.id : undefined;
 
       let finalAgenda: AgendaItem[] = [];
       setAgenda((prev) => {
@@ -3288,7 +3567,7 @@ export const TodayPage = () => {
                 status: normalizedStatus,
                 remarks: nextRemarks ?? a.remarks,
                 attendanceId:
-                  status === "clear" ? null : res.data?.id || a.attendanceId,
+                  status === "clear" ? null : savedAttendanceId || a.attendanceId,
               }
             : a,
         );
@@ -3348,13 +3627,15 @@ export const TodayPage = () => {
           finalAgenda.length > 0 ? finalAgenda : agendaRef.current;
         const nextDayDetails = currentAgenda.map((a) => ({
           id: a.attendanceId || `unmarked-${a.id}`,
+          timetableSlotId: a.type === "slot" ? a.id : undefined,
+          overrideId: a.type === "override" ? a.id : undefined,
           subjectId: a.subject?.id,
           subjectName: a.subject?.name || "Class",
           startTime: a.startTime || "00:00",
           endTime: a.endTime || "00:00",
           status: a.status || "not_marked",
           remarks: a.remarks || null,
-          isExtra: a.type === "override",
+          isExtra: Boolean(a.isExtra || a.overrideType === "extra_class" || (a.type === "override" && a.isExtra)),
         }));
 
         const markedCurrent = currentAgenda.filter(
@@ -3410,7 +3691,14 @@ export const TodayPage = () => {
       ];
       const matchIdx = currentHistoryLogs.findIndex((l: any) => {
         if (!matchLogDate(l.date, targetDateStr)) return false;
-        if (item.startTime && l.time) return l.time === item.startTime;
+        if (item.attendanceId && l.id === item.attendanceId) return true;
+        if (
+          item.startTime &&
+          l.time &&
+          (l.time === item.startTime ||
+            String(l.time).startsWith(item.startTime))
+        )
+          return true;
         return l.subject === item.subject?.name;
       });
       if (status === "clear") {
@@ -3443,9 +3731,10 @@ export const TodayPage = () => {
       useAttendanceStore.setState({ historyLogs: currentHistoryLogs });
 
       // 3. Re-sync Subject Logs Cache with finalized server attendance ID
-      upsertSubjectLogCache("all", res.data?.id);
+      upsertSubjectLogCache("all", savedAttendanceId);
+      upsertSubjectLogCache("overall", savedAttendanceId);
       if (item.subject?.id)
-        upsertSubjectLogCache(item.subject.id, res.data?.id);
+        upsertSubjectLogCache(item.subject.id, savedAttendanceId);
 
       fetchStats();
       window.dispatchEvent(
@@ -3453,14 +3742,28 @@ export const TodayPage = () => {
           detail: { source: "today-page" },
         }),
       );
-    } catch (error) {
-      console.error("Failed to mark attendance offline or error:", error);
-      // Offline fallback relies on the global optimistic update we just fired above
-      window.dispatchEvent(
-        new CustomEvent("attendance-updated", {
-          detail: { source: "today-page" },
-        }),
-      );
+    } catch (error: any) {
+      const isOffline =
+        typeof navigator !== "undefined" &&
+        (!navigator.onLine ||
+          error?.isOffline ||
+          error?.message === "Network Error" ||
+          error?.code === "ERR_NETWORK");
+      if (!isOffline) {
+        toast.error(
+          error?.response?.data?.message || "Failed to update attendance",
+        );
+        delete inFlightFetchPromiseRef.current[targetDateStr];
+        fetchData(targetDateStr, undefined, true);
+        fetchStats(true);
+      } else {
+        console.warn("Failed to mark attendance (handled by api offline interceptor):", error);
+        window.dispatchEvent(
+          new CustomEvent("attendance-updated", {
+            detail: { source: "today-page" },
+          }),
+        );
+      }
     } finally {
       inFlightMarksCountRef.current = Math.max(
         0,
@@ -3567,7 +3870,10 @@ export const TodayPage = () => {
     }
   };
 
-  const pendingCount = agenda.filter((a) => a.status === null).length;
+  const pendingCount = agenda.filter((a) => {
+    const s = String(a.status || "").toLowerCase();
+    return !s || s === "not_marked" || s === "future" || s === "clear";
+  }).length;
 
   // Determine if we should show the holiday/exam state instead of classes
   const isGlobalEventActive =
@@ -3980,7 +4286,10 @@ export const TodayPage = () => {
                         <CheckCheck className="w-4 h-4" />
                         Mark Full Day
                       </button>
-                      {agenda.some((a) => a.status != null) && (
+                      {agenda.some((a) => {
+                        const s = String(a.status || "").toLowerCase();
+                        return s && s !== "not_marked" && s !== "future" && s !== "clear";
+                      }) && (
                         <button
                           type="button"
                           onClick={() => {
@@ -4196,6 +4505,7 @@ export const TodayPage = () => {
                 ))}
               </div>
             ) : agenda.length === 0 &&
+              dyingExtras.length === 0 &&
               hasActiveTimetable === false &&
               !todayStatus?.isHoliday &&
               !todayStatus?.isExam ? (
@@ -4225,7 +4535,7 @@ export const TodayPage = () => {
                   </button>
                 </div>
               </div>
-            ) : agenda.length === 0 ? (
+            ) : agenda.length === 0 && dyingExtras.length === 0 ? (
               <div className="text-center py-12 bg-card/60 border border-border/50 backdrop-blur-md rounded-2xl shadow-sm">
                 <CheckCircle2 className="w-12 h-12 text-emerald-500 mx-auto mb-4 opacity-80" />
                 <h3 className="text-lg font-medium text-foreground mb-2">
@@ -4254,8 +4564,19 @@ export const TodayPage = () => {
               100% { transform: scale(1) translateY(0); box-shadow: none; }
             }
           `}</style>
-                {agenda.map((item) => {
-                  const isGliding = glidingExtraId === item.id;
+                {(() => {
+                  const displayAgenda = [...agenda];
+                  dyingExtras.forEach((d) => {
+                    if (!displayAgenda.some((x) => x.id === d.item.id)) {
+                      const idx = Math.min(d.index, displayAgenda.length);
+                      displayAgenda.splice(idx, 0, d.item);
+                    }
+                  });
+                  return displayAgenda;
+                })().map((item) => {
+                  const isGliding =
+                    glidingExtraId === item.id ||
+                    dyingExtras.some((d) => d.item.id === item.id);
                   const isPopping = poppingExtraId === item.id;
                   return (
                     <div
@@ -4342,9 +4663,7 @@ export const TodayPage = () => {
                         <button
                           onClick={() => handleStatusClick(item, "present")}
                           className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold cursor-pointer transition-[transform,opacity] duration-75 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${
-                            item.status === "present" ||
-                            item.status === "medical" ||
-                            item.status === "od"
+                            ["present", "attended", "medical", "od"].includes(String(item.status || "").toLowerCase())
                               ? "bg-emerald-500 text-white font-bold shadow-md shadow-emerald-500/20"
                               : "bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 hover:text-emerald-600"
                           }`}
@@ -4355,7 +4674,7 @@ export const TodayPage = () => {
                         <button
                           onClick={() => handleStatusClick(item, "absent")}
                           className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold cursor-pointer transition-[transform,opacity] duration-75 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${
-                            item.status === "absent"
+                            ["absent", "missed"].includes(String(item.status || "").toLowerCase())
                               ? "bg-rose-500 text-white font-bold shadow-md shadow-rose-500/20"
                               : "bg-rose-500/10 text-rose-500 hover:bg-rose-500/20 hover:text-rose-600"
                           }`}
@@ -4366,7 +4685,7 @@ export const TodayPage = () => {
                         <button
                           onClick={() => handleStatusClick(item, "off")}
                           className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold cursor-pointer transition-[transform,opacity] duration-75 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${
-                            item.status === "off"
+                            ["off", "cancelled"].includes(String(item.status || "").toLowerCase())
                               ? "bg-amber-500 text-white font-bold shadow-md shadow-amber-500/20"
                               : "bg-amber-500/10 text-amber-500 hover:bg-amber-500/20 hover:text-amber-600"
                           }`}
@@ -4717,7 +5036,10 @@ export const TodayPage = () => {
                   </button>
 
                   {/* 4. Undo Day (if any marked) */}
-                  {agenda.some((a) => a.status != null) && (
+                  {agenda.some((a) => {
+                    const s = String(a.status || "").toLowerCase();
+                    return s && s !== "not_marked" && s !== "future" && s !== "clear";
+                  }) && (
                     <button
                       type="button"
                       disabled={isMarkingFullDay}
@@ -4863,6 +5185,6 @@ export const TodayPage = () => {
       </div>
     </div>
   );
-};;
+};
 
 

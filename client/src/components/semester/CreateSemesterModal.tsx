@@ -56,12 +56,27 @@ export const CreateSemesterModal: React.FC<CreateSemesterModalProps> = ({
   const [error, setError] = useState("");
 
   const fetchSemesters = async () => {
+    const cachedAll = useCacheStore.getState().semester?.allSemesters;
+    if (Array.isArray(cachedAll) && cachedAll.length > 0) {
+      setSemesters(cachedAll);
+    }
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      setLoadingSemesters(false);
+      return;
+    }
     try {
       setLoadingSemesters(true);
       const res = await api.get("/semesters");
-      setSemesters(Array.isArray(res.data) ? res.data : []);
+      const list = Array.isArray(res.data) ? res.data : [];
+      setSemesters(list);
+      const curSem = useCacheStore.getState().semester || {};
+      useCacheStore.getState().setCache("semester", {
+        ...curSem,
+        allSemesters: list,
+      });
     } catch (err) {
       console.error("Failed to fetch semesters:", err);
+      if (Array.isArray(cachedAll)) setSemesters(cachedAll);
     } finally {
       setLoadingSemesters(false);
     }
@@ -103,19 +118,33 @@ export const CreateSemesterModal: React.FC<CreateSemesterModalProps> = ({
         isActive: true,
       };
       const res = await api.post("/semesters", semesterPayload);
-      const newSemester = {
-        id: res.data?.id || `temp-sem-${Date.now()}`,
-        ...semesterPayload,
-        ...(res.data || {}),
-      };
+      const isQueued = Boolean(res.data?._queued);
+      const newSemester =
+        !isQueued && res.data?.id
+          ? res.data
+          : {
+              id: `temp-sem-${Date.now()}`,
+              ...semesterPayload,
+            };
 
+      const prevAllSemesters = useCacheStore.getState().semester?.allSemesters || semesters || [];
+      useCacheStore.getState().clearCache(true);
       useCacheStore.getState().setCache("semester", {
-        ...useCacheStore.getState().semester,
         activeSemester: newSemester,
+        allSemesters: [
+          newSemester,
+          ...prevAllSemesters
+            .filter((s: any) => s.id !== newSemester.id)
+            .map((s: any) => ({ ...s, isActive: false })),
+        ],
       });
       useAttendanceStore.setState({
         activeSemesterId: newSemester.id,
         hasActiveSemester: true,
+        subjects: [],
+        totalAttended: 0,
+        totalClasses: 0,
+        overallPercentage: 0,
       });
 
       SoundFX.playShockwaveSound();
@@ -127,7 +156,9 @@ export const CreateSemesterModal: React.FC<CreateSemesterModalProps> = ({
       });
       onClose();
       onSuccess(newSemester);
-      useAttendanceStore.getState().fetchStats(true);
+      if (!isQueued) {
+        useAttendanceStore.getState().fetchStats(true);
+      }
       window.dispatchEvent(new Event("attendance-updated"));
       window.dispatchEvent(new Event("timetable-updated"));
       window.dispatchEvent(new Event("events-updated"));
@@ -190,15 +221,31 @@ export const CreateSemesterModal: React.FC<CreateSemesterModalProps> = ({
   const handleActivate = async (id: string) => {
     try {
       const res = await api.patch(`/semesters/${id}/activate`);
-      const activatedSemester = res.data || semesters.find((s) => s.id === id) || { id, isActive: true };
+      const isQueued = Boolean(res.data?._queued);
+      const matched = semesters.find((s) => s.id === id);
+      const activatedSemester =
+        !isQueued && res.data?.id
+          ? res.data
+          : matched
+            ? { ...matched, isActive: true }
+            : { id, isActive: true };
 
+      const prevAllSemesters = useCacheStore.getState().semester?.allSemesters || semesters || [];
+      useCacheStore.getState().clearCache(true);
       useCacheStore.getState().setCache("semester", {
-        ...useCacheStore.getState().semester,
         activeSemester: activatedSemester,
+        allSemesters: prevAllSemesters.map((s: any) => ({
+          ...s,
+          isActive: s.id === activatedSemester.id,
+        })),
       });
       useAttendanceStore.setState({
         activeSemesterId: activatedSemester.id,
         hasActiveSemester: true,
+        subjects: [],
+        totalAttended: 0,
+        totalClasses: 0,
+        overallPercentage: 0,
       });
 
       SoundFX.playShockwaveSound();
@@ -210,13 +257,16 @@ export const CreateSemesterModal: React.FC<CreateSemesterModalProps> = ({
       });
       onClose();
       onSuccess(activatedSemester);
-      useAttendanceStore.getState().fetchStats(true);
+      if (!isQueued) {
+        useAttendanceStore.getState().fetchStats(true);
+      }
       window.dispatchEvent(new Event("attendance-updated"));
       window.dispatchEvent(new Event("timetable-updated"));
       window.dispatchEvent(new Event("events-updated"));
       window.dispatchEvent(new Event("semester-updated"));
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to activate semester", err);
+      toast.error(err?.response?.data?.message || "Failed to activate semester.");
     }
   };
 

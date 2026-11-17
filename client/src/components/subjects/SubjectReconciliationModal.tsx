@@ -3,6 +3,8 @@ import { Loader2, Link2, X, ChevronRight, Wand2 } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "../../lib/api";
 import { useScrollLock } from "../../hooks/useScrollLock";
+import { useCacheStore } from "../../stores/cacheStore";
+import { useAttendanceStore } from "../../stores/attendanceStore";
 
 interface Subject {
   id: string;
@@ -41,13 +43,30 @@ export const SubjectReconciliationModal: React.FC<ReconciliationProps> = ({
 
   const fetchSubjects = async () => {
     setIsLoading(true);
+    const cacheSubs = useCacheStore.getState().subjects;
+    const offlineFallback =
+      cacheSubs?.subjects?.length > 0
+        ? cacheSubs.subjects
+        : cacheSubs?.stats?.length > 0
+          ? cacheSubs.stats
+          : useAttendanceStore.getState().subjects || [];
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      setSubjects(offlineFallback as Subject[]);
+      autoMap(offlineFallback as Subject[]);
+      setIsLoading(false);
+      return;
+    }
     try {
       const res = await api.get(`/subjects?semesterId=${semesterId}`);
-      const data = Array.isArray(res.data) ? res.data : [];
-      setSubjects(data);
-      autoMap(data);
+      const data = Array.isArray(res.data) ? res.data : offlineFallback;
+      setSubjects(data as Subject[]);
+      autoMap(data as Subject[]);
     } catch (err) {
       console.error("Failed to load subjects", err);
+      if (offlineFallback.length > 0) {
+        setSubjects(offlineFallback as Subject[]);
+        autoMap(offlineFallback as Subject[]);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -146,23 +165,54 @@ export const SubjectReconciliationModal: React.FC<ReconciliationProps> = ({
   };
 
   const handleMerge = async () => {
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      toast.error("Internet connection required to merge subjects.");
+      return;
+    }
+
+    const mergesToApply = Object.entries(mappings)
+      .filter(([, sourceId]) => sourceId !== null && sourceId !== "none")
+      .map(([targetId, sourceId]) => ({
+        targetId,
+        sourceId: sourceId as string,
+      }));
+
+    const sourceIds = mergesToApply.map((m) => m.sourceId);
+    if (new Set(sourceIds).size !== sourceIds.length) {
+      toast.error("Each duplicate subject can only be merged into one target.");
+      return;
+    }
+    const targetIds = new Set(mergesToApply.map((m) => m.targetId));
+    if (sourceIds.some((sid) => targetIds.has(sid))) {
+      toast.error("Cannot merge a subject that is also selected as a target.");
+      return;
+    }
+
     setIsSubmitting(true);
     try {
-      const mergesToApply = Object.entries(mappings)
-        .filter(([targetId, sourceId]) => sourceId !== null && sourceId !== "none")
-        .map(([targetId, sourceId]) => ({
-          targetId,
-          sourceId
-        }));
-
       if (mergesToApply.length > 0) {
         await api.post("/subjects/merge", { merges: mergesToApply });
+        const cache = useCacheStore.getState();
+        const mergedSourceSet = new Set(sourceIds);
+        if (cache.subjects) {
+          cache.setCache("subjects", {
+            ...cache.subjects,
+            subjects: (cache.subjects.subjects || []).filter((s: any) => !mergedSourceSet.has(s.id)),
+            stats: (cache.subjects.stats || []).filter((s: any) => !mergedSourceSet.has(s.id)),
+          });
+        }
+        cache.setCache("subject_logs", null);
+        cache.setCache("calendar", null);
+        useAttendanceStore.getState().invalidateInFlightStats();
+        await useAttendanceStore.getState().fetchStats(true);
+        window.dispatchEvent(new Event("attendance-updated"));
+        window.dispatchEvent(new Event("timetable-updated"));
       }
-      
+
       onComplete();
-    } catch (error) {
+    } catch (error: any) {
       console.error("Failed to merge subjects", error);
-      toast.error("Merge failed.");
+      toast.error(error?.response?.data?.message || "Merge failed.");
     } finally {
       setIsSubmitting(false);
     }

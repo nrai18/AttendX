@@ -71,6 +71,17 @@ export const SemesterTransitionModal: React.FC<SemesterTransitionModalProps> = (
   const [error, setError] = useState("");
 
   const fetchStatus = async () => {
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      const cachedSem = useCacheStore.getState().semester?.activeSemester;
+      if (cachedSem) {
+        setStatus({
+          hasActiveSemester: true,
+          activeSemester: cachedSem,
+        });
+      }
+      setLoadingStatus(false);
+      return;
+    }
     try {
       setLoadingStatus(true);
       const res = await api.get("/semesters/transition-status");
@@ -82,6 +93,13 @@ export const SemesterTransitionModal: React.FC<SemesterTransitionModalProps> = (
       }
     } catch (err) {
       console.error("Failed to fetch semester transition status:", err);
+      const cachedSem = useCacheStore.getState().semester?.activeSemester;
+      if (cachedSem) {
+        setStatus({
+          hasActiveSemester: true,
+          activeSemester: cachedSem,
+        });
+      }
     } finally {
       setLoadingStatus(false);
     }
@@ -106,6 +124,12 @@ export const SemesterTransitionModal: React.FC<SemesterTransitionModalProps> = (
   const handleTransition = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      const msg = "Internet connection required to transition to the next semester.";
+      setError(msg);
+      toast.error(msg);
+      return;
+    }
     setIsSubmitting(true);
 
     try {
@@ -128,8 +152,8 @@ export const SemesterTransitionModal: React.FC<SemesterTransitionModalProps> = (
         isActive: true,
       };
 
-      // Clear all local caches and pending offline sync queue for a completely fresh start
-      useCacheStore.getState().clearCache();
+      // Clear all cached domain state while preserving notification preferences
+      useCacheStore.getState().clearCache(true);
 
       // Immediately activate new semester in frontend stores
       if (newSemester) {

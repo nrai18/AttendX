@@ -9,6 +9,14 @@ interface HolidayIconRendererProps {
 }
 
 export const HolidayIconRenderer: React.FC<HolidayIconRendererProps> = ({ src, className, alt, onAnimationComplete }) => {
+  // Fallback for SVGs to fire immediately or after a short delay since they don't have a duration
+  useEffect(() => {
+    if (!src.endsWith('.json') && !src.endsWith('.lottie') && onAnimationComplete) {
+      const timer = setTimeout(onAnimationComplete, 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [src, onAnimationComplete]);
+
   if (src.endsWith('.json') || src.endsWith('.lottie')) {
     return (
       <LottiePlayer
@@ -25,14 +33,6 @@ export const HolidayIconRenderer: React.FC<HolidayIconRendererProps> = ({ src, c
       />
     );
   }
-
-  // Fallback for SVGs to fire immediately or after a short delay since they don't have a duration
-  useEffect(() => {
-    if (!src.endsWith('.json') && !src.endsWith('.lottie') && onAnimationComplete) {
-      const timer = setTimeout(onAnimationComplete, 2000);
-      return () => clearTimeout(timer);
-    }
-  }, [src, onAnimationComplete]);
 
   return <img src={src} alt={alt || "Holiday Icon"} className={className} />;
 };

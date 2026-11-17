@@ -14,6 +14,7 @@ import { Link, useSearchParams, useParams, useNavigate } from "react-router-dom"
 import { useAuthStore } from "../../stores/authStore";
 import { useCacheStore } from "../../stores/cacheStore";
 import { useAttendanceStore } from "../../stores/attendanceStore";
+import { useOfflineStore } from "../../stores/offlineStore";
 import { useBackHandlerStore } from "../../stores/backHandlerStore";
 import { DiscreteTabs } from "../../components/ui/discrete-tabs";
 import { toast } from "sonner";
@@ -302,6 +303,8 @@ export const SemesterHubPage = () => {
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [isTransitionModalOpen, setIsTransitionModalOpen] = useState(false);
   const [isClearingDomino, setIsClearingDomino] = useState(false);
+  const [dominoSnapshotEvents, setDominoSnapshotEvents] = useState<AppEvent[]>([]);
+  const dyingSingleIdsRef = useRef<Set<string>>(new Set());
 
   const setEventCardRef = useCallback((id: string, el: HTMLDivElement | null) => {
     if (el) {
@@ -391,6 +394,7 @@ export const SemesterHubPage = () => {
       } else {
         setEvents(normalizeEventsList((attendanceState.events as any) || []));
       }
+      setIsFetchingSemester(false);
       setIsLoading(false);
       return;
     }
@@ -420,7 +424,9 @@ export const SemesterHubPage = () => {
           parallelEventsRes && knownSemId === semRes.data.id
             ? parallelEventsRes
             : await api.get(`/events?semesterId=${semRes.data.id}`);
-        fetchedEvents = normalizeEventsList(eventsRes.data);
+        fetchedEvents = normalizeEventsList(eventsRes.data).filter(
+          (e) => !dyingSingleIdsRef.current.has(e.id),
+        );
       } else {
         setActiveSemester(null);
         useAttendanceStore.setState({ activeSemesterId: null, hasActiveSemester: false, events: [] });
@@ -443,7 +449,11 @@ export const SemesterHubPage = () => {
         useAttendanceStore.setState({ activeSemesterId: null, hasActiveSemester: false, events: [] });
       }
       const cache = useCacheStore.getState().semester;
-      setEvents(normalizeEventsList(cache?.events?.length ? cache.events : (attendanceState.events as any) || []));
+      setEvents(
+        normalizeEventsList(cache?.events?.length ? cache.events : (attendanceState.events as any) || []).filter(
+          (e) => !dyingSingleIdsRef.current.has(e.id),
+        ),
+      );
     } finally {
       setIsFetchingSemester(false);
       setIsLoading(false);
@@ -451,6 +461,11 @@ export const SemesterHubPage = () => {
   };
 
   const fetchCalendar = async (force = false) => {
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      const cache = useCacheStore.getState().semester;
+      if (cache?.calendarData) setCalendarData(cache.calendarData);
+      return;
+    }
     try {
       const monthStr = format(currentDate, "yyyy-MM");
       const res = await api.get(`/attendance/calendar?month=${monthStr}${force ? "&force=true" : ""}`);
@@ -497,7 +512,12 @@ export const SemesterHubPage = () => {
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    e.target.value = "";
     if (!file || !activeSemester) return;
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      toast.error("Internet connection required for AI OCR calendar import.");
+      return;
+    }
 
     const formData = new FormData();
     formData.append("file", file);
@@ -581,13 +601,29 @@ export const SemesterHubPage = () => {
 
   const handleSaveEvents = async (selectedEvents: any[], semesterId: string) => {
     try {
+      const clientTempIds = selectedEvents.map(
+        (_: any, idx: number) => `temp-evt-${Date.now()}-${idx}`,
+      );
       const res = await api.post("/events/save-wizard", {
         semesterId,
+        clientTempIds,
         events: selectedEvents
       });
+      const isQueued = Boolean(res.data?._queued);
       setIsWizardOpen(false);
-      useCacheStore.getState().setCache("calendar", null);
-      const savedList = normalizeEventsList(res.data?.events || []);
+      if (!isQueued) {
+        useCacheStore.getState().setCache("calendar", null);
+      }
+      const savedList =
+        !isQueued && Array.isArray(res.data?.events) && res.data.events.length > 0
+          ? normalizeEventsList(res.data.events)
+          : normalizeEventsList(
+              selectedEvents.map((ev: any, idx: number) => ({
+                ...ev,
+                id: clientTempIds[idx],
+                semesterId,
+              })),
+            );
       if (savedList.length > 0) {
         setEvents((prev) => {
           const savedIds = new Set(savedList.map((s) => s.id));
@@ -597,6 +633,7 @@ export const SemesterHubPage = () => {
             activeSemester,
             events: merged,
           });
+          useAttendanceStore.setState({ events: merged as any });
           return merged;
         });
         scrollToAndHighlightEvent(savedList[0].id);
@@ -605,27 +642,32 @@ export const SemesterHubPage = () => {
       }
       fetchCalendar(true);
       window.dispatchEvent(new Event("events-updated"));
-      useAttendanceStore.getState().fetchStats(true).catch(() => {});
+      if (!isQueued) {
+        useAttendanceStore.getState().fetchStats(true).catch(() => {});
+      }
       SoundFX.playSnapPopSound();
       triggerDynamicHUD({
         type: "sparkle",
-        label: "Calendar Events Imported",
+        label: isQueued ? "Calendar Events Saved Offline" : "Calendar Events Imported",
         subtitle: `${selectedEvents.length} events added`,
       });
     } catch (error) {
       console.error("Failed to save events:", error);
       toast.error("Failed to save events.");
+      throw error;
     }
   };
 
   const handleClearEvents = async () => {
     if (events.length === 0) return;
+    const eventsSnapshot = [...events];
     try {
       // 1. Switch to timeline tab if not already on timeline or events so cards are mounted
       if (activeTab !== "timeline" && activeTab !== "events") {
         setActiveTab("timeline");
       }
 
+      setDominoSnapshotEvents(eventsSnapshot);
       setIsClearingDomino(true);
       hapticHeavy();
       SoundFX.playDominoCascadeSound();
@@ -655,7 +697,7 @@ export const SemesterHubPage = () => {
       setTimeout(triggerOptimalScroll, activeTab !== "timeline" && activeTab !== "events" ? 50 : 20);
 
       // 3. Dynamic camera tracking down the cascade wave for long event lists
-      if (events.length > 5) {
+      if (eventsSnapshot.length > 5) {
         setTimeout(() => {
           const cards = document.querySelectorAll("[data-event-card]");
           const midCard = cards[Math.min(cards.length - 1, 6)];
@@ -665,7 +707,7 @@ export const SemesterHubPage = () => {
         }, 1200);
       }
 
-      if (events.length > 10) {
+      if (eventsSnapshot.length > 10) {
         setTimeout(() => {
           const cards = document.querySelectorAll("[data-event-card]");
           const endCard = cards[cards.length - 1];
@@ -675,30 +717,49 @@ export const SemesterHubPage = () => {
         }, 2200);
       }
 
-      // Run 4.5s Domino Cascade Wave across all timeline & event cards
-      setTimeout(async () => {
-        try {
-          await api.post(`/events/clear?target=all&semesterId=${activeSemester?.id || ''}`);
-          setEvents([]);
-          setIsClearingDomino(false);
+      setTimeout(() => {
+        setDominoSnapshotEvents([]);
+        setIsClearingDomino(false);
+      }, 4500);
+
+      // 4. Immediately evict events, caches, offline queue creations, and clear on server at 0ms
+      setEvents([]);
+      const curSem = useCacheStore.getState().semester || {};
+      setCache("semester", { ...curSem, activeSemester, events: [] });
+      useAttendanceStore.setState({ events: [] as any });
+      useOfflineStore.setState((state) => ({
+        queue: state.queue.filter(
+          (req) => !req.url.includes("/events/save-wizard") && !req.url.includes("/events"),
+        ),
+      }));
+
+      try {
+        const res = await api.post(`/events/clear?target=all&semesterId=${activeSemester?.id || ''}`);
+        const isQueued = Boolean(res.data?._queued);
+        if (!isQueued) {
           useCacheStore.getState().setCache("calendar", null);
-          window.dispatchEvent(new Event("events-updated"));
           Promise.all([
             fetchData(),
             fetchCalendar(true),
             useAttendanceStore.getState().fetchStats(true),
           ]).catch(() => {});
-          triggerDynamicHUD({ type: "trash", label: "Calendar Events Cleared" });
-        } catch (error) {
-          console.error("Failed to clear events:", error);
-          toast.error("Failed to clear events.");
-          setIsClearingDomino(false);
-          fetchData();
         }
-      }, 4500);
+        window.dispatchEvent(new Event("events-updated"));
+        triggerDynamicHUD({ type: "trash", label: "Calendar Events Cleared" });
+      } catch (error: any) {
+        console.error("Failed to clear events:", error);
+        toast.error(error?.response?.data?.message || "Failed to clear events.");
+        setEvents(eventsSnapshot);
+        setCache("semester", { ...useCacheStore.getState().semester, activeSemester, events: eventsSnapshot });
+        useAttendanceStore.setState({ events: eventsSnapshot as any });
+        setDominoSnapshotEvents([]);
+        setIsClearingDomino(false);
+        fetchData();
+      }
     } catch (error) {
       console.error("Failed to initiate clear events:", error);
       toast.error("Failed to clear events.");
+      setDominoSnapshotEvents([]);
       setIsClearingDomino(false);
     }
   };
@@ -711,7 +772,7 @@ export const SemesterHubPage = () => {
       e.stopPropagation();
       e.preventDefault();
     }
-    const previousEvents = events;
+    dyingSingleIdsRef.current.add(event.id);
     SoundFX.warmUp();
     hapticMedium();
     SoundFX.playTrashGulpSound();
@@ -738,19 +799,31 @@ export const SemesterHubPage = () => {
       startY,
     });
 
-    // Remove from background list at 4.0s right as the trash can descends so the UI reflows gracefully
+    // Immediately evict from caches, store, and pending queue at 0ms while keeping 4.0s visual exit
+    const nextWithoutDeleted = events.filter((item) => item.id !== event.id);
+    setCache("semester", {
+      ...useCacheStore.getState().semester,
+      activeSemester,
+      events: nextWithoutDeleted,
+    });
+    useAttendanceStore.setState({ events: nextWithoutDeleted as any });
+    if (event.id.startsWith("temp")) {
+      useOfflineStore.setState((state) => ({
+        queue: state.queue.filter(
+          (req) =>
+            !(
+              req.url.includes("/events") &&
+              (req.tempId === event.id ||
+                JSON.stringify(req.data || {}).includes(event.id) ||
+                JSON.stringify(req.data || {}).includes(event.title))
+            ),
+        ),
+      }));
+    }
+
+    // Remove from visual events list at 4.0s right as the trash can descends so layout reflows gracefully
     setTimeout(() => {
-      setEvents((prev) => {
-        const next = prev.filter((item) => item.id !== event.id);
-        setCache("semester", {
-          ...useCacheStore.getState().semester,
-          activeSemester,
-          events: next,
-        });
-        useAttendanceStore.setState({ events: next as any });
-        return next;
-      });
-      window.dispatchEvent(new CustomEvent("events-updated"));
+      setEvents((prev) => prev.filter((item) => item.id !== event.id));
       setCrumblingEventId((curr) => (curr === event.id ? null : curr));
     }, 4000);
 
@@ -767,18 +840,42 @@ export const SemesterHubPage = () => {
     // Complete 4.5-second cinematic animation cycle
     setTimeout(() => {
       setTrashTossAnim((curr) => (curr?.event.id === event.id ? null : curr));
+      dyingSingleIdsRef.current.delete(event.id);
     }, 4500);
 
-    try {
-      await api.delete(`/events/${event.id}`);
-      useCacheStore.getState().setCache("calendar", null);
-      fetchCalendar(true);
+    if (!event.id.startsWith("temp")) {
+      try {
+        const res = await api.delete(`/events/${event.id}`);
+        const isQueued = Boolean(res?.data?._queued);
+        if (!isQueued) {
+          useCacheStore.getState().setCache("calendar", null);
+          fetchCalendar(true);
+          useAttendanceStore.getState().fetchStats(true).catch(() => {});
+        }
+        window.dispatchEvent(new Event("events-updated"));
+      } catch (error: any) {
+        if (error?.response?.status !== 404) {
+          console.error("Failed to delete event:", error);
+          dyingSingleIdsRef.current.delete(event.id);
+          setEvents((prev) =>
+            prev.some((p) => p.id === event.id) ? prev : normalizeEventsList([...prev, event]),
+          );
+          setCache("semester", {
+            ...useCacheStore.getState().semester,
+            activeSemester,
+            events: normalizeEventsList([
+              ...(useCacheStore.getState().semester?.events || []),
+              event,
+            ]),
+          });
+          useAttendanceStore.setState((s) => ({
+            events: normalizeEventsList([...(s.events || []), event]) as any,
+          }));
+          toast.error(error?.response?.data?.message || "Failed to delete event.");
+        }
+      }
+    } else {
       window.dispatchEvent(new Event("events-updated"));
-      useAttendanceStore.getState().fetchStats(true).catch(() => {});
-    } catch (error) {
-      console.error("Failed to delete event:", error);
-      setEvents(previousEvents);
-      toast.error("Failed to delete event.");
     }
   };
 
@@ -1485,7 +1582,7 @@ export const SemesterHubPage = () => {
             <div id="semester-timeline-container" className="max-w-2xl mx-auto py-8 scroll-mt-20">
               <h2 className="text-xl font-bold text-foreground mb-8">Semester Journey</h2>
               <div id="semester-journey-cards" className="space-y-0 relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px before:h-full before:w-0.5 before:bg-border scroll-mt-20">
-                {events.map((event, idx) => {
+                {(isClearingDomino && dominoSnapshotEvents.length > 0 ? dominoSnapshotEvents : events).map((event, idx) => {
                   const isPast = isAfter(today, parseLocalDate(event.endDate || event.date));
                   const isCurrent = isSameDay(today, parseLocalDate(event.date)) || (event.endDate && today >= parseLocalDate(event.date) && today <= parseLocalDate(event.endDate));
                   const isHighlighted = highlightedEventId === event.id;
@@ -1603,7 +1700,7 @@ export const SemesterHubPage = () => {
 
         {activeTab === "events" && (
           <div id="semester-events-list-container" className="space-y-4 scroll-mt-20">
-            {events.map((event, idx) => {
+            {(isClearingDomino && dominoSnapshotEvents.length > 0 ? dominoSnapshotEvents : events).map((event, idx) => {
               const isHighlighted = highlightedEventId === event.id;
               const isCrumbling = crumblingEventId === event.id;
               return (

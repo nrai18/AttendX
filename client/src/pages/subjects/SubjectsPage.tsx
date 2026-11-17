@@ -1065,6 +1065,17 @@ const sanitizeSubjectStat = (s: any): SubjectStat => {
   const rawOff = typeof s?.off === "number" && !isNaN(s.off) ? s.off : 0;
   const off = isNaN(rawOff) ? 0 : Math.max(0, rawOff);
   const pct = tot > 0 ? (att / tot) * 100 : Number(s?.percentage) || 0;
+  const target = Number(s?.target) || useAuthStore.getState().user?.targetAttendance || 75;
+
+  const canMiss =
+    pct >= target && target > 0
+      ? Math.floor((att - (target / 100) * tot) / (target / 100))
+      : 0;
+  const needAttend =
+    pct < target && target < 100
+      ? Math.ceil(((target / 100) * tot - att) / (1 - target / 100))
+      : 0;
+
   return {
     ...s,
     id: s?.id || s?.subjectId || "",
@@ -1076,9 +1087,9 @@ const sanitizeSubjectStat = (s: any): SubjectStat => {
     off,
     total: tot,
     percentage: isNaN(pct) ? 0 : Number(pct.toFixed(1)),
-    target: Number(s?.target) || 75,
-    canMiss: Number(s?.canMiss) || 0,
-    needAttend: Number(s?.needAttend) || 0,
+    target,
+    canMiss,
+    needAttend,
   };
 };
 
@@ -1093,6 +1104,10 @@ export const SubjectsPage = () => {
     useCacheStore.getState().semester?.activeSemester?.id ||
     null;
   const [subjectStats, setSubjectStats] = useState<SubjectStat[]>(() => {
+    const storeActive = storeSubjects?.filter((s: any) => (Number(s.total) || 0) > 0);
+    if (storeActive && storeActive.length > 0) {
+      return storeActive.map(sanitizeSubjectStat);
+    }
     const raw =
       cachedSubjectsData?.stats ||
       (storeSubjects?.length ? (storeSubjects as any) : []);
@@ -1111,6 +1126,9 @@ export const SubjectsPage = () => {
   const [flutterDeletingSubjectId, setFlutterDeletingSubjectId] = useState<
     string | null
   >(null);
+  const [dyingSubjects, setDyingSubjects] = useState<
+    Array<{ stat: SubjectStat; sub?: Subject; index: number }>
+  >([]);
   const [poppingSubjectId, setPoppingSubjectId] = useState<string | null>(null);
   const [activeSemesterId, setActiveSemesterId] = useState<string | null>(
     () => cachedSubjectsData?.activeSemesterId || storeSemId,
@@ -1159,86 +1177,157 @@ export const SubjectsPage = () => {
         useCacheStore.getState().semester?.activeSemester?.id ||
         null;
 
-      // Fire all 3 requests in parallel when semesterId is known so total elapsed time = max(single call)
-      const [subjectsRes, semesterRes, parallelStatsRes] = await Promise.all([
-        api.get("/subjects"),
-        api.get("/semesters/active"),
-        knownSemId
-          ? api.get(`/attendance/stats?semesterId=${knownSemId}`)
-          : Promise.resolve(null),
-      ]);
+      // OFFLINE FIRST: When device is offline, skip network roundtrips and resolve from cache
+      if (typeof navigator !== "undefined" && !navigator.onLine) {
+        const cache = useCacheStore.getState().subjects;
+        const attState = useAttendanceStore.getState();
+        const fallbackSubs =
+          cache?.subjects && cache.subjects.length > 0
+            ? cache.subjects
+            : cache?.stats && cache.stats.length > 0
+              ? cache.stats
+              : attState.subjects || [];
+        const fallbackStats =
+          cache?.stats && cache.stats.length > 0
+            ? cache.stats
+            : attState.subjects || [];
+        const validCacheSubs = fallbackSubs.filter(
+          (s: any) => !deletedSubjectIdsRef.current.has(s.id),
+        );
+        const validCacheStats = fallbackStats
+          .filter((s: any) => !deletedSubjectIdsRef.current.has(s.id))
+          .map(sanitizeSubjectStat);
+        setSubjects(validCacheSubs);
+        setSubjectStats(validCacheStats);
+        if (cache?.activeSemesterId || attState.activeSemesterId) {
+          setActiveSemesterId(cache?.activeSemesterId || attState.activeSemesterId);
+        }
+        setIsLoading(false);
+        return;
+      }
 
-      // If a newer fetch or delete occurred while this was in flight, discard response immediately
+      // Safe Parallel Resolution: Use Promise.allSettled to protect against partial network drops
+      const [subjectsSettled, semesterSettled, statsSettled] =
+        await Promise.allSettled([
+          api.get("/subjects"),
+          api.get("/semesters/active"),
+          knownSemId
+            ? api.get(`/attendance/stats?semesterId=${knownSemId}`)
+            : Promise.resolve(null),
+        ]);
+
       if (mySeq !== fetchSeqRef.current) return;
 
-      const rawSubjects = Array.isArray(subjectsRes.data)
-        ? subjectsRes.data
-        : [];
-      // Strictly filter out any subjects that were deleted
-      const validServer = rawSubjects.filter(
-        (s: any) => !deletedSubjectIdsRef.current.has(s.id),
+      const subjectsRes =
+        subjectsSettled.status === "fulfilled" ? subjectsSettled.value : null;
+      const semesterRes =
+        semesterSettled.status === "fulfilled" ? semesterSettled.value : null;
+      const parallelStatsRes =
+        statsSettled.status === "fulfilled" ? statsSettled.value : null;
+
+      // CRITICAL 500 / TIMEOUT RESILIENCE: Only accept [] if server genuinely returned an array; fallback on network/500 failure
+      let validServer: any[] = [];
+      const hasAuthoritativeSubjects = Boolean(
+        subjectsRes && Array.isArray(subjectsRes.data),
       );
+      if (hasAuthoritativeSubjects) {
+        validServer = subjectsRes!.data.filter(
+          (s: any) => !deletedSubjectIdsRef.current.has(s.id),
+        );
+      } else {
+        const cachedSubs =
+          useCacheStore.getState().subjects?.subjects ||
+          useCacheStore.getState().subjects?.stats ||
+          useAttendanceStore.getState().subjects ||
+          [];
+        validServer = (Array.isArray(cachedSubs) ? cachedSubs : []).filter(
+          (s: any) => !deletedSubjectIdsRef.current.has(s.id),
+        );
+      }
+
       const serverIds = new Set(validServer.map((s: any) => s.id));
 
-      setSubjects((prev) => {
-        const recentLocals = prev.filter(
-          (p: any) =>
-            !serverIds.has(p.id) &&
-            !deletedSubjectIdsRef.current.has(p.id) &&
-            Date.now() - ((p as any)._localCreatedAt || 0) < 15000,
-        );
-        return [...recentLocals, ...validServer].sort((a: any, b: any) =>
-          (a.name || "").localeCompare(b.name || ""),
-        );
-      });
+      if (hasAuthoritativeSubjects || validServer.length > 0) {
+        setSubjects((prev) => {
+          const recentLocals = prev.filter(
+            (p: any) =>
+              !serverIds.has(p.id) &&
+              !deletedSubjectIdsRef.current.has(p.id) &&
+              Date.now() - ((p as any)._localCreatedAt || 0) < 15000,
+          );
+          return [...recentLocals, ...validServer].sort((a: any, b: any) =>
+            (a.name || "").localeCompare(b.name || ""),
+          );
+        });
+      }
 
-      const semester = semesterRes.data;
-      if (semester) {
+      let semester = semesterRes?.data;
+      if (!semester) {
+        semester =
+          useCacheStore.getState().semester?.activeSemester ||
+          (useAttendanceStore.getState().hasActiveSemester
+            ? { id: useAttendanceStore.getState().activeSemesterId }
+            : null);
+      }
+
+      if (semester && semester.id) {
         setActiveSemesterId(semester.id);
-        const statsRes =
-          parallelStatsRes && knownSemId === semester.id
-            ? parallelStatsRes
-            : await api.get(`/attendance/stats?semesterId=${semester.id}`);
+        let statsData: any = null;
+        if (parallelStatsRes && knownSemId === semester.id) {
+          statsData = parallelStatsRes.data;
+        } else {
+          try {
+            const freshStats = await api.get(`/attendance/stats?semesterId=${semester.id}`);
+            statsData = freshStats.data;
+          } catch (e) {
+            console.warn("[SubjectsPage] Failed to fetch fresh stats (500/timeout), using fallback:", e);
+          }
+        }
 
         if (mySeq !== fetchSeqRef.current) return;
 
-                const hasPendingMutations = useOfflineStore
-                  .getState()
-                  .queue.some(
-                    (q: any) =>
-                      q.url?.includes("/attendance/mark") ||
-                      q.url?.includes("/attendance/mark-day"),
-                  );
-                if (!hasPendingMutations) {
-                  const rawStats = Array.isArray(statsRes.data)
-                    ? statsRes.data
-                    : statsRes.data?.subjects || [];
-                          const hasPendingMutations = useOfflineStore
-                            .getState()
-                            .queue.some(
-                              (q: any) =>
-                                q.url?.includes("/attendance/mark") ||
-                                q.url?.includes("/attendance/mark-day"),
-                            );
-                          if (!hasPendingMutations) {
-                            const rawStats = Array.isArray(statsRes.data)
-                              ? statsRes.data
-                              : statsRes.data?.subjects || [];
-                            const validStats = rawStats
-                              .filter(
-                                (s: any) =>
-                                  !deletedSubjectIdsRef.current.has(s.id),
-                              )
-                              .map(sanitizeSubjectStat);
-                            setSubjectStats(validStats);
-                            setCache("subjects", {
-                              subjects: validServer,
-                              stats: validStats,
-                              activeSemesterId: semester.id,
-                            });
-                          }
-                }
-      } else {
+        const hasPendingMutations = useOfflineStore
+          .getState()
+          .queue.some(
+            (q: any) =>
+              q.url?.includes("/attendance/mark") ||
+              q.url?.includes("/attendance/mark-day") ||
+              q.url?.includes("/subjects"),
+          );
+
+        let validStats: any[] = [];
+        const hasAuthoritativeStats = Boolean(statsData && !hasPendingMutations);
+        if (hasAuthoritativeStats) {
+          const rawStats = Array.isArray(statsData)
+            ? statsData
+            : statsData?.subjects || [];
+          validStats = rawStats
+            .filter((s: any) => !deletedSubjectIdsRef.current.has(s.id))
+            .map(sanitizeSubjectStat);
+        } else {
+          const cachedStats =
+            useCacheStore.getState().subjects?.stats ||
+            useAttendanceStore.getState().subjects ||
+            [];
+          validStats = (Array.isArray(cachedStats) ? cachedStats : [])
+            .filter((s: any) => !deletedSubjectIdsRef.current.has(s.id))
+            .map(sanitizeSubjectStat);
+        }
+
+        if (hasAuthoritativeStats || validStats.length > 0) {
+          setSubjectStats(validStats);
+          setCache("subjects", {
+            subjects: hasAuthoritativeSubjects
+              ? validServer
+              : validServer.length > 0
+                ? validServer
+                : useCacheStore.getState().subjects?.subjects || [],
+            stats: validStats,
+            activeSemesterId: semester.id,
+          });
+        }
+      } else if (semesterSettled.status === "fulfilled" && !semesterRes?.data) {
+        // Only wipe if server explicitly 200 OK confirmed NO active semester
         setActiveSemesterId(null);
         setSubjectStats([]);
         setCache("subjects", {
@@ -1251,13 +1340,38 @@ export const SubjectsPage = () => {
       if (mySeq !== fetchSeqRef.current) return;
       console.error("Failed to fetch subjects:", error);
       const cache = useCacheStore.getState().subjects;
+      const attendanceState = useAttendanceStore.getState();
+      const storeActive = (attendanceState.subjects || []).filter(
+        (s: any) => (Number(s.total) || 0) > 0 && !deletedSubjectIdsRef.current.has(s.id)
+      );
+      const allLogs = useCacheStore.getState().subject_logs?.["all"]?.logs || attendanceState.historyLogs || [];
+
       if (cache && cache.activeSemesterId) {
         const validCacheSubs = (cache.subjects || []).filter(
           (s: any) => !deletedSubjectIdsRef.current.has(s.id),
         );
-        const validCacheStats = (cache.stats || [])
+        let validCacheStats = (cache.stats || [])
           .filter((s: any) => !deletedSubjectIdsRef.current.has(s.id))
           .map(sanitizeSubjectStat);
+
+        // Self-heal: If cached stats are wiped (0 classes), rebuild from attendanceStore or logs
+        const cacheTotalClasses = validCacheStats.reduce((acc: number, s: any) => acc + (s.total || 0), 0);
+        if (cacheTotalClasses === 0 && storeActive.length > 0) {
+          validCacheStats = storeActive.map(sanitizeSubjectStat);
+        } else if (cacheTotalClasses === 0 && allLogs.length > 0) {
+          validCacheStats = validCacheSubs.map((sub: any) => {
+            const subLogs = allLogs.filter((l: any) => l.subjectId === sub.id || l.subject?.id === sub.id);
+            let att = 0; let tot = 0; let missed = 0; let off = 0;
+            subLogs.forEach((l: any) => {
+              const st = String(l.status || "").toLowerCase();
+              if (["present", "attended", "medical", "od"].includes(st)) { att++; tot++; }
+              else if (["absent", "missed"].includes(st)) { missed++; tot++; }
+              else if (["off", "cancelled"].includes(st)) { off++; }
+            });
+            const pct = tot > 0 ? (att / tot) * 100 : 0;
+            return sanitizeSubjectStat({ ...sub, attended: att, total: tot, missed, off, percentage: pct });
+          });
+        }
         setSubjects(validCacheSubs);
         setSubjectStats(validCacheStats);
         setActiveSemesterId(cache.activeSemesterId);
@@ -1272,7 +1386,7 @@ export const SubjectsPage = () => {
             (s: any) => !deletedSubjectIdsRef.current.has(s.id),
           );
           setSubjects(validStoreSubs as any);
-          setSubjectStats(validStoreSubs as any);
+          setSubjectStats(validStoreSubs.map(sanitizeSubjectStat) as any);
         }
       }
     } finally {
@@ -1299,28 +1413,129 @@ export const SubjectsPage = () => {
 
   const handleDelete = async (id: string) => {
     const subjectToDelete = subjects.find((s) => s.id === id);
+    const statIndex = mergedStats.findIndex((s) => s.id === id);
+    const statToDelete = statIndex >= 0 ? mergedStats[statIndex] : undefined;
     confirmDeleteToast({
       title: "Delete Subject",
       description:
         "Are you sure you want to remove this subject? Past attendance will be safely preserved.",
-      itemName: subjectToDelete?.name,
+      itemName: subjectToDelete?.name || statToDelete?.name,
       confirmLabel: "Delete Subject",
       onConfirm: async () => {
         hapticHeavy();
-        // 1. Immediately register in the deleted IDs set so in-flight requests never resurrect it
+
+        // Smoothly frame the shattering card and pan upward to keep the full -650px butterfly S-curve visible
+        const cardEl = document.getElementById(`subject-card-${id}`);
+        if (cardEl) {
+          const getScrollContainer = (el: HTMLElement): HTMLElement | null => {
+            let cur: HTMLElement | null = el.parentElement;
+            while (cur && cur !== document.body && cur !== document.documentElement) {
+              const st = window.getComputedStyle(cur);
+              const scrollableY =
+                (st.overflowY === "auto" || st.overflowY === "scroll") &&
+                cur.scrollHeight > cur.clientHeight + 4;
+              if (
+                scrollableY &&
+                (cur.scrollTop > 0 ||
+                  (window.scrollY === 0 &&
+                    document.documentElement.scrollHeight <= window.innerHeight + 4))
+              ) {
+                return cur;
+              }
+              cur = cur.parentElement;
+            }
+            return null;
+          };
+
+          const scrollHost = getScrollContainer(cardEl);
+          const getScrollTop = () =>
+            scrollHost
+              ? scrollHost.scrollTop
+              : window.scrollY || document.documentElement.scrollTop || 0;
+          const getViewportHeight = () =>
+            scrollHost ? scrollHost.clientHeight : window.innerHeight;
+          const scrollToY = (top: number) => {
+            const clamped = Math.max(0, top);
+            if (scrollHost) {
+              scrollHost.scrollTo({ top: clamped, behavior: "smooth" });
+            } else {
+              window.scrollTo({ top: clamped, behavior: "smooth" });
+            }
+          };
+
+          const cardRect = cardEl.getBoundingClientRect();
+          const hostTop = scrollHost ? scrollHost.getBoundingClientRect().top : 0;
+          const cardRelTop = cardRect.top - hostTop;
+          const initialScrollTop = getScrollTop();
+          const vh = getViewportHeight();
+          const cardCenterContentY =
+            initialScrollTop + cardRelTop + cardRect.height / 2;
+
+          const safeTopClearance = 96;
+          const desiredLowerCenter = Math.max(220, vh - 170);
+          const stage1Scroll = Math.max(0, cardCenterContentY - desiredLowerCenter);
+          const apexScroll = Math.max(0, cardCenterContentY - 650 - safeTopClearance);
+
+          const immediateTarget =
+            cardRelTop + cardRect.height > vh - 80
+              ? stage1Scroll
+              : Math.min(initialScrollTop, stage1Scroll);
+
+          if (Math.abs(immediateTarget - initialScrollTop) > 8) {
+            scrollToY(immediateTarget);
+          }
+
+          if (apexScroll < immediateTarget - 16) {
+            setTimeout(() => {
+              scrollToY(apexScroll);
+            }, 900);
+          }
+        }
+
+        // 1. Register in deleted set and render shatter/butterfly snapshot for 4.0s
         deletedSubjectIdsRef.current.add(id);
         setFlutterDeletingSubjectId(id);
+        if (statToDelete) {
+          setDyingSubjects((prev) =>
+            prev.some((d) => d.stat.id === id)
+              ? prev
+              : [
+                  ...prev,
+                  {
+                    stat: statToDelete,
+                    sub: subjectToDelete,
+                    index: Math.max(0, statIndex),
+                  },
+                ],
+          );
+        }
         SoundFX.playButterflyFlutterSound();
         triggerDynamicHUD({
           type: "butterfly",
           label: "Subject Deleted",
           durationMs: 4500,
         });
+        setTimeout(() => {
+          setDyingSubjects((prev) => prev.filter((d) => d.stat.id !== id));
+          setFlutterDeletingSubjectId((curr) => (curr === id ? null : curr));
+        }, 4000);
 
-        // 2. Synchronously evict from local cache and global attendanceStore so no fallback revives it
-        const curCache = useCacheStore.getState().subjects;
+        // 2. Immediately evict from React state, cacheStore, attendanceStore, and pending offline queue at 0ms
+        setSubjects((prev) =>
+          prev.filter(
+            (s) => s.id !== id && !deletedSubjectIdsRef.current.has(s.id),
+          ),
+        );
+        setSubjectStats((prev) =>
+          prev.filter(
+            (s) => s.id !== id && !deletedSubjectIdsRef.current.has(s.id),
+          ),
+        );
+
+        const cache = useCacheStore.getState();
+        const curCache = cache.subjects;
         if (curCache) {
-          useCacheStore.getState().setCache("subjects", {
+          cache.setCache("subjects", {
             ...curCache,
             subjects: (curCache.subjects || []).filter(
               (s: any) =>
@@ -1332,50 +1547,89 @@ export const SubjectsPage = () => {
             ),
           });
         }
-        useAttendanceStore.setState((state) => ({
-          subjects: state.subjects.filter(
-            (s: any) => s.id !== id && !deletedSubjectIdsRef.current.has(s.id),
-          ),
+        if (cache.timetable?.slots) {
+          cache.setCache("timetable", {
+            ...cache.timetable,
+            slots: cache.timetable.slots.filter(
+              (sl: any) => sl.subjectId !== id,
+            ),
+          });
+        }
+        if (cache.subject_logs) {
+          const nextLogsCache = { ...cache.subject_logs };
+          delete nextLogsCache[id];
+          cache.setCache("subject_logs", nextLogsCache);
+        }
+        if (cache.subjects_overview) {
+          cache.setCache(
+            "subjects_overview",
+            Array.isArray(cache.subjects_overview)
+              ? cache.subjects_overview.filter((s: any) => s.id !== id)
+              : null,
+          );
+        }
+
+        useAttendanceStore.setState((state) => {
+          const remaining = state.subjects.filter(
+            (s: any) =>
+              s.id !== id && !deletedSubjectIdsRef.current.has(s.id),
+          );
+          const totalAttended = remaining.reduce(
+            (sum: number, s: any) => sum + (Number(s.attended) || 0),
+            0,
+          );
+          const totalClasses = remaining.reduce(
+            (sum: number, s: any) => sum + (Number(s.total) || 0),
+            0,
+          );
+          return {
+            subjects: remaining,
+            totalAttended,
+            totalClasses,
+            overallPercentage:
+              totalClasses > 0 ? (totalAttended / totalClasses) * 100 : 0,
+          };
+        });
+
+        useOfflineStore.setState((state) => ({
+          queue: state.queue.filter((req) => {
+            if (req.url.includes(`/subjects/${id}`)) return false;
+            if (id.startsWith("temp") && req.tempId === id) return false;
+            if (id.startsWith("temp") && req.data?.subjectId === id) return false;
+            return true;
+          }),
         }));
 
-        // Run 4.0s butterfly flutter choreography
-        setTimeout(async () => {
-          // Unmount from React DOM synchronously with ending the animation
-          setSubjects((prev) =>
-            prev.filter(
-              (s) => s.id !== id && !deletedSubjectIdsRef.current.has(s.id),
-            ),
-          );
-          setSubjectStats((prev) =>
-            prev.filter(
-              (s) => s.id !== id && !deletedSubjectIdsRef.current.has(s.id),
-            ),
-          );
-          setFlutterDeletingSubjectId(null);
-          fetchSeqRef.current += 1; // Invalidate any older in-flight fetches
+        fetchSeqRef.current += 1;
+        if (!id.startsWith("temp")) {
           try {
-            await api.delete(`/subjects/${id}?preserveHistory=true`);
-            await Promise.all([
-              fetchData(),
-              useAttendanceStore.getState().fetchStats(true),
-            ]).catch(() => {});
-            window.dispatchEvent(new Event("attendance-updated"));
-          } catch (error) {
-            console.error("Failed to delete subject:", error);
-            toast.error("Failed to delete subject");
-            // Even on network error, ensure user's deletion intent is strictly honored locally
-            setSubjects((prev) =>
-              prev.filter(
-                (s) => s.id !== id && !deletedSubjectIdsRef.current.has(s.id),
-              ),
+            const delRes = await api.delete(
+              `/subjects/${id}?preserveHistory=true`,
             );
-            setSubjectStats((prev) =>
-              prev.filter(
-                (s) => s.id !== id && !deletedSubjectIdsRef.current.has(s.id),
-              ),
-            );
+            if (!delRes?.data?._queued) {
+              await Promise.all([
+                fetchData(),
+                useAttendanceStore.getState().fetchStats(true),
+              ]).catch(() => {});
+            }
+          } catch (error: any) {
+            if (error?.response?.status !== 404) {
+              console.error("Failed to delete subject:", error);
+              toast.error(
+                error?.response?.data?.message || "Failed to delete subject",
+              );
+              deletedSubjectIdsRef.current.delete(id);
+              await Promise.all([
+                fetchData(),
+                useAttendanceStore.getState().fetchStats(true),
+              ]).catch(() => {});
+              return;
+            }
           }
-        }, 4000);
+        }
+
+        window.dispatchEvent(new Event("attendance-updated"));
+        window.dispatchEvent(new Event("timetable-updated"));
       },
     });
   };
@@ -1472,20 +1726,30 @@ export const SubjectsPage = () => {
         ? (attended / total) * 100
         : Number(stat?.percentage ?? (sub as any).percentage) || 0;
 
+    const currentTarget = Number((sub as any).targetAttendance ?? stat?.target ?? user?.targetAttendance ?? 75);
+    const canMiss =
+      pct >= currentTarget && currentTarget > 0
+        ? Math.floor((attended - (currentTarget / 100) * total) / (currentTarget / 100))
+        : 0;
+    const needAttend =
+      pct < currentTarget && currentTarget < 100
+        ? Math.ceil(((currentTarget / 100) * total - attended) / (1 - currentTarget / 100))
+        : 0;
+
     return {
       ...(stat || {}),
       id: sub.id,
       name: sub.name,
       code: sub.code,
       colorHex: sub.colorHex || stat?.colorHex || "#8b5cf6",
-      target: user?.targetAttendance ?? 75,
+      target: currentTarget,
       attended,
       missed,
       off,
       total,
       percentage: isNaN(pct) ? 0 : Number(pct.toFixed(1)),
-      canMiss: stat?.canMiss ?? 0,
-      needAttend: stat?.needAttend ?? 0,
+      canMiss,
+      needAttend,
     };
   });
 
@@ -1746,7 +2010,10 @@ export const SubjectsPage = () => {
           </div>
         )}
 
-        {mergedStats.length === 0 && !isLoading && !isAdding ? (
+        {mergedStats.length === 0 &&
+        dyingSubjects.length === 0 &&
+        !isLoading &&
+        !isAdding ? (
           <div className="text-center py-12 bg-white/60 dark:bg-black/30 backdrop-blur-xl border border-white/60 dark:border-white/10 rounded-2xl">
             <AlertCircle className="w-12 h-12 text-foreground dark:text-muted-foreground dark:text-white/40 mx-auto mb-4" />
             <h3 className="text-lg font-medium text-foreground dark:text-white mb-2">
@@ -1965,15 +2232,27 @@ export const SubjectsPage = () => {
               })()}
 
             {/* Per-subject cards */}
-            {mergedStats.map((stat, idx) => {
-              const sub = subjects.find((s) => s.id === stat.id);
+            {(() => {
+              const displayStats = [...mergedStats];
+              dyingSubjects.forEach((d) => {
+                if (!displayStats.some((s) => s.id === d.stat.id)) {
+                  const idx = Math.min(d.index, displayStats.length);
+                  displayStats.splice(idx, 0, d.stat);
+                }
+              });
+              return displayStats;
+            })().map((stat, idx) => {
+              const sub =
+                subjects.find((s) => s.id === stat.id) ||
+                dyingSubjects.find((d) => d.stat.id === stat.id)?.sub;
+              const isDying = dyingSubjects.some((d) => d.stat.id === stat.id);
               return (
                 <SubjectCard
                   key={stat.id || `fallback-${idx}`}
                   stat={stat}
                   onEdit={() => sub && handleEdit(sub)}
                   onDelete={() => handleDelete(stat.id)}
-                  isFluttering={flutterDeletingSubjectId === stat.id}
+                  isFluttering={flutterDeletingSubjectId === stat.id || isDying}
                   isPopping={poppingSubjectId === stat.id}
                 />
               );

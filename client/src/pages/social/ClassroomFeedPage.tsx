@@ -73,6 +73,14 @@ interface FeedData {
   deniedPosterIds?: string[];
   isDeleted?: boolean;
   announcements: Announcement[];
+  assignments?: Array<{
+    id: string;
+    title: string;
+    deadline: string;
+    type?: string;
+    description?: string | null;
+    classroomId?: string | null;
+  }>;
 }
 
 const formatFileSize = (bytes: number): string => {
@@ -193,6 +201,16 @@ export const ClassroomFeedPage = () => {
   const [transitionTermNote, setTransitionTermNote] = useState("");
 
   const fetchFeed = async (showLoading = true) => {
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      if (id) {
+        const cached = useCacheStore.getState().classroom_feeds?.[id];
+        if (cached) {
+          setFeed(cached);
+        }
+      }
+      if (showLoading) setIsLoading(false);
+      return;
+    }
     try {
       if (showLoading && !feed) setIsLoading(true);
       const res = await api.get(`/classrooms/${id}/feed`, { params: { t: Date.now() } });
@@ -290,9 +308,12 @@ export const ClassroomFeedPage = () => {
     window.addEventListener("focus", handleFocus);
     document.addEventListener("visibilitychange", handleVisibility);
 
-    // Snappy 2.5s polling while active on screen for instant real-time message stream
+    // Snappy 2.5s polling while active on screen and online for instant real-time message stream
     const interval = setInterval(() => {
-      if (document.visibilityState === "visible") {
+      if (
+        document.visibilityState === "visible" &&
+        (typeof navigator === "undefined" || navigator.onLine)
+      ) {
         fetchFeed(false);
       }
     }, 2500);
@@ -427,11 +448,12 @@ export const ClassroomFeedPage = () => {
       return;
     }
 
+    const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const serializedAttachments = attachments.map((att) => JSON.stringify(att));
     try {
       setIsSubmitting(true);
-      const serializedAttachments = attachments.map((att) => JSON.stringify(att));
       const optimisticAnnouncement = {
-        id: `temp-${Date.now()}`,
+        id: tempId,
         title: newTitle.trim(),
         content: newContent.trim(),
         body: newContent.trim(),
@@ -446,18 +468,22 @@ export const ClassroomFeedPage = () => {
         useCacheStore.getState().appendClassroomAnnouncement(id, optimisticAnnouncement);
       }
 
-      await api.post(`/classrooms/${id}/announcements`, {
+      const res = await api.post(`/classrooms/${id}/announcements`, {
+        tempId,
         title: newTitle.trim(),
         content: newContent.trim(),
         importance: newImportance,
         attachmentUrls: serializedAttachments,
       });
 
+      const isQueued = Boolean(res.data?._queued);
       hapticSuccess();
       triggerDynamicHUD({
         type: "plane",
-        label: "Notice Broadcasted!",
-        subtitle: `${newTitle.trim()} posted to section feed`,
+        label: isQueued ? "Notice Queued Offline" : "Notice Broadcasted!",
+        subtitle: isQueued
+          ? `${newTitle.trim()} will broadcast when back online`
+          : `${newTitle.trim()} posted to section feed`,
         durationMs: 4200,
         silent: true,
       });
@@ -466,8 +492,22 @@ export const ClassroomFeedPage = () => {
       setNewContent("");
       setNewImportance("low");
       setAttachments([]);
-      fetchFeed();
+      if (!isQueued) {
+        fetchFeed(false);
+      }
     } catch (error: any) {
+      // Roll back optimistic announcement from feed cache on real server failure
+      if (id) {
+        const curFeed = useCacheStore.getState().classroom_feeds?.[id];
+        if (curFeed && Array.isArray(curFeed.announcements)) {
+          const rolledBackFeed = {
+            ...curFeed,
+            announcements: curFeed.announcements.filter((a: any) => a.id !== tempId),
+          };
+          useCacheStore.getState().cacheClassroomFeed(id, rolledBackFeed);
+          setFeed(rolledBackFeed);
+        }
+      }
       toast.error(error.response?.data?.message || "Failed to post announcement");
     } finally {
       setIsSubmitting(false);
@@ -478,6 +518,11 @@ export const ClassroomFeedPage = () => {
     try {
       setIsSubmitting(true);
       const hubName = feed?.classroom?.name || "Section Hub";
+      await api.delete(`/classrooms/${id}/leave`);
+      const cachedClassrooms = useCacheStore.getState().classrooms;
+      if (Array.isArray(cachedClassrooms)) {
+        useCacheStore.getState().cacheClassrooms(cachedClassrooms.filter((c) => c.id !== id));
+      }
       SoundFX.playWhooshSound(0.28);
       hapticMedium();
       triggerDynamicHUD({
@@ -486,7 +531,6 @@ export const ClassroomFeedPage = () => {
         subtitle: `${hubName} cleared from your dashboard`,
         durationMs: 4000,
       });
-      await api.delete(`/classrooms/${id}/leave`);
       navigate("/classrooms");
     } catch (error: any) {
       toast.error(error.response?.data?.message || "Failed to remove classroom");
@@ -499,6 +543,11 @@ export const ClassroomFeedPage = () => {
     try {
       setIsSubmitting(true);
       const hubName = feed?.classroom?.name || "Classroom Hub";
+      await api.delete(`/classrooms/${id}`);
+      const cachedClassrooms = useCacheStore.getState().classrooms;
+      if (Array.isArray(cachedClassrooms)) {
+        useCacheStore.getState().cacheClassrooms(cachedClassrooms.filter((c) => c.id !== id));
+      }
       SoundFX.playWhooshSound(0.32);
       hapticHeavy();
       triggerDynamicHUD({
@@ -509,7 +558,6 @@ export const ClassroomFeedPage = () => {
       });
       setShowDeleteModal(false);
       navigate("/classrooms", { replace: true });
-      await api.delete(`/classrooms/${id}`);
     } catch (error: any) {
       toast.error(error.response?.data?.message || "Failed to disband classroom");
     } finally {
@@ -728,6 +776,56 @@ export const ClassroomFeedPage = () => {
             <Trash2 className="w-3.5 h-3.5" />
             Remove Hub
           </button>
+        </div>
+      )}
+
+      {/* Shared Classroom Assignments */}
+      {feed.assignments && feed.assignments.length > 0 && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xs font-mono uppercase tracking-widest text-neutral-500 dark:text-neutral-400 flex items-center gap-2">
+              <FileText className="w-3.5 h-3.5 text-neutral-700 dark:text-neutral-300" />
+              Shared Deadlines ({feed.assignments.length})
+            </h2>
+            <Link
+              to="/assignments"
+              className="text-[11px] font-mono font-semibold text-neutral-600 dark:text-neutral-300 hover:text-foreground inline-flex items-center gap-1"
+            >
+              <span>Open in Assignments</span>
+              <ExternalLink className="w-3 h-3" />
+            </Link>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {feed.assignments.map((task) => {
+              const parsedDeadline = task.deadline ? new Date(task.deadline) : null;
+              const deadlineLabel =
+                parsedDeadline && !Number.isNaN(parsedDeadline.getTime())
+                  ? parsedDeadline.toLocaleDateString(undefined, { month: "short", day: "numeric" })
+                  : "Upcoming";
+              return (
+                <Link
+                  key={task.id}
+                  to="/assignments"
+                  className="p-3.5 rounded-2xl bg-white dark:bg-[#08080a] border border-neutral-200 dark:border-white/10 hover:border-neutral-300 dark:hover:border-white/25 transition-all flex items-center justify-between gap-3 shadow-2xs"
+                >
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-[10px] font-mono uppercase font-bold px-1.5 py-0.5 rounded bg-neutral-100 dark:bg-white/10 text-neutral-700 dark:text-neutral-300">
+                        {task.type || "Task"}
+                      </span>
+                    </div>
+                    <p className="text-xs sm:text-sm font-semibold text-foreground truncate">
+                      {task.title}
+                    </p>
+                  </div>
+                  <span className="text-[11px] font-mono text-muted-foreground flex items-center gap-1 shrink-0">
+                    <Clock className="w-3 h-3" />
+                    {deadlineLabel}
+                  </span>
+                </Link>
+              );
+            })}
+          </div>
         </div>
       )}
 

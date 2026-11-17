@@ -67,6 +67,9 @@ export const useAuthStore = create<AuthState>()(
         // PushNotifications.register() fires on startup (before login), saves token to localStorage,
         // but the PATCH /users/me call fails because the user isn't authenticated yet.
         // Now that we are authenticated, we retry that sync immediately.
+        try {
+          localStorage.removeItem('attendx_synced_fcm_token');
+        } catch {}
         import('../services/NotificationService').then(({ NotificationService }) => {
           NotificationService.syncFcmToken().catch(() => {});
         });
@@ -91,6 +94,7 @@ export const useAuthStore = create<AuthState>()(
         import('./cacheStore').then(({ useCacheStore }) => useCacheStore.getState().clearCache()).catch(() => {});
         import('./notificationStore').then(({ useNotificationStore }) => useNotificationStore.getState().resetConfig()).catch(() => {});
         import('./attendanceStore').then(({ useAttendanceStore }) => useAttendanceStore.getState().resetAttendanceStore()).catch(() => {});
+        import('./assignmentStore').then(({ useAssignmentStore }) => useAssignmentStore.getState().resetAssignments()).catch(() => {});
         const keysToRemove = [
           'attendx-auth',
           'attendx-attendance-cache',
@@ -103,7 +107,9 @@ export const useAuthStore = create<AuthState>()(
           'onboarding_voice_mode',
           'onboarding_predictive',
           'onboarding_peer_sync',
-          'onboarding_dismissed'
+          'onboarding_dismissed',
+          'attendx_synced_fcm_token',
+          'attendx_pending_mute_request'
         ];
         keysToRemove.forEach(k => {
           Preferences.remove({ key: k }).catch(() => {});

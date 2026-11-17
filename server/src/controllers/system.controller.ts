@@ -1,6 +1,4 @@
 import { Request, Response } from "express";
-import path from "path";
-import fs from "fs";
 import { BirthdayService } from "../services/birthday.service";
 
 export class SystemController {
@@ -16,9 +14,37 @@ export class SystemController {
   static async getUpdateManifest(req: Request, res: Response) {
     const manifest = {
       appDownloadLink: process.env.APP_DOWNLOAD_LINK || "https://github.com/nrai18/AttendX/releases/latest/download/AttendX.apk",
-      latestVersion: "4.3.0",
-      title: "AttendX Micro-Physics Delight Animations, DND Auto-Unmute & Tactile Fluidity",
+      latestVersion: "4.3.1",
+      title: "AttendX Interactive Firmware Diagnostics, Native In-App APK Updater & IST Calendar Sync",
       changelog: [
+        {
+          "version": "4.3.1",
+          "date": "Nov 14, 2026",
+          "title": "Interactive Firmware Diagnostics Center, Native In-App APK Updater & IST Calendar Sync",
+          "sections": [
+            {
+              "title": "Interactive Firmware Diagnostics & Native In-App APK Updater (v4.3.1)",
+              "items": [
+                {
+                  "icon": "⚡",
+                  "text": "Interactive System Software & Firmware Diagnostics Tile: Integrated real-time GitHub Releases API ping latency monitor, PackageInstaller (REQUEST_INSTALL_PACKAGES) permission inspector, FileProvider storage sandbox validation, and a 1-tap live update simulator directly into Settings."
+                },
+                {
+                  "icon": "📲",
+                  "text": "Native In-App APK Updater Engine: Directly downloads official release APKs in background with SHA-256 integrity verification, Android FileProvider authority handoff, and non-intrusive 24h snooze options."
+                },
+                {
+                  "icon": "📅",
+                  "text": "Timezone-Harmonized Calendar Sync & Instant Redis Eviction: Solved 1-day IST (+5:30) vs UTC midnight date evaluation drift, ensuring classes marked Off immediately update calendar dots without stale Absent badges."
+                },
+                {
+                  "icon": "🔔",
+                  "text": "FCM Push Action Routing: Tapping update notifications in the Android notification tray routes directly into the NativeUpdateSheet overlay with 0ms delay."
+                }
+              ]
+            }
+          ]
+        },
         {
           "version": "4.3.0",
           "date": "Oct 28, 2026",
@@ -1999,40 +2025,17 @@ export class SystemController {
 ]
     };
 
-    try {
-      const possiblePaths = [
-        path.resolve(process.cwd(), "src/uploads/update.zip"),
-        path.resolve(process.cwd(), "uploads/update.zip"),
-        path.resolve(__dirname, "../uploads/update.zip")
-      ];
-      const updatePath = possiblePaths.find(p => fs.existsSync(p));
-      if (updatePath) {
-        const stats = fs.statSync(updatePath);
-        (manifest as any).downloadSizeMb = parseFloat((stats.size / (1024 * 1024)).toFixed(2));
-        (manifest as any).buildTimestamp = Math.floor(stats.mtimeMs);
-      } else {
-        (manifest as any).buildTimestamp = Date.now();
-      }
-    } catch (e) {
-      console.error("Failed to calculate update size", e);
-      (manifest as any).buildTimestamp = Date.now();
-    }
+    // Capgo OTA distribution is discontinued; distribute exclusively via GitHub native APK releases.
+    (manifest as any).downloadSizeMb = 0;
+    (manifest as any).buildTimestamp = 0;
 
     res.json(manifest);
   }
 
   static async downloadUpdate(req: Request, res: Response) {
-    const possiblePaths = [
-      path.resolve(process.cwd(), "src/uploads/update.zip"),
-      path.resolve(process.cwd(), "uploads/update.zip"),
-      path.resolve(__dirname, "../uploads/update.zip")
-    ];
-    const updatePath = possiblePaths.find(p => fs.existsSync(p));
-    if (updatePath) {
-      res.download(updatePath);
-    } else {
-      res.status(404).json({ message: "Update package not found" });
-    }
+    return res.status(410).json({
+      message: "Capgo OTA updates are discontinued. Please update via native APK release.",
+    });
   }
 
   static async triggerBirthdayCron(req: Request, res: Response) {

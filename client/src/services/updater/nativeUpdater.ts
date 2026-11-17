@@ -1,4 +1,4 @@
-import { registerPlugin, PluginListenerHandle } from "@capacitor/core";
+import { Capacitor, registerPlugin, PluginListenerHandle } from "@capacitor/core";
 import { DownloadProgressInfo } from "./updateTypes";
 
 interface ApkUpdaterPluginInterface {
@@ -23,9 +23,13 @@ interface ApkUpdaterPluginInterface {
     versionCode: number;
     currentVersionCode: number;
   }>;
+  fileExists(options: { filePath: string }): Promise<{ exists: boolean }>;
+  deleteFile(options: { filePath: string }): Promise<{ deleted: boolean }>;
+  clearCachedApks(): Promise<{ cleared: boolean }>;
   installApk(options: { filePath: string }): Promise<{
     success: boolean;
     installerLaunched: boolean;
+    permissionRequired?: boolean;
   }>;
   addListener(
     eventName: "downloadProgress",
@@ -42,25 +46,22 @@ const ApkUpdater = registerPlugin<ApkUpdaterPluginInterface>("ApkUpdater");
 export class NativeUpdaterBridge {
   static isAvailable(): boolean {
     return (
-      typeof (window as any).Capacitor !== "undefined" &&
-      (window as any).Capacitor.isNativePlatform()
+      typeof window !== "undefined" &&
+      Capacitor.isNativePlatform() &&
+      Capacitor.getPlatform() === "android" &&
+      Capacitor.isPluginAvailable("ApkUpdater")
     );
   }
 
   static async getAppInfo() {
     if (!this.isAvailable()) {
-      return {
-        packageName: "com.attendx.app",
-        versionName: "4.3.0",
-        versionCode: 17,
-        canRequestPackageInstalls: true,
-      };
+      return null;
     }
     return ApkUpdater.getAppInfo();
   }
 
   static async checkInstallPermission() {
-    if (!this.isAvailable()) return { granted: true };
+    if (!this.isAvailable()) return { granted: false };
     return ApkUpdater.checkInstallPermission();
   }
 
@@ -75,8 +76,11 @@ export class NativeUpdaterBridge {
     filename = "AttendX-update.apk",
     onProgress?: (info: DownloadProgressInfo) => void,
   ) {
+    if (!this.isAvailable()) {
+      throw new Error("Native APK download is only supported on Android devices.");
+    }
     let handle: PluginListenerHandle | null = null;
-    if (this.isAvailable() && onProgress) {
+    if (onProgress) {
       handle = await ApkUpdater.addListener("downloadProgress", onProgress);
     }
     try {
@@ -93,19 +97,47 @@ export class NativeUpdaterBridge {
   }
 
   static async validateApk(filePath: string) {
-    if (!this.isAvailable())
+    if (!this.isAvailable()) {
       return {
-        valid: true,
-        packageName: "com.attendx.app",
-        versionName: "4.3.0",
-        versionCode: 18,
-        currentVersionCode: 17,
+        valid: false,
+        packageName: "",
+        versionName: "",
+        versionCode: 0,
+        currentVersionCode: 0,
       };
+    }
     return ApkUpdater.validateApk({ filePath });
   }
 
+  static async fileExists(filePath: string): Promise<boolean> {
+    if (!this.isAvailable() || !filePath) return false;
+    try {
+      const res = await ApkUpdater.fileExists({ filePath });
+      return Boolean(res?.exists);
+    } catch {
+      return false;
+    }
+  }
+
+  static async deleteFile(filePath: string): Promise<boolean> {
+    if (!this.isAvailable() || !filePath) return false;
+    try {
+      const res = await ApkUpdater.deleteFile({ filePath });
+      return Boolean(res?.deleted);
+    } catch {
+      return false;
+    }
+  }
+
+  static async clearCachedApks(): Promise<void> {
+    if (!this.isAvailable()) return;
+    try {
+      await ApkUpdater.clearCachedApks();
+    } catch {}
+  }
+
   static async installApk(filePath: string) {
-    if (!this.isAvailable()) return { success: true, installerLaunched: true };
+    if (!this.isAvailable()) return { success: false, installerLaunched: false };
     return ApkUpdater.installApk({ filePath });
   }
 }

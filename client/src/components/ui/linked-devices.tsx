@@ -251,7 +251,51 @@ function SessionRow({
   );
 }
 
-let cachedSessions: Session[] | null = null;
+const SESSIONS_CACHE_KEY = "attendx_cached_linked_devices";
+
+function createLocalFallbackSession(): Session {
+  const os = detectRealHostOS();
+  const ua = typeof navigator !== "undefined" ? navigator.userAgent : "";
+  let browser = "Google Chrome";
+  if (ua.includes("Firefox")) browser = "Mozilla Firefox";
+  else if (ua.includes("Edg")) browser = "Microsoft Edge";
+  else if (ua.includes("Safari") && !ua.includes("Chrome")) browser = "Apple Safari";
+  else if (ua.includes("Brave")) browser = "Brave Browser";
+
+  return {
+    id: "current-local-session",
+    userAgent: ua || null,
+    ipAddress: "127.0.0.1",
+    location: "This device",
+    deviceType: /Android|iPhone|iPad/i.test(ua) ? "mobile" : "desktop",
+    os: os,
+    browser: browser,
+    lastActive: new Date().toISOString(),
+    createdAt: new Date().toISOString(),
+    isCurrent: true,
+  };
+}
+
+function getPersistedSessions(): Session[] {
+  try {
+    const raw = localStorage.getItem(SESSIONS_CACHE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch (_) {}
+  return [createLocalFallbackSession()];
+}
+
+function savePersistedSessions(data: Session[]) {
+  try {
+    if (Array.isArray(data) && data.length > 0) {
+      localStorage.setItem(SESSIONS_CACHE_KEY, JSON.stringify(data));
+    }
+  } catch (_) {}
+}
+
+let cachedSessions: Session[] | null = getPersistedSessions();
 let cachedGpsCoords: { lat: number; lon: number; ts: number } | null = null;
 
 async function resolveDeviceGpsCoords(forceFresh = false): Promise<{ lat: number; lon: number } | null> {
@@ -305,11 +349,20 @@ export const LinkedDevicesModal: React.FC<LinkedDevicesProps> = ({ isOpen, onClo
   useHardwareBack(isOpen, onClose);
   useScrollLock(isOpen);
   const { user, setUser } = useAuthStore();
-  const [sessions, setSessions] = useState<Session[]>(() => cachedSessions || []);
+  const [sessions, setSessions] = useState<Session[]>(() => {
+    const list =
+      cachedSessions && cachedSessions.length > 0
+        ? cachedSessions
+        : getPersistedSessions();
+    return list && list.length > 0 ? list : [createLocalFallbackSession()];
+  });
   const [loading, setLoading] = useState(false);
   const [terminatingSessionIds, setTerminatingSessionIds] = useState<string[]>([]);
 
-  const rawCurrentSession = sessions.find((s) => s.isCurrent);
+  const rawCurrentSession =
+    sessions.find((s) => s.isCurrent) ||
+    sessions[0] ||
+    createLocalFallbackSession();
   const realHostOS = detectRealHostOS();
   const currentSession = rawCurrentSession && (realHostOS === "Windows" || realHostOS === "macOS" || realHostOS === "Linux") && !String(rawCurrentSession.browser || "").startsWith("AttendX")
     ? {
@@ -319,7 +372,7 @@ export const LinkedDevicesModal: React.FC<LinkedDevicesProps> = ({ isOpen, onClo
         browser: (rawCurrentSession.browser || "Google Chrome").replace(/^Mobile\s+/i, ""),
       }
     : rawCurrentSession;
-  const otherSessions = sessions.filter((s) => !s.isCurrent);
+  const otherSessions = sessions.filter((s) => s.id !== currentSession.id && !s.isCurrent);
 
   // Pre-warm sessions and live GPS coordinates on mount so opening Linked Devices is instant (0ms spinner)
   useEffect(() => {
@@ -328,10 +381,17 @@ export const LinkedDevicesModal: React.FC<LinkedDevicesProps> = ({ isOpen, onClo
         .then((res) => {
           if (Array.isArray(res.data)) {
             cachedSessions = res.data;
+            savePersistedSessions(res.data);
             setSessions(res.data);
           }
         })
-        .catch(() => {});
+        .catch(() => {
+          const persisted = getPersistedSessions();
+          if (persisted) {
+            cachedSessions = persisted;
+            setSessions(persisted);
+          }
+        });
     }
     resolveDeviceGpsCoords(false).then((loc) => {
       if (loc) {
@@ -342,6 +402,7 @@ export const LinkedDevicesModal: React.FC<LinkedDevicesProps> = ({ isOpen, onClo
           .then((res) => {
             if (Array.isArray(res.data)) {
               cachedSessions = res.data;
+              savePersistedSessions(res.data);
               setSessions(res.data);
             }
           })
@@ -373,6 +434,7 @@ export const LinkedDevicesModal: React.FC<LinkedDevicesProps> = ({ isOpen, onClo
             }).then((res) => {
               if (Array.isArray(res.data) && isMounted) {
                 cachedSessions = res.data;
+                savePersistedSessions(res.data);
                 setSessions(res.data);
               }
             }).catch(() => {});
@@ -400,9 +462,11 @@ export const LinkedDevicesModal: React.FC<LinkedDevicesProps> = ({ isOpen, onClo
       });
       if (Array.isArray(res.data)) {
         cachedSessions = res.data;
+        savePersistedSessions(res.data);
         setSessions(res.data);
       } else {
-        setSessions([]);
+        const persisted = getPersistedSessions();
+        setSessions(persisted || []);
       }
 
       // Non-blocking live GPS coordinate refresh so traveling between cities updates location automatically
@@ -421,6 +485,7 @@ export const LinkedDevicesModal: React.FC<LinkedDevicesProps> = ({ isOpen, onClo
             .then((freshRes) => {
               if (Array.isArray(freshRes.data)) {
                 cachedSessions = freshRes.data;
+                savePersistedSessions(freshRes.data);
                 setSessions(freshRes.data);
               }
             })
@@ -428,9 +493,15 @@ export const LinkedDevicesModal: React.FC<LinkedDevicesProps> = ({ isOpen, onClo
         }
       });
     } catch (e: any) {
-      // NEVER show irritating toasts on background polling or if cached devices are already visible
-      if (!isBackground && (!cachedSessions || cachedSessions.length === 0)) {
-        toast.error(e.response?.data?.message || "Failed to load devices");
+      // Offline fallback: load persisted sessions seamlessly with zero annoying error toasts
+      const persisted = getPersistedSessions();
+      if (persisted && persisted.length > 0) {
+        cachedSessions = persisted;
+        setSessions(persisted);
+      } else if (!isBackground && (!cachedSessions || cachedSessions.length === 0)) {
+        if (navigator.onLine) {
+          toast.error(e.response?.data?.message || "Failed to load devices");
+        }
       }
     } finally {
       setLoading(false);
@@ -438,6 +509,10 @@ export const LinkedDevicesModal: React.FC<LinkedDevicesProps> = ({ isOpen, onClo
   };
 
   const handleRevoke = (session: Session) => {
+    if (!session.isCurrent && typeof navigator !== "undefined" && !navigator.onLine) {
+      toast.error("Internet connection required to terminate remote sessions.");
+      return;
+    }
     SoundFX.warmUp();
     confirmDeleteToast({
       title: session.isCurrent ? "Log Out Current Device?" : "Terminate Linked Device?",
@@ -449,6 +524,10 @@ export const LinkedDevicesModal: React.FC<LinkedDevicesProps> = ({ isOpen, onClo
       cancelLabel: "Keep Active",
       icon: session.isCurrent ? <LogOut className="w-5 h-5 text-rose-500" /> : <Trash2 className="w-5 h-5 text-rose-500" />,
       onConfirm: async () => {
+        if (!session.isCurrent && typeof navigator !== "undefined" && !navigator.onLine) {
+          toast.error("Internet connection required to terminate remote sessions.");
+          return;
+        }
         // 1. Instant aerodynamic whoosh sound & tactile kick
         SoundFX.playWhooshSound();
         hapticHeavy();
@@ -457,8 +536,9 @@ export const LinkedDevicesModal: React.FC<LinkedDevicesProps> = ({ isOpen, onClo
         setTerminatingSessionIds((prev) => [...prev, session.id]);
 
         if (session.isCurrent) {
-          // Fire backend session revocation in background while the 1.2s whoosh animation plays
-          api.delete(`/users/sessions/${session.id}`).catch(() => {});
+          if (typeof navigator !== "undefined" && navigator.onLine) {
+            api.delete(`/users/sessions/${session.id}`).catch(() => {});
+          }
         }
 
         // 3. Dynamic Island HUD notification fires as row whooshes off
@@ -481,6 +561,7 @@ export const LinkedDevicesModal: React.FC<LinkedDevicesProps> = ({ isOpen, onClo
           setSessions((prev) => {
             const next = prev.filter((s) => s.id !== session.id);
             cachedSessions = next;
+            savePersistedSessions(next);
             return next;
           });
           setTerminatingSessionIds((prev) => prev.filter((id) => id !== session.id));
@@ -497,6 +578,10 @@ export const LinkedDevicesModal: React.FC<LinkedDevicesProps> = ({ isOpen, onClo
   };
 
   const handleSignOutAllOthers = () => {
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      toast.error("Internet connection required to terminate remote sessions.");
+      return;
+    }
     SoundFX.warmUp();
     confirmDeleteToast({
       title: "Terminate All Other Sessions?",
@@ -506,6 +591,10 @@ export const LinkedDevicesModal: React.FC<LinkedDevicesProps> = ({ isOpen, onClo
       cancelLabel: "Keep Active",
       icon: <Trash2 className="w-5 h-5 text-rose-500" />,
       onConfirm: async () => {
+        if (typeof navigator !== "undefined" && !navigator.onLine) {
+          toast.error("Internet connection required to terminate remote sessions.");
+          return;
+        }
         SoundFX.playWhooshSound();
         hapticHeavy();
 
@@ -524,6 +613,7 @@ export const LinkedDevicesModal: React.FC<LinkedDevicesProps> = ({ isOpen, onClo
           setSessions((prev) => {
             const next = prev.filter((s) => s.isCurrent);
             cachedSessions = next;
+            savePersistedSessions(next);
             return next;
           });
           setTerminatingSessionIds([]);
@@ -533,6 +623,7 @@ export const LinkedDevicesModal: React.FC<LinkedDevicesProps> = ({ isOpen, onClo
             fetchSessions(true);
           } catch (e: any) {
             toast.error(e.response?.data?.message || "Failed to terminate sessions");
+            fetchSessions(true);
           }
         }, 1250);
       },
@@ -577,6 +668,15 @@ export const LinkedDevicesModal: React.FC<LinkedDevicesProps> = ({ isOpen, onClo
 
             {/* Content */}
             <div className="flex-1 overflow-y-auto pb-[calc(2rem+env(safe-area-inset-bottom))] pr-1">
+              {!navigator.onLine && sessions.length > 0 && (
+                <div className="mx-4 mt-2 px-3 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs font-mono text-amber-500 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <span>📶</span>
+                    <span>Showing cached devices (Offline)</span>
+                  </span>
+                  <span className="text-[10px] uppercase font-bold tracking-wider">Cached</span>
+                </div>
+              )}
               {loading && sessions.length === 0 ? (
                 <div className="flex justify-center py-8">
                   <div className="animate-spin w-8 h-8 border-4 border-primary/30 border-t-primary rounded-full" />
@@ -621,16 +721,21 @@ export const LinkedDevicesModal: React.FC<LinkedDevicesProps> = ({ isOpen, onClo
                             subtitle: "Requesting location permission for active session",
                             durationMs: 3500,
                           });
-                          const loc = await resolveDeviceGpsCoords(true);
-                          if (loc) {
-                            const res = await api.get("/users/sessions", {
-                              headers: { "x-attendx-lat": String(loc.lat), "x-attendx-lon": String(loc.lon) },
-                              params: { _locSync: Date.now() },
-                            });
-                            if (Array.isArray(res.data)) {
-                              cachedSessions = res.data;
-                              setSessions(res.data);
+                          try {
+                            const loc = await resolveDeviceGpsCoords(true);
+                            if (loc) {
+                              const res = await api.get("/users/sessions", {
+                                headers: { "x-attendx-lat": String(loc.lat), "x-attendx-lon": String(loc.lon) },
+                                params: { _locSync: Date.now() },
+                              });
+                              if (Array.isArray(res.data)) {
+                                cachedSessions = res.data;
+                                savePersistedSessions(res.data);
+                                setSessions(res.data);
+                              }
                             }
+                          } catch {
+                            toast.error("Unable to refresh device location right now.");
                           }
                         }}
                       />
@@ -694,6 +799,10 @@ export const LinkedDevicesModal: React.FC<LinkedDevicesProps> = ({ isOpen, onClo
                       <select 
                         value={user?.autoTerminateMonths || 0}
                         onChange={async (e) => {
+                          if (typeof navigator !== "undefined" && !navigator.onLine) {
+                            toast.error("Internet connection required to update security preferences.");
+                            return;
+                          }
                           const val = parseInt(e.target.value);
                           try {
                             await api.patch("/users/me", { autoTerminateMonths: val === 0 ? null : val });

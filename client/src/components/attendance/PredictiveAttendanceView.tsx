@@ -29,6 +29,9 @@ import { Stepper } from "../ui/stepper";
 import { Input } from "../ui/input";
 import { FutureClassesModal } from "./FutureClassesModal";
 import { CreateSemesterModal } from "../semester/CreateSemesterModal";
+import { WidgetBridgeService } from "../../services/WidgetBridgeService";
+import { LocalPredictiveEngine } from "../../services/LocalPredictiveEngine";
+import { toast } from "sonner";
 
 interface SubjectStat {
   id: string;
@@ -72,18 +75,25 @@ export const PredictiveAttendanceView: React.FC<PredictiveAttendanceViewProps> =
   const [isSelectingDates, setIsSelectingDates] = useState(false);
 
   useEffect(() => {
-    if (simulationBounds) {
-      setLocalStart(simulationBounds.hasCommencement ? simulationBounds.startDate.split("T")[0] : "");
-      setLocalEnd(simulationBounds.hasLastDay ? simulationBounds.endDate.split("T")[0] : "");
-      setHasUnsavedBounds(false);
-    }
+    const cachedSem = useCacheStore.getState().semester?.activeSemester;
+    const effectiveStart = simulationBounds?.startDate || cachedSem?.startDate || "";
+    const effectiveEnd = simulationBounds?.endDate || cachedSem?.endDate || "";
+    if (effectiveStart) setLocalStart(effectiveStart.split("T")[0]);
+    if (effectiveEnd) setLocalEnd(effectiveEnd.split("T")[0]);
+    setHasUnsavedBounds(false);
   }, [simulationBounds]);
 
   const handleSaveBounds = async () => {
     if (!localStart || !localEnd) return;
+    const sDate = localStart.split("T")[0];
+    const eDate = localEnd.split("T")[0];
+    if (sDate > eDate) {
+      toast.error("Last Teaching Day cannot be earlier than Commencement Date.");
+      return;
+    }
     await updateSimulationBoundaries(
-      new Date(localStart).toISOString(),
-      new Date(localEnd).toISOString()
+      `${sDate}T00:00:00.000Z`,
+      `${eDate}T00:00:00.000Z`,
     );
   };
 
@@ -92,135 +102,6 @@ export const PredictiveAttendanceView: React.FC<PredictiveAttendanceViewProps> =
       setGlobalTarget(user.targetAttendance);
     }
   }, [user?.targetAttendance]);
-
-  const fetchAiInsights = async (force = false) => {
-    setIsAiLoading(true);
-    try {
-      const cacheState = useCacheStore.getState();
-      const isStaleCachedInsight = Boolean(cacheState.insights && JSON.stringify(cacheState.insights).includes("At 100.0%, this is your lowest subject"));
-      if (!force && cacheState.insights && !isStaleCachedInsight) {
-         setAiInsights(cacheState.insights);
-      }
-      
-      const isOffline = typeof navigator !== 'undefined' && !navigator.onLine;
-      if (isOffline) {
-        if (!cacheState.insights) {
-          setAiInsights({
-            summary:
-              "Offline mode: Attendance predictions and safe bunk allowances calculated from local telemetry.",
-            keyReasons: [
-              "Offline local predictions active",
-              "Based on current timetable and cached attendance stats",
-            ],
-            vulnerableTimings: [
-              "Local schedule calculation active - schedule within expected bounds",
-            ],
-            recommendation:
-              "Maintain your attendance at or above the target to stay safe.",
-          });
-        }
-        setIsAiLoading(false);
-        return;
-      }
-
-      const res = await api.get(`/attendance/insights${force || isStaleCachedInsight ? '?force=true' : ''}`);
-      setAiInsights(res.data);
-      useCacheStore.getState().setCache('insights', res.data);
-    } catch (e) {
-      console.error(e);
-      const cacheState = useCacheStore.getState();
-      if (cacheState.insights) {
-         setAiInsights(cacheState.insights);
-      } else {
-        setAiInsights({
-          summary:
-            "Local telemetry mode: Attendance insights calculated from cached attendance history.",
-          keyReasons: ["Offline fallback mode enabled"],
-          vulnerableTimings: [
-            "Telemetry mode active - monitoring scheduled timetable slots",
-          ],
-          recommendation:
-            "Keep your attendance above 75% according to ordinance guidelines.",
-        });
-      }
-    } finally {
-      setIsAiLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchAiInsights();
-  }, []);
-
-
-  // Custom simulation increments per subject: { [subjectId]: { addAttend: number, addMiss: number } }
-  const [simulations, setSimulations] = useState<Record<string, { addAttend: number; addMiss: number; addOff: number }>>({});
-  const [dateOverrides, setDateOverrides] = useState<Record<string, Record<string, 'PRESENT' | 'ABSENT' | 'OFF'>>>({});
-  const [breakdownModalSubject, setBreakdownModalSubject] = useState<{ id: string; name: string; breakdown: any[] } | null>(null);
-
-  useEffect(() => {
-    const unregister = useBackHandlerStore.getState().register(() => {
-      if (breakdownModalSubject !== null) { setBreakdownModalSubject(null); return true; }
-      if (isCreateSemesterOpen) { setIsCreateSemesterOpen(false); return true; }
-      if (isSelectingDates || hasUnsavedBounds) {
-        if (typeof document !== "undefined" && document.activeElement instanceof HTMLElement) {
-          document.activeElement.blur();
-        }
-        setIsSelectingDates(false);
-        if (hasUnsavedBounds && simulationBounds) {
-          setLocalStart(simulationBounds.hasCommencement ? simulationBounds.startDate.split("T")[0] : "");
-          setLocalEnd(simulationBounds.hasLastDay ? simulationBounds.endDate.split("T")[0] : "");
-          setHasUnsavedBounds(false);
-        }
-        return true;
-      }
-      if (!compact) {
-        navigate("/subjects", { replace: true });
-        return true;
-      }
-      return false;
-    });
-    return () => unregister();
-  }, [breakdownModalSubject, isCreateSemesterOpen, isSelectingDates, hasUnsavedBounds, simulationBounds, compact, navigate]);
-
-  const openModal = (sub: any) => {
-     let futureItems = [...(sub.futureBreakdown || [])];
-     let loggedItems: any[] = [];
-     
-     if (sub.attendance) {
-        sub.attendance.forEach((log: any) => {
-           loggedItems.push({
-              date: new Date(log.date).toISOString(),
-              type: 'LOGGED',
-              reason: `Already Logged`,
-              count: 1,
-              status: log.status
-           });
-        });
-     }
-
-     // Remove items from futureBreakdown if they are already in loggedItems
-     futureItems = futureItems.filter(fItem => {
-         const fDateStr = new Date(fItem.date).toLocaleDateString();
-         return !loggedItems.some(lItem => new Date(lItem.date).toLocaleDateString() === fDateStr);
-     });
-
-     const combined = [...loggedItems, ...futureItems].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-     setBreakdownModalSubject({ id: sub.id, name: sub.name, breakdown: combined });
-  };
-
-  const handleTargetChange = async (newTarget: number) => {
-    setGlobalTarget(newTarget);
-    if (!user) return;
-    try {
-      await api.patch("/users/me", { targetAttendance: newTarget });
-      useAuthStore.getState().setUser({ ...user, targetAttendance: newTarget });
-      await useAttendanceStore.getState().fetchStats();
-      window.dispatchEvent(new CustomEvent("attendance-updated"));
-    } catch (err) {
-      console.error("Failed to update target globally:", err);
-    }
-  };
 
   // Compute Overall Stats
   const totalAttended = safeSubjects.reduce((sum, s) => sum + (s.attended || 0), 0);
@@ -257,6 +138,227 @@ export const PredictiveAttendanceView: React.FC<PredictiveAttendanceViewProps> =
   const overallNeeded = calculateConsecutiveNeeded(totalAttended, totalRecorded, globalTarget);
   const overallSafeMisses = calculateSafeMisses(totalAttended, totalRecorded, globalTarget);
   const isOverallOnTrack = overallPercentage >= globalTarget;
+
+  const getCachedLogs = () => {
+    const cache = useCacheStore.getState();
+    const logs =
+      cache.subject_logs?.["all"]?.logs ||
+      cache.all_logs ||
+      useAttendanceStore.getState().historyLogs ||
+      [];
+    return Array.isArray(logs) ? logs : [];
+  };
+
+  const fetchAiInsights = async (force = false, overrideTarget?: number) => {
+    setIsAiLoading(true);
+    const target = overrideTarget ?? globalTarget;
+    try {
+      const isOffline = typeof navigator !== 'undefined' && !navigator.onLine;
+      if (isOffline) {
+        const logs = getCachedLogs();
+        const localInsights = LocalPredictiveEngine.generateInsights(logs, safeSubjects, target);
+        setAiInsights(localInsights);
+        useCacheStore.getState().setCache('insights', localInsights);
+        setIsAiLoading(false);
+        return;
+      }
+
+      const cacheState = useCacheStore.getState();
+      const isStaleCachedInsight = Boolean(
+        cacheState.insights &&
+        (JSON.stringify(cacheState.insights).includes("At 100.0%, this is your lowest subject") ||
+         JSON.stringify(cacheState.insights).includes("Offline fallback mode enabled") ||
+         JSON.stringify(cacheState.insights).includes("Local telemetry mode"))
+      );
+      if (!force && cacheState.insights && !isStaleCachedInsight) {
+         setAiInsights(cacheState.insights);
+      }
+
+      const res = await api.get(`/attendance/insights${force || isStaleCachedInsight ? '?force=true' : ''}`);
+      setAiInsights(res.data);
+      useCacheStore.getState().setCache('insights', res.data);
+    } catch (e) {
+      console.warn("[PredictiveAttendance] Generating deep offline forecast via LocalPredictiveEngine:", e);
+      const logs = getCachedLogs();
+      const localInsights = LocalPredictiveEngine.generateInsights(logs, safeSubjects, target);
+      setAiInsights(localInsights);
+      useCacheStore.getState().setCache('insights', localInsights);
+    } finally {
+      setIsAiLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchAiInsights();
+    const handleSync = () => fetchAiInsights(true);
+    window.addEventListener("attendance-updated", handleSync);
+    window.addEventListener("events-updated", handleSync);
+    window.addEventListener("timetable-updated", handleSync);
+    return () => {
+      window.removeEventListener("attendance-updated", handleSync);
+      window.removeEventListener("events-updated", handleSync);
+      window.removeEventListener("timetable-updated", handleSync);
+    };
+  }, []);
+
+
+  // Custom simulation increments per subject: { [subjectId]: { addAttend: number, addMiss: number } }
+  const [simulations, setSimulations] = useState<Record<string, { addAttend: number; addMiss: number; addOff: number }>>({});
+  const [dateOverrides, setDateOverrides] = useState<Record<string, Record<string, 'PRESENT' | 'ABSENT' | 'OFF'>>>({});
+  const [breakdownModalSubject, setBreakdownModalSubject] = useState<{ id: string; name: string; breakdown: any[] } | null>(null);
+
+  useEffect(() => {
+    const unregister = useBackHandlerStore.getState().register(() => {
+      if (breakdownModalSubject !== null) { setBreakdownModalSubject(null); return true; }
+      if (isCreateSemesterOpen) { setIsCreateSemesterOpen(false); return true; }
+      if (isSelectingDates || hasUnsavedBounds) {
+        if (typeof document !== "undefined" && document.activeElement instanceof HTMLElement) {
+          document.activeElement.blur();
+        }
+        setIsSelectingDates(false);
+        if (hasUnsavedBounds && simulationBounds) {
+          setLocalStart(simulationBounds.hasCommencement ? simulationBounds.startDate.split("T")[0] : "");
+          setLocalEnd(simulationBounds.hasLastDay ? simulationBounds.endDate.split("T")[0] : "");
+          setHasUnsavedBounds(false);
+        }
+        return true;
+      }
+      if (!compact) {
+        navigate("/subjects", { replace: true });
+        return true;
+      }
+      return false;
+    });
+    return () => unregister();
+  }, [breakdownModalSubject, isCreateSemesterOpen, isSelectingDates, hasUnsavedBounds, simulationBounds, compact, navigate]);
+
+  const openModal = (sub: any) => {
+    let futureItems = [...(sub.futureBreakdown || [])];
+    const loggedItems: any[] = [];
+    const loggedCountByDate: Record<string, number> = {};
+
+    if (sub.attendance) {
+      sub.attendance.forEach((log: any) => {
+        const dt = new Date(log.date);
+        const dateKey = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+        loggedCountByDate[dateKey] = (loggedCountByDate[dateKey] || 0) + 1;
+        loggedItems.push({
+          date: dt.toISOString(),
+          type: "LOGGED",
+          reason: "Already Logged",
+          count: 1,
+          status: log.status,
+        });
+      });
+    }
+
+    // Consume only the logged class count on each date instead of wiping all slots on multi-slot days
+    futureItems = futureItems
+      .map((fItem) => {
+        const dt = new Date(fItem.date);
+        const fKey = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+        const loggedForDay = loggedCountByDate[fKey] || 0;
+        if (loggedForDay <= 0) return fItem;
+        const origCount = Number(fItem.count ?? 1);
+        const remaining = origCount - loggedForDay;
+        loggedCountByDate[fKey] = Math.max(0, loggedForDay - origCount);
+        return remaining > 0 ? { ...fItem, count: remaining } : null;
+      })
+      .filter(Boolean);
+
+    const combined = [...loggedItems, ...futureItems].sort(
+      (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
+    );
+    setBreakdownModalSubject({ id: sub.id, name: sub.name, breakdown: combined });
+  };
+
+  const handleTargetChange = async (newTarget: number) => {
+    const prevGlobalTarget = globalTarget;
+    const prevUser = user ? { ...user } : null;
+    const prevAttState = useAttendanceStore.getState();
+    const prevStoreSubjects = prevAttState.subjects || [];
+    const prevStoreTarget = prevAttState.targetPercentage;
+    const prevCacheSubjects = useCacheStore.getState().subjects;
+    const prevAiInsights = aiInsights;
+    const prevCacheInsights = useCacheStore.getState().insights;
+
+    setGlobalTarget(newTarget);
+    if (!user) return;
+
+    // 1. Immediately recompute subject stats locally while preserving custom per-subject targets
+    const currentSubjects = useAttendanceStore.getState().subjects || [];
+    const updatedSubjects = currentSubjects.map((sub: any) => {
+      const effectiveTarget =
+        sub.targetAttendance != null ? Number(sub.targetAttendance) : newTarget;
+      const att = Number(sub.attended) || 0;
+      const tot = Number(sub.total) || 0;
+      const pct = tot > 0 ? (att / tot) * 100 : 0;
+      const canMiss =
+        pct >= effectiveTarget && effectiveTarget > 0
+          ? Math.floor((att - (effectiveTarget / 100) * tot) / (effectiveTarget / 100))
+          : 0;
+      const needAttend =
+        pct < effectiveTarget && effectiveTarget < 100
+          ? Math.ceil(((effectiveTarget / 100) * tot - att) / (1 - effectiveTarget / 100))
+          : 0;
+      return {
+        ...sub,
+        target: effectiveTarget,
+        canMiss,
+        needAttend,
+      };
+    });
+
+    useAuthStore.getState().setUser({ ...user, targetAttendance: newTarget });
+    useAttendanceStore.setState({ targetPercentage: newTarget, subjects: updatedSubjects });
+    useCacheStore.getState().setCache("subjects", {
+      ...(useCacheStore.getState().subjects || {}),
+      stats: updatedSubjects,
+    });
+
+    // 2. Immediately recalculate AI Insights using LocalPredictiveEngine with newTarget (0ms responsiveness)
+    const logs = getCachedLogs();
+    const updatedInsights = LocalPredictiveEngine.generateInsights(logs, updatedSubjects, newTarget);
+    setAiInsights(updatedInsights);
+    useCacheStore.getState().setCache("insights", updatedInsights);
+
+    window.dispatchEvent(new CustomEvent("attendance-updated"));
+
+    // Also update Android native widgets with new target runways
+    try {
+      const today = new Date();
+      const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+      const cache = useCacheStore.getState();
+      const todayCache = cache.today?.[todayStr];
+      const attStore = useAttendanceStore.getState();
+      WidgetBridgeService.syncFromAppState({
+        agenda: todayCache?.agenda || [],
+        overallPercentage: attStore.overallPercentage,
+        subjects: updatedSubjects,
+        todayStatus: todayCache?.todayStatus,
+        weeklySlots: cache.timetable?.slots || [],
+      });
+    } catch {}
+
+    try {
+      const res = await api.patch("/users/me", { targetAttendance: newTarget });
+      if (!res?.data?._queued && typeof navigator !== 'undefined' && navigator.onLine) {
+        await useAttendanceStore.getState().fetchStats(true);
+        await fetchAiInsights(true, newTarget);
+      }
+    } catch (err: any) {
+      console.error("[PredictiveAttendance] Failed to update target attendance:", err);
+      toast.error(err?.response?.data?.message || "Failed to update target attendance.");
+      setGlobalTarget(prevGlobalTarget);
+      if (prevUser) useAuthStore.getState().setUser(prevUser);
+      useAttendanceStore.setState({ targetPercentage: prevStoreTarget, subjects: prevStoreSubjects });
+      useCacheStore.getState().setCache("subjects", prevCacheSubjects || null);
+      setAiInsights(prevAiInsights);
+      useCacheStore.getState().setCache("insights", prevCacheInsights || null);
+      window.dispatchEvent(new CustomEvent("attendance-updated"));
+    }
+  };
+
 
   const updateSim = (subjectId: string, addAttend: number, addMiss: number, addOff: number) => {
     setDateOverrides((prev) => {
@@ -574,7 +676,7 @@ export const PredictiveAttendanceView: React.FC<PredictiveAttendanceViewProps> =
                 The precise dates used to calculate your remaining classes.
               </p>
             </div>
-            {simulationBounds.missingBoundaries && !hasUnsavedBounds && (
+            {simulationBounds.missingBoundaries && !hasUnsavedBounds && (!localStart || !localEnd) && (
               <span className="flex items-center gap-1.5 text-[10px] font-semibold text-rose-500 bg-rose-500/10 px-2.5 py-1 rounded-full whitespace-nowrap">
                 <AlertTriangle className="w-3 h-3" /> Action Required: Set Dates
               </span>

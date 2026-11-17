@@ -27,6 +27,8 @@ public class NextClassWidgetProvider extends AppWidgetProvider {
     public static void updateWidget(Context context, AppWidgetManager appWidgetManager, int appWidgetId) {
         try {
             SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+            WidgetActionReceiver.checkAndPerformDayRollover(context, prefs);
+
             RemoteViews views = new RemoteViews(context.getPackageName(), R.layout.widget_next_class_1x2);
 
             String room = prefs.getString("next_room", prefs.getString("room", "📍 ROOM --"));
@@ -49,8 +51,12 @@ public class NextClassWidgetProvider extends AppWidgetProvider {
                     String endTimeStr = cls.optString("endTime", "");
                     int startMins = TodayWidgetProvider.parseMinutes(startTimeStr);
                     int endMins = TodayWidgetProvider.parseMinutes(endTimeStr);
+                    int effEnd = (endMins == 0 && startMins > 0) ? 1440 : endMins;
+                    boolean isOngoingWindow = (effEnd > startMins)
+                        ? (nowMins >= startMins && nowMins < effEnd)
+                        : (effEnd != startMins && endMins > 0 && (nowMins >= startMins || nowMins < effEnd));
 
-                    if (nowMins >= startMins && nowMins < endMins) {
+                    if (isOngoingWindow) {
                         activeCls = cls;
                         break;
                     } else if (nowMins < startMins && nextCls == null) {
@@ -71,7 +77,9 @@ public class NextClassWidgetProvider extends AppWidgetProvider {
                         countdown = "⚡ ONGOING";
                     } else {
                         int diff = TodayWidgetProvider.parseMinutes(spotlight.optString("startTime", "00:00")) - nowMins;
-                        if (diff <= 60) {
+                        if (diff <= 0) {
+                            countdown = "⚡ NOW";
+                        } else if (diff <= 60) {
                             countdown = "⏱️ IN " + diff + "M";
                         } else {
                             countdown = "⏱️ AT " + TodayWidgetProvider.formatTime12h(spotlight.optString("startTime", "00:00"));
@@ -84,6 +92,13 @@ public class NextClassWidgetProvider extends AppWidgetProvider {
                     classTime = "Free for the day";
                     runway = "Safe";
                 }
+            } else if (prefs.getBoolean("today_is_holiday", false)) {
+                room = "📍 HOLIDAY";
+                countdown = "🌴 NO CLASS";
+                String holTitle = prefs.getString("today_holiday_title", "Holiday / Institute Closed");
+                subjectName = (holTitle == null || holTitle.trim().isEmpty()) ? "Holiday / Institute Closed" : holTitle;
+                classTime = "Campus Closed";
+                runway = "No Impact";
             }
 
             views.setTextViewText(R.id.text_next_room_badge, room.toUpperCase());
@@ -92,12 +107,12 @@ public class NextClassWidgetProvider extends AppWidgetProvider {
             views.setTextViewText(R.id.text_next_time, classTime);
             views.setTextViewText(R.id.text_next_runway, runway);
 
-            // On click anywhere on the glance widget, open today schedule
+            // Keep /today deep link intact so DeepLinkHandler never navigates to /next_class/<id> (404)
             Intent openIntent = new Intent(Intent.ACTION_VIEW, Uri.parse("https://attendx.tech/today?view=next"), context, MainActivity.class);
             openIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
             openIntent.putExtra("widget_action", "next_class_glance");
             PendingIntent pending = PendingIntent.getActivity(
-                context, 201, openIntent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+                context, 300 + appWidgetId, openIntent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
             );
             views.setOnClickPendingIntent(R.id.widget_next_class_root, pending);
 

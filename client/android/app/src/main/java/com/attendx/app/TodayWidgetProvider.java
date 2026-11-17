@@ -23,6 +23,12 @@ public class TodayWidgetProvider extends AppWidgetProvider {
     private static final String TAG = "TodayWidgetProvider";
     public static final String PREFS_NAME = "attendx_widget_prefs";
 
+    public static String optNullableString(JSONObject obj, String key) {
+        if (obj == null || !obj.has(key) || obj.isNull(key)) return null;
+        String val = obj.optString(key, null);
+        return (val == null || "null".equalsIgnoreCase(val) || val.trim().isEmpty()) ? null : val;
+    }
+
     public static int parseMinutes(String timeStr) {
         if (timeStr == null || !timeStr.contains(":")) return 0;
         try {
@@ -63,10 +69,13 @@ public class TodayWidgetProvider extends AppWidgetProvider {
     public static void updateWidget(Context context, AppWidgetManager appWidgetManager, int appWidgetId) {
         try {
             SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+            WidgetActionReceiver.checkAndPerformDayRollover(context, prefs);
+
             RemoteViews views = new RemoteViews(context.getPackageName(), R.layout.widget_today_4x2);
 
+            // Always format current date from live system clock
             SimpleDateFormat dayFormat = new SimpleDateFormat("EEE, d MMM", Locale.US);
-            String dateFormatted = prefs.getString("date_formatted", dayFormat.format(new Date()));
+            String dateFormatted = dayFormat.format(new Date());
             String attendanceStat = prefs.getString("attendance_stat", "--%");
 
             views.setTextViewText(R.id.text_today_date, dateFormatted);
@@ -116,6 +125,19 @@ public class TodayWidgetProvider extends AppWidgetProvider {
                 views.setViewVisibility(R.id.layout_classes_container, View.GONE);
                 views.setViewVisibility(R.id.layout_empty_classes, View.VISIBLE);
                 views.setViewVisibility(R.id.layout_pager_controls, View.GONE);
+                if (prefs.getBoolean("today_is_holiday", false)) {
+                    String holTitle = prefs.getString("today_holiday_title", "Holiday / Institute Closed");
+                    if (holTitle == null || holTitle.trim().isEmpty()) {
+                        holTitle = "Holiday / Institute Closed";
+                    }
+                    views.setTextViewText(R.id.text_empty_emoji, "🌴");
+                    views.setTextViewText(R.id.text_empty_title, holTitle);
+                    views.setTextViewText(R.id.text_empty_subtitle, "Campus Closed • No impact on attendance");
+                } else {
+                    views.setTextViewText(R.id.text_empty_emoji, "🎉");
+                    views.setTextViewText(R.id.text_empty_title, "No Classes Scheduled Today");
+                    views.setTextViewText(R.id.text_empty_subtitle, "Tap to review calendar or manage schedule");
+                }
                 views.setOnClickPendingIntent(R.id.layout_empty_classes, todayAppPI);
             } else {
                 views.setViewVisibility(R.id.layout_classes_container, View.VISIBLE);
@@ -147,18 +169,22 @@ public class TodayWidgetProvider extends AppWidgetProvider {
                         String rawRoom = cls.optString("room", "");
                         String roomStr = rawRoom.isEmpty() ? "TBA" : (rawRoom.startsWith("Room") ? rawRoom : "Rm " + rawRoom);
                         String timeStr = cls.optString("timeRange", "--");
-                        String status = cls.optString("status", null);
+                        String status = optNullableString(cls, "status");
                         String slotId = cls.optString("id", "");
                         String subjectId = cls.optString("subjectId", "");
                         String startTimeStr = cls.optString("startTime", "");
                         String endTimeStr = cls.optString("endTime", "");
 
-                        // Dynamic status badge calculation
+                        // Dynamic status badge calculation (handles midnight-crossing slots safely without treating 00:00 as ongoing)
                         String timingChip = "";
                         if (!startTimeStr.isEmpty() && !endTimeStr.isEmpty()) {
                             int sMins = parseMinutes(startTimeStr);
                             int eMins = parseMinutes(endTimeStr);
-                            if (nowMins >= sMins && nowMins < eMins) {
+                            int effEnd = (eMins == 0 && sMins > 0) ? 1440 : eMins;
+                            boolean isOngoing = (effEnd > sMins)
+                                ? (nowMins >= sMins && nowMins < effEnd)
+                                : (effEnd != sMins && eMins > 0 && (nowMins >= sMins || nowMins < effEnd));
+                            if (isOngoing) {
                                 timingChip = "🟢 ONGOING • ";
                             } else if (nowMins < sMins) {
                                 int diff = sMins - nowMins;
@@ -172,7 +198,8 @@ public class TodayWidgetProvider extends AppWidgetProvider {
                         views.setTextViewText(infoTextIds[i], timingChip + timeStr + " • " + roomStr);
 
                         // Configure 1-Tap Attendance Buttons visual states
-                        if ("present".equalsIgnoreCase(status) || "attended".equalsIgnoreCase(status)) {
+                        if ("present".equalsIgnoreCase(status) || "attended".equalsIgnoreCase(status)
+                                || "medical".equalsIgnoreCase(status) || "od".equalsIgnoreCase(status)) {
                             views.setInt(presentBtnIds[i], "setBackgroundResource", R.drawable.widget_btn_present_selected);
                             views.setTextColor(presentBtnIds[i], 0xFFFFFFFF);
 
@@ -214,6 +241,7 @@ public class TodayWidgetProvider extends AppWidgetProvider {
                         // Direct 1-Tap Attendance PendingIntents (DOES NOT OPEN APP)
                         Intent pIntent = new Intent(context, WidgetActionReceiver.class);
                         pIntent.setAction(WidgetActionReceiver.ACTION_MARK_ATTENDANCE);
+                        pIntent.setData(Uri.parse("attendx://widget/mark/" + slotId + "/present/" + classIdx));
                         pIntent.putExtra("status", "present");
                         pIntent.putExtra("slot_index", classIdx);
                         pIntent.putExtra("slot_id", slotId);
@@ -223,6 +251,7 @@ public class TodayWidgetProvider extends AppWidgetProvider {
 
                         Intent aIntent = new Intent(context, WidgetActionReceiver.class);
                         aIntent.setAction(WidgetActionReceiver.ACTION_MARK_ATTENDANCE);
+                        aIntent.setData(Uri.parse("attendx://widget/mark/" + slotId + "/absent/" + classIdx));
                         aIntent.putExtra("status", "absent");
                         aIntent.putExtra("slot_index", classIdx);
                         aIntent.putExtra("slot_id", slotId);
@@ -232,6 +261,7 @@ public class TodayWidgetProvider extends AppWidgetProvider {
 
                         Intent oIntent = new Intent(context, WidgetActionReceiver.class);
                         oIntent.setAction(WidgetActionReceiver.ACTION_MARK_ATTENDANCE);
+                        oIntent.setData(Uri.parse("attendx://widget/mark/" + slotId + "/off/" + classIdx));
                         oIntent.putExtra("status", "off");
                         oIntent.putExtra("slot_index", classIdx);
                         oIntent.putExtra("slot_id", slotId);

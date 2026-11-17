@@ -201,11 +201,9 @@ api.interceptors.request.use(
       if (!cachedAppVersion || cachedAppVersion.split('.').length < 3) {
         try {
           const info = await App.getInfo();
-          const otaVersion = localStorage.getItem("app_version") || import.meta.env.VITE_APP_VERSION;
-          cachedAppVersion = otaVersion || info.version || "Unknown";
+          cachedAppVersion = info.version || import.meta.env.VITE_APP_VERSION || "Unknown";
         } catch (e) {
-          const otaVersion = localStorage.getItem("app_version") || import.meta.env.VITE_APP_VERSION;
-          cachedAppVersion = otaVersion || "Unknown";
+          cachedAppVersion = import.meta.env.VITE_APP_VERSION || "Unknown";
         }
       }
     }
@@ -246,7 +244,8 @@ api.interceptors.request.use(
     if (
       config.url?.includes("/auth/login") || config.url?.includes("/auth/google") ||
       config.url?.includes("/auth/register") ||
-      config.url?.includes("/auth/refresh")
+      config.url?.includes("/auth/refresh") ||
+      config.url?.includes("/health")
     ) {
       return config;
     }
@@ -326,6 +325,11 @@ api.interceptors.response.use(
     if (!response.data?._queued) {
       useCacheStore.getState().invalidateForMutation(response.config?.url, response.config?.method, response.data);
     }
+    // Auto-trigger offline sync whenever server connectivity is verified
+    const offlineState = useOfflineStore.getState();
+    if (offlineState.queue.length > 0 && !offlineState.isSyncing) {
+      offlineState.flushQueue();
+    }
     return response;
   },
   async (error) => {
@@ -352,11 +356,16 @@ api.interceptors.response.use(
       error.response?.status === 401 &&
       !originalRequest._retry &&
       !originalRequest.url?.includes("/auth/login") && !originalRequest.url?.includes("/auth/google") &&
-      !originalRequest.url?.includes("/auth/register") && !originalRequest.url?.includes("/auth/refresh")
+      !originalRequest.url?.includes("/auth/register") && !originalRequest.url?.includes("/auth/refresh") &&
+      !originalRequest.url?.includes("/health")
     ) {
       if (typeof navigator !== 'undefined' && !navigator.onLine) {
-        // If offline, do NOT attempt network token refresh or trigger session logout
-        return Promise.reject(error);
+        // If offline and it's a mutation, allow it to fall through to the offline queue
+        if (['post', 'put', 'delete', 'patch'].includes(originalRequest.method?.toLowerCase())) {
+          error.response = undefined;
+        } else {
+          return Promise.reject(error);
+        }
       }
 
       if (isRefreshing) {
@@ -404,51 +413,150 @@ api.interceptors.response.use(
         if (!isNetworkError && !isOfflineNow) {
           useAuthStore.getState().logout();
         }
-        return Promise.reject(refreshError);
+        // If offline and it's a mutation, allow it to fall through to the offline queue
+        if (isOfflineNow || isNetworkError) {
+          error.response = undefined;
+        } else {
+          return Promise.reject(refreshError);
+        }
       } finally {
 
         isRefreshing = false;
       }
     }
 
-    // Global Error Interceptor for offline mutations and transient network/server drops
+    // Global Error Interceptor for offline mutations and transient network/gateway drops
     const isNetworkOrOfflineError =
       !error.response ||
       error.message === "Network Error" ||
       error.code === "ERR_NETWORK" ||
       error.code === "ECONNABORTED" ||
       (typeof navigator !== "undefined" && !navigator.onLine) ||
-      [500, 502, 503, 504].includes(error.response?.status);
+      [502, 503, 504].includes(error.response?.status);
 
     if (isNetworkOrOfflineError) {
+      let parsedData = originalRequest?.data;
+      if (typeof parsedData === "string") {
+        try {
+          parsedData = JSON.parse(parsedData);
+        } catch (e) {}
+      }
+      const isFormDataPayload =
+        typeof FormData !== "undefined" &&
+        (originalRequest?.data instanceof FormData || parsedData instanceof FormData);
+      const urlPathOnly = String(originalRequest?.url || "")
+        .split("?")[0]
+        .replace(/\/+$/, "");
+      const methodUpper = String(
+        originalRequest?.method || "GET",
+      ).toUpperCase();
+      const hasPasswordPayload = Boolean(
+        parsedData &&
+          typeof parsedData === "object" &&
+          (parsedData.newPassword !== undefined ||
+            parsedData.oldPassword !== undefined),
+      );
+      const isOnlineOnlyEndpoint =
+        isFormDataPayload ||
+        hasPasswordPayload ||
+        urlPathOnly.includes("/transfer/") ||
+        urlPathOnly.includes("/auth/") ||
+        urlPathOnly.includes("/sync/") ||
+        urlPathOnly.includes("/ai/") ||
+        urlPathOnly.includes("/ocr-import") ||
+        urlPathOnly.includes("/import-rag") ||
+        urlPathOnly.includes("/data/export") ||
+        urlPathOnly.includes("/data/import") ||
+        urlPathOnly.includes("/users/onboarding-status") ||
+        urlPathOnly.includes("/users/sessions") ||
+        (methodUpper === "DELETE" && urlPathOnly === "/users/me") ||
+        urlPathOnly.includes("/classrooms/join") ||
+        urlPathOnly.includes("/classrooms/create") ||
+        urlPathOnly.includes("/semesters/transition");
+
       // Offline mutation interceptor
       if (
         originalRequest &&
-        !originalRequest.headers?.['X-Offline-Retry'] &&
-        ['post', 'put', 'delete', 'patch'].includes(originalRequest.method?.toLowerCase()) &&
-        !originalRequest.url?.includes('/transfer/') &&
-        !originalRequest.url?.includes('/auth/') &&
-        !originalRequest.url?.includes('/sync/') &&
-        !originalRequest.url?.includes('/ai/') &&
-        !originalRequest.url?.includes('/data/export') &&
-        !originalRequest.url?.includes('/data/import')
+        !(
+          originalRequest.headers?.["X-Offline-Retry"] ||
+          originalRequest.headers?.["x-offline-retry"] ||
+          (typeof originalRequest.headers?.get === "function" &&
+            originalRequest.headers.get("x-offline-retry"))
+        ) &&
+        ["post", "put", "delete", "patch"].includes(
+          originalRequest.method?.toLowerCase(),
+        ) &&
+        !isOnlineOnlyEndpoint
       ) {
-        let parsedData = originalRequest.data;
-        if (typeof parsedData === "string") {
-          try {
-            parsedData = JSON.parse(parsedData);
-          } catch (e) {}
+        const isUpdateOrDelete =
+          methodUpper === "PUT" ||
+          methodUpper === "PATCH" ||
+          methodUpper === "DELETE";
+
+        const ACTION_SEGMENTS = new Set([
+          "activate",
+          "toggle",
+          "complete",
+          "safe",
+          "clear",
+          "all",
+          "leave",
+          "members",
+          "permissions",
+          "announcements",
+          "swap",
+          "merge",
+          "reconcile",
+          "delete-batch",
+          "save-wizard",
+          "sync",
+          "extra-class",
+          "boundaries",
+          "mark",
+          "mark-day",
+        ]);
+        const segments = urlPathOnly.split("/").filter(Boolean);
+        const lastSegment = segments[segments.length - 1];
+        const prevSegment = segments[segments.length - 2];
+        let candidateSeg: string | undefined = lastSegment;
+        if (candidateSeg && ACTION_SEGMENTS.has(candidateSeg)) {
+          candidateSeg =
+            prevSegment && !ACTION_SEGMENTS.has(prevSegment)
+              ? prevSegment
+              : undefined;
         }
 
-        // Determine temporary entity ID for re-keying and optimistic UI tracking (supports both temp- and temp_)
-        let tempId = parsedData?.tempId || parsedData?.id;
-        if (!tempId || typeof tempId !== "string" || !/^temp[-_]/.test(tempId)) {
-          const urlTempMatch = originalRequest.url?.match(/(temp[-_][a-zA-Z0-9_-]+)/);
-          if (urlTempMatch) {
-            tempId = urlTempMatch[1];
-          } else {
-            tempId = 'temp-' + Date.now();
+        // Extract ID from body or URL segments for preserving existing entity IDs on updates
+        let existingId = parsedData?.id || parsedData?.tempId;
+        if (!existingId && candidateSeg) {
+          if (
+            (candidateSeg !== "mark" &&
+              candidateSeg !== "mark-day" &&
+              !isNaN(Number(candidateSeg))) ||
+            candidateSeg.length > 5
+          ) {
+            existingId = candidateSeg;
           }
+        }
+
+        const isActionOnExistingEntity =
+          methodUpper === "POST" &&
+          Boolean(lastSegment && ACTION_SEGMENTS.has(lastSegment)) &&
+          !["extra-class", "announcements", "save-wizard"].includes(
+            lastSegment || "",
+          );
+
+        // Determine temporary entity ID for re-keying and optimistic UI tracking
+        let tempId: string;
+        if ((isUpdateOrDelete || isActionOnExistingEntity) && existingId) {
+          // Never overwrite real database ID with a temp- prefix on PUT/PATCH/DELETE/toggle
+          tempId = String(existingId);
+        } else {
+          tempId =
+            parsedData?.tempId ||
+            (typeof existingId === "string" && /^temp[-_]/.test(existingId)
+              ? existingId
+              : `temp-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`);
         }
 
         useOfflineStore.getState().enqueue({
@@ -459,12 +567,20 @@ api.interceptors.response.use(
           tempId,
         });
 
-        const payloadData = typeof parsedData === "object" && parsedData && !(parsedData instanceof FormData) ? parsedData : {};
+        const payloadData =
+          typeof parsedData === "object" &&
+          parsedData &&
+          !(parsedData instanceof FormData)
+            ? parsedData
+            : {};
         return Promise.resolve({
           data: {
-            id: tempId,
-            _queued: true,
             ...payloadData,
+            id:
+              (isUpdateOrDelete || isActionOnExistingEntity) && existingId
+                ? existingId
+                : tempId,
+            _queued: true,
           },
         });
       }

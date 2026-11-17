@@ -87,7 +87,7 @@ function sortDayDetailsChronologically(items: DayDetail[], dateStr: string): Day
         todayAgenda.find(
           (a: any) =>
             (item.id && (a.id === item.id || a.attendanceId === item.id || `today-${a.id}` === item.id)) ||
-            (Boolean(a.type === "override" || a.isExtra) === itemIsExtra &&
+            (Boolean(a.isExtra || a.overrideType === "extra_class" || (a.type === "override" && a.isExtra)) === itemIsExtra &&
               ((item.subjectId && a.subject?.id === item.subjectId) ||
                 String(a.subject?.name || a.subjectName || "").trim().toLowerCase() === normName))
         ) ||
@@ -105,7 +105,7 @@ function sortDayDetailsChronologically(items: DayDetail[], dateStr: string): Day
         dateLogs.find(
           (l: any) =>
             (item.id && (l.id === item.id || l.overrideId === item.id || l.timetableSlotId === item.id)) ||
-            (Boolean(l.isExtra || l.overrideId) === itemIsExtra &&
+            (Boolean(l.isExtra || (l.slotType && String(l.slotType).toLowerCase() === "extra")) === itemIsExtra &&
               ((item.subjectId && l.subjectId === item.subjectId) ||
                 String(l.subjectName || l.subject?.name || l.subject || "").trim().toLowerCase() === normName))
         ) ||
@@ -238,14 +238,22 @@ export const CalendarPage = () => {
     onSwipedLeft: () => {
       if (selectedMobileDate) {
         hapticSelection();
-        const nextDay = format(addDays(new Date(selectedMobileDate + 'T00:00:00'), 1), 'yyyy-MM-dd');
+        const nextDt = addDays(new Date(selectedMobileDate + 'T00:00:00'), 1);
+        const nextDay = format(nextDt, 'yyyy-MM-dd');
+        if (nextDay.slice(0, 7) !== selectedMobileDate.slice(0, 7)) {
+          setCurrentDate(new Date(nextDt.getFullYear(), nextDt.getMonth(), 1));
+        }
         setSelectedMobileDate(nextDay);
       }
     },
     onSwipedRight: () => {
       if (selectedMobileDate) {
         hapticSelection();
-        const prevDay = format(addDays(new Date(selectedMobileDate + 'T00:00:00'), -1), 'yyyy-MM-dd');
+        const prevDt = addDays(new Date(selectedMobileDate + 'T00:00:00'), -1);
+        const prevDay = format(prevDt, 'yyyy-MM-dd');
+        if (prevDay.slice(0, 7) !== selectedMobileDate.slice(0, 7)) {
+          setCurrentDate(new Date(prevDt.getFullYear(), prevDt.getMonth(), 1));
+        }
         setSelectedMobileDate(prevDay);
       }
     },
@@ -337,6 +345,13 @@ export const CalendarPage = () => {
           ? String(simBounds.endDate).slice(0, 10)
           : null;
       const semEndDateKey = activeSem?.endDate ? String(activeSem.endDate).slice(0, 10) : null;
+      const semStartDateKey = activeSem?.startDate ? String(activeSem.startDate).slice(0, 10) : null;
+      const commencementEvent = allEvents.find((e: any) =>
+        /commencement\s*of\s*classes/i.test(String(e.title || ""))
+      );
+      const commencementDateKey = commencementEvent
+        ? String(commencementEvent.date || "").slice(0, 10)
+        : semStartDateKey;
 
       const [year, m] = monthStr.split("-").map(Number);
       const startDate = new Date(year, m - 1, 1);
@@ -387,12 +402,28 @@ export const CalendarPage = () => {
           );
         });
 
-        const isPastTeachingDay =
-          Boolean(lastTeachingDateKey && dateStr > lastTeachingDateKey) ||
-          Boolean(semEndDateKey && dateStr > semEndDateKey);
+        const isBeforeSemester = Boolean(commencementDateKey && dateStr < commencementDateKey);
+      const isPastTeachingDay =
+        Boolean(lastTeachingDateKey && dateStr > lastTeachingDateKey) ||
+        Boolean(semEndDateKey && dateStr > semEndDateKey);
 
-        const hasArchivedSlotsOnDay = allSlots.some((s: any) => {
-          if (!s.validUntil) return false;
+      const isClassSuspendedByEvent = dayEvents.some((ev: any) => {
+        const t = String(ev.eventType || ev.type || "").toLowerCase();
+        const title = String(ev.title || "").toLowerCase();
+        const isSuspended =
+          t === "holiday" ||
+          t === "vacation" ||
+          t === "exam" ||
+          t === "midsem" ||
+          t === "endsem" ||
+          /holiday|vacation|break|recess|exam|midsem|endsem/i.test(title);
+        const isRestricted = t.includes("restricted") || title.includes("restricted");
+        return isSuspended && !isRestricted;
+      });
+
+      const hasArchivedSlotForSubjectOnDay = (subId: string) =>
+        allSlots.some((s: any) => {
+          if (!s.validUntil || (s.subjectId !== subId && s.subject?.id !== subId)) return false;
           const fromKey = s.validFrom
             ? String(s.validFrom).slice(0, 10)
             : "0000-00-00";
@@ -400,22 +431,23 @@ export const CalendarPage = () => {
           return fromKey <= dateStr && untilKey >= dateStr;
         });
 
-        const rawDaySlots = isPastTeachingDay
-          ? []
-          : allSlots.filter((s: any) => {
-              if (s.dayOfWeek !== dbDay) return false;
-              const fromKey = s.validFrom
-                ? String(s.validFrom).slice(0, 10)
-                : "0000-00-00";
-              if (fromKey > dateStr) return false;
-              if (s.validUntil) {
-                const untilKey = String(s.validUntil).slice(0, 10);
-                if (untilKey < dateStr) return false;
-              } else if (hasArchivedSlotsOnDay) {
-                return false;
-              }
-              return true;
-            });
+      const rawDaySlots = (isPastTeachingDay || isBeforeSemester || isClassSuspendedByEvent)
+        ? []
+        : allSlots.filter((s: any) => {
+            if (s.dayOfWeek !== dbDay) return false;
+            const fromKey = s.validFrom
+              ? String(s.validFrom).slice(0, 10)
+              : "0000-00-00";
+            if (fromKey > dateStr) return false;
+            const subId = s.subjectId || s.subject?.id;
+            if (s.validUntil) {
+              const untilKey = String(s.validUntil).slice(0, 10);
+              if (untilKey < dateStr) return false;
+            } else if (subId && hasArchivedSlotForSubjectOnDay(subId)) {
+              return false;
+            }
+            return true;
+          });
 
         // Deduplicate overlapping daySlots by subjectId and time window (matching server logic)
         const daySlots: any[] = [];
@@ -444,9 +476,21 @@ export const CalendarPage = () => {
           ),
         );
 
-        // 1. Determine effective day details: initialize from daySlots, then layered overlay
-        let effectiveDayDetails: DayDetail[] = daySlots.map(
-          (s: any, idx: number) => ({
+        // 1. Determine effective day details: initialize from authoritative todayCache agenda, or daySlots
+        let effectiveDayDetails: DayDetail[];
+        if (todayEntry?.agenda && Array.isArray(todayEntry.agenda) && todayEntry.agenda.length > 0) {
+          effectiveDayDetails = todayEntry.agenda.map((a: any, idx: number) => ({
+            id: a.attendanceId || a.id || `today-${idx}`,
+            subjectId: a.subject?.id,
+            subjectName: a.subject?.name || "Class",
+            startTime: a.startTime || "00:00",
+            endTime: a.endTime || "00:00",
+            status: String(a.status || (dateStr > todayStr ? "future" : "not_marked")).toLowerCase(),
+            remarks: a.remarks || null,
+            isExtra: Boolean(a.isExtra || a.overrideType === "extra_class" || (a.type === "override" && a.isExtra)),
+          }));
+        } else {
+          effectiveDayDetails = daySlots.map((s: any, idx: number) => ({
             id: s.id || `slot-${idx}`,
             subjectId: s.subjectId || s.subject?.id,
             subjectName: s.subjectName || s.subject?.name || "Subject",
@@ -455,11 +499,13 @@ export const CalendarPage = () => {
             status: dateStr > todayStr ? "future" : "not_marked",
             remarks: null,
             isExtra: false,
-          }),
-        );
+          }));
+        }
 
         if (
           !isPastTeachingDay &&
+          !isBeforeSemester &&
+          !isClassSuspendedByEvent &&
           effectiveDayDetails.length === 0 &&
           cachedDayDetails.length > 0
         ) {
@@ -478,7 +524,7 @@ export const CalendarPage = () => {
                   ? "absent"
                   : normSt;
             const logIsExtra = Boolean(
-              l.isExtra || l.overrideId || l.slotType === "Extra",
+              l.isExtra || (l.slotType && String(l.slotType).toLowerCase() === "extra"),
             );
             const lSlotId = l.timetableSlotId || l.slotId;
             const lTime = l.startTime || l.time;
@@ -488,7 +534,7 @@ export const CalendarPage = () => {
               if (l.id && e.id === l.id) return true;
               if (l.overrideId && e.id === l.overrideId) return true;
               if (lSlotId && e.id === lSlotId) return true;
-              // Never match an extra class log onto a regular non-extra timetable slot
+              // Strict invariant: An extra class log MUST NEVER match a regular timetable slot and vice-versa
               if (logIsExtra !== Boolean(e.isExtra)) return false;
               if (
                 lTime &&
@@ -520,7 +566,7 @@ export const CalendarPage = () => {
                 l.remarks !== undefined ? l.remarks : match.remarks;
               if (lTime && lTime !== "00:00") match.startTime = lTime;
               if (l.endTime && l.endTime !== "00:00") match.endTime = l.endTime;
-              if (logIsExtra) match.isExtra = true;
+              match.isExtra = Boolean(match.isExtra || logIsExtra);
             } else {
               effectiveDayDetails.push({
                 id:
@@ -543,7 +589,7 @@ export const CalendarPage = () => {
         if (todayEntry?.agenda && todayEntry.agenda.length > 0) {
           for (const a of todayEntry.agenda) {
             const aStatus = String(a.status || "").toLowerCase();
-            const aIsExtra = Boolean(a.type === "override" || a.isExtra);
+            const aIsExtra = Boolean(a.isExtra || a.overrideType === "extra_class" || (a.type === "override" && a.isExtra));
             const resolvedStatus =
               aStatus && aStatus !== "null" && aStatus !== "undefined"
                 ? aStatus === "not_marked"
@@ -599,7 +645,7 @@ export const CalendarPage = () => {
         if (todayEntry?.agenda) {
           const todayAgendaExtraIds = new Set(
             todayEntry.agenda
-              .filter((a: any) => Boolean(a.type === "override" || a.isExtra))
+              .filter((a: any) => Boolean(a.isExtra || a.overrideType === "extra_class" || (a.type === "override" && a.isExtra)))
               .map((a: any) => a.id),
           );
           effectiveDayDetails = effectiveDayDetails.filter((e: any) => {
@@ -609,7 +655,7 @@ export const CalendarPage = () => {
               return true;
             return todayEntry.agenda.some(
               (a: any) =>
-                Boolean(a.type === "override" || a.isExtra) &&
+                Boolean(a.isExtra || a.overrideType === "extra_class" || (a.type === "override" && a.isExtra)) &&
                 a.subject?.id === e.subjectId &&
                 a.startTime === e.startTime,
             );
@@ -633,20 +679,26 @@ export const CalendarPage = () => {
             if (endpoint.includes("/timetable/extra-class")) {
               const extraId =
                 p.tempId || (q as any).tempId || `temp-extra-${q.id}`;
+              const subObj = (
+                useAttendanceStore.getState().subjects || []
+              ).find(
+                (s: any) =>
+                  s.id === p.subjectId || s.subjectId === p.subjectId,
+              );
               const alreadyPresent = effectiveDayDetails.some(
                 (e) =>
                   e.id === extraId ||
+                  e.id === `today-${extraId}` ||
                   (e.isExtra &&
-                    e.subjectId === p.subjectId &&
-                    e.startTime === p.startTime),
+                    (e.subjectId === p.subjectId ||
+                      String(e.subjectName || "").trim().toLowerCase() ===
+                        String(subObj?.name || "").trim().toLowerCase()) &&
+                    (e.startTime === p.startTime ||
+                      !p.startTime ||
+                      !e.startTime ||
+                      e.startTime === "00:00")),
               );
               if (!alreadyPresent) {
-                const subObj = (
-                  useAttendanceStore.getState().subjects || []
-                ).find(
-                  (s: any) =>
-                    s.id === p.subjectId || s.subjectId === p.subjectId,
-                );
                 effectiveDayDetails.push({
                   id: extraId,
                   subjectId: p.subjectId,
@@ -657,6 +709,20 @@ export const CalendarPage = () => {
                   remarks: p.reason || "Extra Lecture",
                   isExtra: true,
                 });
+              } else {
+                const existing = effectiveDayDetails.find(
+                  (e) =>
+                    e.id === extraId ||
+                    e.id === `today-${extraId}` ||
+                    (e.isExtra &&
+                      (e.subjectId === p.subjectId ||
+                        String(e.subjectName || "").trim().toLowerCase() ===
+                          String(subObj?.name || "").trim().toLowerCase())),
+                );
+                if (existing) {
+                  existing.isExtra = true;
+                  if (!existing.remarks && p.reason) existing.remarks = p.reason;
+                }
               }
             } else if (endpoint.includes("/attendance/mark-day")) {
               const fullDayStatus = String(p.status || "").toLowerCase();
@@ -713,6 +779,56 @@ export const CalendarPage = () => {
             }
           }
         }
+        // Invariant: Do not downgrade genuine extra classes.
+        effectiveDayDetails = effectiveDayDetails.map((item) => {
+          if (item.isExtra) return item;
+          return { ...item, isExtra: false };
+        });
+
+        // Strict Deduplication: Ensure at most 1 regular class per timetable slot/time and at most 1 extra class per subject/time
+        const dedupedDetails: any[] = [];
+        for (const item of effectiveDayDetails) {
+          const itemIsExtra = Boolean(item.isExtra);
+          const existing = dedupedDetails.find((d) => {
+            if (Boolean(d.isExtra) !== itemIsExtra) return false;
+            const sameSub =
+              item.subjectId && d.subjectId
+                ? item.subjectId === d.subjectId
+                : String(item.subjectName || "").trim().toLowerCase() ===
+                  String(d.subjectName || "").trim().toLowerCase();
+            if (!sameSub) return false;
+            if (
+              item.startTime &&
+              d.startTime &&
+              item.startTime !== "00:00" &&
+              d.startTime !== "00:00"
+            ) {
+              return item.startTime === d.startTime;
+            }
+            return true;
+          });
+          if (existing) {
+            // Merge: preserve marked status over not_marked/future, and preserve non-empty remarks
+            if (
+              (!existing.status ||
+                existing.status === "not_marked" ||
+                existing.status === "future") &&
+              item.status &&
+              item.status !== "not_marked" &&
+              item.status !== "future"
+            ) {
+              existing.status = item.status;
+              existing.id = item.id || existing.id;
+            }
+            if (!existing.remarks && item.remarks) {
+              existing.remarks = item.remarks;
+            }
+          } else {
+            dedupedDetails.push({ ...item });
+          }
+        }
+        effectiveDayDetails = dedupedDetails;
+
         if (effectiveDayDetails.length > 0) {
           details[dateStr] = sortDayDetailsChronologically(
             effectiveDayDetails,
@@ -798,13 +914,8 @@ export const CalendarPage = () => {
             status = dateStr > todayStr ? "future" : "not_marked";
           }
         } else {
-          // True 0-lecture days (weekends with no slots scheduled)
-          status =
-            isQueuedOff || todayEntry?.todayStatus === "off"
-              ? "off"
-              : dateStr > todayStr
-                ? "future"
-                : "off";
+         // True 0-lecture days: weekends, post-teaching days, and non-class days are ALWAYS off (Yellow Dot)
+          status = "off";
         }
 
         days[dateStr] = status;
@@ -887,6 +998,104 @@ export const CalendarPage = () => {
         }
       }
 
+      if (typeof navigator !== "undefined" && !navigator.onLine) {
+        const offlineBase: CalendarData = cachedMonth
+          ? JSON.parse(JSON.stringify(cachedMonth))
+          : buildLocalMonthPreview(monthStr) || {
+              hasCalendar: false,
+              days: {},
+              details: {},
+              events: {},
+              stats: {
+                days: { not_marked: 0, off: 0, missed: 0, attended: 0, mixed: 0 },
+                lectures: { off: 0, missed: 0, attended: 0, total: 0, percentage: 0 },
+              },
+            };
+        const offlineQueue = useOfflineStore.getState().queue || [];
+        const offlineToday = useCacheStore.getState().today || {};
+        const todayStrOff = format(new Date(), "yyyy-MM-dd");
+
+        const offlineDays = offlineBase.days ?? {};
+        const offlineDetails = offlineBase.details ?? {};
+        offlineBase.days = offlineDays;
+        offlineBase.details = offlineDetails;
+
+        Object.keys(offlineToday)
+          .filter((dateStr) => dateStr.startsWith(monthStr))
+          .forEach((dateStr) => {
+            const entry = offlineToday[dateStr];
+            if (entry?.agenda && entry.agenda.length > 0) {
+              offlineDetails[dateStr] = entry.agenda.map((a: any, idx: number) => ({
+                id: a.attendanceId || `today-${a.id || idx}`,
+                timetableSlotId: a.type === "slot" ? a.id : a.timetableSlotId,
+                overrideId: a.type === "override" ? a.id : a.overrideId,
+                subjectId: a.subject?.id,
+                subjectName: a.subject?.name || "Class",
+                startTime: a.startTime || "00:00",
+                endTime: a.endTime || "00:00",
+                status: String(a.status || "not_marked").toLowerCase(),
+                remarks: a.remarks || null,
+                isExtra: Boolean(a.isExtra || a.overrideType === "extra_class" || (a.type === "override" && a.isExtra)),
+              }));
+            }
+          });
+
+        // Apply extra-class deletions across all days regardless of payload.date
+        offlineQueue.forEach((q: any) => {
+          const ep = String(q.url || "");
+          if (ep.includes("/timetable/extra-class") && String(q.method || "").toLowerCase() === "delete") {
+            const deletedId = ep.split("/").pop();
+            if (deletedId) {
+              Object.keys(offlineDetails).forEach((dKey) => {
+                offlineDetails[dKey] = (offlineDetails[dKey] || []).filter(
+                  (item: any) => item.id !== deletedId && item.id !== `today-${deletedId}` && item.overrideId !== deletedId,
+                );
+              });
+            }
+          }
+        });
+
+        const dayCountsOff = { not_marked: 0, off: 0, missed: 0, attended: 0, mixed: 0 };
+        const lecCountsOff = { off: 0, missed: 0, attended: 0, total: 0, percentage: 0 };
+        Object.keys(offlineDetails).forEach((dateStr) => {
+          if (!dateStr.startsWith(monthStr)) return;
+          const items = offlineDetails[dateStr] || [];
+          const marked = items.filter((l: any) => {
+            const st = String(l.status || "").toLowerCase();
+            return st && st !== "not_marked" && st !== "future" && st !== "clear";
+          });
+          if (items.length > 0 && marked.length === items.length) {
+            const hasAtt = marked.some((l: any) => ["present", "attended", "medical", "od"].includes(String(l.status).toLowerCase()));
+            const hasMiss = marked.some((l: any) => ["absent", "missed"].includes(String(l.status).toLowerCase()));
+            const allOff = marked.every((l: any) => ["off", "cancelled"].includes(String(l.status).toLowerCase()));
+            offlineDays[dateStr] = allOff ? "off" : hasAtt && hasMiss ? "mixed" : hasAtt ? "attended" : hasMiss ? "missed" : "off";
+          } else if (items.length > 0) {
+            offlineDays[dateStr] = dateStr > todayStrOff ? "future" : "not_marked";
+          }
+          marked.forEach((l: any) => {
+            const st = String(l.status || "").toLowerCase();
+            if (["present", "attended", "medical", "od"].includes(st)) lecCountsOff.attended++;
+            else if (["absent", "missed"].includes(st)) lecCountsOff.missed++;
+            else if (["off", "cancelled"].includes(st)) lecCountsOff.off++;
+          });
+        });
+        Object.values(offlineBase.days).forEach((st: any) => {
+          if (st === "attended") dayCountsOff.attended++;
+          else if (st === "missed") dayCountsOff.missed++;
+          else if (st === "mixed") dayCountsOff.mixed++;
+          else if (st === "off") dayCountsOff.off++;
+          else dayCountsOff.not_marked++;
+        });
+        lecCountsOff.total = lecCountsOff.attended + lecCountsOff.missed;
+        lecCountsOff.percentage = lecCountsOff.total > 0 ? (lecCountsOff.attended / lecCountsOff.total) * 100 : 0;
+        offlineBase.stats = { days: dayCountsOff, lectures: lecCountsOff };
+
+        setData(offlineBase);
+        setCache("calendar", { ...(useCacheStore.getState().calendar || {}), [monthStr]: offlineBase });
+        setIsLoading(false);
+        return offlineBase;
+      }
+
       // Ensure archived timetables are cached so historical month previews resolve archived slot startTimes accurately
       const cacheState = useCacheStore.getState();
       if (!cacheState.archived_timetables || !Array.isArray(cacheState.archived_timetables) || cacheState.archived_timetables.length === 0) {
@@ -930,17 +1139,25 @@ export const CalendarPage = () => {
 
         // Merge todayState entries for this month
         datesWithTodayData.forEach((dateStr) => {
+          const hasQueueForDate = pendingQueue.some((q: any) => {
+            const p = q.data || q.payload || {};
+            return String(p.date || "").slice(0, 10) === dateStr;
+          });
+          if (!hasQueueForDate) return; // Authoritative online server data takes precedence when caught up!
+
           const entry = todayState[dateStr];
           if (entry?.agenda && entry.agenda.length > 0) {
               const mapped = entry.agenda.map((a: any, idx: number) => ({
               id: a.attendanceId || `today-${a.id || idx}`,
+              timetableSlotId: a.type === "slot" ? a.id : a.timetableSlotId,
+              overrideId: a.type === "override" ? a.id : a.overrideId,
               subjectId: a.subject?.id,
               subjectName: a.subject?.name || "Class",
               startTime: a.startTime || "00:00",
               endTime: a.endTime || "00:00",
               status: String(a.status || "not_marked").toLowerCase(),
               remarks: a.remarks || null,
-              isExtra: Boolean(a.type === "override" || a.isExtra),
+              isExtra: Boolean(a.isExtra || a.overrideType === "extra_class" || (a.type === "override" && a.isExtra)),
             }));
 
             d.details[dateStr] = mapped;
@@ -974,6 +1191,27 @@ export const CalendarPage = () => {
           }
         });
 
+        // Overlay extra-class deletions across all days regardless of payload.date
+        pendingQueue.forEach((q: any) => {
+          const endpoint = String((q as any).url || (q as any).endpoint || "");
+          if (
+            endpoint.includes("/timetable/extra-class") &&
+            String(q.method || "").toLowerCase() === "delete"
+          ) {
+            const deletedId = endpoint.split("/").pop();
+            if (deletedId) {
+              Object.keys(d.details).forEach((dKey) => {
+                d.details[dKey] = (d.details[dKey] || []).filter(
+                  (item: any) =>
+                    item.id !== deletedId &&
+                    item.id !== `today-${deletedId}` &&
+                    item.overrideId !== deletedId,
+                );
+              });
+            }
+          }
+        });
+
         // Overlay pending queue mutations for this month
         pendingQueue.forEach((q: any) => {
           const p = (q as any).data || (q as any).payload || {};
@@ -983,7 +1221,60 @@ export const CalendarPage = () => {
           let dayDetails = d.details[dateStr] ? [...d.details[dateStr]] : [];
           const endpoint = String((q as any).url || (q as any).endpoint || "");
 
-          if (endpoint.includes("/attendance/mark-day")) {
+          if (
+            (endpoint.includes("/timetable/extra-class/") ||
+              endpoint.includes("/timetable/extra-class")) &&
+            String(q.method || "").toLowerCase() === "delete"
+          ) {
+            const deletedId = endpoint.split("/").pop();
+            dayDetails = dayDetails.filter(
+              (item) => item.id !== deletedId && item.id !== `today-${deletedId}`
+            );
+          } else if (endpoint.includes("/timetable/extra-class")) {
+            const extraId = p.tempId || (q as any).tempId || `temp-extra-${q.id}`;
+            const subObj = (useAttendanceStore.getState().subjects || []).find(
+              (s: any) => s.id === p.subjectId || s.subjectId === p.subjectId
+            );
+            const alreadyPresent = dayDetails.some(
+              (e) =>
+                e.id === extraId ||
+                e.id === `today-${extraId}` ||
+                (e.isExtra &&
+                  (e.subjectId === p.subjectId ||
+                    String(e.subjectName || "").trim().toLowerCase() ===
+                      String(subObj?.name || "").trim().toLowerCase()) &&
+                  (e.startTime === p.startTime ||
+                    !p.startTime ||
+                    !e.startTime ||
+                    e.startTime === "00:00"))
+            );
+            if (!alreadyPresent) {
+              dayDetails.push({
+                id: extraId,
+                subjectId: p.subjectId,
+                subjectName: subObj?.name || "Extra Class",
+                startTime: p.startTime || "09:00",
+                endTime: p.endTime || "10:00",
+                status: dateStr > todayStr ? "future" : "not_marked",
+                remarks: p.reason || "Extra Lecture",
+                isExtra: true,
+              });
+            } else {
+              const existing = dayDetails.find(
+                (e) =>
+                  e.id === extraId ||
+                  e.id === `today-${extraId}` ||
+                  (e.isExtra &&
+                    (e.subjectId === p.subjectId ||
+                      String(e.subjectName || "").trim().toLowerCase() ===
+                        String(subObj?.name || "").trim().toLowerCase()))
+              );
+              if (existing) {
+                existing.isExtra = true;
+                if (!existing.remarks && p.reason) existing.remarks = p.reason;
+              }
+            }
+          } else if (endpoint.includes("/attendance/mark-day")) {
             const fullDayStatus = String(p.status || "").toLowerCase();
             if (fullDayStatus === "clear") {
               dayDetails = dayDetails.map(item => ({ ...item, status: dateStr > todayStr ? "future" : "not_marked", remarks: null }));
@@ -998,7 +1289,29 @@ export const CalendarPage = () => {
           } else if (endpoint.includes("/attendance/mark")) {
             const markStatus = String(p.status || "").toLowerCase();
             dayDetails = dayDetails.map(item => {
-              const match = (p.subjectId && item.subjectId === p.subjectId) || (p.timetableSlotId && item.id === p.timetableSlotId);
+              const matchById =
+                (p.overrideId &&
+                  (item.id === p.overrideId ||
+                    item.id === `today-${p.overrideId}`)) ||
+                (p.timetableSlotId &&
+                  (item.id === p.timetableSlotId ||
+                    item.id === `today-${p.timetableSlotId}`)) ||
+                (p.attendanceId && item.id === p.attendanceId);
+              const matchByExtraSubject =
+                !p.overrideId &&
+                !p.timetableSlotId &&
+                Boolean(item.isExtra) &&
+                p.subjectId &&
+                item.subjectId === p.subjectId;
+              const matchByRegularSubject =
+                !p.overrideId &&
+                !p.timetableSlotId &&
+                !item.isExtra &&
+                p.subjectId &&
+                item.subjectId === p.subjectId;
+              const match =
+                matchById ||
+                (p.overrideId ? matchByExtraSubject : matchByRegularSubject);
               if (match) {
                 return {
                   ...item,
@@ -1009,6 +1322,49 @@ export const CalendarPage = () => {
               return item;
             });
           }
+
+          // Strict Deduplication across dayDetails
+          const dedupedQueueDetails: any[] = [];
+          for (const item of dayDetails) {
+            const itemIsExtra = Boolean(item.isExtra);
+            const existing = dedupedQueueDetails.find((d) => {
+              if (Boolean(d.isExtra) !== itemIsExtra) return false;
+              const sameSub =
+                item.subjectId && d.subjectId
+                  ? item.subjectId === d.subjectId
+                  : String(item.subjectName || "").trim().toLowerCase() ===
+                    String(d.subjectName || "").trim().toLowerCase();
+              if (!sameSub) return false;
+              if (
+                item.startTime &&
+                d.startTime &&
+                item.startTime !== "00:00" &&
+                d.startTime !== "00:00"
+              ) {
+                return item.startTime === d.startTime;
+              }
+              return true;
+            });
+            if (existing) {
+              if (
+                (!existing.status ||
+                  existing.status === "not_marked" ||
+                  existing.status === "future") &&
+                item.status &&
+                item.status !== "not_marked" &&
+                item.status !== "future"
+              ) {
+                existing.status = item.status;
+                existing.id = item.id || existing.id;
+              }
+              if (!existing.remarks && item.remarks) {
+                existing.remarks = item.remarks;
+              }
+            } else {
+              dedupedQueueDetails.push({ ...item });
+            }
+          }
+          dayDetails = dedupedQueueDetails;
 
           if (dayDetails.length > 0) {
             d.details[dateStr] = sortDayDetailsChronologically(dayDetails, dateStr);
@@ -1061,11 +1417,35 @@ export const CalendarPage = () => {
             else if (hasMiss) d.days[dateStr] = "missed";
             else if (allOff) d.days[dateStr] = "off";
             } else {
-            d.days[dateStr] = dateStr > todayStr ? "future" : "not_marked";
+            // If day has an event suspending classes (Exam/Holiday) but no marked logs, it is Off
+            const dayEvents = (d.events?.[dateStr] || []) as any[];
+            const isSuspended = dayEvents.some((ev: any) => {
+              const t = String(ev.eventType || ev.type || "").toLowerCase();
+              const title = String(ev.title || "").toLowerCase();
+              return ["holiday", "vacation", "exam", "midsem", "endsem"].includes(t) ||
+                /holiday|vacation|break|recess|exam|midsem|endsem/i.test(title);
+            });
+            if ((isSuspended || totalClasses === 0) && marked.length === 0) {
+              d.days[dateStr] = "off";
+            } else {
+              d.days[dateStr] = dateStr > todayStr ? "future" : "not_marked";
+            }
           }
         });
 
         const dayCounts = { not_marked: 0, off: 0, missed: 0, attended: 0, mixed: 0 };
+        const lecCounts = { off: 0, missed: 0, attended: 0, total: 0, percentage: 0 };
+        Object.values(d.details).forEach((items: any) => {
+          if (!Array.isArray(items)) return;
+          items.forEach((l: any) => {
+            const st = String(l.status || "").toLowerCase();
+            if (["present", "attended", "medical", "od"].includes(st)) lecCounts.attended++;
+            else if (["absent", "missed"].includes(st)) lecCounts.missed++;
+            else if (["off", "cancelled"].includes(st)) lecCounts.off++;
+          });
+        });
+        lecCounts.total = lecCounts.attended + lecCounts.missed;
+        lecCounts.percentage = lecCounts.total > 0 ? (lecCounts.attended / lecCounts.total) * 100 : 0;
         Object.values(d.days).forEach((st: any) => {
           if (st === "attended") dayCounts.attended++;
           else if (st === "missed") dayCounts.missed++;
@@ -1073,7 +1453,7 @@ export const CalendarPage = () => {
           else if (st === "off") dayCounts.off++;
           else dayCounts.not_marked++;
         });
-        d.stats = { ...(d.stats || {}), days: dayCounts };
+        d.stats = { ...(d.stats || {}), days: dayCounts, lectures: lecCounts };
       }
 
 
@@ -1480,7 +1860,9 @@ export const CalendarPage = () => {
                               <span
                                 className={`font-bold shrink-0 ${
                                   detail.status === "present" ||
-                                  detail.status === "attended"
+                                  detail.status === "attended" ||
+                                  detail.status === "medical" ||
+                                  detail.status === "od"
                                     ? "text-emerald-500"
                                     : detail.status === "absent" ||
                                         detail.status === "missed"
@@ -1491,18 +1873,22 @@ export const CalendarPage = () => {
                                         : "text-muted-foreground"
                                 }`}
                               >
-                                {detail.status === "present" ||
-                                detail.status === "attended"
-                                  ? "Present"
-                                  : detail.status === "absent" ||
-                                      detail.status === "missed"
-                                    ? "Absent"
-                                    : detail.status === "off" ||
-                                        detail.status === "cancelled"
-                                      ? "Off"
-                                      : detail.status === "future" || isFuture
-                                        ? "Future"
-                                        : "Not Marked"}
+                                {detail.status === "medical"
+                                  ? "Medical"
+                                  : detail.status === "od"
+                                    ? "OD"
+                                    : detail.status === "present" ||
+                                        detail.status === "attended"
+                                      ? "Present"
+                                      : detail.status === "absent" ||
+                                          detail.status === "missed"
+                                        ? "Absent"
+                                        : detail.status === "off" ||
+                                            detail.status === "cancelled"
+                                          ? "Off"
+                                          : detail.status === "future" || isFuture
+                                            ? "Future"
+                                            : "Not Marked"}
                               </span>
                             </div>
                             {detail.remarks && (
@@ -1728,7 +2114,9 @@ export const CalendarPage = () => {
                               <span
                                 className={`font-bold shrink-0 ${
                                   detail.status === "present" ||
-                                  detail.status === "attended"
+                                  detail.status === "attended" ||
+                                  detail.status === "medical" ||
+                                  detail.status === "od"
                                     ? "text-emerald-500"
                                     : (
                                           detail.status === "absent" ||
@@ -1743,26 +2131,30 @@ export const CalendarPage = () => {
                                         : "text-muted-foreground"
                                 }`}
                               >
-                                {detail.status === "present" ||
-                                detail.status === "attended"
-                                  ? "Present"
-                                  : (
-                                        detail.status === "absent" ||
-                                        detail.status === "missed"
-                                      )
-                                    ? "Absent"
-                                    : (
-                                          detail.status === "off" ||
-                                          detail.status === "cancelled"
-                                        )
-                                      ? "Off"
+                                {detail.status === "medical"
+                                  ? "Medical"
+                                  : detail.status === "od"
+                                    ? "OD"
+                                    : detail.status === "present" ||
+                                        detail.status === "attended"
+                                      ? "Present"
                                       : (
-                                            detail.status === "future" ||
-                                            selectedMobileDate >
-                                              format(new Date(), "yyyy-MM-dd")
+                                            detail.status === "absent" ||
+                                            detail.status === "missed"
                                           )
-                                        ? "Future"
-                                        : "Not Marked"}
+                                        ? "Absent"
+                                        : (
+                                              detail.status === "off" ||
+                                              detail.status === "cancelled"
+                                            )
+                                          ? "Off"
+                                          : (
+                                                detail.status === "future" ||
+                                                selectedMobileDate >
+                                                  format(new Date(), "yyyy-MM-dd")
+                                              )
+                                            ? "Future"
+                                            : "Not Marked"}
                               </span>
                             </div>
                             {detail.remarks && (

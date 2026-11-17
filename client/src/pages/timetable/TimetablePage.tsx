@@ -185,6 +185,7 @@ export const TimetablePage = () => {
   const [isArchiveModalOpen, setIsArchiveModalOpen] = useState(false);
   const [isReconciliationOpen, setIsReconciliationOpen] = useState(false);
   const [flutterDeletingSlotIds, setFlutterDeletingSlotIds] = useState<string[]>([]);
+  const [dyingSlots, setDyingSlots] = useState<TimetableSlot[]>([]);
   const [isClearingDomino, setIsClearingDomino] = useState(false);
   const [isRainDropping, setIsRainDropping] = useState(false);
   const [justDroppedSlotId, setJustDroppedSlotId] = useState<string | null>(null);
@@ -312,6 +313,21 @@ export const TimetablePage = () => {
   const fetchData = async () => {
     try {
       if (!cachedData && slots.length === 0 && !activeSemester) setIsLoading(true);
+
+      // Fast-path: When offline, hydrate immediately from cache without stalling on network requests
+      if (!navigator.onLine) {
+        const cache = useCacheStore.getState().timetable;
+        if (cache?.activeSemester) {
+          setActiveSemester(cache.activeSemester);
+          setSubjects(cache.subjects || []);
+          if (cache.slots && cache.slots.length > 0) {
+            setSlots(cache.slots);
+          }
+          setIsLoading(false);
+          return cache.slots || [];
+        }
+      }
+
       const knownSemId =
         activeSemester?.id ||
         cachedData?.activeSemester?.id ||
@@ -319,15 +335,27 @@ export const TimetablePage = () => {
         useCacheStore.getState().semester?.activeSemester?.id ||
         null;
 
-      // Fire all 3 requests in parallel when semesterId is known so total elapsed time = max(single call)
-      const [semRes, subjRes, parallelSlotsRes] = await Promise.all([
+      // Fire requests with Promise.allSettled for fault tolerance
+      const [semResult, subjResult, parallelSlotsResult] = await Promise.allSettled([
         api.get("/semesters/active"),
         api.get("/subjects"),
         knownSemId ? api.get(`/timetable/${knownSemId}`) : Promise.resolve(null),
       ]);
-      const semester = semRes.data;
+
+      const semRes = semResult.status === "fulfilled" ? semResult.value : null;
+      const subjRes = subjResult.status === "fulfilled" ? subjResult.value : null;
+      const parallelSlotsRes = parallelSlotsResult.status === "fulfilled" ? parallelSlotsResult.value : null;
+
+      const semester = semRes?.data;
       
       if (!semester) {
+        // If active semester fetch failed, check cache
+        const cache = useCacheStore.getState().timetable;
+        if (cache?.activeSemester) {
+          setActiveSemester(cache.activeSemester);
+          setSubjects(cache.subjects || []);
+          if (cache.slots && cache.slots.length > 0) setSlots(cache.slots);
+        }
         setIsLoading(false);
         return;
       }
@@ -337,14 +365,14 @@ export const TimetablePage = () => {
       const slotsRes =
         parallelSlotsRes && knownSemId === semester.id
           ? parallelSlotsRes
-          : await api.get(`/timetable/${semester.id}`);
+          : await api.get(`/timetable/${semester.id}`).catch(() => null);
       
-      const rawSubjects = Array.isArray(subjRes.data) ? subjRes.data : (subjRes.data?.subjects || []);
+      const rawSubjects = Array.isArray(subjRes?.data) ? subjRes.data : (subjRes?.data?.subjects || []);
       const activeSubjects = rawSubjects.filter((s: any) => s.semesterId === semester.id);
       
-      setSubjects(activeSubjects);
+      if (activeSubjects.length > 0) setSubjects(activeSubjects);
 
-      const rawSlotsList = Array.isArray(slotsRes.data) ? slotsRes.data : [];
+      const rawSlotsList = Array.isArray(slotsRes?.data) ? slotsRes.data : [];
       const normalizedSlots = rawSlotsList.map((slot: any) => ({
         ...slot,
         startTime: normalizeTimeString(slot.startTime, "09:00"),
@@ -461,20 +489,31 @@ export const TimetablePage = () => {
         await api.patch(`/timetable/slots/${editingSlotId}`, payload);
         targetSlotId = editingSlotId;
         // Optimistically update local slots & cache for robust offline resilience
-        setSlots(prev => prev.map(s => s.id === editingSlotId ? { ...s, ...payload, subject: subjects.find(sub => sub.id === payload.subjectId) || s.subject } : s));
-        const curTT = useCacheStore.getState().timetable;
-        if (curTT) {
-          useCacheStore.getState().setCache("timetable", {
-            ...curTT,
-            slots: (curTT.slots || []).map((s: any) => s.id === editingSlotId ? { ...s, ...payload } : s),
-          });
-        }
+        const nextEditedSlots = slots.map((s) =>
+          s.id === editingSlotId
+            ? { ...s, ...payload, subject: subjects.find((sub) => sub.id === payload.subjectId) || s.subject }
+            : s,
+        );
+        setSlots(nextEditedSlots);
+        const curTT = useCacheStore.getState().timetable || {
+          activeSemester,
+          subjects,
+          slots: [],
+        };
+        useCacheStore.getState().setCache("timetable", {
+          ...curTT,
+          activeSemester: curTT.activeSemester || activeSemester,
+          subjects: curTT.subjects || subjects,
+          slots: nextEditedSlots,
+        });
       } else {
         const res = await api.post("/timetable/slots", payload);
-        targetSlotId = res.data?.id || `temp_slot_${Date.now()}`;
+        const isQueued = Boolean(res.data?._queued);
+        targetSlotId = (!isQueued && res.data?.id) || res.data?.tempId || `temp_slot_${Date.now()}`;
         if (payload.dayOfWeek !== activeTab) {
           setActiveTab(payload.dayOfWeek);
         }
+        const serverData = res.data && !isQueued ? res.data : {};
         const createdSlot: TimetableSlot = {
           id: targetSlotId,
           subjectId: payload.subjectId,
@@ -484,20 +523,28 @@ export const TimetablePage = () => {
           room: payload.room || "",
           slotType: payload.slotType as any,
           subject: subjects.find(s => s.id === payload.subjectId) || ({ id: payload.subjectId, name: "Class" } as any),
-          ...(res.data || {}),
+          ...serverData,
         };
-        setSlots(prev => [...prev, createdSlot]);
-        const curTT = useCacheStore.getState().timetable;
-        if (curTT) {
-          useCacheStore.getState().setCache("timetable", {
-            ...curTT,
-            slots: [...(curTT.slots || []), createdSlot],
-          });
-        }
+        const nextCreatedSlots = [...slots, createdSlot];
+        setSlots(nextCreatedSlots);
+        const curTT = useCacheStore.getState().timetable || {
+          activeSemester,
+          subjects,
+          slots: [],
+        };
+        useCacheStore.getState().setCache("timetable", {
+          ...curTT,
+          activeSemester: curTT.activeSemester || activeSemester,
+          subjects: curTT.subjects || subjects,
+          slots: nextCreatedSlots,
+        });
       }
       
       resetForm();
-      await fetchData();
+      if (typeof navigator !== "undefined" && navigator.onLine) {
+        await fetchData();
+      }
+      window.dispatchEvent(new Event("timetable-updated"));
       window.dispatchEvent(new Event("attendance-updated"));
 
       hapticSuccess();
@@ -532,6 +579,11 @@ export const TimetablePage = () => {
 
   const handleImportJsonFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!activeSemester || !e.target.files?.[0]) return;
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      toast.error("Internet connection required to import timetable JSON.");
+      e.target.value = "";
+      return;
+    }
     const file = e.target.files[0];
     const reader = new FileReader();
     reader.onload = async (event) => {
@@ -543,9 +595,14 @@ export const TimetablePage = () => {
           confirmLabel: "Import Timetable",
           cancelLabel: "Cancel",
           onConfirm: async () => {
+            if (typeof navigator !== "undefined" && !navigator.onLine) {
+              toast.error("Internet connection required to import timetable JSON.");
+              return;
+            }
             try {
               await api.post(`/timetable/import/${activeSemester.id}`, payload);
               await fetchData();
+              window.dispatchEvent(new Event("timetable-updated"));
               window.dispatchEvent(new Event("attendance-updated"));
               playRainEntrance("Timetable Imported!");
             } catch (err: any) {
@@ -622,21 +679,32 @@ export const TimetablePage = () => {
           newEndB = newEndA + durB;
         }
 
-        setSlots(prev => prev.map(s => {
+        const swappedSlots = slots.map(s => {
           if (s.id === activeSlotId) return { ...s, dayOfWeek: overSlot.dayOfWeek, startTime: formatMins(newStartA), endTime: formatMins(newEndA) };
           if (s.id === overSlotId) return { ...s, dayOfWeek: activeSlot.dayOfWeek, startTime: formatMins(newStartB), endTime: formatMins(newEndB) };
           return s;
         }).sort((a, b) => {
           if (a.dayOfWeek !== b.dayOfWeek) return a.dayOfWeek - b.dayOfWeek;
           return a.startTime.localeCompare(b.startTime);
-        }));
+        });
+        setSlots(swappedSlots);
+        const curTtSwap = useCacheStore.getState().timetable;
+        if (curTtSwap) {
+          useCacheStore.getState().setCache("timetable", {
+            ...curTtSwap,
+            slots: swappedSlots,
+          });
+        }
 
         try {
-          await api.post("/timetable/slots/swap", {
+          const swapRes = await api.post("/timetable/slots/swap", {
             slotAId: activeSlotId,
             slotBId: overSlotId
           });
-          fetchData();
+          if (!swapRes?.data?._queued && typeof navigator !== "undefined" && navigator.onLine) {
+            fetchData();
+          }
+          window.dispatchEvent(new Event("timetable-updated"));
           window.dispatchEvent(new Event("attendance-updated"));
         } catch (error) {
           console.error("Failed to swap slots:", error);
@@ -718,15 +786,30 @@ export const TimetablePage = () => {
     }
     
     try {
-      await Promise.all([
+      const [patchRes, delRes] = await Promise.all([
         api.patch(`/timetable/slots/${first.id}`, { endTime: second.endTime }),
         api.delete(`/timetable/slots/${second.id}`),
       ]);
+      const isQueued = Boolean(patchRes?.data?._queued || delRes?.data?._queued);
+      const mergedSlots = slots
+        .filter((s) => s.id !== second.id)
+        .map((s) => (s.id === first.id ? { ...s, endTime: second.endTime } : s));
+      setSlots(mergedSlots);
+      const curTtMerge = useCacheStore.getState().timetable;
+      if (curTtMerge) {
+        useCacheStore.getState().setCache("timetable", {
+          ...curTtMerge,
+          slots: mergedSlots,
+        });
+      }
       hapticSuccess();
-      toast.success("Class slots merged successfully");
+      toast.success(isQueued ? "Class slots merged (offline)" : "Class slots merged successfully");
       setSelectedSlotIds([]);
       setIsSelectMode(false);
-      fetchData();
+      if (!isQueued && typeof navigator !== "undefined" && navigator.onLine) {
+        await fetchData();
+      }
+      window.dispatchEvent(new Event("timetable-updated"));
       window.dispatchEvent(new Event("attendance-updated"));
     } catch (error) {
       toast.error("Failed to merge slots.");
@@ -747,13 +830,18 @@ export const TimetablePage = () => {
     const distinctSubjectIds = Array.from(new Set(slotsPendingDelete.map((s) => s.subjectId)));
 
     // When deleting all occurrences of a subject, flutter all matching slots across current view
-    const targetFlutterIds =
+    const dyingTargetSlots =
       scope === "all_occurrences"
-        ? slots.filter((s) => distinctSubjectIds.includes(s.subjectId)).map((s) => s.id)
-        : slotIds;
+        ? slots.filter((s) => distinctSubjectIds.includes(s.subjectId))
+        : slots.filter((s) => slotIds.includes(s.id));
+    const targetFlutterIds = dyingTargetSlots.map((s) => s.id);
 
-    // Trigger 4.0s Origami Paper Crumble Deletion choreography
+    // 1. Trigger 4.0s Origami Paper Crumble Deletion choreography on dying snapshot
     setFlutterDeletingSlotIds(targetFlutterIds);
+    setDyingSlots((prev) => {
+      const existingIds = new Set(prev.map((d) => d.id));
+      return [...prev, ...dyingTargetSlots.filter((s) => !existingIds.has(s.id))];
+    });
     setSelectedSlotIds([]);
     setIsSelectMode(false);
     hapticHeavy();
@@ -768,80 +856,91 @@ export const TimetablePage = () => {
       durationMs: 4500,
     });
 
-    setTimeout(async () => {
-      // 1. Immediately & synchronously filter out the deleted slots from local state & cache
-      // This unmounts them from the DOM BEFORE clearing the animation flags,
-      // guaranteeing they NEVER pop back or flash for a split second!
-      setSlots((prev) =>
-        prev.filter((s) => {
-          if (scope === "this_day_only") {
-            return !slotIds.includes(s.id);
-          } else {
-            return !distinctSubjectIds.includes(s.subjectId);
-          }
-        })
-      );
+    setTimeout(() => {
+      setDyingSlots((prev) => prev.filter((s) => !targetFlutterIds.includes(s.id)));
       setFlutterDeletingSlotIds((prev) => prev.filter((id) => !targetFlutterIds.includes(id)));
-
-      // Update cache store so cached view doesn't flash old slots
-      const currentCache = useCacheStore.getState().timetable;
-      if (currentCache?.slots) {
-        useCacheStore.getState().setCache("timetable", {
-          ...currentCache,
-          slots: currentCache.slots.filter((s: any) =>
-            scope === "this_day_only"
-              ? !slotIds.includes(s.id)
-              : !distinctSubjectIds.includes(s.subjectId)
-          ),
-        });
-      }
-
-      try {
-        if (scope === "this_day_only") {
-          // Delete only the specific slots on this day
-          const tempSlots = slotIds.filter((id) => id.startsWith("temp"));
-          const realSlots = slotIds.filter((id) => !id.startsWith("temp"));
-
-          if (tempSlots.length > 0) {
-            import("../../stores/offlineStore").then(({ useOfflineStore }) => {
-              useOfflineStore.setState((state) => ({
-                queue: state.queue.filter(
-                  (req) => !(req.url.includes("/timetable/slots") && tempSlots.some((tId) => JSON.stringify(req.data || {}).includes(tId)))
-                ),
-              }));
-            }).catch(() => {});
-          }
-
-          if (realSlots.length === 1) {
-            await api.delete(`/timetable/slots/${realSlots[0]}?preserveHistory=${preserveHistory}`);
-          } else if (realSlots.length > 1) {
-            await api.post("/timetable/slots/delete-batch", {
-              slotIds: realSlots,
-              preserveHistory,
-            });
-          }
-        } else {
-          // Delete all weekly occurrences of the selected subjects in parallel
-          await Promise.all(
-            distinctSubjectIds.map((subjId) =>
-              api.delete(
-                `/timetable/semester/${activeSemester.id}/subject/${subjId}/slots?preserveHistory=${preserveHistory}`
-              )
-            )
-          );
-        }
-
-        useCacheStore.getState().setCache("today", null);
-        useCacheStore.getState().setCache("insights", null);
-        fetchData();
-        window.dispatchEvent(new Event("timetable-updated"));
-        window.dispatchEvent(new Event("attendance-updated"));
-      } catch (error) {
-        console.error("Failed to delete slot(s):", error);
-        toast.error("Failed to delete the selected lecture(s). Please try again.");
-        fetchData();
-      }
     }, 4000);
+
+    // 2. Immediately filter deleted slots from React state & cacheStore at 0ms
+    const prevSlotsSnapshot = [...slots];
+    const nextSlots = slots.filter((s) =>
+      scope === "this_day_only"
+        ? !slotIds.includes(s.id)
+        : !distinctSubjectIds.includes(s.subjectId),
+    );
+    setSlots(nextSlots);
+
+    const currentCache = useCacheStore.getState().timetable;
+    if (currentCache?.slots) {
+      useCacheStore.getState().setCache("timetable", {
+        ...currentCache,
+        slots: nextSlots,
+      });
+    }
+
+    const tempSlots = targetFlutterIds.filter((id) => id.startsWith("temp"));
+    if (tempSlots.length > 0) {
+      import("../../stores/offlineStore")
+        .then(({ useOfflineStore }) => {
+          useOfflineStore.setState((state) => ({
+            queue: state.queue.filter(
+              (req) =>
+                !(
+                  req.url.includes("/timetable/slots") &&
+                  tempSlots.some(
+                    (tId) =>
+                      req.tempId === tId ||
+                      req.url.includes(tId) ||
+                      JSON.stringify(req.data || {}).includes(tId),
+                  )
+                ),
+            ),
+          }));
+        })
+        .catch(() => {});
+    }
+
+    try {
+      let isQueued = false;
+      if (scope === "this_day_only") {
+        const realSlots = slotIds.filter((id) => !id.startsWith("temp"));
+        if (realSlots.length === 1) {
+          const delRes = await api.delete(`/timetable/slots/${realSlots[0]}?preserveHistory=${preserveHistory}`);
+          isQueued = Boolean(delRes?.data?._queued);
+        } else if (realSlots.length > 1) {
+          const batchRes = await api.post("/timetable/slots/delete-batch", {
+            slotIds: realSlots,
+            preserveHistory,
+          });
+          isQueued = Boolean(batchRes?.data?._queued);
+        }
+      } else {
+        const results = await Promise.all(
+          distinctSubjectIds.map((subjId) =>
+            api.delete(
+              `/timetable/semester/${activeSemester.id}/subject/${subjId}/slots?preserveHistory=${preserveHistory}`,
+            ),
+          ),
+        );
+        isQueued = results.some((r) => Boolean(r?.data?._queued));
+      }
+
+      useCacheStore.getState().setCache("today", null);
+      useCacheStore.getState().setCache("insights", null);
+      if (!isQueued && typeof navigator !== "undefined" && navigator.onLine) {
+        fetchData();
+      }
+      window.dispatchEvent(new Event("timetable-updated"));
+      window.dispatchEvent(new Event("attendance-updated"));
+    } catch (error) {
+      console.error("Failed to delete slot(s):", error);
+      toast.error("Failed to delete the selected lecture(s). Please try again.");
+      setSlots(prevSlotsSnapshot);
+      if (currentCache) {
+        useCacheStore.getState().setCache("timetable", currentCache);
+      }
+      fetchData();
+    }
   };
 
   const handleSafeDeleteTimetable = () => {
@@ -942,6 +1041,10 @@ export const TimetablePage = () => {
 
   const handleOcrUpload = async () => {
     if (!selectedImage || !activeSemester) return;
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      toast.error("Internet connection required for AI OCR timetable extraction.");
+      return;
+    }
     
     setIsUploading(true);
     const formData = new FormData();
@@ -951,7 +1054,8 @@ export const TimetablePage = () => {
     
     try {
       const res = await api.post("/timetable/ocr-import", formData, {
-        headers: { "Content-Type": "multipart/form-data" }
+        headers: { "Content-Type": "multipart/form-data" },
+        timeout: 120000,
       });
       
       if (res.data.status === "needs_setup") {
@@ -1024,33 +1128,55 @@ export const TimetablePage = () => {
       });
       setWizardPayload(null);
       
+      const isWizardQueued = Boolean(res.data?._queued);
+      let finalWizardSlots = optimisticSlots;
       // Update with exact server-persisted slot IDs
-      if (res.data?.slots && Array.isArray(res.data.slots)) {
+      if (!isWizardQueued && res.data?.slots && Array.isArray(res.data.slots)) {
         const persistedSlots = res.data.slots.map((slot: any) => ({
           ...slot,
           startTime: normalizeTimeString(slot.startTime, "09:00"),
           endTime: normalizeTimeString(slot.endTime, "10:00")
         }));
+        finalWizardSlots = persistedSlots;
         setSlots(persistedSlots);
       }
 
+      const curTtWizard = useCacheStore.getState().timetable || {
+        activeSemester,
+        subjects,
+        slots: [],
+      };
+      useCacheStore.getState().setCache("timetable", {
+        ...curTtWizard,
+        activeSemester: curTtWizard.activeSemester || activeSemester,
+        subjects: curTtWizard.subjects || subjects,
+        slots: finalWizardSlots,
+      });
+
       // Refresh subjects, cache, and dispatch events asynchronously
       (async () => {
-        try {
-          const [semRes, subjRes] = await Promise.all([
-            api.get("/semesters/active"),
-            api.get("/subjects"),
-          ]);
-          if (semRes.data) setActiveSemester(semRes.data);
-          const rawSubjects = Array.isArray(subjRes.data) ? subjRes.data : (subjRes.data?.subjects || []);
-          const activeSubjects = rawSubjects.filter((s: any) => s.semesterId === (semRes.data?.id || activeSemester.id));
-          setSubjects(activeSubjects);
-        } catch (e) {
-          console.error("Failed to refresh subjects:", e);
+        if (!isWizardQueued && typeof navigator !== "undefined" && navigator.onLine) {
+          try {
+            const [semRes, subjRes] = await Promise.all([
+              api.get("/semesters/active"),
+              api.get("/subjects"),
+            ]);
+            if (semRes.data) setActiveSemester(semRes.data);
+            const rawSubjects = Array.isArray(subjRes.data) ? subjRes.data : (subjRes.data?.subjects || []);
+            const activeSubjects = rawSubjects.filter((s: any) => s.semesterId === (semRes.data?.id || activeSemester.id));
+            setSubjects(activeSubjects);
+            useCacheStore.getState().setCache("timetable", {
+              activeSemester: semRes.data || activeSemester,
+              subjects: activeSubjects,
+              slots: finalWizardSlots,
+            });
+          } catch (e) {
+            console.error("Failed to refresh subjects:", e);
+          }
+          useCacheStore.getState().setCache("today", null);
+          useCacheStore.getState().setCache("insights", null);
         }
 
-        useCacheStore.getState().setCache("today", null);
-        useCacheStore.getState().setCache("insights", null);
         window.dispatchEvent(new Event("timetable-updated"));
         window.dispatchEvent(new Event("attendance-updated"));
       })();
@@ -1059,6 +1185,15 @@ export const TimetablePage = () => {
       toast.error("Failed to persist timetable changes to server.");
     }
   };
+
+  // Combine live slots with any slots currently playing their 4.0s origami crumble exit animation
+  const displaySlots = React.useMemo(() => {
+    const activeIds = new Set(slots.map((s) => s.id));
+    return [...slots, ...dyingSlots.filter((ds) => !activeIds.has(ds.id))].sort((a, b) => {
+      if (a.dayOfWeek !== b.dayOfWeek) return a.dayOfWeek - b.dayOfWeek;
+      return (a.startTime || "").localeCompare(b.startTime || "");
+    });
+  }, [slots, dyingSlots]);
 
   if (isLoading) {
     return <PageSkeleton type="list" />;
@@ -1094,8 +1229,8 @@ export const TimetablePage = () => {
     );
   }
 
-  // Group slots by day for desktop grid view
-  const slotsByDay = DAYS.map((_, index) => slots.filter(s => s.dayOfWeek === index));
+  const slotsByDay = DAYS.map((_, index) => displaySlots.filter(s => s.dayOfWeek === index));
+  const displayDaySlots = displaySlots.filter((s) => s.dayOfWeek === activeTab);
 
   return (
     <div className="theme-aether p-4 md:p-8 space-y-6 w-full mx-auto pb-24 md:pb-8 min-h-screen">
@@ -1614,7 +1749,7 @@ export const TimetablePage = () => {
 
         {/* Slots List for Selected Day */}
         <div id="timetable-mobile-slots-container" className="space-y-3 scroll-mt-20">
-          {currentDaySlots.length === 0 ? (
+          {displayDaySlots.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 bg-card border border-border rounded-3xl shadow-sm">
               <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-3">
                 <CalendarPlus className="w-6 h-6 text-muted-foreground/50" />
@@ -1623,8 +1758,8 @@ export const TimetablePage = () => {
             </div>
           ) : (
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-              <SortableContext items={currentDaySlots.map(s => s.id)} strategy={verticalListSortingStrategy}>
-                {currentDaySlots.map((slot, slotIdx) => (
+              <SortableContext items={displayDaySlots.map(s => s.id)} strategy={verticalListSortingStrategy}>
+                {displayDaySlots.map((slot, slotIdx) => (
                   <SortableSlot 
                     key={slot.id} 
                     slot={slot} 

@@ -169,10 +169,17 @@ export const PeerSyncModal = () => {
   };
 
   const handleConfirmSync = async () => {
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      toast.error("Peer Sync requires an active internet connection to finalize import.");
+      return;
+    }
     if (!reviewData || !activeSemesterId) return;
     setLoading(true);
     try {
-      await api.post(`/timetable/import/${activeSemesterId}`, reviewData.payload, { timeout: 180000 });
+      const importRes = await api.post(`/timetable/import/${activeSemesterId}`, reviewData.payload, { timeout: 180000 });
+      if (importRes?.data?._queued) {
+        throw new Error("Peer Sync requires a live network connection.");
+      }
       
       // Invalidate all caches so that today, timetable, subjects, and stats update immediately
       const cacheState = useCacheStore.getState();

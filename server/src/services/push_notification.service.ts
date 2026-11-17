@@ -3,72 +3,108 @@ import { getMessaging } from 'firebase-admin/messaging';
 import { prisma } from '../lib/prisma';
 
 export class PushNotificationService {
-  /**
-   * Send a push notification to a specific user
-   */
-  static async sendToUser(userId: string, title: string, body: string, data?: any, imageUrl?: string) {
-    if (!isFirebaseInitialized) return false;
-    
-    try {
-      const sessions = await prisma.refreshToken.findMany({
-        where: { userId: userId, fcmToken: { not: null } },
-        select: { id: true, fcmToken: true, os: true, lastActive: true },
-        orderBy: { lastActive: 'desc' }
-      });
-
-      if (sessions.length === 0) return false;
-
-      // Group by OS/device type and keep only the most recently active session's token per device
-      // to avoid delivering duplicate pushes to multiple/stale sessions for the same physical device.
-      const tokensMap = new Map<string, string>();
-      for (const s of sessions) {
-        if (!s.fcmToken || !s.fcmToken.trim()) continue;
-        const key = s.os ? s.os.toLowerCase() : s.fcmToken.trim();
-        if (!tokensMap.has(key)) {
-          tokensMap.set(key, s.fcmToken.trim());
-        }
+  private static sanitizeImageUrl(imageUrl?: string): string | undefined {
+    let safeImageUrl = imageUrl ? imageUrl.trim() : undefined;
+    if (safeImageUrl) {
+      if (safeImageUrl.includes('/svg?')) {
+        safeImageUrl = safeImageUrl.replace('/svg?', '/png?');
+      } else if (safeImageUrl.endsWith('.svg')) {
+        safeImageUrl = safeImageUrl.replace(/\.svg$/, '.png');
       }
-      const tokens = Array.from(new Set(tokensMap.values()));
-      
-      if (tokens.length === 0) return false;
+    }
+    return safeImageUrl;
+  }
 
-      // Clean image URL so Android BitmapFactory can decode it (must be PNG/JPEG, not SVG)
-      let safeImageUrl: string | undefined = imageUrl ? imageUrl.trim() : undefined;
-      if (safeImageUrl) {
-        if (safeImageUrl.includes('/svg?')) {
-          safeImageUrl = safeImageUrl.replace('/svg?', '/png?');
-        } else if (safeImageUrl.endsWith('.svg')) {
-          safeImageUrl = safeImageUrl.replace(/\.svg$/, '.png');
-        }
-      }
-
-      const stringifiedData: Record<string, string> = {};
-      if (data) {
-        for (const [key, val] of Object.entries(data)) {
+  private static serializeData(data?: any, safeImageUrl?: string): Record<string, string> {
+    const stringifiedData: Record<string, string> = {};
+    if (data) {
+      for (const [key, val] of Object.entries(data)) {
+        if (val !== undefined) {
           stringifiedData[key] = typeof val === 'string' ? val : JSON.stringify(val);
         }
       }
-      if (safeImageUrl) {
-        stringifiedData.imageUrl = safeImageUrl;
-        stringifiedData.avatarUrl = safeImageUrl;
-      }
+    }
+    if (safeImageUrl) {
+      stringifiedData.imageUrl = safeImageUrl;
+      stringifiedData.avatarUrl = safeImageUrl;
+    }
+    return stringifiedData;
+  }
 
-      const notificationPayload: any = { title, body };
-      if (safeImageUrl) notificationPayload.imageUrl = safeImageUrl;
+  private static buildAndroidNotificationPayload(
+    title: string,
+    body: string,
+    tag: string,
+    safeImageUrl?: string
+  ) {
+    return {
+      priority: 'high' as const,
+      notification: {
+        title,
+        body,
+        icon: 'ic_stat_attendx',
+        color: '#10B981',
+        channelId: 'class_alerts',
+        tag,
+        ...(safeImageUrl ? { imageUrl: safeImageUrl } : {}),
+      },
+    };
+  }
 
-      const androidPayload: any = {
-        priority: 'high',
-        collapseKey: data?.type || 'attendx_notification',
-        notification: {
-          title,
-          body,
-          icon: 'ic_stat_attendx',
-          color: '#10B981',
-          channelId: 'class_alerts',
-          tag: data?.type || 'attendx_notification',
-          ...(safeImageUrl ? { imageUrl: safeImageUrl } : {})
+  private static async purgeFailedTokens(tokens: string[], response: any) {
+    if (!response || response.failureCount <= 0) return;
+    const failedTokens: string[] = [];
+    response.responses.forEach((resp: any, idx: number) => {
+      if (!resp.success) {
+        const errorCode = resp.error?.code;
+        if (
+          errorCode === 'messaging/invalid-registration-token' ||
+          errorCode === 'messaging/registration-token-not-registered'
+        ) {
+          failedTokens.push(tokens[idx]);
         }
-      };
+      }
+    });
+    if (failedTokens.length > 0) {
+      await prisma.refreshToken.updateMany({
+        where: { fcmToken: { in: failedTokens } },
+        data: { fcmToken: null },
+      }).catch(() => {});
+      console.log(`[PushNotification] Purged ${failedTokens.length} dead token(s) from database.`);
+    }
+  }
+
+  /**
+   * Send a push notification to a specific user across all active (non-expired) registered device tokens
+   */
+  static async sendToUser(userId: string, title: string, body: string, data?: any, imageUrl?: string) {
+    if (!isFirebaseInitialized) return false;
+
+    try {
+      const sessions = await prisma.refreshToken.findMany({
+        where: {
+          userId,
+          fcmToken: { not: null },
+          expiresAt: { gt: new Date() },
+        },
+        select: { fcmToken: true, lastActive: true },
+        orderBy: { lastActive: 'desc' },
+      });
+
+      const tokens = Array.from(
+        new Set(
+          sessions
+            .map((s) => (s.fcmToken || '').trim())
+            .filter((t) => t.length > 0)
+        )
+      );
+      if (tokens.length === 0) return false;
+
+      const safeImageUrl = this.sanitizeImageUrl(imageUrl);
+      const stringifiedData = this.serializeData(data, safeImageUrl);
+      const notificationPayload: any = { title, body, ...(safeImageUrl ? { imageUrl: safeImageUrl } : {}) };
+      const uniqueTag = `${data?.type || 'attendx'}_${data?.id || data?.announcementId || Date.now()}`;
+      const androidPayload = this.buildAndroidNotificationPayload(title, body, uniqueTag, safeImageUrl);
 
       if (tokens.length === 1) {
         try {
@@ -79,10 +115,13 @@ export class PushNotificationService {
             data: stringifiedData,
           });
         } catch (err: any) {
-          if (err.code === 'messaging/invalid-registration-token' || err.code === 'messaging/registration-token-not-registered') {
+          if (
+            err.code === 'messaging/invalid-registration-token' ||
+            err.code === 'messaging/registration-token-not-registered'
+          ) {
             await prisma.refreshToken.updateMany({
               where: { fcmToken: tokens[0] },
-              data: { fcmToken: null }
+              data: { fcmToken: null },
             });
             console.log(`[PushNotification] Purged 1 dead token from database.`);
             return false;
@@ -96,31 +135,8 @@ export class PushNotificationService {
           android: androidPayload,
           data: stringifiedData,
         });
-
-        if (response.failureCount > 0) {
-          const failedTokens: string[] = [];
-          response.responses.forEach((resp, idx) => {
-            if (!resp.success) {
-              const errorCode = resp.error?.code;
-              if (errorCode === 'messaging/invalid-registration-token' || 
-                  errorCode === 'messaging/registration-token-not-registered') {
-                failedTokens.push(tokens[idx]);
-              }
-            }
-          });
-
-          if (failedTokens.length > 0) {
-            await prisma.refreshToken.updateMany({
-              where: { fcmToken: { in: failedTokens } },
-              data: { fcmToken: null }
-            });
-            console.log(`[PushNotification] Purged ${failedTokens.length} dead token(s) from database for user ${userId}.`);
-          }
-        }
-
-        if (response.successCount === 0) {
-          return false;
-        }
+        await this.purgeFailedTokens(tokens, response);
+        if (response.successCount === 0) return false;
       }
       return true;
     } catch (error) {
@@ -130,61 +146,34 @@ export class PushNotificationService {
   }
 
   /**
-   * Broadcast a notification to all users with an FCM token
+   * Broadcast a notification to all users with an active FCM token
    */
   static async broadcastMessage(title: string, body: string, data?: any, imageUrl?: string) {
     if (!isFirebaseInitialized) return false;
 
     try {
       const sessions = await prisma.refreshToken.findMany({
-        where: { fcmToken: { not: null } },
-        select: { fcmToken: true }
+        where: {
+          fcmToken: { not: null },
+          expiresAt: { gt: new Date() },
+        },
+        select: { fcmToken: true },
       });
 
-      const rawTokens = sessions.map(s => s.fcmToken as string).filter(t => t.trim() !== '');
-      const tokens = Array.from(new Set(rawTokens));
+      const tokens = Array.from(
+        new Set(sessions.map((s) => (s.fcmToken || '').trim()).filter((t) => t.length > 0))
+      );
       if (tokens.length === 0) return true;
 
       const BATCH_SIZE = 500;
       let successCount = 0;
       let failureCount = 0;
 
-      let safeImageUrl: string | undefined = imageUrl ? imageUrl.trim() : undefined;
-      if (safeImageUrl) {
-        if (safeImageUrl.includes('/svg?')) {
-          safeImageUrl = safeImageUrl.replace('/svg?', '/png?');
-        } else if (safeImageUrl.endsWith('.svg')) {
-          safeImageUrl = safeImageUrl.replace(/\.svg$/, '.png');
-        }
-      }
-
-      const stringifiedData: Record<string, string> = {};
-      if (data) {
-        for (const [key, val] of Object.entries(data)) {
-          stringifiedData[key] = typeof val === 'string' ? val : JSON.stringify(val);
-        }
-      }
-      if (safeImageUrl) {
-        stringifiedData.imageUrl = safeImageUrl;
-        stringifiedData.avatarUrl = safeImageUrl;
-      }
-
-      const notificationPayload: any = { title, body };
-      if (safeImageUrl) notificationPayload.imageUrl = safeImageUrl;
-
-      const androidPayload: any = {
-        priority: 'high',
-        collapseKey: data?.type || 'attendx_notification',
-        notification: {
-          title,
-          body,
-          icon: 'ic_stat_attendx',
-          color: '#10B981',
-          channelId: 'class_alerts',
-          tag: data?.type || 'attendx_notification',
-          ...(safeImageUrl ? { imageUrl: safeImageUrl } : {})
-        }
-      };
+      const safeImageUrl = this.sanitizeImageUrl(imageUrl);
+      const stringifiedData = this.serializeData(data, safeImageUrl);
+      const notificationPayload: any = { title, body, ...(safeImageUrl ? { imageUrl: safeImageUrl } : {}) };
+      const uniqueTag = `${data?.type || 'broadcast'}_${data?.version || data?.id || Date.now()}`;
+      const androidPayload = this.buildAndroidNotificationPayload(title, body, uniqueTag, safeImageUrl);
 
       for (let i = 0; i < tokens.length; i += BATCH_SIZE) {
         const batch = tokens.slice(i, i + BATCH_SIZE);
@@ -194,31 +183,9 @@ export class PushNotificationService {
           android: androidPayload,
           data: stringifiedData,
         });
-        
         successCount += response.successCount;
         failureCount += response.failureCount;
-
-        // Clean up invalid tokens from the database
-        if (response.failureCount > 0) {
-          const failedTokens: string[] = [];
-          response.responses.forEach((resp, idx) => {
-            if (!resp.success) {
-              const errorCode = resp.error?.code;
-              if (errorCode === 'messaging/invalid-registration-token' || 
-                  errorCode === 'messaging/registration-token-not-registered') {
-                failedTokens.push(batch[idx]);
-              }
-            }
-          });
-          
-          if (failedTokens.length > 0) {
-            await prisma.refreshToken.updateMany({
-              where: { fcmToken: { in: failedTokens } },
-              data: { fcmToken: null }
-            });
-            console.log(`[PushNotification] Purged ${failedTokens.length} dead tokens from database.`);
-          }
-        }
+        await this.purgeFailedTokens(batch, response);
       }
 
       console.log(`[PushNotification] Broadcasted to ${successCount} devices, ${failureCount} failed.`);
@@ -236,73 +203,42 @@ export class PushNotificationService {
     if (!isFirebaseInitialized) return false;
 
     try {
-      let userQuery = {};
-      if (targetCondition === 'missing_birthday') {
-        userQuery = { birthday: null };
-      } else if (targetCondition === 'missing_password') {
-        userQuery = { passwordHash: null };
-      }
+      const userQuery = targetCondition === 'missing_birthday'
+        ? { birthday: null }
+        : targetCondition === 'missing_password'
+          ? { passwordHash: null }
+          : {};
 
       const users = await prisma.user.findMany({
         where: userQuery,
-        select: { id: true }
+        select: { id: true },
       });
-
-      const userIds = users.map(u => u.id);
+      const userIds = users.map((u) => u.id);
       if (userIds.length === 0) return true;
 
       const sessions = await prisma.refreshToken.findMany({
-        where: { 
+        where: {
           userId: { in: userIds },
-          fcmToken: { not: null } 
+          fcmToken: { not: null },
+          expiresAt: { gt: new Date() },
         },
-        select: { fcmToken: true }
+        select: { fcmToken: true },
       });
 
-      const rawTokens = sessions.map(s => s.fcmToken as string).filter(t => t.trim() !== '');
-      const tokens = Array.from(new Set(rawTokens));
+      const tokens = Array.from(
+        new Set(sessions.map((s) => (s.fcmToken || '').trim()).filter((t) => t.length > 0))
+      );
       if (tokens.length === 0) return true;
 
       const BATCH_SIZE = 500;
       let successCount = 0;
       let failureCount = 0;
 
-      let safeImageUrl: string | undefined = imageUrl ? imageUrl.trim() : undefined;
-      if (safeImageUrl) {
-        if (safeImageUrl.includes('/svg?')) {
-          safeImageUrl = safeImageUrl.replace('/svg?', '/png?');
-        } else if (safeImageUrl.endsWith('.svg')) {
-          safeImageUrl = safeImageUrl.replace(/\.svg$/, '.png');
-        }
-      }
-
-      const stringifiedData: Record<string, string> = {};
-      if (data) {
-        for (const [key, val] of Object.entries(data)) {
-          stringifiedData[key] = typeof val === 'string' ? val : JSON.stringify(val);
-        }
-      }
-      if (safeImageUrl) {
-        stringifiedData.imageUrl = safeImageUrl;
-        stringifiedData.avatarUrl = safeImageUrl;
-      }
-
-      const notificationPayload: any = { title, body };
-      if (safeImageUrl) notificationPayload.imageUrl = safeImageUrl;
-
-      const androidPayload: any = {
-        priority: 'high',
-        collapseKey: data?.type || 'attendx_notification',
-        notification: {
-          title,
-          body,
-          icon: 'ic_stat_attendx',
-          color: '#10B981',
-          channelId: 'class_alerts',
-          tag: data?.type || 'attendx_notification',
-          ...(safeImageUrl ? { imageUrl: safeImageUrl } : {})
-        }
-      };
+      const safeImageUrl = this.sanitizeImageUrl(imageUrl);
+      const stringifiedData = this.serializeData(data, safeImageUrl);
+      const notificationPayload: any = { title, body, ...(safeImageUrl ? { imageUrl: safeImageUrl } : {}) };
+      const uniqueTag = `${data?.type || targetCondition}_${Date.now()}`;
+      const androidPayload = this.buildAndroidNotificationPayload(title, body, uniqueTag, safeImageUrl);
 
       for (let i = 0; i < tokens.length; i += BATCH_SIZE) {
         const batch = tokens.slice(i, i + BATCH_SIZE);
@@ -312,29 +248,9 @@ export class PushNotificationService {
           android: androidPayload,
           data: stringifiedData,
         });
-        
         successCount += response.successCount;
         failureCount += response.failureCount;
-
-        if (response.failureCount > 0) {
-          const failedTokens: string[] = [];
-          response.responses.forEach((resp, idx) => {
-            if (!resp.success) {
-              const errorCode = resp.error?.code;
-              if (errorCode === 'messaging/invalid-registration-token' || 
-                  errorCode === 'messaging/registration-token-not-registered') {
-                failedTokens.push(batch[idx]);
-              }
-            }
-          });
-          
-          if (failedTokens.length > 0) {
-            await prisma.refreshToken.updateMany({
-              where: { fcmToken: { in: failedTokens } },
-              data: { fcmToken: null }
-            });
-          }
-        }
+        await this.purgeFailedTokens(batch, response);
       }
 
       console.log(`[PushNotification] Targeted Broadcast (${targetCondition}) sent to ${successCount} devices, ${failureCount} failed.`);
@@ -346,7 +262,9 @@ export class PushNotificationService {
   }
 
   /**
-   * Broadcast an FCM notification to all enrolled members of a classroom (excluding sender)
+   * Broadcast an FCM notification to all enrolled members of a classroom (excluding sender).
+   * Announcements are sent as high-priority data-only payloads so AttendXMessagingService always runs
+   * in background/killed states to pre-buffer feeds and render unique non-overwriting tray alerts.
    */
   static async sendToClassroomMembers(classroomId: string, excludeUserId: string, title: string, body: string, data?: any) {
     if (!isFirebaseInitialized) return false;
@@ -362,80 +280,59 @@ export class PushNotificationService {
 
       if (members.length === 0) return true;
 
-      const userIds = members.map(m => m.userId);
+      const userIds = members.map((m) => m.userId);
 
       const sessions = await prisma.refreshToken.findMany({
         where: {
           userId: { in: userIds },
           fcmToken: { not: null },
+          expiresAt: { gt: new Date() },
         },
         select: { fcmToken: true },
       });
 
-      const rawTokens = sessions.map(s => s.fcmToken as string).filter(t => t && t.trim() !== '');
-      const tokens = Array.from(new Set(rawTokens));
+      const tokens = Array.from(
+        new Set(sessions.map((s) => (s.fcmToken || '').trim()).filter((t) => t.length > 0))
+      );
       if (tokens.length === 0) return true;
 
-      const stringifiedData: Record<string, string> = {
+      const stringifiedData = this.serializeData({
         route: `/classrooms/${classroomId}`,
         url: `/classrooms/${classroomId}`,
         classroomId,
-      };
-      if (data) {
-        for (const [key, val] of Object.entries(data)) {
-          stringifiedData[key] = typeof val === 'string' ? val : JSON.stringify(val);
-        }
-      }
+        pushTitle: title,
+        pushBody: body,
+        ...(data || {}),
+      });
 
-      const notificationPayload: any = { title, body };
-      const androidPayload: any = {
-        priority: 'high',
-        collapseKey: `classroom_${classroomId}`,
-        notification: {
-          title,
-          body,
-          icon: 'ic_stat_attendx',
-          color: '#10B981',
-          channelId: 'class_alerts',
-          tag: `classroom_${classroomId}`,
-        },
-      };
+      const msgType = String(data?.type || '').toLowerCase();
+      const isAnnouncement =
+        msgType === 'classroom_announcement' ||
+        msgType === 'classroom_broadcast' ||
+        msgType === 'announcement';
 
+      const uniqueTag = `classroom_${classroomId}_${data?.announcementId || data?.id || msgType || 'update'}_${Date.now()}`;
       const BATCH_SIZE = 500;
       for (let i = 0; i < tokens.length; i += BATCH_SIZE) {
         const batch = tokens.slice(i, i + BATCH_SIZE);
-        const response = await getMessaging().sendEachForMulticast({
-          tokens: batch,
-          notification: notificationPayload,
-          android: androidPayload,
-          data: stringifiedData,
-        });
-
-        // Prune stale or uninstalled tokens automatically to protect FCM quotas
-        if (response.failureCount > 0) {
-          const failedTokens: string[] = [];
-          response.responses.forEach((resp, idx) => {
-            if (!resp.success) {
-              const errorCode = resp.error?.code;
-              if (
-                errorCode === 'messaging/invalid-registration-token' ||
-                errorCode === 'messaging/registration-token-not-registered'
-              ) {
-                failedTokens.push(batch[idx]);
-              }
+        const payload: any = isAnnouncement
+          ? {
+              tokens: batch,
+              android: { priority: 'high' as const },
+              data: stringifiedData,
             }
-          });
+          : {
+              tokens: batch,
+              notification: { title, body },
+              android: this.buildAndroidNotificationPayload(title, body, uniqueTag),
+              data: stringifiedData,
+            };
 
-          if (failedTokens.length > 0) {
-            await prisma.refreshToken.updateMany({
-              where: { fcmToken: { in: failedTokens } },
-              data: { fcmToken: null },
-            }).catch(() => {});
-          }
-        }
+        const response = await getMessaging().sendEachForMulticast(payload);
+        await this.purgeFailedTokens(batch, response);
       }
 
-      console.log(`[PushNotification] Broadcasted classroom announcement to ${tokens.length} member device(s).`);
+      console.log(`[PushNotification] Broadcasted classroom notification to ${tokens.length} member device(s).`);
       return true;
     } catch (error) {
       console.error("[PushNotification] Failed to send classroom broadcast:", error);

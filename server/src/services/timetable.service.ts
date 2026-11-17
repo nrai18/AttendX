@@ -755,9 +755,6 @@ export class TimetableService {
       include: { semester: true }
     });
 
-    // Ghost class: the override no longer exists (orphaned attendance record).
-    // Gracefully clean up any dangling attendance row by its ID or overrideId and return success
-    // instead of throwing — the UI can silently remove ghost entries without 500 error.
     if (!override) {
       const deletedAtt = await prisma.attendance.deleteMany({
         where: {
@@ -768,17 +765,38 @@ export class TimetableService {
           ]
         }
       }).catch(() => null);
+      await CacheService.invalidateUser(userId).catch(() => {});
       return { deleted: deletedAtt?.count || 0, ghost: true };
     }
 
     if (override.semester.userId !== userId) throw new Error("Forbidden: Override does not belong to user");
 
+    // 1. Delete all attendance records tied to this extra class override
     await prisma.attendance.deleteMany({
-      where: { overrideId: id, userId }
+      where: {
+        userId,
+        OR: [
+          { overrideId: id },
+          ...(override.subjectId
+            ? [{
+                subjectId: override.subjectId,
+                date: override.date,
+                overrideId: id,
+              }]
+            : [])
+        ]
+      }
     });
-    return prisma.timetableOverride.delete({
+
+    // 2. Delete the override record
+    const deletedOverride = await prisma.timetableOverride.delete({
       where: { id }
     });
+
+    // 3. Clear user cache so that next queries reflect accurate stats and agendas
+    await CacheService.invalidateUser(userId).catch(() => {});
+
+    return deletedOverride;
   }
 
 
@@ -800,7 +818,7 @@ export class TimetableService {
       
       const prompt = `You are an expert academic timetable parser.
 Parse the attached timetable document/image.
-Extract the weekly class schedule, subjects, electives, rooms, sections, and practical lab batches ONLY for semester/branch: "${targetSemName}".
+Extract the weekly class schedule, subjects, electives, rooms, sections, and practical lab batches. If the document covers multiple semesters, prioritize schedules matching "${targetSemName}" across relevant branches so output stays compact and fast; if it is a single-class sheet, extract its branch and semester cleanly.
 
 CRITICAL EXTRACTION RULES:
   1. TIMING: Extract exact start/end times directly from the column headers.

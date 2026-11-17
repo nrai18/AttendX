@@ -7,11 +7,10 @@ export class AIManager {
   
   // Strict compliance with AGENTS.md (No 2.0 or 1.5 models)
   private static readonly SAFE_CASCADE = [
-    'gemini-3.7-flash',
     'gemini-3.8-flash',
+    'gemini-3.7-flash',
     'gemini-3.6-flash',
-    'gemini-3.5-flash-lite',
-    'gemini-3.1-pro'
+    'gemini-3.5-flash-lite'
   ];
 
   private static init() {
@@ -38,24 +37,37 @@ export class AIManager {
        modelsToTry = [options.model, ...this.SAFE_CASCADE].filter((val, index, self) => self.indexOf(val) === index);
     }
     
+    const hasInlineData = Array.isArray(options.contents)
+      ? options.contents.some(
+          (c: any) =>
+            Array.isArray(c?.parts) &&
+            c.parts.some((p: any) => Boolean(p?.inlineData)),
+        )
+      : false;
+
     for (let mIndex = 0; mIndex < modelsToTry.length; mIndex++) {
       const currentModel = modelsToTry[mIndex];
       const modelOptions = { ...options, model: currentModel };
-      
-      // Normalize thinkingConfig: strip unsupported thinkingLevel and ensure valid thinkingBudget
+
+      // Strip thinkingConfig proactively on lite models, otherwise normalize thinkingLevel -> thinkingBudget
       if (modelOptions.config?.thinkingConfig) {
         modelOptions.config = { ...modelOptions.config };
-        const tc = { ...modelOptions.config.thinkingConfig };
-        if ('thinkingLevel' in tc) {
-          delete tc.thinkingLevel;
-          if (!('thinkingBudget' in tc)) {
-            tc.thinkingBudget = 0;
+        if (currentModel.includes('lite')) {
+          delete modelOptions.config.thinkingConfig;
+        } else {
+          const tc = { ...modelOptions.config.thinkingConfig };
+          if ('thinkingLevel' in tc) {
+            delete tc.thinkingLevel;
+            if (!('thinkingBudget' in tc)) {
+              tc.thinkingBudget = 0;
+            }
           }
+          modelOptions.config.thinkingConfig = tc;
         }
-        modelOptions.config.thinkingConfig = tc;
       }
-      
+
       let attemptsOnThisModel = 0;
+      let unavailableErrorsOnModel = 0;
       const maxAttempts = this.keys.length;
 
       while (attemptsOnThisModel < maxAttempts) {
@@ -65,30 +77,47 @@ export class AIManager {
           ai = new GoogleGenAI({ apiKey: key });
           this.aiInstances[key] = ai;
         }
-        
-        if (Date.now() - startTime > TIMEOUT_MS) {
+
+        const elapsed = Date.now() - startTime;
+        const remainingBudget = TIMEOUT_MS - elapsed;
+        if (remainingBudget <= 2000) {
           throw new Error('AI request took too long. Failing fast to prevent 5-minute hang.');
         }
-        
+
+        const ttftTimeout = Math.min(
+          currentModel.includes('pro') ? 60000 : hasInlineData ? 55000 : 30000,
+          remainingBudget,
+        );
+        const controller = new AbortController();
+        let ttftTimer: ReturnType<typeof setTimeout> | null = null;
+
         try {
-          // Streaming Token Accumulation: Allows progressive generation for large timetable/calendar docs
-          const ttftTimeout = currentModel.includes('pro') ? 60000 : 30000;
-          
-          const streamPromise = ai.models.generateContentStream(modelOptions);
-          const responseStream: any = await Promise.race([
-            streamPromise,
-            new Promise((_, reject) => setTimeout(() => reject(new Error(`AI TTFT timeout exceeded (${ttftTimeout}ms limit)`)), ttftTimeout))
-          ]);
+          // Streaming Token Accumulation with real AbortController cancellation on TTFT timeout
+          ttftTimer = setTimeout(() => {
+            controller.abort(new Error(`AI TTFT timeout exceeded (${ttftTimeout}ms limit)`));
+          }, ttftTimeout);
+
+          const attemptOptions = {
+            ...modelOptions,
+            config: {
+              ...(modelOptions.config || {}),
+              abortSignal: controller.signal,
+            },
+          };
+
+          const responseStream: any = await ai.models.generateContentStream(attemptOptions);
 
           let fullText = "";
           for await (const chunk of responseStream) {
+            if (ttftTimer) {
+              clearTimeout(ttftTimer);
+              ttftTimer = null;
+            }
             if (chunk.text) {
               fullText += chunk.text;
             }
           }
 
-          // Return normalized response object compatible with both .text property and .text() method
-          const textGetter = () => fullText;
           return {
             text: fullText,
             candidates: responseStream?.candidates || [],
@@ -98,7 +127,9 @@ export class AIManager {
         } catch (error: any) {
           attemptsOnThisModel++;
           const status = error.status || error.code || 500;
-          const rawMsg = error.message || 'Unknown error';
+          const rawMsg = controller.signal.aborted
+            ? (controller.signal.reason?.message || `AI TTFT timeout exceeded (${ttftTimeout}ms limit)`)
+            : (error.message || 'Unknown error');
           const msg = rawMsg;
           let cleanMsg = rawMsg;
           try {
@@ -115,35 +146,52 @@ export class AIManager {
             }
           } catch {}
           if (typeof cleanMsg === 'string' && cleanMsg.length > 200) cleanMsg = cleanMsg.slice(0, 200) + '...';
-          
+
           console.warn(`[AIManager] Model ${currentModel} on Key ${this.currentKeyIndex} failed (${status} - ${cleanMsg}).`);
-          
-          if (status === 400 && (msg.includes('thinking') || msg.includes('Thinking') || msg.includes('thinkingConfig'))) {
-            console.warn(`[AIManager] Invalid thinkingConfig detected for ${currentModel}. Stripping thinkingConfig and retrying...`);
-            if (modelOptions.config) {
-              delete modelOptions.config.thinkingConfig;
-            }
+
+          if (status === 400 && modelOptions.config?.thinkingConfig) {
+            console.warn(`[AIManager] 400 with thinkingConfig on ${currentModel}; stripping thinkingConfig and retrying...`);
+            modelOptions.config = { ...modelOptions.config };
+            delete modelOptions.config.thinkingConfig;
+            attemptsOnThisModel--; // Config normalization should not consume a key attempt
             continue;
           }
-          
-          if (status === 503 || msg.includes('503') || msg.includes('UNAVAILABLE') || msg.includes('overloaded')) {
-             console.warn(`[AIManager] 503 Unavailable detected. Downgrading model immediately...`);
-             break;
+
+          if (status === 400) {
+            console.warn(`[AIManager] 400 Bad Request on ${currentModel}; advancing to next fallback model...`);
+            break;
           }
-          
+
+          if (status === 503 || msg.includes('503') || msg.includes('UNAVAILABLE') || msg.includes('overloaded')) {
+            unavailableErrorsOnModel++;
+            if (unavailableErrorsOnModel < Math.min(3, maxAttempts)) {
+              console.warn(`[AIManager] 503 Unavailable on Key ${this.currentKeyIndex}; trying next API key (${unavailableErrorsOnModel}/3)...`);
+              this.currentKeyIndex = (this.currentKeyIndex + 1) % this.keys.length;
+              await new Promise((r) => setTimeout(r, 150));
+              continue;
+            }
+            console.warn(`[AIManager] Repeated 503 Unavailable on ${currentModel}. Downgrading model...`);
+            break;
+          }
+
           if (status === 404 || msg.includes('404') || msg.includes('not found')) {
-             console.warn(`[AIManager] 404 Not Found. Downgrading model immediately...`);
-             break;
+            console.warn(`[AIManager] 404 Not Found. Downgrading model immediately...`);
+            break;
           }
 
           if (status === 429 || msg.includes('429') || msg.includes('Quota')) {
-             console.warn(`[AIManager] 429 Quota Exceeded. Rotating to next API key horizontally...`);
-             this.currentKeyIndex = (this.currentKeyIndex + 1) % this.keys.length;
-             continue;
+            console.warn(`[AIManager] 429 Quota Exceeded. Rotating to next API key horizontally...`);
+            this.currentKeyIndex = (this.currentKeyIndex + 1) % this.keys.length;
+            continue;
           }
 
           console.warn(`[AIManager] Transient error. Rotating to next API key...`);
           this.currentKeyIndex = (this.currentKeyIndex + 1) % this.keys.length;
+        } finally {
+          if (ttftTimer) {
+            clearTimeout(ttftTimer);
+            ttftTimer = null;
+          }
         }
       }
     }

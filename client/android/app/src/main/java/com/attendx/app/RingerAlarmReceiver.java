@@ -27,7 +27,7 @@ public class RingerAlarmReceiver extends BroadcastReceiver {
     public static final int PINNED_MUTE_NOTIF_ID = 7001;
     private static final int FALLBACK_NOTIF_ID = 8888;
     private static final int UNMUTE_CONFIRM_NOTIF_ID = 7003;
-    private static final String CHANNEL_ID_SILENT = "silent_mode";
+        private static final String CHANNEL_ID_SILENT = RingerForegroundService.CHANNEL_ID;
     private static final String CHANNEL_ID_ALERTS = "class_alerts";
     private static final String WAKELOCK_TAG = "attendx:unmute_wakelock";
 
@@ -65,46 +65,12 @@ public class RingerAlarmReceiver extends BroadcastReceiver {
         }
 
         try {
-            AudioManager audioManager = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
-            NotificationManager notificationManager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+                        NotificationManager notificationManager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+            RingerPlugin.restoreSavedAudioState(context);
 
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && notificationManager != null) {
-                if (notificationManager.isNotificationPolicyAccessGranted()) {
-                    try {
-                        notificationManager.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_ALL);
-                        Log.d(TAG, "DND interruption filter successfully restored to INTERRUPTION_FILTER_ALL.");
-                    } catch (Exception dndEx) {
-                        Log.e(TAG, "Failed to restore DND interruption filter to ALL", dndEx);
-                    }
-                } else {
-                    Log.w(TAG, "DND access not granted; unable to auto-restore interruption filter.");
-                }
-            }
-
-            if (audioManager != null) {
-                try {
-                    audioManager.setRingerMode(AudioManager.RINGER_MODE_NORMAL);
-                    int maxRing = audioManager.getStreamMaxVolume(AudioManager.STREAM_RING);
-                    int curRing = audioManager.getStreamVolume(AudioManager.STREAM_RING);
-                    if (curRing == 0 && maxRing > 0) {
-                        audioManager.setStreamVolume(AudioManager.STREAM_RING, Math.max(1, (int)(maxRing * 0.7)), 0);
-                    }
-                    int maxNotif = audioManager.getStreamMaxVolume(AudioManager.STREAM_NOTIFICATION);
-                    int curNotif = audioManager.getStreamVolume(AudioManager.STREAM_NOTIFICATION);
-                    if (curNotif == 0 && maxNotif > 0) {
-                        audioManager.setStreamVolume(AudioManager.STREAM_NOTIFICATION, Math.max(1, (int)(maxNotif * 0.7)), 0);
-                    }
-                    Log.d(TAG, "Ringer successfully restored to NORMAL by native alarm.");
-                } catch (Exception ringerEx) {
-                    Log.e(TAG, "Failed to set ringer mode to NORMAL", ringerEx);
-                }
-            }
-
-            // Stop foreground service when class ends
+            // Stop foreground service safely when class ends
             try {
-                Intent stopIntent = new Intent(context, RingerForegroundService.class);
-                stopIntent.setAction(RingerForegroundService.ACTION_STOP_CLASS_MUTE);
-                context.startService(stopIntent);
+                context.stopService(new Intent(context, RingerForegroundService.class));
             } catch (Exception ignored) {}
 
             // Clear stored unmute preferences
@@ -149,39 +115,12 @@ public class RingerAlarmReceiver extends BroadcastReceiver {
     private void handleManualUnmute(Context context) {
         Log.d(TAG, "User tapped Unmute Phone action button on notification.");
         try {
-            AudioManager audioManager = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
-            NotificationManager notificationManager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+                        NotificationManager notificationManager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+            RingerPlugin.restoreSavedAudioState(context);
 
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && notificationManager != null && notificationManager.isNotificationPolicyAccessGranted()) {
-                try {
-                    notificationManager.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_ALL);
-                    Log.d(TAG, "DND interruption filter cleared on manual unmute.");
-                } catch (Exception dndEx) {
-                    Log.e(TAG, "Failed to restore DND interruption filter on manual unmute", dndEx);
-                }
-            }
-
-            if (audioManager != null) {
-                try {
-                    audioManager.setRingerMode(AudioManager.RINGER_MODE_NORMAL);
-                    int maxRing = audioManager.getStreamMaxVolume(AudioManager.STREAM_RING);
-                    int curRing = audioManager.getStreamVolume(AudioManager.STREAM_RING);
-                    if (curRing == 0 && maxRing > 0) {
-                        audioManager.setStreamVolume(AudioManager.STREAM_RING, Math.max(1, (int)(maxRing * 0.7)), 0);
-                    }
-                    int maxNotif = audioManager.getStreamMaxVolume(AudioManager.STREAM_NOTIFICATION);
-                    int curNotif = audioManager.getStreamVolume(AudioManager.STREAM_NOTIFICATION);
-                    if (curNotif == 0 && maxNotif > 0) {
-                        audioManager.setStreamVolume(AudioManager.STREAM_NOTIFICATION, Math.max(1, (int)(maxNotif * 0.7)), 0);
-                    }
-                } catch (Exception ignored) {}
-            }
-
-            // Stop foreground service when manual unmute is tapped
+            // Stop foreground service safely when manual unmute is tapped
             try {
-                Intent stopIntent = new Intent(context, RingerForegroundService.class);
-                stopIntent.setAction(RingerForegroundService.ACTION_STOP_CLASS_MUTE);
-                context.startService(stopIntent);
+                context.stopService(new Intent(context, RingerForegroundService.class));
             } catch (Exception ignored) {}
 
             RingerPlugin.cancelNativeUnmuteAlarm(context);
@@ -203,8 +142,14 @@ public class RingerAlarmReceiver extends BroadcastReceiver {
             long unmuteEpochMs = prefs.getLong(RingerPlugin.KEY_UNMUTE_EPOCH, 0L);
             String className = prefs.getString(RingerPlugin.KEY_CLASS_NAME, "Class");
 
-            AudioManager audioManager = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
-            boolean isMuted = audioManager != null && (audioManager.getRingerMode() == AudioManager.RINGER_MODE_SILENT || audioManager.getRingerMode() == AudioManager.RINGER_MODE_VIBRATE);
+                        AudioManager audioManager = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
+            NotificationManager nm = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+            boolean dndActive = Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
+                && nm != null
+                && nm.getCurrentInterruptionFilter() != NotificationManager.INTERRUPTION_FILTER_ALL;
+            boolean isMuted = prefs.getBoolean(RingerPlugin.KEY_HAS_SAVED_STATE, false)
+                || dndActive
+                || (audioManager != null && (audioManager.getRingerMode() == AudioManager.RINGER_MODE_SILENT || audioManager.getRingerMode() == AudioManager.RINGER_MODE_VIBRATE));
 
             // If class is still in session and phone is muted, re-post the pinned notification immediately
             if (unmuteEpochMs > System.currentTimeMillis() && isMuted) {
@@ -218,8 +163,14 @@ public class RingerAlarmReceiver extends BroadcastReceiver {
         }
     }
 
-    private void handleBootCompleted(Context context) {
+        private void handleBootCompleted(Context context) {
         Log.d(TAG, "Device reboot detected. Reconciling ringer state...");
+        PowerManager pm = (PowerManager) context.getSystemService(Context.POWER_SERVICE);
+        PowerManager.WakeLock wakeLock = null;
+        if (pm != null) {
+            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, WAKELOCK_TAG + ":boot");
+            wakeLock.acquire(10 * 1000L);
+        }
         try {
             SharedPreferences prefs = context.getSharedPreferences(RingerPlugin.PREFS_NAME, Context.MODE_PRIVATE);
             long unmuteEpochMs = prefs.getLong(RingerPlugin.KEY_UNMUTE_EPOCH, 0L);
@@ -227,14 +178,18 @@ public class RingerAlarmReceiver extends BroadcastReceiver {
 
             if (unmuteEpochMs > System.currentTimeMillis()) {
                 Log.d(TAG, "Reboot occurred during active class session. Re-scheduling alarm and re-posting pinned notification.");
-                RingerPlugin.scheduleNativeUnmuteAlarm(context, unmuteEpochMs);
+                RingerPlugin.scheduleNativeUnmuteAlarm(context, unmuteEpochMs, false);
                 showPinnedMuteNotification(context, className, unmuteEpochMs);
-            } else if (unmuteEpochMs > 0) {
+            } else if (unmuteEpochMs > 0 || prefs.getBoolean(RingerPlugin.KEY_HAS_SAVED_STATE, false)) {
                 Log.d(TAG, "Unmute time expired while device was powered off. Restoring ringer now.");
                 handleAutoUnmute(context);
             }
         } catch (Exception e) {
             Log.e(TAG, "Error handling boot completed", e);
+        } finally {
+            if (wakeLock != null && wakeLock.isHeld()) {
+                wakeLock.release();
+            }
         }
     }
 
@@ -242,22 +197,7 @@ public class RingerAlarmReceiver extends BroadcastReceiver {
         NotificationManager notificationManager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
         if (notificationManager == null) return;
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            NotificationChannel channel = notificationManager.getNotificationChannel(CHANNEL_ID_SILENT);
-            if (channel == null || channel.getImportance() < NotificationManager.IMPORTANCE_DEFAULT) {
-                if (channel != null) {
-                    try {
-                        notificationManager.deleteNotificationChannel(CHANNEL_ID_SILENT);
-                    } catch (Exception ignored) {}
-                }
-                channel = new NotificationChannel(CHANNEL_ID_SILENT, "Silent Mode & Class Session", NotificationManager.IMPORTANCE_DEFAULT);
-                channel.setDescription("Pinned notification while class is actively running and phone is muted.");
-                channel.setSound(null, null);
-                channel.enableVibration(false);
-                channel.setLockscreenVisibility(android.app.Notification.VISIBILITY_PUBLIC);
-                notificationManager.createNotificationChannel(channel);
-            }
-        }
+                RingerForegroundService.ensureSilentChannel(context);
 
         SimpleDateFormat timeFormat = new SimpleDateFormat("hh:mm a", Locale.getDefault());
         String timeStr = timeFormat.format(new Date(unmuteEpochMs));

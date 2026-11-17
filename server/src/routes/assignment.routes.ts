@@ -7,12 +7,24 @@ const router = Router();
 
 router.get("/", authenticate, async (req, res) => {
   try {
+    const userId = (req as any).user.userId;
     const assignments = await prisma.assignment.findMany({
-      where: { userId: (req as any).user.userId },
+      where: {
+        OR: [
+          { userId },
+          {
+            isShared: true,
+            classroom: {
+              deletedAt: null,
+              members: { some: { userId } },
+            },
+          },
+        ],
+      },
       orderBy: { deadline: "asc" },
       include: {
         subject: true,
-        completions: true,
+        completions: { where: { userId } },
       },
     });
     res.json(assignments);
@@ -24,20 +36,31 @@ router.get("/", authenticate, async (req, res) => {
 
 router.post("/", authenticate, async (req, res) => {
   try {
-    const { title, description, deadline, priority, subjectId } = req.body;
+    const userId = (req as any).user.userId;
+    const { title, description, deadline, priority, subjectId, classroomId, isShared } = req.body;
+    if (classroomId) {
+      const membership = await prisma.classroomMember.findUnique({
+        where: { classroomId_userId: { classroomId, userId } },
+      });
+      if (!membership) {
+        return res.status(403).json({ error: "Not a member of this classroom" });
+      }
+    }
     const d = new Date(deadline);
     const validDeadline = !isNaN(d.getTime()) ? d : new Date();
     const assignment = await prisma.assignment.create({
       data: {
-        userId: (req as any).user.userId,
+        userId,
         title,
         description,
         deadline: validDeadline,
         priority: priority || "medium",
-        subjectId,
+        subjectId: subjectId || null,
+        classroomId: classroomId || null,
+        isShared: Boolean(isShared && classroomId),
       },
       include: {
-        completions: true,
+        completions: { where: { userId } },
         subject: true,
       },
     });
@@ -103,21 +126,41 @@ router.delete("/:id", authenticate, async (req, res) => {
 
 const toggleHandler = async (req: any, res: any) => {
   try {
-    const assignmentId = (req.params.id as string);
+    const assignmentId = req.params.id as string;
     const userId = (req as any).user.userId;
-    
+
+    const targetAssignment = await prisma.assignment.findFirst({
+      where: {
+        id: assignmentId,
+        OR: [
+          { userId },
+          {
+            isShared: true,
+            classroom: {
+              deletedAt: null,
+              members: { some: { userId } },
+            },
+          },
+        ],
+      },
+      select: { id: true },
+    });
+    if (!targetAssignment) {
+      return res.status(404).json({ error: "Assignment not found" });
+    }
+
     const existing = await prisma.assignmentCompletion.findUnique({
-      where: { assignmentId_userId: { assignmentId: assignmentId as string, userId } }
+      where: { assignmentId_userId: { assignmentId, userId } },
     });
 
     if (existing) {
       await prisma.assignmentCompletion.delete({
-        where: { id: existing.id }
+        where: { id: existing.id },
       });
       res.json({ completed: false });
     } else {
       await prisma.assignmentCompletion.create({
-        data: { assignmentId: assignmentId as string, userId }
+        data: { assignmentId, userId },
       });
       res.json({ completed: true });
     }

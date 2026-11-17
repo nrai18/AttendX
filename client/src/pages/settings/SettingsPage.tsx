@@ -79,7 +79,6 @@ import {
   type FrequencyData,
 } from "../../components/ui/frequency-selector";
 import { PeerSyncModal } from "../../components/sync/PeerSyncModal";
-import { OTAUpdateModal } from "../../components/common/OTAUpdateModal";
 import { downloadBlob } from "../../lib/download";
 import { FeedbackModal } from "../../components/support/FeedbackModal";
 import { ChangelogModal } from "../../components/settings/ChangelogModal";
@@ -88,11 +87,33 @@ import { OfflineZipService } from "../../services/OfflineZipService";
 import { hapticSelection, hapticLight } from "../../utils/haptics";
 import { UpdateSettingsCard } from "../../components/updates/UpdateSettingsCard";
 import { UpdateManager } from "../../services/updater/updateManager";
+import { nativeUpdater } from "../../services/updater/nativeUpdater";
+import { OFFLINE_CHANGELOG } from "../../constants/offlineChangelog";
 
 export const SettingsPage: React.FC = () => {
-  const currentAppVersion = (Capacitor.isNativePlatform() ? localStorage.getItem("app_version") : null) || import.meta.env.VITE_APP_VERSION || "4.2.0";
+  const currentAppVersion = (Capacitor.isNativePlatform() ? localStorage.getItem("app_version") : null) || import.meta.env.VITE_APP_VERSION || "4.3.1";
   const location = useLocation();
   const deletedDocIdsRef = useRef<Set<string>>(new Set());
+
+  const [nativeUpdateInfo, setNativeUpdateInfo] = useState(() =>
+    UpdateManager.getActiveNativeUpdate(),
+  );
+  const [nativeUpdatePhase, setNativeUpdatePhase] = useState(() =>
+    UpdateManager.getPhase(),
+  );
+
+  useEffect(() => {
+    const syncNativeUpdate = () => {
+      setNativeUpdateInfo(UpdateManager.getActiveNativeUpdate());
+      setNativeUpdatePhase(UpdateManager.getPhase());
+    };
+    window.addEventListener("native-update-available", syncNativeUpdate);
+    window.addEventListener("native-update-dismissed", syncNativeUpdate);
+    return () => {
+      window.removeEventListener("native-update-available", syncNativeUpdate);
+      window.removeEventListener("native-update-dismissed", syncNativeUpdate);
+    };
+  }, []);
 
   const renderDocuments = (type: string) => {
     // For backups, only show the most recent one (index 0 because it's sorted desc by createdAt on backend)
@@ -362,27 +383,72 @@ export const SettingsPage: React.FC = () => {
                         // 1. Play zero-latency authentic electric shredder audio suite immediately
                         SoundFX.playShredderSound(2.4, 0.35);
 
-                        // 2. Trigger visual shredder animation
+                        // 2. Register deleted ID & trigger visual shredder animation (line filter keeps shreddingDocId mounted during 2.4s)
+                        deletedDocIdsRef.current.add(doc.id);
                         setShreddingDocId(doc.id);
+
+                        // Immediately update localStorage cache & fire API/offline deletion so navigating away doesn't lose delete
+                        try {
+                          const cachedStr = localStorage.getItem("attendx_stored_documents_cache");
+                          if (cachedStr) {
+                            const parsed = JSON.parse(cachedStr);
+                            if (Array.isArray(parsed)) {
+                              localStorage.setItem(
+                                "attendx_stored_documents_cache",
+                                JSON.stringify(parsed.filter((d: any) => d.id !== doc.id)),
+                              );
+                            }
+                          }
+                        } catch {}
+
+                        const deletePromise = api.delete(`/documents/${doc.id}`).catch((e: any) => e);
 
                         // 3. Dynamic Island HUD fires only AFTER ribbons finish descent into the bin (at 2.1s)
                         setTimeout(() => {
                           triggerDynamicHUD({ type: "trash", label: "Document Shredded", durationMs: 3500 });
                         }, 2100);
 
-                        // 4. Smooth local eviction at 2.4s so card never pops back
+                        // 4. Smooth local eviction at 2.4s so card finishes shredder exit cleanly
                         setTimeout(async () => {
-                          deletedDocIdsRef.current.add(doc.id);
-                          setStoredDocuments((prev) => (Array.isArray(prev) ? prev.filter((d) => d.id !== doc.id && !deletedDocIdsRef.current.has(d.id)) : []));
+                          setStoredDocuments((prev) => {
+                            const next = Array.isArray(prev)
+                              ? prev.filter((d) => d.id !== doc.id && !deletedDocIdsRef.current.has(d.id))
+                              : [];
+                            try {
+                              localStorage.setItem("attendx_stored_documents_cache", JSON.stringify(next));
+                            } catch {}
+                            return next;
+                          });
                           setShreddingDocId(null);
-                          try {
-                            await api.delete(`/documents/${doc.id}`);
-                            api.get("/documents").then(({ data }) => { const freshDocs = Array.isArray(data) ? data : (data?.documents || []); setStoredDocuments(freshDocs.filter((d: any) => !deletedDocIdsRef.current.has(d.id))); }).catch(() => {});
-                            // non-blocking document refresh handled above
-                            // state updated in .then()
-                          } catch (e) {
-                            console.error(e);
+
+                          const delResult = await deletePromise;
+                          if (delResult instanceof Error && (delResult as any)?.response?.status !== 404) {
+                            console.error(delResult);
                             toast.error("Failed to delete document.");
+                            deletedDocIdsRef.current.delete(doc.id);
+                            api
+                              .get("/documents")
+                              .then(({ data }) => {
+                                const freshDocs = Array.isArray(data) ? data : (data?.documents || []);
+                                const filtered = freshDocs.filter((d: any) => !deletedDocIdsRef.current.has(d.id));
+                                setStoredDocuments(filtered);
+                                try {
+                                  localStorage.setItem("attendx_stored_documents_cache", JSON.stringify(filtered));
+                                } catch {}
+                              })
+                              .catch(() => {});
+                          } else if (!delResult?.data?._queued && typeof navigator !== "undefined" && navigator.onLine) {
+                            api
+                              .get("/documents")
+                              .then(({ data }) => {
+                                const freshDocs = Array.isArray(data) ? data : (data?.documents || []);
+                                const filtered = freshDocs.filter((d: any) => !deletedDocIdsRef.current.has(d.id));
+                                setStoredDocuments(filtered);
+                                try {
+                                  localStorage.setItem("attendx_stored_documents_cache", JSON.stringify(filtered));
+                                } catch {}
+                              })
+                              .catch(() => {});
                           }
                         }, 2400);
                       }
@@ -527,14 +593,31 @@ export const SettingsPage: React.FC = () => {
     prevSecRef.current = sec || null;
   }, [location.hash, location.pathname, section, searchParams]);
 
-  // Stored Documents State
-  const [storedDocuments, setStoredDocuments] = useState<any[]>([]);
+  // Stored Documents State (hydrated offline-first from localStorage)
+  const [storedDocuments, setStoredDocuments] = useState<any[]>(() => {
+    try {
+      const cached = localStorage.getItem("attendx_stored_documents_cache");
+      const parsed = cached ? JSON.parse(cached) : [];
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  });
   const [shreddingDocId, setShreddingDocId] = useState<string | null>(null);
 
-  // Dynamic Update Manifest
-  const [updateManifest, setUpdateManifest] = useState<any>({
-    latestVersion: "1.3.8",
-    changelog: []
+  // Dynamic Update Manifest with Offline & LocalStorage Cache
+  const [updateManifest, setUpdateManifest] = useState<any>(() => {
+    try {
+      const cached = localStorage.getItem("attendx_cached_update_manifest");
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (parsed?.changelog?.length > 0) return parsed;
+      }
+    } catch (_) {}
+    return {
+      latestVersion: currentAppVersion,
+      changelog: OFFLINE_CHANGELOG,
+    };
   });
 
   useEffect(() => {
@@ -546,10 +629,11 @@ export const SettingsPage: React.FC = () => {
           const serverChangelog = data.changelog || [];
           const index = serverChangelog.findIndex((c: any) => c.version === localVersion);
           data.changelog = index !== -1 ? serverChangelog.slice(index) : serverChangelog;
+          localStorage.setItem("attendx_cached_update_manifest", JSON.stringify(data));
           setUpdateManifest(data);
         }
       } catch (err) {
-        console.error("Failed to fetch update manifest", err);
+        console.warn("Using offline cached update history:", err);
       }
     };
     fetchManifest();
@@ -567,9 +651,17 @@ export const SettingsPage: React.FC = () => {
   useEffect(() => {
     const fetchDocs = async () => {
       try {
-        api.get("/documents").then(({ data }) => { const freshDocs = Array.isArray(data) ? data : (data?.documents || []); setStoredDocuments(freshDocs.filter((d: any) => !deletedDocIdsRef.current.has(d.id))); }).catch(() => {});
-        // non-blocking document refresh handled above
-        // state updated in .then()
+        api
+          .get("/documents")
+          .then(({ data }) => {
+            const freshDocs = Array.isArray(data) ? data : (data?.documents || []);
+            const filtered = freshDocs.filter((d: any) => !deletedDocIdsRef.current.has(d.id));
+            setStoredDocuments(filtered);
+            try {
+              localStorage.setItem("attendx_stored_documents_cache", JSON.stringify(filtered));
+            } catch {}
+          })
+          .catch(() => {});
       } catch (err) {
         console.error("Failed to fetch documents", err);
       }
@@ -582,7 +674,6 @@ export const SettingsPage: React.FC = () => {
   const [notifyHoliday, setNotifyHoliday] = useState(true);
   const [notifyEvent, setNotifyEvent] = useState(true);
   const [notifyBirthday, setNotifyBirthday] = useState(true);
-  const [dndEnabled, setDndEnabled] = useState(true);
   const [dndAccessGranted, setDndAccessGranted] = useState<boolean>(false);
   const [hasNotifPermission, setHasNotifPermission] = useState<boolean>(true);
 
@@ -728,7 +819,6 @@ export const SettingsPage: React.FC = () => {
     hapticSelection();
     if (freq.type === 'Never') {
       setReminderFrequency(freq);
-      NotificationService.scheduleAcademicUpdates(freq);
       return;
     }
 
@@ -758,11 +848,10 @@ export const SettingsPage: React.FC = () => {
     }
 
     setReminderFrequency(freq);
-    NotificationService.scheduleAcademicUpdates(freq);
   };
 
   useEffect(() => {
-    // Proactively schedule all notifications whenever frequency, memory, or times change
+    // Proactively schedule all notifications on open and whenever frequency, memory, or summary times change
     NotificationService.scheduleAllProactiveNotifications();
   }, [
     reminderFrequency,
@@ -806,7 +895,6 @@ export const SettingsPage: React.FC = () => {
     } else {
       updateConfig({ dailySummaryTime: newTime, summaryTime: newTime });
     }
-    NotificationService.scheduleAllProactiveNotifications();
   };
 
   const nextSummaryDate = React.useMemo(() => {
@@ -1066,6 +1154,11 @@ export const SettingsPage: React.FC = () => {
   }, [user?.targetAttendance]);
 
   const handleEditProfileSubmit = async (data: ProfileData, passwordData?: any) => {
+    const isPasswordUpdate = Boolean(passwordData && passwordData.newPassword);
+    if (isPasswordUpdate && typeof navigator !== "undefined" && !navigator.onLine) {
+      toast.error("Internet connection required to change password.");
+      throw new Error("Offline");
+    }
     setIsSavingProfile(true);
     try {
       const payload: any = {
@@ -1075,14 +1168,14 @@ export const SettingsPage: React.FC = () => {
         avatarUrl: data.avatarUrl,
       };
       
-      if (passwordData && passwordData.newPassword) {
+      if (isPasswordUpdate) {
         payload.newPassword = passwordData.newPassword;
         if (passwordData.oldPassword) {
           payload.oldPassword = passwordData.oldPassword;
         }
       }
 
-      await api.patch("/users/me", payload);
+      const res = await api.patch("/users/me", payload);
       
       if (setUser) {
         setUser({
@@ -1091,17 +1184,20 @@ export const SettingsPage: React.FC = () => {
           gender: payload.gender,
           birthday: payload.birthday,
           avatarUrl: payload.avatarUrl,
-          hasPassword: user?.hasPassword || !!passwordData?.newPassword
+          hasPassword: user?.hasPassword || isPasswordUpdate,
         });
       }
       
       // Reschedule local notifications (e.g. birthday) with the new profile data
       NotificationService.autoScheduleFromTimetable();
       
-      // Modal closes immediately and profile state updates in place
-      setIsEditProfileOpen(false);
+      if (!isPasswordUpdate) {
+        setIsEditProfileOpen(false);
+        toast.success(res?.data?._queued ? "Profile saved offline (queued for sync)" : "Profile updated");
+      }
     } catch (err: any) {
-      toast.error(err.response?.data?.error || "Failed to update profile");
+      toast.error(err.response?.data?.error || err.response?.data?.message || "Failed to update profile");
+      throw err;
     } finally {
       setIsSavingProfile(false);
     }
@@ -1118,7 +1214,7 @@ export const SettingsPage: React.FC = () => {
     );
 
     try {
-      await api.patch("/users/me", {
+      const res = await api.patch("/users/me", {
         targetAttendance: numericTarget,
         theme,
       });
@@ -1130,12 +1226,40 @@ export const SettingsPage: React.FC = () => {
         });
       }
       setTargetAttendance(numericTarget);
-      useAttendanceStore.getState().fetchStats();
+
+      // Recompute local subject targets & bunkers immediately (supports offline seamlessly)
+      const currSubs = useAttendanceStore.getState().subjects || [];
+      const recalcSubs = currSubs.map((s: any) => {
+        const effTarget = s.targetAttendance != null ? Number(s.targetAttendance) : numericTarget;
+        const att = Number(s.attended) || 0;
+        const tot = Number(s.total) || 0;
+        const pct = tot > 0 ? (att / tot) * 100 : 0;
+        const canMiss =
+          pct >= effTarget && effTarget > 0
+            ? Math.floor((att - (effTarget / 100) * tot) / (effTarget / 100))
+            : 0;
+        const needAttend =
+          pct < effTarget && effTarget < 100
+            ? Math.ceil(((effTarget / 100) * tot - att) / (1 - effTarget / 100))
+            : 0;
+        return { ...s, target: effTarget, canMiss, needAttend };
+      });
+      useAttendanceStore.setState({ targetPercentage: numericTarget, subjects: recalcSubs });
+      const curSubCache = useCacheStore.getState().subjects;
+      if (curSubCache) {
+        useCacheStore.getState().setCache("subjects", { ...curSubCache, stats: recalcSubs });
+      }
+
+      if (!res?.data?._queued && typeof navigator !== "undefined" && navigator.onLine) {
+        useAttendanceStore.getState().fetchStats(true);
+      }
       window.dispatchEvent(new CustomEvent("attendance-updated"));
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
     } catch (err: any) {
       console.error("Failed to update profile", err);
+      toast.error(err?.response?.data?.message || err?.response?.data?.error || "Failed to save settings");
+      throw err;
     } finally {
       setIsSaving(false);
     }
@@ -1382,8 +1506,8 @@ export const SettingsPage: React.FC = () => {
                 throw new Error(res.data?.error || "Failed to import data");
               }
 
-              // Invalidate frontend cache and reload store
-              useCacheStore.getState().clearCache();
+              // Invalidate frontend cache while preserving preferences and reload store
+              useCacheStore.getState().clearCache(true);
               await useAttendanceStore.getState().fetchStats(true);
               window.dispatchEvent(new CustomEvent("attendance-updated"));
               window.dispatchEvent(new CustomEvent("timetable-updated"));
@@ -1396,6 +1520,10 @@ export const SettingsPage: React.FC = () => {
                 durationMs: 4500,
               });
             } catch (serverErr: any) {
+              const status = serverErr?.response?.status;
+              if (status && status >= 400 && status < 500) {
+                throw serverErr;
+              }
               console.warn("[SettingsPage] Server ZIP import failed/offline, using client offline parser fallback", serverErr);
               const offlineRes = await OfflineZipService.importZipOffline(file);
               toast.dismiss(toastId);
@@ -1409,7 +1537,14 @@ export const SettingsPage: React.FC = () => {
 
             // Refresh stored documents list
             try {
-              api.get("/documents").then(({ data }) => { const freshDocs = Array.isArray(data) ? data : (data?.documents || []); setStoredDocuments(freshDocs.filter((d: any) => !deletedDocIdsRef.current.has(d.id))); }).catch(() => {});
+              api.get("/documents").then(({ data }) => {
+                const freshDocs = Array.isArray(data) ? data : (data?.documents || []);
+                const filtered = freshDocs.filter((d: any) => !deletedDocIdsRef.current.has(d.id));
+                setStoredDocuments(filtered);
+                try {
+                  localStorage.setItem("attendx_stored_documents_cache", JSON.stringify(filtered));
+                } catch {}
+              }).catch(() => {});
             } catch (e) {}
 
             setTimeout(() => navigate("/today"), 800);
@@ -2277,7 +2412,6 @@ export const SettingsPage: React.FC = () => {
                           dailySummaryTime: e.target.value,
                           summaryTime: e.target.value,
                         });
-                        NotificationService.scheduleAllProactiveNotifications();
                       }}
                       style={{ colorScheme: "dark light" }}
                       className="bg-white dark:bg-black text-slate-900 dark:text-white text-xs font-semibold rounded-md px-2 py-1 border border-black/10 dark:border-white/10 outline-none cursor-pointer"
@@ -2310,7 +2444,6 @@ export const SettingsPage: React.FC = () => {
                       onChange={(e) => {
                         hapticSelection();
                         updateConfig({ weeklySummaryTime: e.target.value });
-                        NotificationService.scheduleAllProactiveNotifications();
                       }}
                       style={{ colorScheme: "dark light" }}
                       className="bg-white dark:bg-black text-slate-900 dark:text-white text-xs font-semibold rounded-md px-2 py-1 border border-black/10 dark:border-white/10 outline-none cursor-pointer"
@@ -2344,7 +2477,6 @@ export const SettingsPage: React.FC = () => {
                       onChange={(e) => {
                         hapticSelection();
                         updateConfig({ monthlySummaryTime: e.target.value });
-                        NotificationService.scheduleAllProactiveNotifications();
                       }}
                       style={{ colorScheme: "dark light" }}
                       className="bg-white dark:bg-black text-slate-900 dark:text-white text-xs font-semibold rounded-md px-2 py-1 border border-black/10 dark:border-white/10 outline-none cursor-pointer"
@@ -2487,7 +2619,7 @@ export const SettingsPage: React.FC = () => {
                   </span>
                   <span className="text-xs text-muted-foreground">
                     {dndAccessGranted
-                      ? "Allows muting phone automatically during classes"
+                      ? "Allows 1-tap muting from class reminder notifications"
                       : "Tap Enable Access to open Android DND permission settings"}
                   </span>
                 </div>
@@ -2850,20 +2982,41 @@ export const SettingsPage: React.FC = () => {
               <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
             </button>
 
-            {/* System & Software Update Card */}
-            <div className="p-3">
-              <UpdateSettingsCard
-                updateInfo={UpdateManager.getActiveNativeUpdate()}
-                phase={UpdateManager.getPhase()}
-                onOpenSheet={() => {
-                  window.dispatchEvent(new CustomEvent("open-update-sheet"));
-                }}
-                onCheckAgain={async () => {
-                  await UpdateManager.checkForUpdates(true);
-                  window.dispatchEvent(new CustomEvent("open-update-sheet"));
-                }}
-              />
-            </div>
+            {/* System & Software Update Card - Only visible on Native Android */}
+            {nativeUpdater.isAvailable() && (
+              <div className="p-3">
+                <UpdateSettingsCard
+                  updateInfo={nativeUpdateInfo}
+                  phase={nativeUpdatePhase}
+                  onOpenSheet={() => {
+                    window.dispatchEvent(new CustomEvent("open-update-sheet"));
+                  }}
+                  onCheckAgain={async () => {
+                    const res = await UpdateManager.checkForUpdates(true);
+                    setNativeUpdateInfo(UpdateManager.getActiveNativeUpdate());
+                    setNativeUpdatePhase(UpdateManager.getPhase());
+                    if (res.channel === "native-apk" && res.nativeInfo) {
+                      window.dispatchEvent(
+                        new CustomEvent("open-update-sheet"),
+                      );
+                      return true;
+                    }
+                    if (res.status === "rate-limited") {
+                      toast.error("GitHub update rate limit reached. Try again in a few minutes.");
+                      return false;
+                    }
+                    if (res.status === "network-error") {
+                      toast.error("Unable to reach update server. Check your internet connection.");
+                      return false;
+                    }
+                    toast.success(
+                      `You are on the latest version (v${currentAppVersion})`,
+                    );
+                    return true;
+                  }}
+                />
+              </div>
+            )}
           </div>
         </div>
 

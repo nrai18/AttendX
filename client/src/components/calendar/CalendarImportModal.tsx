@@ -128,6 +128,10 @@ export const CalendarImportModal: React.FC<CalendarImportModalProps> = ({ isOpen
 
   const handleParse = async () => {
     if (!file) return;
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      toast.error("Internet connection required for AI OCR calendar import.");
+      return;
+    }
 
     try {
       setIsParsing(true);
@@ -139,6 +143,7 @@ export const CalendarImportModal: React.FC<CalendarImportModalProps> = ({ isOpen
 
       const res = await api.post("/events/import-rag", formData, {
         headers: { "Content-Type": "multipart/form-data" },
+        timeout: 120000,
       });
 
       const groups: ParsedEventGroup[] = res.data.events;
@@ -196,31 +201,51 @@ export const CalendarImportModal: React.FC<CalendarImportModalProps> = ({ isOpen
   };
 
   const handleSave = async () => {
-    if (!currentGroup || !activeSemesterId) return;
+    if (!currentGroup || !activeSemesterId) {
+      throw new Error("Missing active semester or parsed events");
+    }
 
     const selectedEvents = currentEvents.filter((_, i) => selectedIndices.has(i));
     if (selectedEvents.length === 0) {
       toast.error("Please select at least one event to save");
-      return;
+      throw new Error("No events selected");
     }
 
     try {
       setIsSaving(true);
-      await api.post("/events/import-rag/save", {
+      const eventsPayload = selectedEvents.map(e => ({
+        title: e.title,
+        date: e.startDate,
+        endDate: e.endDate || e.startDate,
+        eventType: e.category.toLowerCase(),
+        isHoliday: e.isHoliday
+      }));
+      const res = await api.post("/events/import-rag/save", {
         semesterId: activeSemesterId,
-        events: selectedEvents.map(e => ({
-          title: e.title,
-          date: e.startDate,
-          endDate: e.endDate || e.startDate,
-          eventType: e.category.toLowerCase(),
-          isHoliday: e.isHoliday
-        }))
+        events: eventsPayload,
       });
-      toast.success("Calendar events imported successfully");
+      const isQueued = Boolean(res.data?._queued);
+      if (isQueued) {
+        const curSem = useCacheStore.getState().semester || {};
+        const existingEvents = Array.isArray(curSem.events) ? curSem.events : [];
+        const queuedEvents = eventsPayload.map((ev, idx) => ({
+          ...ev,
+          id: `temp-imp-${Date.now()}-${idx}`,
+          semesterId: activeSemesterId,
+        }));
+        useCacheStore.getState().setCache("semester", {
+          ...curSem,
+          events: [...existingEvents, ...queuedEvents],
+        });
+        useAttendanceStore.setState({ events: [...existingEvents, ...queuedEvents] as any });
+        toast.success("Calendar events saved offline (queued for sync)");
+      } else {
+        toast.success("Calendar events imported successfully");
+        useCacheStore.getState().setCache("calendar", null);
+        useAttendanceStore.getState().fetchStats(true);
+      }
       setParsedGroups(null);
       setFile(null);
-      useCacheStore.getState().setCache("calendar", null);
-      useAttendanceStore.getState().fetchStats(true);
       window.dispatchEvent(new Event("attendance-updated"));
       window.dispatchEvent(new Event("events-updated"));
       onSuccess();
@@ -228,6 +253,7 @@ export const CalendarImportModal: React.FC<CalendarImportModalProps> = ({ isOpen
     } catch (error: any) {
       console.error("Failed to save calendar events:", error);
       toast.error(error.response?.data?.error || "Failed to save calendar events");
+      throw error;
     } finally {
       setIsSaving(false);
     }

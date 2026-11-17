@@ -6,6 +6,7 @@ export interface RingerPlugin {
   checkDndPermission(): Promise<{ granted: boolean }>;
   requestDndPermission(): Promise<{ opened: boolean }>;
   testMuteNotification(): Promise<{ success: boolean }>;
+  isMuteSessionActive(): Promise<{ active: boolean; unmuteEpochMs: number }>;
 }
 
 const RingerMode = registerPlugin<RingerPlugin>('RingerMode');
@@ -72,6 +73,18 @@ export const checkAndReconcileRinger = async (pinnedNotificationId: number = 700
   const unmuteTime = getScheduledUnmuteTime();
   // Include 1-second defensive window for setTimeout jitter or tick quantization
   if (unmuteTime !== null && (Date.now() >= unmuteTime - 1000)) {
+    try {
+      const nativeState = await RingerMode.isMuteSessionActive();
+      if (!nativeState?.active) {
+        // Native receiver already unmuted (manual button or native alarm); clear JS state without overwriting manual user audio mode
+        setScheduledUnmuteTime(null);
+        try {
+          await LocalNotifications.cancel({ notifications: [{ id: pinnedNotificationId }, { id: 8888 }] });
+        } catch {}
+        return false;
+      }
+    } catch {}
+
     console.log("Scheduled unmute time elapsed or reached; restoring ringer to normal.");
     const success = await unmutePhone();
     try {

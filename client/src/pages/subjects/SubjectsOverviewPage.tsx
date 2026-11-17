@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { Loader2, TrendingUp, AlertTriangle, ShieldCheck, Settings2 } from "lucide-react";
 import { api } from "../../lib/api";
 import { useAttendanceStore } from "../../stores/attendanceStore";
+import { useCacheStore } from "../../stores/cacheStore";
 
 interface SubjectStats {
   id: string;
@@ -16,21 +17,46 @@ interface SubjectStats {
 }
 
 export const SubjectsOverviewPage = () => {
-  const [stats, setStats] = useState<SubjectStats[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const cachedStats =
+    useCacheStore.getState().subjects?.stats ||
+    useAttendanceStore.getState().subjects ||
+    [];
+  const [stats, setStats] = useState<SubjectStats[]>(
+    Array.isArray(cachedStats) ? (cachedStats as any) : [],
+  );
+  const [isLoading, setIsLoading] = useState(cachedStats.length === 0);
 
   useEffect(() => {
     const fetchStats = async () => {
+      if (typeof navigator !== "undefined" && !navigator.onLine) {
+        const offlineSubs =
+          useCacheStore.getState().subjects?.stats ||
+          useAttendanceStore.getState().subjects ||
+          [];
+        setStats(Array.isArray(offlineSubs) ? (offlineSubs as any) : []);
+        setIsLoading(false);
+        return;
+      }
       try {
         const res = await api.get("/attendance/stats");
-        setStats(Array.isArray(res.data) ? res.data : (res.data?.subjects || []));
+        const nextStats = Array.isArray(res.data) ? res.data : (res.data?.subjects || []);
+        setStats(nextStats);
       } catch (error) {
         console.error("Failed to fetch subject stats:", error);
+        const offlineSubs =
+          useCacheStore.getState().subjects?.stats ||
+          useAttendanceStore.getState().subjects ||
+          [];
+        if (Array.isArray(offlineSubs) && offlineSubs.length > 0) {
+          setStats(offlineSubs as any);
+        }
       } finally {
         setIsLoading(false);
       }
     };
     fetchStats();
+    window.addEventListener("attendance-updated", fetchStats);
+    return () => window.removeEventListener("attendance-updated", fetchStats);
   }, []);
 
   const getStatusColor = (percentage: number, target: number) => {
@@ -41,27 +67,32 @@ export const SubjectsOverviewPage = () => {
   };
 
   const getForecastText = (stat: SubjectStats) => {
+    const target = Number(stat.target) || 75;
     if (stat.total === 0) return { text: "No classes logged yet", icon: <TrendingUp className="w-4 h-4 text-muted-foreground" /> };
     
     // Calculate if we can skip the next class and stay above target
     const percentageIfSkipNext = stat.total > 0 ? (stat.attended / (stat.total + 1)) * 100 : 0;
     
-    if (stat.percentage < stat.target) {
-      // Calculate how many we need to attend consecutively to hit target
-      // (attended + x) / (total + x) = target / 100
-      // 100*attended + 100*x = target*total + target*x
-      // x*(100 - target) = target*total - 100*attended
-      const required = Math.ceil((stat.target * stat.total - 100 * stat.attended) / (100 - stat.target));
+    if (stat.percentage < target) {
+      if (target >= 100) {
+        return {
+          text: "Need 100% attendance (cannot reach 100% after a miss)",
+          icon: <AlertTriangle className="w-4 h-4 text-rose-400" />,
+        };
+      }
+      const required = Math.ceil((target * stat.total - 100 * stat.attended) / (100 - target));
       return { 
         text: `Need to attend next ${required} class${required > 1 ? 'es' : ''}`, 
         icon: <AlertTriangle className="w-4 h-4 text-rose-400" />
       };
-    } else if (percentageIfSkipNext >= stat.target) {
-      // Calculate how many safe leaves we have
-      // attended / (total + x) = target / 100
-      // 100*attended = target*total + target*x
-      // x = (100*attended - target*total) / target
-      const safeLeaves = Math.floor((100 * stat.attended - stat.target * stat.total) / stat.target);
+    } else if (percentageIfSkipNext >= target) {
+      if (target <= 0) {
+        return {
+          text: "Target 0% — any skips allowed",
+          icon: <ShieldCheck className="w-4 h-4 text-emerald-400" />,
+        };
+      }
+      const safeLeaves = Math.floor((100 * stat.attended - target * stat.total) / target);
       return {
         text: `${safeLeaves} safe leave${safeLeaves > 1 ? 's' : ''} available`,
         icon: <ShieldCheck className="w-4 h-4 text-emerald-400" />

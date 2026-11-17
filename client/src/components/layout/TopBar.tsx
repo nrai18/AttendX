@@ -9,6 +9,7 @@ import { useThemeStore } from "../../stores/themeStore";
 import { hapticLight, hapticWarning } from "../../utils/haptics";
 import { UpdateSnoozedIndicator } from "../updates/UpdateSnoozedIndicator";
 import { UpdateManager } from "../../services/updater/updateManager";
+import { nativeUpdater } from "../../services/updater/nativeUpdater";
 
 interface TopBarProps {
   title?: string;
@@ -19,6 +20,24 @@ export const TopBar: React.FC<TopBarProps> = ({
   title,
   onAddClick,
 }) => {
+  const [showUpdateCapsule, setShowUpdateCapsule] = React.useState(() => {
+    return nativeUpdater.isAvailable() && UpdateManager.isVisible();
+  });
+
+  React.useEffect(() => {
+    const handleUpdateChange = () => {
+      setShowUpdateCapsule(nativeUpdater.isAvailable() && UpdateManager.isVisible());
+    };
+    window.addEventListener("native-update-dismissed", handleUpdateChange);
+    window.addEventListener("open-update-sheet", handleUpdateChange);
+    window.addEventListener("native-update-available", handleUpdateChange);
+    return () => {
+      window.removeEventListener("native-update-dismissed", handleUpdateChange);
+      window.removeEventListener("open-update-sheet", handleUpdateChange);
+      window.removeEventListener("native-update-available", handleUpdateChange);
+    };
+  }, []);
+
   const user = useAuthStore((state) => state.user);
   const logout = useAuthStore((state) => state.logout);
   const location = useLocation();
@@ -77,13 +96,13 @@ export const TopBar: React.FC<TopBarProps> = ({
     >
       <div className="flex items-center justify-between w-full">
         {/* Title / User Greeting */}
-        <div>
-          <h1 className={`text-xl font-bold tracking-tight ${textColor}`}>
+        <div className="min-w-0 flex-1 truncate pr-2">
+          <h1 className={`text-xl font-bold tracking-tight truncate ${textColor}`}>
             {title || user?.name || "AttendX"}
           </h1>
         </div>
         {/* Native Update Pending Capsule */}
-        {UpdateManager.getActiveNativeUpdate() && (
+        {nativeUpdater.isAvailable() && showUpdateCapsule && UpdateManager.getActiveNativeUpdate() && (
           <UpdateSnoozedIndicator
             tag={UpdateManager.getActiveNativeUpdate()?.tag}
             onClick={() => {

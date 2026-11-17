@@ -107,17 +107,34 @@ export const SubjectDetailPage = () => {
     }
     const sub = initialSubjects.find((s: any) => s.id === id || s.subjectId === id);
     if (!sub) return null;
+    const sAtt = sub.attended || 0;
+    const sTot = sub.total || 0;
+    const sPct = sTot > 0 ? (sAtt / sTot) * 100 : sub.percentage || 0;
+    const sTarget = sub.target || (useAuthStore.getState().user?.targetAttendance ?? 75);
+    const sCanMiss =
+      sub.canMiss != null && sub.canMiss !== undefined && sub.canMiss > 0
+        ? sub.canMiss
+        : sPct >= sTarget && sTarget > 0
+        ? Math.floor((sAtt - (sTarget / 100) * sTot) / (sTarget / 100))
+        : 0;
+    const sNeedAttend =
+      sub.needAttend != null && sub.needAttend !== undefined && sub.needAttend > 0
+        ? sub.needAttend
+        : sPct < sTarget && sTarget < 100
+        ? Math.ceil(((sTarget / 100) * sTot - sAtt) / (1 - sTarget / 100))
+        : 0;
+
     return {
       id: sub.id || sub.subjectId,
       name: sub.name,
       code: sub.code,
-      target: sub.target || (useAuthStore.getState().user?.targetAttendance ?? 75),
-      attended: sub.attended || 0,
-      total: sub.total || 0,
-      percentage: sub.percentage || 0,
-      canMiss: sub.canMiss || 0,
-      needAttend: sub.needAttend || 0,
-      statusText: sub.statusText || `${sub.attended || 0}/${sub.total || 0} classes`,
+      target: sTarget,
+      attended: sAtt,
+      total: sTot,
+      percentage: sPct,
+      canMiss: sCanMiss,
+      needAttend: sNeedAttend,
+      statusText: sub.statusText || `${sAtt}/${sTot} classes`,
     };
   });
   const [isLoading, setIsLoading] = useState(() => initialLogs.length === 0);
@@ -126,6 +143,12 @@ export const SubjectDetailPage = () => {
   const [selectedSubjectFilter, setSelectedSubjectFilter] = useState<string>(isOverall ? "all" : id);
   const [selectedDateFilter, setSelectedDateFilter] = useState<string>("all");
   const [selectedStatusFilter, setSelectedStatusFilter] = useState<string>("all");
+
+  useEffect(() => {
+    setSelectedSubjectFilter(isOverall ? "all" : (id || "all"));
+    setSelectedDateFilter("all");
+    setSelectedStatusFilter("all");
+  }, [id, isOverall]);
 
   // Filter Dropdown Visibility
   const [showSubjectMenu, setShowSubjectMenu] = useState(false);
@@ -208,64 +231,283 @@ export const SubjectDetailPage = () => {
     return () => unregister();
   }, [showStatusMenu, showSubjectMenu, showDateMenu, isEditMode, navigate]);
 
+  const overlayPendingLogsAndStats = (
+    inputLogs: AttendanceLogItem[],
+    inputSubjects: any[],
+    filterSubId?: string,
+  ) => {
+    const pendingQueue = useOfflineStore.getState().queue || [];
+    let rawLogs = [...inputLogs];
+    let subjects = Array.isArray(inputSubjects) ? [...inputSubjects] : [];
+
+    pendingQueue.forEach((q: any) => {
+      const p = q.data || q.payload || {};
+      const url = String(q.url || "");
+      const method = String(q.method || "").toLowerCase();
+      const targetDate = String(p.date || "").slice(0, 10);
+
+      if (url.includes("/timetable/extra-class") && method === "delete") {
+        const deletedId = url.split("/").pop();
+        rawLogs = rawLogs.filter(
+          (log: any) => log.id !== deletedId && log.overrideId !== deletedId,
+        );
+      } else if (url.includes("/timetable/extra-class") && method === "post") {
+        const extraId = p.tempId || q.tempId || `temp_extra_${q.id}`;
+        if (filterSubId && p.subjectId !== filterSubId) return;
+        const already = rawLogs.some(
+          (l: any) => l.id === extraId || l.overrideId === extraId,
+        );
+        if (!already) {
+          const subObj = subjects.find(
+            (s: any) => s.id === p.subjectId || s.subjectId === p.subjectId,
+          );
+          rawLogs.unshift({
+            id: extraId,
+            overrideId: extraId,
+            date: targetDate,
+            dateFormatted: targetDate
+              ? new Date(targetDate + "T00:00:00Z").toLocaleDateString("en-US", {
+                  timeZone: "UTC",
+                  weekday: "short",
+                  day: "numeric",
+                  month: "short",
+                  year: "numeric",
+                })
+              : "",
+            timestamp: targetDate ? new Date(targetDate + "T00:00:00Z").getTime() : Date.now(),
+            subjectId: p.subjectId,
+            subjectName: subObj?.name || "Extra Class",
+            subjectCode: subObj?.code,
+            subjectColor: subObj?.colorHex,
+            target:
+              subObj?.target ??
+              subObj?.targetAttendance ??
+              useAuthStore.getState().user?.targetAttendance ??
+              75,
+            currentPercentage: subObj?.percentage ?? 0,
+            canMiss: subObj?.canMiss ?? 0,
+            needAttend: subObj?.needAttend ?? 0,
+            statusText: subObj?.statusText || "Extra class scheduled",
+            slotType: "Extra",
+            isExtra: true,
+            startTime: p.startTime,
+            endTime: p.endTime,
+            status: "not_marked",
+            remarks: p.reason || null,
+          });
+        }
+      } else if (url.includes("/attendance/mark-day")) {
+        const fullStatus = String(p.status || "").toLowerCase();
+        const nextSt = fullStatus === "clear" ? "not_marked" : fullStatus;
+        rawLogs = rawLogs.map((log: any) => {
+          if (
+            log.date === targetDate ||
+            String(log.date || "").slice(0, 10) === targetDate
+          ) {
+            return {
+              ...log,
+              status: nextSt,
+              remarks: p.remarks !== undefined ? p.remarks : log.remarks,
+            };
+          }
+          return log;
+        });
+      } else if (url.includes("/attendance/mark")) {
+        const nextSt =
+          String(p.status || "").toLowerCase() === "clear"
+            ? "not_marked"
+            : p.status;
+        let matchedAny = false;
+        rawLogs = rawLogs.map((log: any) => {
+          const sameDate =
+            !targetDate ||
+            log.date === targetDate ||
+            String(log.date || "").slice(0, 10) === targetDate;
+          const match =
+            (p.attendanceId &&
+              (log.id === p.attendanceId ||
+                (log as any).attendanceId === p.attendanceId)) ||
+            (p.overrideId &&
+              (log.overrideId === p.overrideId || log.id === p.overrideId)) ||
+            (p.timetableSlotId &&
+              log.timetableSlotId === p.timetableSlotId &&
+              sameDate) ||
+            (!p.attendanceId &&
+              !p.overrideId &&
+              !p.timetableSlotId &&
+              sameDate &&
+              log.subjectId === p.subjectId);
+          if (match) matchedAny = true;
+          return match
+            ? {
+                ...log,
+                status: nextSt,
+                remarks: p.remarks !== undefined ? p.remarks : log.remarks,
+              }
+            : log;
+        });
+
+        if (
+          !matchedAny &&
+          nextSt !== "not_marked" &&
+          p.subjectId &&
+          targetDate &&
+          (!filterSubId || filterSubId === p.subjectId)
+        ) {
+          const subObj = subjects.find(
+            (s: any) => s.id === p.subjectId || s.subjectId === p.subjectId,
+          );
+          rawLogs.unshift({
+            id: p.attendanceId || p.overrideId || `queued-${q.id}`,
+            date: targetDate,
+            dateFormatted: new Date(targetDate + "T00:00:00Z").toLocaleDateString(
+              "en-US",
+              {
+                timeZone: "UTC",
+                weekday: "short",
+                day: "numeric",
+                month: "short",
+                year: "numeric",
+              },
+            ),
+            timestamp: new Date(targetDate + "T00:00:00Z").getTime(),
+            subjectId: p.subjectId,
+            subjectName: subObj?.name || "Class",
+            subjectCode: subObj?.code,
+            subjectColor: subObj?.colorHex,
+            target:
+              subObj?.target ??
+              subObj?.targetAttendance ??
+              useAuthStore.getState().user?.targetAttendance ??
+              75,
+            currentPercentage: subObj?.percentage ?? 0,
+            canMiss: subObj?.canMiss ?? 0,
+            needAttend: subObj?.needAttend ?? 0,
+            statusText: subObj?.statusText || "",
+            slotType: p.overrideId ? "Extra" : "Lecture",
+            isExtra: Boolean(p.overrideId),
+            timetableSlotId: p.timetableSlotId,
+            overrideId: p.overrideId,
+            status: nextSt,
+            remarks: p.remarks || null,
+          });
+        }
+      }
+    });
+
+    if (pendingQueue.length > 0 && Array.isArray(subjects)) {
+      const subCounts: Record<
+        string,
+        { attended: number; missed: number; total: number; off: number }
+      > = {};
+      rawLogs.forEach((l: any) => {
+        if (!l.subjectId) return;
+        if (!subCounts[l.subjectId]) {
+          subCounts[l.subjectId] = { attended: 0, missed: 0, total: 0, off: 0 };
+        }
+        const st = String(l.status || "").toLowerCase();
+        if (st === "present" || st === "attended" || st === "medical" || st === "od") {
+          subCounts[l.subjectId].attended += 1;
+          subCounts[l.subjectId].total += 1;
+        } else if (st === "absent" || st === "missed") {
+          subCounts[l.subjectId].missed += 1;
+          subCounts[l.subjectId].total += 1;
+        } else if (st === "off" || st === "cancelled") {
+          subCounts[l.subjectId].off += 1;
+        }
+      });
+
+      const defaultTarget = useAuthStore.getState().user?.targetAttendance ?? 75;
+      subjects = subjects.map((s: any) => {
+        const sid = s.id || s.subjectId;
+        const counts = subCounts[sid];
+        if (!counts) return s;
+        const pct = counts.total > 0 ? (counts.attended / counts.total) * 100 : 0;
+        const target = Number(s.target ?? s.targetAttendance ?? defaultTarget);
+        const canMiss =
+          pct >= target && target > 0
+            ? Math.floor((counts.attended - (target / 100) * counts.total) / (target / 100))
+            : 0;
+        const needAttend =
+          pct < target && target < 100
+            ? Math.ceil(((target / 100) * counts.total - counts.attended) / (1 - target / 100))
+            : 0;
+        return {
+          ...s,
+          attended: counts.attended,
+          missed: counts.missed,
+          total: counts.total,
+          off: counts.off,
+          percentage: pct,
+          target,
+          canMiss: Math.max(0, canMiss),
+          needAttend: Math.max(0, needAttend),
+          statusText:
+            counts.total === 0
+              ? "No classes recorded yet"
+              : canMiss > 0
+                ? `can miss ${canMiss} lecture${canMiss > 1 ? "s" : ""}`
+                : needAttend > 0
+                  ? `need to attend ${needAttend} lecture${needAttend > 1 ? "s" : ""}`
+                  : "can't miss the next lecture",
+        };
+      });
+    }
+
+    return { rawLogs, subjects, hasPending: pendingQueue.length > 0 };
+  };
+
   const fetchLogsData = async (silent = false) => {
     const querySubject = isOverall ? "all" : id;
     try {
       if (!silent && logs.length === 0) setIsLoading(true);
       const res = await api.get(`/attendance/logs?subjectId=${querySubject}`);
-      let rawLogs: AttendanceLogItem[] = res.data.logs || [];
-      const subjects = res.data.subjects || [];
+      const initialRawLogs: AttendanceLogItem[] = res.data.logs || [];
+      const initialSubjects = res.data.subjects || [];
 
       // Cache the response for offline use
       const existingCache = useCacheStore.getState().subject_logs || {};
-      useCacheStore.getState().setCache('subject_logs', { ...existingCache, [querySubject]: res.data });
-      // Overlay any pending offline mutations so queued edits are never wiped
-      const pendingQueue = useOfflineStore.getState().queue || [];
-      pendingQueue.forEach((q: any) => {
-        const p = q.data || q.payload || {};
-        const url = String(q.url || "");
-        const targetDate = String(p.date || "").slice(0, 10);
-        if (url.includes("/attendance/mark-day")) {
-          const fullStatus = String(p.status || "").toLowerCase();
-          rawLogs = rawLogs.map((log: any) => {
-            if (log.date === targetDate || String(log.date || "").slice(0, 10) === targetDate) {
-              return {
-                ...log,
-                status: fullStatus === "clear" ? "not_marked" : fullStatus,
-                remarks: p.remarks !== undefined ? p.remarks : log.remarks,
-              };
-            }
-            return log;
-          });
-        } else if (url.includes("/attendance/mark")) {
-          rawLogs = rawLogs.map((log: any) => {
-            const match =
-              (p.attendanceId && log.id === p.attendanceId) ||
-              (p.timetableSlotId && log.timetableSlotId === p.timetableSlotId) ||
-              (p.overrideId && log.overrideId === p.overrideId) ||
-              (log.date === targetDate && log.subjectId === p.subjectId);
-            return match ? { ...log, status: p.status, remarks: p.remarks !== undefined ? p.remarks : log.remarks } : log;
+      const nextCache: Record<string, any> = { ...existingCache, [querySubject]: res.data };
+      if (isOverall) {
+        nextCache["all"] = res.data;
+        nextCache["overall"] = res.data;
+        if (Array.isArray(initialSubjects)) {
+          initialSubjects.forEach((s: any) => {
+            nextCache[s.id] = {
+              logs: initialRawLogs.filter((l: any) => l.subjectId === s.id),
+              subjects: initialSubjects.filter((sub: any) => sub.id === s.id),
+            };
           });
         }
-      });
+      }
+      useCacheStore.getState().setCache("subject_logs", nextCache);
+
+      const { rawLogs, subjects, hasPending } = overlayPendingLogsAndStats(
+        initialRawLogs,
+        initialSubjects,
+        isOverall ? undefined : id,
+      );
 
       setLogs(rawLogs);
       setSubjectsList(subjects);
 
       if (isOverall) {
-        // Calculate overall header stats
         let totalAttended = 0;
         let totalClasses = 0;
         subjects.forEach((s: any) => {
-          totalAttended += s.attended;
-          totalClasses += s.total;
+          totalAttended += s.attended || 0;
+          totalClasses += s.total || 0;
         });
         const pct = totalClasses > 0 ? (totalAttended / totalClasses) * 100 : 0;
-        const user = useAuthStore.getState().user;
-        // Always use user.targetAttendance as the single source of truth
-        const avgTarget = user?.targetAttendance ?? 75;
-
-        const totalCanMiss = Math.floor((totalAttended - (avgTarget / 100) * totalClasses) / (avgTarget / 100));
+        const avgTarget = useAuthStore.getState().user?.targetAttendance ?? 75;
+        const totalCanMiss =
+          pct >= avgTarget && avgTarget > 0
+            ? Math.floor((totalAttended - (avgTarget / 100) * totalClasses) / (avgTarget / 100))
+            : 0;
+        const totalNeedAttend =
+          pct < avgTarget && avgTarget < 100
+            ? Math.ceil(((avgTarget / 100) * totalClasses - totalAttended) / (1 - avgTarget / 100))
+            : 0;
 
         setHeaderStats({
           id: "overall",
@@ -274,22 +516,35 @@ export const SubjectDetailPage = () => {
           attended: totalAttended,
           total: totalClasses,
           percentage: pct,
-          canMiss: totalCanMiss > 0 ? totalCanMiss : 0,
-          needAttend: 0,
-          statusText: totalClasses === 0
-            ? "No classes recorded yet"
-            : totalCanMiss > 0
-            ? `can miss ${totalCanMiss} lecture${totalCanMiss > 1 ? "s" : ""}`
-            : "can't miss the next lecture",
+          canMiss: Math.max(0, totalCanMiss),
+          needAttend: Math.max(0, totalNeedAttend),
+          statusText:
+            totalClasses === 0
+              ? "No classes recorded yet"
+              : totalCanMiss > 0
+                ? `can miss ${totalCanMiss} lecture${totalCanMiss > 1 ? "s" : ""}`
+                : totalNeedAttend > 0
+                  ? `need to attend ${totalNeedAttend} lecture${totalNeedAttend > 1 ? "s" : ""}`
+                  : "can't miss the next lecture",
         });
+
+        if (!hasPending) {
+          useAttendanceStore.setState({
+            subjects,
+            totalAttended,
+            totalClasses,
+            overallPercentage: pct,
+          });
+        }
       } else {
         const sub = subjects.find((s: any) => s.id === id);
         if (sub) {
+          const defaultTarget = useAuthStore.getState().user?.targetAttendance ?? 75;
           setHeaderStats({
             id: sub.id,
             name: sub.name,
             code: sub.code,
-            target: useAuthStore.getState().user?.targetAttendance ?? 75,
+            target: Number(sub.target ?? sub.targetAttendance ?? defaultTarget),
             attended: sub.attended,
             total: sub.total,
             percentage: sub.percentage,
@@ -306,50 +561,29 @@ export const SubjectDetailPage = () => {
       const cachedData = existingCache[querySubject];
       const allLogsFallback = existingCache["all"]?.logs || useCacheStore.getState().all_logs || [];
 
-      let rawLogs: AttendanceLogItem[] = [];
-      let subjects: any[] = [];
+      let offlineLogs: AttendanceLogItem[] = [];
+      let offlineSubjects: any[] = [];
 
       if (cachedData) {
-        rawLogs = cachedData.logs || [];
-        subjects = cachedData.subjects || [];
+        offlineLogs = cachedData.logs || [];
+        offlineSubjects = cachedData.subjects || [];
       } else if (allLogsFallback.length > 0) {
         if (isOverall) {
-          rawLogs = allLogsFallback;
+          offlineLogs = allLogsFallback;
         } else {
-          rawLogs = allLogsFallback.filter((l: any) => l.subjectId === id || l.subject?.id === id);
+          offlineLogs = allLogsFallback.filter((l: any) => l.subjectId === id || l.subject?.id === id);
         }
-        subjects = existingCache["all"]?.subjects || useAttendanceStore.getState().subjects || [];
+        offlineSubjects = existingCache["all"]?.subjects || useAttendanceStore.getState().subjects || [];
       } else {
-        // Fallback to global store
-        rawLogs = [];
-        subjects = useAttendanceStore.getState().subjects || [];
+        offlineLogs = [];
+        offlineSubjects = useAttendanceStore.getState().subjects || [];
       }
-      // Overlay pendingQueue in offline catch fallback as well
-      const pendingQueue = useOfflineStore.getState().queue || [];
-      pendingQueue.forEach((q: any) => {
-        const p = q.data || q.payload || {};
-        const url = String(q.url || "");
-        const targetDate = String(p.date || "").slice(0, 10);
-        if (url.includes("/attendance/mark-day")) {
-          const fullStatus = String(p.status || "").toLowerCase();
-          rawLogs = rawLogs.map((log: any) => {
-            if (log.date === targetDate || String(log.date || "").slice(0, 10) === targetDate) {
-              return { ...log, status: fullStatus === "clear" ? "not_marked" : fullStatus, remarks: p.remarks !== undefined ? p.remarks : log.remarks };
-            }
-            return log;
-          });
-        } else if (url.includes("/attendance/mark")) {
-          rawLogs = rawLogs.map((log: any) => {
-            const match =
-              (p.attendanceId && log.id === p.attendanceId) ||
-              (p.timetableSlotId && log.timetableSlotId === p.timetableSlotId) ||
-              (p.overrideId && log.overrideId === p.overrideId) ||
-              (log.date === targetDate && log.subjectId === p.subjectId);
-            return match ? { ...log, status: p.status, remarks: p.remarks !== undefined ? p.remarks : log.remarks } : log;
-          });
-        }
-      });
 
+      const { rawLogs, subjects } = overlayPendingLogsAndStats(
+        offlineLogs,
+        offlineSubjects,
+        isOverall ? undefined : id,
+      );
 
       setLogs(rawLogs);
       setSubjectsList(subjects);
@@ -358,13 +592,19 @@ export const SubjectDetailPage = () => {
         let totalAttended = 0;
         let totalClasses = 0;
         subjects.forEach((s: any) => {
-          totalAttended += (s.attended || 0);
-          totalClasses += (s.total || 0);
+          totalAttended += s.attended || 0;
+          totalClasses += s.total || 0;
         });
         const pct = totalClasses > 0 ? (totalAttended / totalClasses) * 100 : 0;
-        const user = useAuthStore.getState().user;
-        const avgTarget = user?.targetAttendance ?? 75;
-        const totalCanMiss = Math.floor((totalAttended - (avgTarget / 100) * totalClasses) / (avgTarget / 100));
+        const avgTarget = useAuthStore.getState().user?.targetAttendance ?? 75;
+        const totalCanMiss =
+          pct >= avgTarget && avgTarget > 0
+            ? Math.floor((totalAttended - (avgTarget / 100) * totalClasses) / (avgTarget / 100))
+            : 0;
+        const totalNeedAttend =
+          pct < avgTarget && avgTarget < 100
+            ? Math.ceil(((avgTarget / 100) * totalClasses - totalAttended) / (1 - avgTarget / 100))
+            : 0;
 
         setHeaderStats({
           id: "overall",
@@ -373,13 +613,16 @@ export const SubjectDetailPage = () => {
           attended: totalAttended,
           total: totalClasses,
           percentage: pct,
-          canMiss: totalCanMiss > 0 ? totalCanMiss : 0,
-          needAttend: 0,
-          statusText: totalClasses === 0
-            ? "No classes recorded yet"
-            : totalCanMiss > 0
-            ? `can miss ${totalCanMiss} lecture${totalCanMiss > 1 ? "s" : ""}`
-            : "can't miss the next lecture",
+          canMiss: Math.max(0, totalCanMiss),
+          needAttend: Math.max(0, totalNeedAttend),
+          statusText:
+            totalClasses === 0
+              ? "No classes recorded yet"
+              : totalCanMiss > 0
+                ? `can miss ${totalCanMiss} lecture${totalCanMiss > 1 ? "s" : ""}`
+                : totalNeedAttend > 0
+                  ? `need to attend ${totalNeedAttend} lecture${totalNeedAttend > 1 ? "s" : ""}`
+                  : "can't miss the next lecture",
         });
       } else {
         let sub = subjects.find((s: any) => s.id === id);
@@ -387,17 +630,34 @@ export const SubjectDetailPage = () => {
           sub = useAttendanceStore.getState().subjects.find((s: any) => s.id === id || s.subjectId === id);
         }
         if (sub) {
+          const sAtt = sub.attended || 0;
+          const sTot = sub.total || 0;
+          const sPct = sTot > 0 ? (sAtt / sTot) * 100 : sub.percentage || 0;
+          const sTarget = Number(sub.target ?? sub.targetAttendance ?? (useAuthStore.getState().user?.targetAttendance ?? 75));
+          const sCanMiss =
+            sub.canMiss != null && sub.canMiss !== undefined && sub.canMiss > 0
+              ? sub.canMiss
+              : sPct >= sTarget && sTarget > 0
+              ? Math.floor((sAtt - (sTarget / 100) * sTot) / (sTarget / 100))
+              : 0;
+          const sNeedAttend =
+            sub.needAttend != null && sub.needAttend !== undefined && sub.needAttend > 0
+              ? sub.needAttend
+              : sPct < sTarget && sTarget < 100
+              ? Math.ceil(((sTarget / 100) * sTot - sAtt) / (1 - sTarget / 100))
+              : 0;
+
           setHeaderStats({
             id: sub.id || sub.subjectId,
             name: sub.name,
             code: sub.code,
-            target: sub.target || (useAuthStore.getState().user?.targetAttendance ?? 75),
-            attended: sub.attended || 0,
-            total: sub.total || 0,
-            percentage: sub.percentage || 0,
-            canMiss: sub.canMiss || 0,
-            needAttend: sub.needAttend || 0,
-            statusText: sub.statusText || (sub.total === 0 ? "No classes recorded yet" : `${sub.attended}/${sub.total} classes`),
+            target: sTarget,
+            attended: sAtt,
+            total: sTot,
+            percentage: sPct,
+            canMiss: sCanMiss,
+            needAttend: sNeedAttend,
+            statusText: sub.statusText || (sTot === 0 ? "No classes recorded yet" : `${sAtt}/${sTot} classes`),
           });
         }
       }
@@ -520,6 +780,7 @@ export const SubjectDetailPage = () => {
     const isMissedStatus = (st: string) => ["absent", "missed"].includes(st);
     const isOffStatus = (st: string) => ["off", "cancelled"].includes(st);
 
+    const failedOnlineEdits: string[] = [];
     for (const [
       itemKey,
       { item, newStatus },
@@ -558,9 +819,9 @@ export const SubjectDetailPage = () => {
 
           s.percentage =
             s.total > 0 ? Number(((s.attended / s.total) * 100).toFixed(1)) : 0;
-          const target =
-            Number(s.target) ||
-            (useAuthStore.getState().user?.targetAttendance ?? 75);
+          const target = Number(
+            s.target ?? s.targetAttendance ?? (useAuthStore.getState().user?.targetAttendance ?? 75),
+          );
           const canMiss =
             s.percentage >= target && target > 0
               ? Math.floor(
@@ -613,6 +874,7 @@ export const SubjectDetailPage = () => {
         }
       };
       updateCacheEntry("all");
+      updateCacheEntry("overall");
       if (item.subjectId) updateCacheEntry(item.subjectId);
 
       // Update Today cache
@@ -621,9 +883,9 @@ export const SubjectDetailPage = () => {
         const nextAgenda = todayEntry.agenda.map((a: any) => {
           const match =
             (item.id && a.attendanceId === item.id) ||
-            (item.timetableSlotId && a.id === item.timetableSlotId) ||
-            (item.overrideId && a.id === item.overrideId) ||
-            a.subject?.id === item.subjectId;
+            (item.timetableSlotId && (a.id === item.timetableSlotId || a.timetableSlotId === item.timetableSlotId)) ||
+            (item.overrideId && (a.id === item.overrideId || a.overrideId === item.overrideId)) ||
+            (!item.timetableSlotId && !item.overrideId && a.subject?.id === item.subjectId);
           return match
             ? { ...a, status: newStatus === "not_marked" ? null : newStatus }
             : a;
@@ -645,7 +907,7 @@ export const SubjectDetailPage = () => {
               (item.timetableSlotId &&
                 d.timetableSlotId === item.timetableSlotId) ||
               (item.overrideId && d.overrideId === item.overrideId) ||
-              d.subjectId === item.subjectId;
+              (!item.timetableSlotId && !item.overrideId && d.subjectId === item.subjectId);
             return match ? { ...d, status: newStatus } : d;
           },
         );
@@ -656,7 +918,8 @@ export const SubjectDetailPage = () => {
         );
         const isFullyMarked =
           nextDayDetails.length > 0 && marked.length === nextDayDetails.length;
-        const todayDateStr = new Date().toISOString().slice(0, 10);
+        const now = new Date();
+        const todayDateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
         let nextDayStatus = item.date > todayDateStr ? "future" : "not_marked";
         if (isFullyMarked) {
           const hasAttended = marked.some((d: any) =>
@@ -688,7 +951,7 @@ export const SubjectDetailPage = () => {
         });
       }
 
-      // Send or queue mutation
+      // Send or queue mutation (api interceptor handles offline queueing without rejecting)
       try {
         await api.post("/attendance/mark", {
           subjectId: item.subjectId,
@@ -699,22 +962,19 @@ export const SubjectDetailPage = () => {
           attendanceId: item.id || (item as any).attendanceId,
           remarks: item.remarks || undefined,
         });
-      } catch (err) {
-        console.warn("Failed to mark via network, enqueuing offline:", err);
-        useOfflineStore.getState().enqueue({
-          method: "POST",
-          url: "/attendance/mark",
-          data: {
-            subjectId: item.subjectId,
-            date: item.date,
-            status: newStatus,
-            timetableSlotId: item.timetableSlotId,
-            overrideId: item.overrideId,
-            attendanceId: item.id || (item as any).attendanceId,
-            remarks: item.remarks || undefined,
-          },
-        });
+      } catch (err: any) {
+        console.error("Server rejected attendance edit:", err);
+        failedOnlineEdits.push(item.subjectName || item.date);
       }
+    }
+
+    if (failedOnlineEdits.length > 0) {
+      toast.error(`Some edits were rejected by server (${failedOnlineEdits.slice(0, 2).join(", ")})`);
+      pendingEditsRef.current.clear();
+      initialLogsSnapshotRef.current = null;
+      setIsEditMode(false);
+      fetchLogsData(true);
+      return;
     }
 
     // 2. Compute overall totals across all subjects
@@ -729,13 +989,19 @@ export const SubjectDetailPage = () => {
     const overallPercentage =
       totalClasses > 0 ? (totalAttended / totalClasses) * 100 : 0;
     const avgTarget = useAuthStore.getState().user?.targetAttendance ?? 75;
-    const totalCanMiss = Math.floor(
-      (totalAttended - (avgTarget / 100) * totalClasses) / (avgTarget / 100),
-    );
-    const totalNeedAttend = Math.ceil(
-      ((avgTarget / 100) * totalClasses - totalAttended) /
-        (1 - avgTarget / 100),
-    );
+    const totalCanMiss =
+      overallPercentage >= avgTarget && avgTarget > 0
+        ? Math.floor(
+            (totalAttended - (avgTarget / 100) * totalClasses) / (avgTarget / 100),
+          )
+        : 0;
+    const totalNeedAttend =
+      overallPercentage < avgTarget && avgTarget < 100
+        ? Math.ceil(
+            ((avgTarget / 100) * totalClasses - totalAttended) /
+              (1 - avgTarget / 100),
+          )
+        : 0;
 
     // 3. Immediately update useAttendanceStore (instantly updates TopBar global percentage)
     useAttendanceStore.setState({
@@ -780,14 +1046,16 @@ export const SubjectDetailPage = () => {
         attended: totalAttended,
         total: totalClasses,
         percentage: overallPercentage,
-        canMiss: totalCanMiss > 0 ? totalCanMiss : 0,
-        needAttend: totalNeedAttend > 0 ? totalNeedAttend : 0,
+        canMiss: Math.max(0, totalCanMiss),
+        needAttend: Math.max(0, totalNeedAttend),
         statusText:
           totalClasses === 0
             ? "No classes recorded yet"
             : totalCanMiss > 0
               ? `can miss ${totalCanMiss} lecture${totalCanMiss > 1 ? "s" : ""}`
-              : "can't miss the next lecture",
+              : totalNeedAttend > 0
+                ? `need ${totalNeedAttend} lecture${totalNeedAttend > 1 ? "s" : ""}`
+                : "can't miss the next lecture",
       });
     } else {
       const currentSub = updatedSubjects.find(
@@ -798,7 +1066,7 @@ export const SubjectDetailPage = () => {
           id: currentSub.id || currentSub.subjectId,
           name: currentSub.name,
           code: currentSub.code,
-          target: currentSub.target || avgTarget,
+          target: currentSub.target ?? currentSub.targetAttendance ?? avgTarget,
           attended: currentSub.attended || 0,
           total: currentSub.total || 0,
           percentage: currentSub.percentage || 0,
@@ -824,7 +1092,9 @@ export const SubjectDetailPage = () => {
 
   const handleOpenRemarkModal = (item: AttendanceLogItem) => {
     hapticSelection();
-    setSelectedRemarkLog({ item, status: item.status || "present" });
+    const resolvedStatus =
+      item.status && item.status !== "not_marked" ? item.status : "present";
+    setSelectedRemarkLog({ item, status: resolvedStatus });
     setRemarkInput(item.remarks || "");
   };
 
@@ -834,9 +1104,12 @@ export const SubjectDetailPage = () => {
     setIsSavingRemark(true);
     try {
       const item = selectedRemarkLog.item;
-      const statusToSave = selectedRemarkLog.status === "not_marked" ? "not_marked" : selectedRemarkLog.status;
+      const statusToSave =
+        !selectedRemarkLog.status || selectedRemarkLog.status === "not_marked"
+          ? "present"
+          : selectedRemarkLog.status;
 
-      await api.post("/attendance/mark", {
+      const res = await api.post("/attendance/mark", {
         subjectId: item.subjectId,
         date: item.date,
         status: statusToSave,
@@ -846,27 +1119,96 @@ export const SubjectDetailPage = () => {
         remarks: finalRemark,
       });
 
+      const isQueued = Boolean(res.data?._queued);
+      const savedAttendanceId = !isQueued ? res.data?.id : undefined;
       const itemKey = getLogItemKey(item);
-      const updatedWithRemark = logs.map((l) => (getLogItemKey(l) === itemKey ? { ...l, remarks: finalRemark } : l));
+      const updatedWithRemark = logs.map((l) =>
+        getLogItemKey(l) === itemKey
+          ? { ...l, status: statusToSave, remarks: finalRemark, ...(savedAttendanceId ? { id: savedAttendanceId } : {}) }
+          : l,
+      );
       setLogs(updatedWithRemark);
 
+      // Re-sync subject logs cache across subject-specific, 'all', and 'overall' keys
       const currentCache = useCacheStore.getState().subject_logs || {};
       const existingEntry = currentCache[querySubject] || {};
-      useCacheStore.getState().setCache('subject_logs', {
+      const allLogsEntry = currentCache["all"] || {};
+      const overallLogsEntry = currentCache["overall"] || {};
+      const updatedAllLogs = (allLogsEntry.logs || []).map((l: any) =>
+        getLogItemKey(l) === itemKey
+          ? { ...l, status: statusToSave, remarks: finalRemark, ...(savedAttendanceId ? { id: savedAttendanceId } : {}) }
+          : l,
+      );
+      const updatedOverallLogs = (overallLogsEntry.logs || []).map((l: any) =>
+        getLogItemKey(l) === itemKey
+          ? { ...l, status: statusToSave, remarks: finalRemark, ...(savedAttendanceId ? { id: savedAttendanceId } : {}) }
+          : l,
+      );
+
+      useCacheStore.getState().setCache("subject_logs", {
         ...currentCache,
-        [querySubject]: { ...existingEntry, logs: updatedWithRemark }
+        [querySubject]: { ...existingEntry, logs: updatedWithRemark },
+        all: { ...allLogsEntry, logs: updatedAllLogs },
+        overall: { ...overallLogsEntry, logs: updatedOverallLogs },
       });
 
-      toast.success(finalRemark ? "Remark saved" : "Remark cleared");
+      // Synchronize TodayPage and Calendar caches so remark appears everywhere immediately
+      const todayCache = useCacheStore.getState().today || {};
+      if (todayCache[item.date]?.agenda) {
+        const nextAgenda = todayCache[item.date].agenda.map((a: any) => {
+          const match =
+            (item.id && a.attendanceId === item.id) ||
+            (item.timetableSlotId && (a.id === item.timetableSlotId || a.timetableSlotId === item.timetableSlotId)) ||
+            (item.overrideId && (a.id === item.overrideId || a.overrideId === item.overrideId)) ||
+            (!item.timetableSlotId && !item.overrideId && a.subject?.id === item.subjectId);
+          return match ? { ...a, status: statusToSave, remarks: finalRemark } : a;
+        });
+        useCacheStore.getState().setCache("today", {
+          ...todayCache,
+          [item.date]: { ...todayCache[item.date], agenda: nextAgenda },
+        });
+      }
+
+      const monthStr = item.date.substring(0, 7);
+      const calCache = useCacheStore.getState().calendar || {};
+      if (calCache[monthStr]?.details?.[item.date]) {
+        const nextDetails = calCache[monthStr].details[item.date].map((d: any) => {
+          const match =
+            (item.id && (d.id === item.id || d.attendanceId === item.id)) ||
+            (item.timetableSlotId && (d.timetableSlotId === item.timetableSlotId || d.slotId === item.timetableSlotId)) ||
+            (item.overrideId && (d.overrideId === item.overrideId || d.id === item.overrideId)) ||
+            (!item.timetableSlotId && !item.overrideId && d.subjectId === item.subjectId);
+          return match ? { ...d, status: statusToSave, remarks: finalRemark } : d;
+        });
+        useCacheStore.getState().setCache("calendar", {
+          ...calCache,
+          [monthStr]: {
+            ...calCache[monthStr],
+            details: { ...calCache[monthStr].details, [item.date]: nextDetails },
+          },
+        });
+      }
+
+      toast.success(
+        isQueued
+          ? finalRemark
+            ? "Remark saved (offline)"
+            : "Remark cleared (offline)"
+          : finalRemark
+            ? "Remark saved"
+            : "Remark cleared",
+      );
       hapticSuccess();
       setSelectedRemarkLog(null);
       setRemarkInput("");
 
-      useAttendanceStore.getState().fetchStats(true);
+      if (!isQueued) {
+        useAttendanceStore.getState().fetchStats(true);
+      }
       window.dispatchEvent(new CustomEvent("attendance-updated", { detail: { source: "subject-detail-page" } }));
-    } catch (err) {
-      console.error("Failed to save remark:", err);
-      toast.error("Failed to save remark");
+    } catch (err: any) {
+      console.error("Server rejected remark save:", err);
+      toast.error(err?.response?.data?.message || "Failed to save remark");
     } finally {
       setIsSavingRemark(false);
     }
@@ -878,9 +1220,12 @@ export const SubjectDetailPage = () => {
     setIsSavingRemark(true);
     try {
       const item = selectedRemarkLog.item;
-      const statusToSave = selectedRemarkLog.status === "not_marked" ? "not_marked" : selectedRemarkLog.status;
+      const statusToSave =
+        !selectedRemarkLog.status || selectedRemarkLog.status === "not_marked"
+          ? "not_marked"
+          : selectedRemarkLog.status;
 
-      await api.post("/attendance/mark", {
+      const res = await api.post("/attendance/mark", {
         subjectId: item.subjectId,
         date: item.date,
         status: statusToSave,
@@ -890,23 +1235,83 @@ export const SubjectDetailPage = () => {
         remarks: null,
       });
 
+      const isQueued = Boolean(res.data?._queued);
       const itemKey = getLogItemKey(item);
       setLogs((prev) =>
         prev.map((l) => (getLogItemKey(l) === itemKey ? { ...l, remarks: null } : l))
       );
 
-      toast.success("Remark removed");
+      // Re-sync subject logs cache across subject-specific, 'all', and 'overall' keys
+      const currentCache = useCacheStore.getState().subject_logs || {};
+      const existingEntry = currentCache[querySubject] || {};
+      const allLogsEntry = currentCache["all"] || {};
+      const overallLogsEntry = currentCache["overall"] || {};
+      const updatedQueryLogs = (existingEntry.logs || []).map((l: any) =>
+        getLogItemKey(l) === itemKey ? { ...l, remarks: null } : l
+      );
+      const updatedAllLogs = (allLogsEntry.logs || []).map((l: any) =>
+        getLogItemKey(l) === itemKey ? { ...l, remarks: null } : l
+      );
+      const updatedOverallLogs = (overallLogsEntry.logs || []).map((l: any) =>
+        getLogItemKey(l) === itemKey ? { ...l, remarks: null } : l
+      );
+
+      useCacheStore.getState().setCache("subject_logs", {
+        ...currentCache,
+        [querySubject]: { ...existingEntry, logs: updatedQueryLogs },
+        all: { ...allLogsEntry, logs: updatedAllLogs },
+        overall: { ...overallLogsEntry, logs: updatedOverallLogs },
+      });
+
+      // Synchronize TodayPage and Calendar caches surgically instead of nuking them
+      const todayCache = useCacheStore.getState().today || {};
+      if (todayCache[item.date]?.agenda) {
+        const nextAgenda = todayCache[item.date].agenda.map((a: any) => {
+          const match =
+            (item.id && a.attendanceId === item.id) ||
+            (item.timetableSlotId && (a.id === item.timetableSlotId || a.timetableSlotId === item.timetableSlotId)) ||
+            (item.overrideId && (a.id === item.overrideId || a.overrideId === item.overrideId)) ||
+            (!item.timetableSlotId && !item.overrideId && a.subject?.id === item.subjectId);
+          return match ? { ...a, remarks: null } : a;
+        });
+        useCacheStore.getState().setCache("today", {
+          ...todayCache,
+          [item.date]: { ...todayCache[item.date], agenda: nextAgenda },
+        });
+      }
+
+      const monthStr = item.date.substring(0, 7);
+      const calCache = useCacheStore.getState().calendar || {};
+      if (calCache[monthStr]?.details?.[item.date]) {
+        const nextDetails = calCache[monthStr].details[item.date].map((d: any) => {
+          const match =
+            (item.id && (d.id === item.id || d.attendanceId === item.id)) ||
+            (item.timetableSlotId && (d.timetableSlotId === item.timetableSlotId || d.slotId === item.timetableSlotId)) ||
+            (item.overrideId && (d.overrideId === item.overrideId || d.id === item.overrideId)) ||
+            (!item.timetableSlotId && !item.overrideId && d.subjectId === item.subjectId);
+          return match ? { ...d, remarks: null } : d;
+        });
+        useCacheStore.getState().setCache("calendar", {
+          ...calCache,
+          [monthStr]: {
+            ...calCache[monthStr],
+            details: { ...calCache[monthStr].details, [item.date]: nextDetails },
+          },
+        });
+      }
+
+      toast.success(isQueued ? "Remark removed (offline)" : "Remark removed");
       hapticSuccess();
       setSelectedRemarkLog(null);
       setRemarkInput("");
 
-      useAttendanceStore.getState().fetchStats(true);
-      useCacheStore.getState().setCache("calendar", {});
-      useCacheStore.getState().setCache("today", {});
+      if (!isQueued) {
+        useAttendanceStore.getState().fetchStats(true);
+      }
       window.dispatchEvent(new CustomEvent("attendance-updated", { detail: { source: "subject-detail-page" } }));
-    } catch (err) {
-      console.error("Failed to remove remark:", err);
-      toast.error("Failed to remove remark");
+    } catch (err: any) {
+      console.error("Server rejected remark removal:", err);
+      toast.error(err?.response?.data?.message || "Failed to remove remark");
     } finally {
       setIsSavingRemark(false);
     }
@@ -1079,10 +1484,10 @@ export const SubjectDetailPage = () => {
   const getRemainingClasses = () => {
     if (!headerStats) return 30; // fallback
     if (isOverall) {
-      return storeSubjects.reduce((acc, sub) => acc + (sub.remainingClasses || 0), 0);
+      return storeSubjects.reduce((acc, sub) => acc + (sub.remainingClasses ?? 0), 0);
     } else {
       const sub = storeSubjects.find(s => s.id === id);
-      return sub?.remainingClasses || 30;
+      return sub?.remainingClasses ?? 30;
     }
   };
   const remaining = getRemainingClasses();
@@ -1491,7 +1896,9 @@ export const SubjectDetailPage = () => {
                                       item.slotType === "Extra") && (
                                       <span className="bg-amber-500/10 dark:bg-amber-500/20 text-amber-700 dark:text-amber-400 border border-amber-500/30 text-[10px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1 shadow-sm">
                                         <Sparkles className="w-3 h-3 text-amber-600 dark:text-amber-400" />
-                                        Extra Lecture
+                                        {String(item.slotType || "").toLowerCase().includes("practical") || String(item.slotType || "").toLowerCase().includes("lab")
+                                          ? "Extra Practical"
+                                          : "Extra Lecture"}
                                       </span>
                                     )}
                                   </div>
@@ -1578,13 +1985,17 @@ export const SubjectDetailPage = () => {
                                       }`}
                                     >
                                       <span>
-                                        {isAttended
-                                          ? "Attended"
-                                          : isMissed
-                                            ? "Missed"
-                                            : isOff
-                                              ? "Off"
-                                              : "Not Marked"}
+                                        {item.status === "medical"
+                                          ? "Attended (Med)"
+                                          : item.status === "od"
+                                            ? "Attended (OD)"
+                                            : isAttended
+                                              ? "Attended"
+                                              : isMissed
+                                                ? "Missed"
+                                                : isOff
+                                                  ? "Off"
+                                                  : "Not Marked"}
                                       </span>
                                       {isAttended && (
                                         <CheckCircle2 className="w-3.5 h-3.5" />

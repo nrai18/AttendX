@@ -7,14 +7,19 @@ import { redisClient } from "../lib/redis";
 
 export class AttendanceController {
   static async getTodayAgenda(req: AuthenticatedRequest, res: Response) {
-    const { date } = req.query;
+    const { date, force } = req.query;
     if (!date || typeof date !== "string") {
       return res.status(400).json({ message: "Date is required (YYYY-MM-DD)" });
     }
 
+    const cacheKey = `agenda:v4:${date}`;
+    if (force === "true") {
+      await CacheService.del(req.user!.userId, cacheKey);
+    }
+
     const agenda = await CacheService.getOrSet(
       req.user!.userId,
-      `agenda:v4:${date}`,
+      cacheKey,
       () => AttendanceService.getTodayAgenda(req.user!.userId, date)
     );
     res.json(agenda);
@@ -86,10 +91,15 @@ export class AttendanceController {
   }
 
   static async getSubjectStats(req: AuthenticatedRequest, res: Response) {
-    const { semesterId } = req.query;
+    const { semesterId, force } = req.query;
+    const cacheKey = `stats:${semesterId || 'default'}`;
+    if (force === "true") {
+      await CacheService.del(req.user!.userId, cacheKey);
+      await CacheService.invalidateUser(req.user!.userId);
+    }
     const stats = await CacheService.getOrSet(
       req.user!.userId,
-      `stats:${semesterId || 'default'}`,
+      cacheKey,
       () => AttendanceService.getSubjectStats(req.user!.userId, semesterId as string | undefined)
     );
     res.json(stats);
@@ -97,10 +107,15 @@ export class AttendanceController {
 
   static async getSingleSubjectStats(req: AuthenticatedRequest, res: Response) {
     const { subjectId } = req.params;
+    const { force } = req.query;
+    const cacheKey = `singleStats:${subjectId}`;
+    if (force === "true") {
+      await CacheService.del(req.user!.userId, cacheKey);
+    }
     try {
       const stats = await CacheService.getOrSet(
         req.user!.userId,
-        `singleStats:${subjectId}`,
+        cacheKey,
         () => AttendanceService.getSingleSubjectStats(req.user!.userId, String(subjectId))
       );
       res.json(stats);
@@ -140,11 +155,16 @@ export class AttendanceController {
   }
 
   static async getAttendanceLogs(req: AuthenticatedRequest, res: Response) {
-    const { subjectId, semesterId } = req.query;
+    const { subjectId, semesterId, force } = req.query;
+    const cacheKey = `logs:v4:${subjectId || 'all'}:${semesterId || 'all'}`;
+    if (force === "true") {
+      await CacheService.del(req.user!.userId, cacheKey);
+      await CacheService.invalidateUser(req.user!.userId);
+    }
     try {
       const logsData = await CacheService.getOrSet(
         req.user!.userId,
-        `logs:v4:${subjectId || 'all'}:${semesterId || 'all'}`,
+        cacheKey,
         () => AttendanceService.getAttendanceLogs(req.user!.userId, {
           subjectId: subjectId as string | undefined,
           semesterId: semesterId as string | undefined,

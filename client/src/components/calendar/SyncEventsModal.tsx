@@ -46,13 +46,38 @@ export const SyncEventsModal: React.FC<SyncEventsModalProps> = ({ isOpen, onClos
         endDate: semEnd,
       });
 
-      if (offlineEvents.length > 0) {
+      const filteredOfflineEvents = offlineEvents.filter((ev: any) => {
+        const isHolidayEv =
+          Boolean(ev.isHoliday || ev.isHolidayList) ||
+          ev.eventType === "holiday" ||
+          ev.eventType === "restricted_holiday";
+        return isHolidayEv ? syncHolidayList : syncAcademicCalendar;
+      });
+
+      if (filteredOfflineEvents.length > 0) {
         const curSem = useCacheStore.getState().semester;
+        const existingEvents: any[] = Array.isArray(curSem?.events)
+          ? curSem.events
+          : (useAttendanceStore.getState().events as any) || [];
+        const existingKeys = new Set(
+          existingEvents.map(
+            (e: any) =>
+              `${String(e.title || "").trim().toLowerCase()}__${String(e.date || "").slice(0, 10)}`,
+          ),
+        );
+        const mergedEvents = [...existingEvents];
+        for (const ev of filteredOfflineEvents) {
+          const key = `${String(ev.title || "").trim().toLowerCase()}__${String(ev.date || "").slice(0, 10)}`;
+          if (!existingKeys.has(key)) {
+            existingKeys.add(key);
+            mergedEvents.push(ev);
+          }
+        }
         useCacheStore.getState().setCache("semester", {
           ...curSem,
-          events: offlineEvents,
+          events: mergedEvents,
         });
-        useAttendanceStore.setState({ events: offlineEvents as any });
+        useAttendanceStore.setState({ events: mergedEvents as any });
       }
 
       const res = await api.post("/events/templates/sync", {
@@ -61,10 +86,17 @@ export const SyncEventsModal: React.FC<SyncEventsModalProps> = ({ isOpen, onClos
         syncAcademicCalendar
       });
 
-      const count = res.data?.syncedCount ?? offlineEvents.length ?? 0;
-      toast.success(`Successfully synced ${count} events to your calendar!`);
-      useCacheStore.getState().setCache("calendar", null);
-      useAttendanceStore.getState().fetchStats(true);
+      const isQueued = Boolean(res.data?._queued);
+      const count = res.data?.syncedCount ?? filteredOfflineEvents.length ?? 0;
+      toast.success(
+        isQueued
+          ? `Synced ${count} template events locally (queued for server)`
+          : `Successfully synced ${count} events to your calendar!`,
+      );
+      if (!isQueued) {
+        useCacheStore.getState().setCache("calendar", null);
+        useAttendanceStore.getState().fetchStats(true);
+      }
       window.dispatchEvent(new Event("attendance-updated"));
       window.dispatchEvent(new Event("events-updated"));
       onSuccess();

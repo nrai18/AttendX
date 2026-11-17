@@ -26,28 +26,39 @@ export const OTAUpdateModal: React.FC<Props> = ({ localVersion }) => {
         const hasNewBuild = Boolean(buildTimestamp && buildTimestamp > localTimestamp);
 
 
-        if (localVersion !== latestVersion || hasNewBuild) {
-          // Filter changelog to only include versions greater than localVersion
-          // For simplicity, we just take all items in the array until we hit the localVersion
-          const index = changelog.findIndex(
-            (c: any) => c.version === localVersion,
-          );
-          const newUpdates =
-            index !== -1 && !hasNewBuild ? changelog.slice(0, index) : changelog;
+                const hasValidBundle =
+                  Number(res.data?.downloadSizeMb || 0) > 0;
+                if (
+                  hasValidBundle &&
+                  (localVersion !== latestVersion || hasNewBuild)
+                ) {
+                  // Filter changelog to only include versions greater than localVersion
+                  // For simplicity, we just take all items in the array until we hit the localVersion
+                  const index = changelog.findIndex(
+                    (c: any) => c.version === localVersion,
+                  );
+                  const newUpdates =
+                    index !== -1 && !hasNewBuild
+                      ? changelog.slice(0, index)
+                      : changelog;
 
-          if (newUpdates.length > 0) {
-            const latestUpdate = newUpdates[0];
+                  if (newUpdates.length > 0) {
+                    const latestUpdate = newUpdates[0];
 
-            setRemoteData({
-              latestVersion,
-              sizeMb: res.data.downloadSizeMb || latestUpdate.sizeMb || 0,
-              title: res.data.title || latestUpdate.title || "Update Available",
-              sections: latestUpdate.sections || [],
-              buildTimestamp: res.data.buildTimestamp || 0,
-            });
-            setIsOpen(true);
-          }
-        }
+                    setRemoteData({
+                      latestVersion,
+                      sizeMb:
+                        res.data.downloadSizeMb || latestUpdate.sizeMb || 0,
+                      title:
+                        res.data.title ||
+                        latestUpdate.title ||
+                        "Update Available",
+                      sections: latestUpdate.sections || [],
+                      buildTimestamp: res.data.buildTimestamp || 0,
+                    });
+                    setIsOpen(true);
+                  }
+                }
       } catch (err) {
         console.error("Failed to check for updates:", err);
       }

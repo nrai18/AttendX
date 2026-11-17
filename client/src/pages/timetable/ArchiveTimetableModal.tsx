@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { X, Calendar as CalendarIcon, Clock, BookOpen, MapPin, Archive, Trash2 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
+import { toast } from "sonner";
 import { api } from "../../lib/api";
 import { useCacheStore } from "../../stores/cacheStore";
 import { hapticLight, hapticSelection, hapticHeavy } from "../../utils/haptics";
@@ -192,42 +193,60 @@ export const ArchiveTimetableModal: React.FC<ArchiveTimetableModalProps> = ({ is
         });
 
         const targetSlotIds = Array.isArray(version.slots) ? version.slots.map((s: any) => s.id) : [];
+        const versionsBefore = versions;
+        const selectedBefore = selectedVersionId;
+        let deleteError: any = null;
         const deleteReq = api
           .delete(`/timetable/semester/${effectiveSemesterId || "active"}/archived/${version.id}`, {
             data: { slotIds: targetSlotIds },
           })
           .catch((err) => {
+            deleteError = err;
             console.error("Failed to delete archived version:", err);
           });
 
         setTimeout(async () => {
+          let nextVersionsSnapshot: any[] = [];
           setVersions((prev) => {
-            const updated = prev.filter((v) => v.id !== version.id);
+            nextVersionsSnapshot = prev.filter((v) => v.id !== version.id);
             setSelectedVersionId((curr) => {
               if (curr === version.id) {
-                return updated.length > 0 ? updated[0].id : null;
+                return nextVersionsSnapshot.length > 0 ? nextVersionsSnapshot[0].id : null;
               }
               return curr;
             });
-            return updated;
+            return nextVersionsSnapshot;
           });
           setCrumblingVersionId(null);
 
           const cacheStore = useCacheStore.getState();
-          const remaining = (versions || []).filter((v) => v.id !== version.id);
           if (effectiveSemesterId) {
-            cacheStore.setCache(`archived_timetables_${effectiveSemesterId}`, remaining);
+            cacheStore.setCache(`archived_timetables_${effectiveSemesterId}`, nextVersionsSnapshot);
           }
-          cacheStore.setCache("archived_timetables", remaining);
+          cacheStore.setCache("archived_timetables", nextVersionsSnapshot);
           const currentTtCache = cacheStore.timetable;
           if (currentTtCache) {
             cacheStore.setCache("timetable", {
               ...currentTtCache,
-              archivedSlots: remaining,
+              archivedSlots: nextVersionsSnapshot,
             });
           }
 
           await deleteReq;
+          if (deleteError && deleteError?.response?.status !== 404) {
+            toast.error(deleteError?.response?.data?.message || "Failed to delete archived version.");
+            setVersions(versionsBefore);
+            setSelectedVersionId(selectedBefore);
+            if (effectiveSemesterId) {
+              cacheStore.setCache(`archived_timetables_${effectiveSemesterId}`, versionsBefore);
+            }
+            cacheStore.setCache("archived_timetables", versionsBefore);
+            const curTtAfter = cacheStore.timetable;
+            if (curTtAfter) {
+              cacheStore.setCache("timetable", { ...curTtAfter, archivedSlots: versionsBefore });
+            }
+            return;
+          }
           window.dispatchEvent(new CustomEvent("timetable-updated"));
         }, 3850);
       },
@@ -289,37 +308,55 @@ export const ArchiveTimetableModal: React.FC<ArchiveTimetableModalProps> = ({ is
           }
         });
 
+        const versionsBefore = versions;
+        const selectedBefore = selectedVersionId;
+        let clearError: any = null;
         const clearReq = api
           .delete(`/timetable/semester/${effectiveSemesterId || "active"}/archived/all`)
           .catch((err) => {
+            clearError = err;
             console.error("Failed to clear archived versions:", err);
           });
 
         const clearAnimDurationMs = Math.min(Math.max(1800, Math.round((0.15 + dominoCount * 0.142 + 1.05) * 1000)), 3800);
 
         setTimeout(async () => {
+          let onlyCurrentSnapshot: any[] = [];
           setVersions((prev) => {
-            const onlyCurrent = prev.filter((v) => v.isCurrent);
-            setSelectedVersionId(onlyCurrent.length > 0 ? onlyCurrent[0].id : null);
-            return onlyCurrent;
+            onlyCurrentSnapshot = prev.filter((v) => v.isCurrent);
+            setSelectedVersionId(onlyCurrentSnapshot.length > 0 ? onlyCurrentSnapshot[0].id : null);
+            return onlyCurrentSnapshot;
           });
           setIsCascadingClear(false);
 
           const cacheStore = useCacheStore.getState();
-          const onlyCurrent = versions.filter((v) => v.isCurrent);
           if (effectiveSemesterId) {
-            cacheStore.setCache(`archived_timetables_${effectiveSemesterId}`, onlyCurrent);
+            cacheStore.setCache(`archived_timetables_${effectiveSemesterId}`, onlyCurrentSnapshot);
           }
-          cacheStore.setCache("archived_timetables", onlyCurrent);
+          cacheStore.setCache("archived_timetables", onlyCurrentSnapshot);
           const currentTtCache = cacheStore.timetable;
           if (currentTtCache) {
             cacheStore.setCache("timetable", {
               ...currentTtCache,
-              archivedSlots: onlyCurrent,
+              archivedSlots: onlyCurrentSnapshot,
             });
           }
 
           await clearReq;
+          if (clearError) {
+            toast.error(clearError?.response?.data?.message || "Failed to clear archived versions.");
+            setVersions(versionsBefore);
+            setSelectedVersionId(selectedBefore);
+            if (effectiveSemesterId) {
+              cacheStore.setCache(`archived_timetables_${effectiveSemesterId}`, versionsBefore);
+            }
+            cacheStore.setCache("archived_timetables", versionsBefore);
+            const curTtAfter = cacheStore.timetable;
+            if (curTtAfter) {
+              cacheStore.setCache("timetable", { ...curTtAfter, archivedSlots: versionsBefore });
+            }
+            return;
+          }
           window.dispatchEvent(new CustomEvent("timetable-updated"));
         }, clearAnimDurationMs);
       },

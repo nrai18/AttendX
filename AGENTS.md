@@ -9,15 +9,16 @@ Whenever writing backend or frontend code referencing Gemini Developer API model
 ## Android Build Workflow
 - **APK Output Location**: Whenever you successfully compile or build the Android APK, you MUST automatically copy the resulting  app-debug.apk to C:\Users\Raina\OneDrive\Desktop\AttendX.apk. Do not make the user manually retrieve it from the build folders.
 
-## App Versioning & Dual-Channel Release Workflow (Native APK & OTA)
-- **Dynamic Versioning Permitted**: Version increments (e.g. `v4.3.1`, `v4.4.0`, etc.) are fully supported across `client/src/App.tsx`, `client/package.json`, `client/android/app/build.gradle`, and `server/src/controllers/system.controller.ts` to enable testing and release of the Native APK Updater (`GitHubUpdater` & `ApkUpdaterPlugin`) and Capgo OTA runtime.
-- **Changelog Tracking**: Document all new features, visual polish, bug fixes, and architectural adjustments under the corresponding version entry in `server/src/controllers/system.controller.ts` and in GitHub Release notes.
-- **Release Packaging**: Whenever packaging a release:
-  1. Increment or sync `localVersion` in `client/src/App.tsx` and `latestVersion` in `server/src/controllers/system.controller.ts`.
+## App Versioning & Native-Only Release Workflow (No OTA Updates)
+- **Native APK Only Policy:** AttendX distributes updates **exclusively via Native Android APK Releases** (`GitHubUpdater`, `NativeUpdateSheet`, & `ApkUpdaterPlugin`). **NEVER** bundle, trigger, or publish Capgo OTA web updates (`server/src/uploads/update.zip` or `node zip_dist.cjs`).
+- **Dynamic Versioning Permitted:** Version increments (e.g. `v4.3.1`, `v4.4.0`, etc.) are fully supported across `client/src/App.tsx`, `client/package.json`, `client/android/app/build.gradle` (`versionCode` & `versionName`), and `server/src/controllers/system.controller.ts` for the Native APK Updater.
+- **Changelog Tracking:** Document all new features, visual polish, bug fixes, and architectural adjustments under the corresponding version entry in `server/src/controllers/system.controller.ts` and in GitHub Release notes (including the APK `SHA256` hash in the GitHub Release body).
+- **Release Packaging:** Whenever packaging a release:
+  1. Increment/sync the app version across `client/package.json`, `client/android/app/build.gradle` (`versionCode` + `versionName`), `client/src/App.tsx`, and `latestVersion` in `server/src/controllers/system.controller.ts`.
   2. Run `npm run build` in the `client` directory.
-  3. Sync capacitor with `npx cap copy android`.
-  4. Run `node zip_dist.cjs` in the `server` directory to bundle frontend updates into `server/src/uploads/update.zip`.
-  5. When compiling native APKs, copy the resulting APK to `C:\Users\Raina\OneDrive\Desktop\AttendX.apk`.
+  3. Sync Capacitor with `npx cap copy android`.
+  4. Compile the native APK (`.\gradlew.bat assembleDebug` / release) and copy the resulting APK to `C:\Users\Raina\OneDrive\Desktop\AttendX.apk`.
+  5. Publish exclusively via a GitHub Release with `AttendX.apk` attached and its `SHA256` checksum included.
 
 ## Anti-Slop Design Invariants
 Never generate UI that uses the following AI default tropes:
@@ -53,8 +54,8 @@ When designing, updating, or overhauling the UI of a specific page:
 
 7. **Strict Fix Retention (No Regressions):** Once a bug is resolved or a feature successfully added, you MUST meticulously ensure that subsequent commands or git operations (like `git reset`, `git revert`, `git checkout`, or branch switches) do not accidentally wipe out those fixes. Never blindly revert or reset the working directory without first verifying that doing so won't delete unrelated work. If a fix is lost during a git rollback, you MUST immediately cherry-pick or manually restore the exact files containing those fixes before proceeding.
 
-## Intelligent Changelog & OTA Notes (Nothing OS Style)
-1. **Running Documentation:** Do not wait until an OTA deployment to write the changelog. Maintain a highly descriptive, running log of all implemented features, UX improvements, and bug fixes in `dev_log.md` as you work.
+## Intelligent Changelog & Release Notes (Nothing OS Style)
+1. **Running Documentation:** Do not wait until a release deployment to write the changelog. Maintain a highly descriptive, running log of all implemented features, UX improvements, and bug fixes in `dev_log.md` as you work.
 2. **Categorization:** Group changelog entries logically into headers such as **New Features**, **Visual Enhancements**, **Architecture & Performance**, and **General Improvements and Bug Fixes.
 3. **Emoji Logic:** Every bullet point MUST start with a single, highly relevant emoji that dictates the nature of the change (e.g., 🤖 for ML tools, 🎙️ for voice plugins, 🎨 for theming, 📶 for offline handling, ⚡ for performance/timeouts). DO NOT spam unrelated emojis.
 4. **Descriptive Depth:** Write clean, descriptive, and user-facing benefits (e.g., 'Introduced Native Voice Mode with Capacitor plugins, offering seamless hands-free interaction without overlapping audio.'). Avoid empty marketing buzzwords.

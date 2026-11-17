@@ -30,7 +30,7 @@ export interface CacheState {
   mutationVersion: number;
   setCache: (key: string, data: any) => void;
   invalidateForMutation: (url?: string, method?: string, responseData?: any) => void;
-  clearCache: () => void;
+  clearCache: (preservePreferences?: boolean) => void;
   [key: string]: any;
 }
 
@@ -135,34 +135,57 @@ export const useCacheStore = create<CacheState>()(
           return;
         }
 
+        // --- OFFLINE SHIELD ---
+        // When device is offline, never wipe persistent cache entities (subjects, timetable, semester, etc.)
+        // Preserve them so offline navigation and edits retain full UI context.
+        if (typeof navigator !== "undefined" && !navigator.onLine) {
+          set((state) => ({
+            mutationVersion: (state.mutationVersion || 0) + 1,
+          }));
+          return;
+        }
+
+        if (url.includes('/users/reset-data')) {
+          get().clearCache(false);
+          return;
+        }
+
         if (
           url.includes('/users/reset-') ||
           url.includes('/semesters') ||
           url.includes('/data/import')
         ) {
-          get().clearCache();
+          get().clearCache(true);
           return;
         }
 
         if (url.includes('/attendance/')) {
           set((state) => ({
             calendar: {},
+            insights: null,
             mutationVersion: (state.mutationVersion || 0) + 1,
           }));
           return;
         }
 
-        if (url.includes('/timetable/') || url.includes('/subjects')) {
+        if (url.includes('/subjects')) {
           set((state) => ({
-            today: {},
-            calendar: {},
-            timetable: null,
-            archived_timetables: null,
-            semester: null,
             subjects: null,
             subjects_overview: null,
             subject_logs: {},
             all_logs: null,
+            today: {},
+            calendar: {},
+            insights: null,
+            mutationVersion: (state.mutationVersion || 0) + 1,
+          }));
+          return;
+        }
+
+        if (url.includes('/timetable/')) {
+          set((state) => ({
+            today: {},
+            calendar: {},
             insights: null,
             mutationVersion: (state.mutationVersion || 0) + 1,
           }));
@@ -173,8 +196,6 @@ export const useCacheStore = create<CacheState>()(
           set((state) => ({
             today: {},
             calendar: {},
-            semester: null,
-            subjects: null,
             subject_logs: {},
             all_logs: null,
             insights: null,
@@ -187,7 +208,6 @@ export const useCacheStore = create<CacheState>()(
           set((state) => ({
             today: {},
             calendar: {},
-            subjects: null,
             subject_logs: {},
             insights: null,
             mutationVersion: (state.mutationVersion || 0) + 1,
@@ -195,7 +215,7 @@ export const useCacheStore = create<CacheState>()(
           return;
         }
       },
-      clearCache: () => {
+      clearCache: (preservePreferences = false) => {
         set((state) => ({
           today: {},
           calendar: {},
@@ -209,8 +229,12 @@ export const useCacheStore = create<CacheState>()(
           insights: null,
           classrooms: null,
           classroom_feeds: {},
-          reminderFrequency: { type: 'Daily' },
-          frequencyMemory: { Weekly: 'Sun', Monthly: '1' },
+          reminderFrequency: preservePreferences
+            ? state.reminderFrequency
+            : { type: 'Daily' },
+          frequencyMemory: preservePreferences
+            ? state.frequencyMemory
+            : { Weekly: 'Sun', Monthly: '1' },
           mutationVersion: (state.mutationVersion || 0) + 1,
         }));
         onClearListeners.forEach((cb) => {

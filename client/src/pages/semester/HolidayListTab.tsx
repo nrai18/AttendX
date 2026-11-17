@@ -6,7 +6,7 @@ import { confirmDeleteToast } from "../../components/ui/confirm-delete-toast";
 import { SaveToggle } from "../../components/ui/save-toggle";
 import { useCacheStore } from "../../stores/cacheStore";
 import { useAttendanceStore } from "../../stores/attendanceStore";
-import { getHolidaysTemplate } from "../../constants/calendarTemplates";
+import { getHolidaysTemplate, getOfflineCalendarEventsForSemester } from "../../constants/calendarTemplates";
 
 export const HolidayListTab = ({ semesterId, semesterStartDate, semesterEndDate }: { semesterId?: string, semesterStartDate?: string, semesterEndDate?: string }) => {
   const [activeSubTab, setActiveSubTab] = useState<"fixed" | "restricted">("fixed");
@@ -77,13 +77,38 @@ export const HolidayListTab = ({ semesterId, semesterStartDate, semesterEndDate 
         year: selectedYear
       });
 
-      useCacheStore.getState().setCache("calendar", null);
-      useAttendanceStore.getState().fetchStats(true);
-      window.dispatchEvent(new Event("attendance-updated"));
-      window.dispatchEvent(new Event("events-updated"));
-      toast.success(`Successfully synced ${res.data?.syncedCount ?? 'all'} holidays for this semester!`);
-      // Reload page to reflect changes in UI
-      setTimeout(() => window.location.reload(), 1500);
+      const isQueued = Boolean(res.data?._queued);
+      if (isQueued) {
+        const offlineHolidays = getOfflineCalendarEventsForSemester({
+          semesterId,
+          startDate: semesterStartDate || `${selectedYear}-01-01`,
+          endDate: semesterEndDate || `${selectedYear}-12-31`,
+        }).filter((e: any) => Boolean(e.isHolidayList || e.isHoliday || e.eventType === "holiday" || e.eventType === "restricted_holiday"));
+
+        const curSem = useCacheStore.getState().semester || {};
+        const existing: any[] = Array.isArray(curSem.events) ? curSem.events : [];
+        const existingKeys = new Set(existing.map((e: any) => `${String(e.title || "").trim().toLowerCase()}__${String(e.date || "").slice(0, 10)}`));
+        const merged = [...existing];
+        for (const h of offlineHolidays) {
+          const key = `${String(h.title || "").trim().toLowerCase()}__${String(h.date || "").slice(0, 10)}`;
+          if (!existingKeys.has(key)) {
+            existingKeys.add(key);
+            merged.push(h);
+          }
+        }
+        useCacheStore.getState().setCache("semester", { ...curSem, events: merged });
+        useAttendanceStore.setState({ events: merged as any });
+        window.dispatchEvent(new Event("attendance-updated"));
+        window.dispatchEvent(new Event("events-updated"));
+        toast.success(`Synced ${offlineHolidays.length} holidays locally (queued for server)`);
+      } else {
+        useCacheStore.getState().setCache("calendar", null);
+        useAttendanceStore.getState().fetchStats(true);
+        window.dispatchEvent(new Event("attendance-updated"));
+        window.dispatchEvent(new Event("events-updated"));
+        toast.success(`Successfully synced ${res.data?.syncedCount ?? 'all'} holidays for this semester!`);
+        setTimeout(() => window.location.reload(), 1500);
+      }
     } catch (err) {
       console.error("Failed to sync holidays", err);
       toast.error("Failed to sync holidays to calendar.");
@@ -100,13 +125,26 @@ export const HolidayListTab = ({ semesterId, semesterStartDate, semesterEndDate 
 
       onConfirm: async () => {
           try {
-            await api.delete("/events/all?target=holiday_list");
-            useCacheStore.getState().setCache("calendar", null);
-            useAttendanceStore.getState().fetchStats(true);
-            window.dispatchEvent(new Event("attendance-updated"));
-            window.dispatchEvent(new Event("events-updated"));
-            toast.success("Holidays cleared successfully!");
-            setTimeout(() => window.location.reload(), 1500);
+            const res = await api.delete("/events/all?target=holiday_list");
+            const isQueued = Boolean(res.data?._queued);
+            if (isQueued) {
+              const curSem = useCacheStore.getState().semester || {};
+              const remaining = (Array.isArray(curSem.events) ? curSem.events : []).filter(
+                (e: any) => !e.isHolidayList,
+              );
+              useCacheStore.getState().setCache("semester", { ...curSem, events: remaining });
+              useAttendanceStore.setState({ events: remaining as any });
+              window.dispatchEvent(new Event("attendance-updated"));
+              window.dispatchEvent(new Event("events-updated"));
+              toast.success("Holidays cleared offline (queued for sync)");
+            } else {
+              useCacheStore.getState().setCache("calendar", null);
+              useAttendanceStore.getState().fetchStats(true);
+              window.dispatchEvent(new Event("attendance-updated"));
+              window.dispatchEvent(new Event("events-updated"));
+              toast.success("Holidays cleared successfully!");
+              setTimeout(() => window.location.reload(), 1500);
+            }
           } catch (err) {
             console.error(err);
             toast.error("Failed to clear holidays.");

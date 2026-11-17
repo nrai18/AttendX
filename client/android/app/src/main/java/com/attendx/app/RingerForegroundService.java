@@ -22,7 +22,7 @@ public class RingerForegroundService extends Service {
     public static final String EXTRA_CLASS_NAME = "extra_class_name";
     public static final String EXTRA_UNMUTE_EPOCH = "extra_unmute_epoch";
     public static final int NOTIF_ID = 7001;
-    public static final String CHANNEL_ID = "silent_mode";
+    public static final String CHANNEL_ID = "class_silent_session";
 
     @Override
     public IBinder onBind(Intent intent) {
@@ -54,21 +54,37 @@ public class RingerForegroundService extends Service {
             }
         }
         return START_STICKY;
+            }
+
+    @Override
+    public void onDestroy() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            stopForeground(STOP_FOREGROUND_REMOVE);
+        } else {
+            stopForeground(true);
+        }
+        super.onDestroy();
     }
 
-    public static Notification buildNotification(Context context, String className, long unmuteEpochMs) {
-        NotificationManager nm = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && nm != null) {
+    public static void ensureSilentChannel(Context context) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationManager nm = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+            if (nm == null) return;
             NotificationChannel channel = nm.getNotificationChannel(CHANNEL_ID);
             if (channel == null) {
                 channel = new NotificationChannel(CHANNEL_ID, "Silent Mode & Class Session", NotificationManager.IMPORTANCE_DEFAULT);
-                channel.setDescription("Active while phone is muted for class.");
+                channel.setDescription("Pinned notification while class is actively running and phone is muted.");
                 channel.setSound(null, null);
                 channel.enableVibration(false);
                 channel.setBypassDnd(true); // Ensures notification remains visible during DND
+                channel.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
                 nm.createNotificationChannel(channel);
             }
         }
+    }
+
+    public static Notification buildNotification(Context context, String className, long unmuteEpochMs) {
+        ensureSilentChannel(context);
         SimpleDateFormat timeFormat = new SimpleDateFormat("hh:mm a", Locale.getDefault());
         String timeStr = timeFormat.format(new Date(unmuteEpochMs));
         String cleanTitle = (className != null && !className.trim().isEmpty()) ? className.trim() : "Class";
@@ -80,7 +96,10 @@ public class RingerForegroundService extends Service {
         Intent unmuteIntent = new Intent(context, RingerAlarmReceiver.class);
         unmuteIntent.setAction(RingerAlarmReceiver.ACTION_MANUAL_UNMUTE);
         PendingIntent unmutePending = PendingIntent.getBroadcast(context, 1, unmuteIntent, piFlags);
-        return new NotificationCompat.Builder(context, CHANNEL_ID)
+        Intent deleteIntent = new Intent(context, RingerAlarmReceiver.class);
+        deleteIntent.setAction(RingerAlarmReceiver.ACTION_NOTIFICATION_DISMISSED);
+        PendingIntent deletePending = PendingIntent.getBroadcast(context, 2, deleteIntent, piFlags);
+        Notification notif = new NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_stat_attendx)
             .setLargeIcon(BitmapFactory.decodeResource(context.getResources(), R.drawable.attendx_notification_icon))
             .setContentTitle("Class in Session")
@@ -93,7 +112,10 @@ public class RingerForegroundService extends Service {
             .setAutoCancel(false)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setContentIntent(tapPending)
+            .setDeleteIntent(deletePending)
             .addAction(R.drawable.ic_stat_attendx, "🔊 Unmute Phone", unmutePending)
             .build();
+        notif.flags |= Notification.FLAG_ONGOING_EVENT | Notification.FLAG_NO_CLEAR;
+        return notif;
     }
 }

@@ -1,4 +1,4 @@
-export type UpdateChannel = "native-apk" | "capgo-ota";
+export type UpdateChannel = "native-apk" | "none";
 
 export type UpdatePhase =
   | "idle"

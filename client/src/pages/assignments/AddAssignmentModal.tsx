@@ -3,7 +3,8 @@ import { X, Calendar } from "lucide-react";
 import { useAssignmentStore } from "../../stores/assignmentStore";
 import { SoundFX } from "../../utils/soundEffects";
 import { triggerDynamicHUD } from "../../components/ui/dynamic-island-hud";
-import { hapticMedium } from "../../utils/haptics";
+import { hapticMedium, hapticError } from "../../utils/haptics";
+import { toast } from "sonner";
 
 export function AddAssignmentModal({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }) {
   const { addAssignment } = useAssignmentStore();
@@ -13,7 +14,13 @@ export function AddAssignmentModal({ isOpen, onClose }: { isOpen: boolean, onClo
   const [priority, setPriority] = useState<"high"|"medium"|"low">("medium");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  
+  const resetFields = () => {
+    setTitle("");
+    setDescription("");
+    setDeadline("");
+    setPriority("medium");
+  };
+
   // Anti-scroll lock
   React.useEffect(() => {
     if (isOpen) {
@@ -30,29 +37,33 @@ export function AddAssignmentModal({ isOpen, onClose }: { isOpen: boolean, onClo
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!title || !deadline) return;
-    
+    const cleanTitle = title.trim();
+    if (!cleanTitle || !deadline || isSubmitting) return;
+
     setIsSubmitting(true);
-    await addAssignment({
-      title,
-      description,
-      deadline: (() => {
-        const d = new Date(deadline);
-        return !isNaN(d.getTime()) ? d.toISOString() : new Date().toISOString();
-      })(),
-      priority,
-    });
-    // We should also trigger the scheduling
-    const { NotificationService } = await import("../../services/NotificationService");
-    await NotificationService.scheduleAssignmentReminders();
-    
-    // Tactile delight & audio feedback
-    SoundFX.playSnapPopSound();
-    hapticMedium();
-    triggerDynamicHUD({ type: "sparkle", label: "Assignment Scheduled" });
-    
-    setIsSubmitting(false);
-    onClose();
+    try {
+      await addAssignment({
+        title: cleanTitle,
+        description: description.trim() || undefined,
+        deadline: (() => {
+          const d = new Date(deadline);
+          return !isNaN(d.getTime()) ? d.toISOString() : new Date().toISOString();
+        })(),
+        priority,
+      });
+
+      // Tactile delight & audio feedback
+      SoundFX.playSnapPopSound();
+      hapticMedium();
+      triggerDynamicHUD({ type: "sparkle", label: "Assignment Scheduled" });
+      resetFields();
+      onClose();
+    } catch (err: any) {
+      hapticError();
+      toast.error(err?.response?.data?.error || "Failed to save assignment");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -60,7 +71,7 @@ export function AddAssignmentModal({ isOpen, onClose }: { isOpen: boolean, onClo
       <div className="bg-white dark:bg-[#111111] border-2 border-slate-300 dark:border-[#333333] w-full max-w-md rounded-none shadow-[8px_8px_0_0_rgba(0,0,0,0.1)] dark:shadow-[8px_8px_0_0_rgba(255,255,255,0.05)] overflow-hidden animate-in fade-in slide-in-from-bottom-4">
         <div className="flex items-center justify-between p-4 border-b-2 border-slate-300 dark:border-[#333333]">
           <h2 className="text-xl font-semibold">New Assignment</h2>
-          <button onClick={onClose} className="p-2 text-slate-600 dark:text-slate-50/60 hover:text-slate-900 dark:text-slate-50 rounded-none bg-slate-50 dark:bg-[#050505]/50 border-2 border-transparent hover:border-slate-300 dark:hover:border-[#333333]">
+          <button onClick={() => { resetFields(); onClose(); }} className="p-2 text-slate-600 dark:text-slate-50/60 hover:text-slate-900 dark:text-slate-50 rounded-none bg-slate-50 dark:bg-[#050505]/50 border-2 border-transparent hover:border-slate-300 dark:hover:border-[#333333]">
             <X size={20} />
           </button>
         </div>
@@ -119,4 +130,3 @@ export function AddAssignmentModal({ isOpen, onClose }: { isOpen: boolean, onClo
     </div>
   );
 }
-

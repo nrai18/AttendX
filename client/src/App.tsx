@@ -13,6 +13,7 @@ import { NotificationService } from "./services/NotificationService";
 import { NativeVoiceService } from "./services/NativeVoiceService";
 import { WidgetBridgeService } from "./services/WidgetBridgeService";
 import { useAttendanceStore } from "./stores/attendanceStore";
+import { useOfflineStore } from "./stores/offlineStore";
 import { SubjectsPage } from "./pages/subjects/SubjectsPage";
 import { SubjectDetailPage } from "./pages/subjects/SubjectDetailPage";
 import { TimetablePage } from "./pages/timetable/TimetablePage";
@@ -28,6 +29,9 @@ import { DynamicIslandHUD } from "./components/ui/dynamic-island-hud";
 import { ShockwaveCelebrationOverlay } from "./components/ui/shockwave-celebration";
 import { NativeUpdateSheet } from "./components/updates/NativeUpdateSheet";
 import { useNativeUpdates } from "./hooks/useNativeUpdates";
+import { isVersionNewer } from "./services/updater/githubUpdater";
+import { nativeUpdater } from "./services/updater/nativeUpdater";
+import { OfflineLabPage } from "./pages/dev/OfflineLabPage";
 
 // Protected Route Guard Component
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({
@@ -152,7 +156,6 @@ const DeepLinkHandler: React.FC = () => {
 };
 
 import { App as CapacitorApp } from "@capacitor/app";
-import { OTAUpdateModal } from "./components/common/OTAUpdateModal";
 import { CapacitorUpdater } from "@capgo/capacitor-updater";
 import { Capacitor } from "@capacitor/core";
 
@@ -172,17 +175,13 @@ export function App() {
       progress,
       errorMessage,
       isSheetOpen,
-      setIsSheetOpen,
       startDownload,
+      cancelDownload,
       triggerInstall,
       snooze,
+      dismiss,
     } = useNativeUpdates();
 
-    useEffect(() => {
-      const handleOpen = () => setIsSheetOpen(true);
-      window.addEventListener("open-update-sheet", handleOpen);
-      return () => window.removeEventListener("open-update-sheet", handleOpen);
-    }, [setIsSheetOpen]);
   // We want the Lottie splash screen to play on mobile devices (web and native)
   // Only show it once per day, and bypass it for direct public deep-links (/privacy, /terms, /download)
   const [splashFinished, setSplashFinished] = useState(() => {
@@ -212,17 +211,8 @@ export function App() {
             const info = await CapacitorApp.getInfo();
             const nativeVersion = info.version;
             const localVer = localStorage.getItem("app_version") || "0.0.0";
-            
-            const p1 = nativeVersion.split('.').map(Number);
-            const p2 = localVer.split('.').map(Number);
-            let isNativeNewer = false;
-            for (let i = 0; i < Math.max(p1.length, p2.length); i++) {
-              const num1 = p1[i] || 0;
-              const num2 = p2[i] || 0;
-              if (num1 > num2) { isNativeNewer = true; break; }
-              if (num1 < num2) { break; }
-            }
-            
+            const isNativeNewer = isVersionNewer(nativeVersion, localVer);
+
             if (isNativeNewer) {
               localStorage.setItem("app_version", nativeVersion);
               try {
@@ -284,18 +274,22 @@ export function App() {
     }
   }, [isAuthenticated, hydrated]);
 
-  // Global listeners to automatically re-schedule notifications when timetable, events, or semester update
+  // Global listeners to automatically re-schedule notifications when timetable, events, subjects, or semester update
   useEffect(() => {
     const handleReSchedule = () => {
-      NotificationService.scheduleAllProactiveNotifications().catch(() => {});
+      NotificationService.scheduleAllProactiveNotifications(true).catch(() => {});
     };
     window.addEventListener("timetable-updated", handleReSchedule);
     window.addEventListener("events-updated", handleReSchedule);
     window.addEventListener("semester-transitioned", handleReSchedule);
+    window.addEventListener("semester-updated", handleReSchedule);
+    window.addEventListener("subject-updated", handleReSchedule);
     return () => {
       window.removeEventListener("timetable-updated", handleReSchedule);
       window.removeEventListener("events-updated", handleReSchedule);
       window.removeEventListener("semester-transitioned", handleReSchedule);
+      window.removeEventListener("semester-updated", handleReSchedule);
+      window.removeEventListener("subject-updated", handleReSchedule);
     };
   }, []);
 
@@ -307,18 +301,21 @@ export function App() {
       const today = new Date();
       const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
       const todayCache = cache.today?.[todayStr];
+      const weeklySlots = cache.timetable?.slots || [];
 
       let agenda = todayCache?.agenda || [];
       if (agenda.length === 0) {
         const jsDay = today.getDay();
         const dbDay = jsDay === 0 ? 6 : jsDay - 1;
-        const slots = cache.timetable?.slots || [];
-        const todaySlots = slots.filter((s: any) => s.dayOfWeek === dbDay);
+        const todaySlots = weeklySlots
+          .filter((s: any) => s.dayOfWeek === dbDay && !s.validUntil)
+          .sort((a: any, b: any) => (a.startTime || '').localeCompare(b.startTime || ''));
+
         if (todaySlots.length > 0) {
           agenda = todaySlots.map((s: any, idx: number) => ({
             id: s.id || `slot_${idx}`,
             subjectId: s.subjectId,
-            subject: s.subject,
+            subject: s.subject || state.subjects.find(sub => sub.id === s.subjectId || sub.subjectId === s.subjectId) || { id: s.subjectId, name: s.subjectName || "Scheduled Class" },
             startTime: s.startTime,
             endTime: s.endTime,
             room: s.room,
@@ -333,35 +330,52 @@ export function App() {
         overallPercentage: state.overallPercentage,
         subjects: state.subjects,
         todayStatus: todayCache?.todayStatus,
+        weeklySlots,
       });
     };
 
-    const reconcileWidgetMutations = async () => {
-      try {
-        const mutations = await WidgetBridgeService.reconcilePendingWidgetMutations();
-        if (mutations && mutations.length > 0) {
-          window.dispatchEvent(new Event("attendance-updated"));
-        }
-      } catch (e) {
-        console.warn("Failed to reconcile widget mutations", e);
-      }
-    };
+    let isReconcilingWidgets = false;
+    let needsAnotherReconcile = false;
 
     const reconcileAndSync = async () => {
-      try {
-        const mutations = await WidgetBridgeService.reconcilePendingWidgetMutations();
-        if (mutations && mutations.length > 0) {
-          window.dispatchEvent(new Event("attendance-updated"));
-        }
-      } catch (e) {
-        console.warn("Failed to reconcile widget mutations", e);
+      if (isReconcilingWidgets) {
+        needsAnotherReconcile = true;
+        return;
       }
+      isReconcilingWidgets = true;
       try {
-        await WidgetBridgeService.reconcileBufferedAnnouncements();
-      } catch (e) {
-        console.warn("Failed to reconcile buffered announcements", e);
+        do {
+          needsAnotherReconcile = false;
+          try {
+            if (typeof navigator !== "undefined" && navigator.onLine) {
+              const hasQueuedExtra = useOfflineStore
+                .getState()
+                .queue.some((q) => q.url?.includes("/timetable/extra-class"));
+              if (hasQueuedExtra) {
+                await useOfflineStore.getState().flushQueue();
+              }
+            }
+          } catch (e) {
+            console.warn("Failed to flush pre-widget queue", e);
+          }
+          try {
+            const mutations = await WidgetBridgeService.reconcilePendingWidgetMutations();
+            if (mutations && mutations.length > 0) {
+              window.dispatchEvent(new Event("attendance-updated"));
+            }
+          } catch (e) {
+            console.warn("Failed to reconcile widget mutations", e);
+          }
+          try {
+            await WidgetBridgeService.reconcileBufferedAnnouncements();
+          } catch (e) {
+            console.warn("Failed to reconcile buffered announcements", e);
+          }
+          syncWidgets();
+        } while (needsAnotherReconcile);
+      } finally {
+        isReconcilingWidgets = false;
       }
-      syncWidgets();
     };
 
     reconcileAndSync();
@@ -384,12 +398,14 @@ export function App() {
     window.addEventListener("attendance-updated", syncWidgets);
     window.addEventListener("timetable-updated", syncWidgets);
     window.addEventListener("semester-updated", syncWidgets);
+    window.addEventListener("events-updated", syncWidgets);
     window.addEventListener("focus", reconcileAndSync);
     document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => {
       window.removeEventListener("attendance-updated", syncWidgets);
       window.removeEventListener("timetable-updated", syncWidgets);
       window.removeEventListener("semester-updated", syncWidgets);
+      window.removeEventListener("events-updated", syncWidgets);
       window.removeEventListener("focus", reconcileAndSync);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       if (appStateHandle) appStateHandle.remove();
@@ -410,22 +426,20 @@ export function App() {
           className: "rounded-xl border border-border shadow-lg mt-4 md:mt-0",
         }}
       />
-      {Capacitor.isNativePlatform() && !updateInfo && (
-        <OTAUpdateModal
-          localVersion={localStorage.getItem("app_version") || "4.3.0"}
+      {nativeUpdater.isAvailable() && (
+        <NativeUpdateSheet
+          isOpen={isSheetOpen}
+          onClose={dismiss}
+          updateInfo={updateInfo}
+          phase={phase}
+          progress={progress}
+          errorMessage={errorMessage}
+          onStartDownload={startDownload}
+          onCancelDownload={cancelDownload}
+          onInstall={triggerInstall}
+          onSnooze={snooze}
         />
       )}
-      <NativeUpdateSheet
-        isOpen={isSheetOpen}
-        onClose={() => setIsSheetOpen(false)}
-        updateInfo={updateInfo}
-        phase={phase}
-        progress={progress}
-        errorMessage={errorMessage}
-        onStartDownload={startDownload}
-        onInstall={triggerInstall}
-        onSnooze={snooze}
-      />
       {splashFinished && (
         <BrowserRouter>
           <DeepLinkHandler />
@@ -479,6 +493,7 @@ export function App() {
               <Route path="/assignments" element={<AssignmentsPage />} />
               <Route path="/report" element={<ReportView />} />
               <Route path="/reports" element={<ReportView />} />
+              <Route path="/offline-lab" element={<OfflineLabPage />} />
               <Route path="*" element={<NotFoundPage />} />
             </Route>
 

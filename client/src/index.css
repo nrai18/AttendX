@@ -180,6 +180,7 @@
   }
 
   html.light .text-white\/90,
+  html.light .text-white\/85,
   html.light .text-white\/80 {
     color: #1e293b !important;
   }

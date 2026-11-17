@@ -1,4 +1,6 @@
 import "dotenv/config";
+import fs from "fs";
+import path from "path";
 import { MemoryMonitor } from "./utils/memoryMonitor";
 
 // Checkpoint 1: Base server boot
@@ -57,8 +59,15 @@ async function bootstrap() {
   setTimeout(async () => {
     try {
       if (redisClient.status !== "ready") return;
-      const currentVersion = "4.3.0";
-      
+      let currentVersion = "4.3.1";
+      try {
+        const pkgPath = path.resolve(process.cwd(), "package.json");
+        if (fs.existsSync(pkgPath)) {
+          const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
+          if (pkg?.version) currentVersion = String(pkg.version);
+        }
+      } catch {}
+
       // Use Redis SETNX to guarantee only ONE server instance sends the notification
       const acquired = await redisClient.setnx(`notified_update_${currentVersion}`, "1").catch(() => 0);
       if (acquired === 1) {
@@ -66,7 +75,7 @@ async function bootstrap() {
         await PushNotificationService.broadcastMessage(
           `AttendX Update ${currentVersion} is Live! 🚀`,
           "Tap to download the update and see what's new!",
-          { type: "ota_update", version: currentVersion }
+          { type: "app_update", version: currentVersion }
         );
       }
     } catch (error) {

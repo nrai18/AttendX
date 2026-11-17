@@ -3,6 +3,7 @@ import { Loader2, CalendarRange, CheckCircle2, X } from "lucide-react";
 import { api } from "../../lib/api";
 import { SaveToggle } from "../../components/ui/save-toggle";
 import { useScrollLock } from "../../hooks/useScrollLock";
+import { useCacheStore } from "../../stores/cacheStore";
 
 interface EventItem {
   title: string;
@@ -39,14 +40,36 @@ export const EventWizardModal: React.FC<WizardProps> = ({ isOpen, onClose, onSav
 
   useEffect(() => {
     if (isOpen) {
-      // Fetch semesters
-      api.get("/semesters").then(res => {
-        const data = Array.isArray(res.data) ? res.data : [];
-        setSemesters(data);
-        const active = data.find((s: any) => s.isActive);
-        if (active) setSelectedSemester(active.id);
-        else if (data.length > 0) setSelectedSemester(data[0].id);
-      }).catch(console.error);
+      const cachedAll = useCacheStore.getState().semester?.allSemesters || [];
+      const cachedActive = useCacheStore.getState().semester?.activeSemester;
+      const applyFallbackSemesters = () => {
+        const list =
+          Array.isArray(cachedAll) && cachedAll.length > 0
+            ? cachedAll
+            : cachedActive?.id
+              ? [cachedActive]
+              : [];
+        setSemesters(list);
+        const active = list.find((s: any) => s.isActive) || cachedActive || list[0];
+        if (active?.id) setSelectedSemester(active.id);
+      };
+
+      if (typeof navigator !== "undefined" && !navigator.onLine) {
+        applyFallbackSemesters();
+      } else {
+        api
+          .get("/semesters")
+          .then((res) => {
+            const data = Array.isArray(res.data) ? res.data : [];
+            setSemesters(data);
+            const active = data.find((s: any) => s.isActive);
+            if (active) setSelectedSemester(active.id);
+            else if (data.length > 0) setSelectedSemester(data[0].id);
+          })
+          .catch(() => {
+            applyFallbackSemesters();
+          });
+      }
       
       // Select all events of the first group by default
       if (eventsPayload && eventsPayload.length > 0) {
@@ -62,6 +85,18 @@ export const EventWizardModal: React.FC<WizardProps> = ({ isOpen, onClose, onSav
     }
   }, [selectedGroupIndex, eventsPayload]);
 
+  // Anti-scroll lock
+  React.useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [isOpen]);
+
   if (!isOpen || !eventsPayload || eventsPayload.length === 0) return null;
 
   const currentGroup = eventsPayload[selectedGroupIndex];
@@ -69,17 +104,20 @@ export const EventWizardModal: React.FC<WizardProps> = ({ isOpen, onClose, onSav
 
   const handleSave = async () => {
     setIsSaving(true);
-    const filteredEvents = currentEvents
-      .filter((_, i) => selectedEvents.has(i))
-      .map(e => ({
-        title: e.title,
-        date: e.startDate,
-        endDate: e.endDate,
-        eventType: e.category.toLowerCase(),
-        isHoliday: e.isHoliday
-      }));
-    await onSave(filteredEvents, selectedSemester);
-    setIsSaving(false);
+    try {
+      const filteredEvents = currentEvents
+        .filter((_, i) => selectedEvents.has(i))
+        .map(e => ({
+          title: e.title,
+          date: e.startDate,
+          endDate: e.endDate,
+          eventType: e.category.toLowerCase(),
+          isHoliday: e.isHoliday
+        }));
+      await onSave(filteredEvents, selectedSemester);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const toggleEvent = (index: number) => {
@@ -145,19 +183,6 @@ export const EventWizardModal: React.FC<WizardProps> = ({ isOpen, onClose, onSav
   const formatDate = (dateStr: string) => {
     return new Date(dateStr).toLocaleDateString("en-US", { day: "numeric", month: "short" });
   };
-
-  
-  // Anti-scroll lock
-  React.useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = '';
-    }
-    return () => {
-      document.body.style.overflow = '';
-    };
-  }, [isOpen]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">

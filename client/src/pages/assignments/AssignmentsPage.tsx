@@ -9,6 +9,7 @@ import { triggerDynamicHUD } from "../../components/ui/dynamic-island-hud";
 import { confirmDeleteToast } from "../../components/ui/confirm-delete-toast";
 import { hapticHeavy, hapticLight, hapticSuccess } from "../../utils/haptics";
 import { useBackHandlerStore } from "../../stores/backHandlerStore";
+import { toast } from "sonner";
 
 const safeFormatDeadline = (deadlineStr?: string | null): string => {
   if (!deadlineStr) return "No deadline set";
@@ -35,18 +36,19 @@ const safeIsOverdue = (deadlineStr?: string | null): boolean => {
 export function AssignmentsPage() {
   const { assignments, fetchAssignments, toggleCompletion, deleteAssignment } = useAssignmentStore();
   const [isAddOpen, setIsAddOpen] = useState(false);
-  const [flyingPlaneId, setFlyingPlaneId] = useState<string | null>(null);
-  const [flutterDeletingId, setFlutterDeletingId] = useState<string | null>(null);
+  const [flyingPlaneIds, setFlyingPlaneIds] = useState<string[]>([]);
+  const [flutterDeletingIds, setFlutterDeletingIds] = useState<string[]>([]);
+  const [dyingAssignments, setDyingAssignments] = useState<any[]>([]);
 
   useEffect(() => {
     fetchAssignments();
     const handleSync = () => {
       fetchAssignments();
     };
-    window.addEventListener("online", handleSync);
+    window.addEventListener("offline-sync-completed", handleSync);
     window.addEventListener("attendance-updated", handleSync);
     return () => {
-      window.removeEventListener("online", handleSync);
+      window.removeEventListener("offline-sync-completed", handleSync);
       window.removeEventListener("attendance-updated", handleSync);
     };
   }, [fetchAssignments]);
@@ -62,31 +64,36 @@ export function AssignmentsPage() {
     }, [isAddOpen]);
 
   const handleToggle = (id: string, isCurrentlyDone: boolean) => {
-    if (flyingPlaneId || flutterDeletingId) return;
+    if (flyingPlaneIds.includes(id) || flutterDeletingIds.includes(id)) return;
 
     if (isCurrentlyDone) {
       // Unchecking: instant toggle with light haptic
       hapticLight();
-      toggleCompletion(id);
+      toggleCompletion(id).catch((err: any) => {
+        toast.error(err?.response?.data?.error || "Failed to update assignment");
+      });
       return;
     }
 
     // Checking: Paper Aeroplane Flight celebration (Mesmerizing 4.2s flight)
-    setFlyingPlaneId(id);
+    setFlyingPlaneIds((prev) => [...prev, id]);
     SoundFX.playPaperAirplaneSound();
     hapticSuccess();
     triggerDynamicHUD({ type: "plane", label: "Assignment Completed!", durationMs: 4500 });
 
     // Optimistically toggle immediately so state is saved and checkmark is applied instantly
-    toggleCompletion(id);
+    toggleCompletion(id).catch((err: any) => {
+      setFlyingPlaneIds((prev) => prev.filter((fid) => fid !== id));
+      toast.error(err?.response?.data?.error || "Failed to update assignment");
+    });
 
     setTimeout(() => {
-      setFlyingPlaneId(null);
+      setFlyingPlaneIds((prev) => prev.filter((fid) => fid !== id));
     }, 4200);
   };
 
   const handleDelete = (assignment: any) => {
-    if (flutterDeletingId || flyingPlaneId) return;
+    if (flutterDeletingIds.includes(assignment.id)) return;
 
     confirmDeleteToast({
       title: "Delete Assignment",
@@ -94,18 +101,35 @@ export function AssignmentsPage() {
       itemName: assignment.title,
       confirmLabel: "Delete Assignment",
       onConfirm: async () => {
-        setFlutterDeletingId(assignment.id);
+        setDyingAssignments((prev) =>
+          prev.some((d) => d.id === assignment.id) ? prev : [...prev, assignment],
+        );
+        setFlutterDeletingIds((prev) =>
+          prev.includes(assignment.id) ? prev : [...prev, assignment.id],
+        );
         SoundFX.playButterflyFlutterSound();
         hapticHeavy();
         triggerDynamicHUD({ type: "butterfly", label: "Assignment Removed", durationMs: 4500 });
 
+        // Execute delete immediately so navigating away or offline sync never loses it
+        deleteAssignment(assignment.id).catch((err: any) => {
+          setDyingAssignments((prev) => prev.filter((d) => d.id !== assignment.id));
+          setFlutterDeletingIds((prev) => prev.filter((id) => id !== assignment.id));
+          toast.error(err?.response?.data?.error || "Failed to delete assignment");
+        });
+
         setTimeout(() => {
-          deleteAssignment(assignment.id);
-          setFlutterDeletingId(null);
+          setDyingAssignments((prev) => prev.filter((d) => d.id !== assignment.id));
+          setFlutterDeletingIds((prev) => prev.filter((id) => id !== assignment.id));
         }, 4200);
       }
     });
   };
+
+  const displayedAssignments = [
+    ...assignments,
+    ...dyingAssignments.filter((d) => !assignments.some((a) => a.id === d.id)),
+  ];
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-[#050505] text-slate-900 dark:text-slate-50 pb-32">
@@ -123,7 +147,7 @@ export function AssignmentsPage() {
       </header>
 
       <main className="p-6 space-y-4">
-        {assignments.length === 0 ? (
+        {displayedAssignments.length === 0 ? (
           <div className="text-center text-muted-foreground py-12">
             <Clock size={48} className="mx-auto mb-4 opacity-50" />
             <p>No assignments found.</p>
@@ -132,10 +156,10 @@ export function AssignmentsPage() {
         ) : (
           <div className="space-y-4">
             <AnimatePresence mode="popLayout">
-              {assignments.map((assignment) => {
+              {displayedAssignments.map((assignment) => {
                 const isCompleted = Boolean(assignment.completions?.length);
-                const isFlying = flyingPlaneId === assignment.id;
-                const isFluttering = flutterDeletingId === assignment.id;
+                const isFlying = flyingPlaneIds.includes(assignment.id);
+                const isFluttering = flutterDeletingIds.includes(assignment.id);
 
                 return (
                   <motion.div 
