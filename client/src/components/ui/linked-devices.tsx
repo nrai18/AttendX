@@ -637,7 +637,7 @@ export const LinkedDevicesModal: React.FC<LinkedDevicesProps> = ({ isOpen, onClo
   return createPortal(
     <AnimatePresence>
       {isOpen && (
-        <div className="theme-nova-green fixed inset-0 z-[100] flex items-center justify-center p-0 sm:p-4 touch-none">
+        <div className="theme-nova-green fixed inset-0 z-[100] flex items-center justify-center px-3 pt-[calc(env(safe-area-inset-top,0px)+0.75rem)] pb-[calc(env(safe-area-inset-bottom,0px)+0.75rem)] sm:p-4 touch-none">
           {/* Liquid glass backdrop */}
           <motion.div
             initial={{ opacity: 0 }}
@@ -645,17 +645,17 @@ export const LinkedDevicesModal: React.FC<LinkedDevicesProps> = ({ isOpen, onClo
             exit={{ opacity: 0 }}
             transition={{ duration: 0.16, ease: "easeOut" }}
             onClick={onClose}
-            className="fixed inset-0 bg-background sm:bg-white/60 dark:sm:bg-black/60 sm:backdrop-blur-sm will-change-[opacity]"
+            className="fixed inset-0 bg-white/50 dark:bg-black/60 backdrop-blur-md will-change-[opacity]"
           />
           <motion.div
             initial={{ opacity: 0, scale: 0.97, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.97, y: 16 }}
             transition={{ type: "spring", damping: 28, stiffness: 380, mass: 0.8 }}
-            className="relative z-10 w-full h-[100dvh] sm:h-auto sm:max-h-[85vh] sm:max-w-md bg-muted/30 backdrop-blur-xl sm:rounded-3xl flex flex-col overflow-hidden shadow-2xl border-x-0 sm:border border-border pointer-events-auto will-change-transform"
+            className="relative z-10 w-full max-h-[86dvh] sm:max-h-[85vh] max-w-md bg-white/85 dark:bg-[#0d0e11]/85 backdrop-blur-2xl backdrop-saturate-150 rounded-3xl flex flex-col overflow-hidden shadow-2xl border border-slate-900/10 dark:border-white/15 pointer-events-auto will-change-transform"
           >
             {/* Header */}
-            <div className="flex items-center gap-4 px-4 pb-3 bg-card border-b border-border shrink-0" style={{ paddingTop: "calc(env(safe-area-inset-top) + 12px)" }}>
+            <div className="flex items-center gap-4 px-4 py-3.5 bg-white/60 dark:bg-[#111216]/70 backdrop-blur-xl border-b border-border shrink-0">
               <button 
                 onClick={onClose} 
                 className="w-9 h-9 flex items-center justify-center -ml-1 rounded-full hover:bg-accent active:bg-accent/80 transition-colors"

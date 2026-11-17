@@ -14,6 +14,7 @@ import { API_BASE_URL, api } from "../../lib/api";
 import { Capacitor } from "@capacitor/core";
 import { GoogleSignIn } from "@capawesome/capacitor-google-sign-in";
 import { hapticMedium, hapticSuccess, hapticError } from "../../utils/haptics";
+import { SoundFX } from "../../utils/soundEffects";
 
 interface LoginPageProps {
   initialForgotPassword?: boolean;
@@ -119,6 +120,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ initialForgotPassword = fa
         
         api.get("/users/me", { headers: { Authorization: `Bearer ${token}` } })
             .then(res => {
+              SoundFX.playLoginChimeSound();
               setAuth(res.data, token, refreshToken);
               navigate("/today");
             })
@@ -159,6 +161,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ initialForgotPassword = fa
         headers: loc ? { 'x-attendx-lat': loc.lat, 'x-attendx-lon': loc.lon } : {}
       });
       hapticSuccess();
+      SoundFX.playLoginChimeSound();
       setAuth(res.data.user, res.data.accessToken, res.data.refreshToken);
       navigate("/today");
     } catch (e: any) {
@@ -272,6 +275,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ initialForgotPassword = fa
         });
         
         hapticSuccess();
+        SoundFX.playLoginChimeSound();
         setAuth(res.data.user, res.data.accessToken, res.data.refreshToken);
         navigate("/today");
       } catch (err: any) {

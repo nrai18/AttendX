@@ -32,7 +32,7 @@ const config: CapacitorConfig = {
     CapacitorUpdater: {
       autoDeleteFailed: true,
       autoDeletePrevious: true,
-      resetWhenUpdate: false
+      resetWhenUpdate: true
     },
     LocalNotifications: {
       smallIcon: 'ic_stat_attendx',

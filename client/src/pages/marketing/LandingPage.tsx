@@ -135,12 +135,12 @@ export const LandingPage: React.FC = () => {
         />
       </div>
 
-      {/* --- MOBILE MENU OVERLAY --- */}
-      <div className={`fixed inset-0 z-[100] bg-white/95 dark:bg-black/95 backdrop-blur-3xl flex flex-col items-center justify-center transition-all duration-500 md:hidden ${isMobileMenuOpen ? 'opacity-100 visible' : 'opacity-0 invisible'}`}>
+      {/* --- MOBILE / TABLET MENU OVERLAY --- */}
+      <div className={`fixed inset-0 z-[100] bg-white/95 dark:bg-black/95 backdrop-blur-3xl flex flex-col items-center justify-center transition-all duration-500 lg:hidden ${isMobileMenuOpen ? 'opacity-100 visible' : 'opacity-0 invisible'}`}>
         <button onClick={() => setIsMobileMenuOpen(false)} className="absolute top-8 right-8 p-2 text-slate-500 hover:text-slate-900 dark:text-slate-50/50 dark:hover:text-slate-50">
           <X className="w-8 h-8" />
         </button>
-        <div className="flex flex-col items-center gap-12 text-2xl font-black tracking-widest uppercase text-slate-900/90 dark:text-slate-50/90">
+        <div className="flex flex-col items-center gap-8 sm:gap-10 text-2xl font-black tracking-widest uppercase text-slate-900/90 dark:text-slate-50/90">
           <a href="#overview" onClick={() => setIsMobileMenuOpen(false)} className="hover:text-[#48CAE4] transition-colors">Overview</a>
           <a href="#features" onClick={() => setIsMobileMenuOpen(false)} className="hover:text-[#48CAE4] transition-colors">Platform</a>
           <a href="#about" onClick={() => setIsMobileMenuOpen(false)} className="hover:text-[#48CAE4] transition-colors">Creator</a>
@@ -151,12 +151,12 @@ export const LandingPage: React.FC = () => {
               setIsMobileMenuOpen(false);
               setIsDownloadModalOpen(true);
             }} 
-            className="w-full max-w-xs px-6 py-3.5 border-2 border-black bg-[#80ED99] text-black font-black uppercase tracking-widest text-sm shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] flex items-center justify-center gap-2.5 cursor-pointer mt-4"
+            className="w-full max-w-xs px-6 py-3.5 border-2 border-black bg-[#80ED99] text-black font-black uppercase tracking-widest text-sm shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] flex items-center justify-center gap-2.5 cursor-pointer mt-2"
           >
             <Download className="w-4 h-4" />
             <span>Download App</span>
           </button>
-          <Link to="/login" className="text-[#48CAE4] mt-2 px-8 py-3.5 border border-[#48CAE4]/30 rounded-full hover:bg-[#48CAE4]/10 transition-colors">Get Started</Link>
+          <Link to="/login" onClick={() => setIsMobileMenuOpen(false)} className="text-[#48CAE4] mt-1 px-8 py-3.5 border border-[#48CAE4]/30 rounded-full hover:bg-[#48CAE4]/10 transition-colors">Get Started</Link>
         </div>
       </div>
 
@@ -167,28 +167,28 @@ export const LandingPage: React.FC = () => {
         <div className="min-h-[100dvh] flex flex-col justify-between">
           
           {/* NAVIGATION (Fades in at Step 3) */}
-          <nav className={`flex items-center justify-between px-8 py-8 md:px-16 w-full transition-all duration-1000 translate-y-0 ${animStep >= 3 ? 'opacity-100' : 'opacity-0 -translate-y-4'}`}>
-            <div className="flex items-center z-20">
+          <nav className={`flex items-center justify-between px-5 sm:px-8 lg:px-16 py-6 lg:py-8 w-full transition-all duration-1000 translate-y-0 ${animStep >= 3 ? 'opacity-100' : 'opacity-0 -translate-y-4'}`}>
+            <div className="flex items-center z-20 shrink-0">
               <img 
                 src="/attendx_logo_lockup.png" 
                 alt="AttendX Logo" 
-                className="h-14 md:h-20 w-auto object-contain brightness-0 invert opacity-90 hover:opacity-100 transition-opacity" 
+                className="h-12 md:h-14 lg:h-20 w-auto object-contain brightness-0 invert opacity-90 hover:opacity-100 transition-opacity" 
               />
             </div>
-            <div className="hidden md:flex items-center gap-10 text-[9px] font-bold tracking-[0.25em] uppercase text-slate-50/90">
-              <a href="#overview" className="hover:text-[#48CAE4] transition-colors">Overview</a>
+            <div className="hidden lg:flex items-center gap-6 xl:gap-10 text-[9px] font-bold tracking-[0.25em] uppercase text-slate-50/90">
+              <a href="#overview" className="hover:text-[#48CAE4] transition-colors whitespace-nowrap">Overview</a>
               <span className="w-1 h-1 rounded-full bg-slate-50/30" />
-              <a href="#features" className="hover:text-[#48CAE4] transition-colors">Platform</a>
+              <a href="#features" className="hover:text-[#48CAE4] transition-colors whitespace-nowrap">Platform</a>
               <span className="w-1 h-1 rounded-full bg-slate-50/30" />
-              <a href="#about" className="hover:text-[#48CAE4] transition-colors">Creator</a>
+              <a href="#about" className="hover:text-[#48CAE4] transition-colors whitespace-nowrap">Creator</a>
               <span className="w-1 h-1 rounded-full bg-slate-50/30" />
-              <a href="#faq" className="hover:text-[#48CAE4] transition-colors">FAQs</a>
+              <a href="#faq" className="hover:text-[#48CAE4] transition-colors whitespace-nowrap">FAQs</a>
               <span className="w-1 h-1 rounded-full bg-slate-50/30" />
-              <a href="#support" className="hover:text-[#48CAE4] transition-colors">Connect</a>
+              <a href="#support" className="hover:text-[#48CAE4] transition-colors whitespace-nowrap">Connect</a>
               <span className="w-1 h-1 rounded-full bg-slate-50/30" />
-              <Link to="/login" className="hover:text-[#48CAE4] transition-colors">Get Started</Link>
+              <Link to="/login" className="hover:text-[#48CAE4] transition-colors whitespace-nowrap">Get Started</Link>
             </div>
-            <div className="flex items-center gap-2 md:gap-4 z-20">
+            <div className="flex items-center gap-2 lg:gap-4 z-20 shrink-0">
               {/* MOBILE APP DOWNLOAD BUTTON (Moved away from Get Started) */}
               <button
                 onClick={() => setIsDownloadModalOpen(true)}
@@ -205,21 +205,21 @@ export const LandingPage: React.FC = () => {
               >
                 {theme === "dark" ? <Moon className="w-5 h-5" /> : <Sun className="w-5 h-5" />}
               </button>
-              <Link to="/login" className="text-xs sm:text-sm font-bold tracking-widest uppercase text-slate-50 md:hidden hover:text-[#48CAE4] transition-colors ml-1 mr-1">
+              <Link to="/login" className="text-xs sm:text-sm font-bold tracking-widest uppercase text-slate-50 lg:hidden hover:text-[#48CAE4] transition-colors ml-1 mr-1 whitespace-nowrap">
                 Log In
               </Link>
-              <button onClick={() => setIsMobileMenuOpen(true)} className="p-2 text-slate-50/80 hover:text-slate-50 transition-colors md:hidden">
+              <button onClick={() => setIsMobileMenuOpen(true)} className="p-2 text-slate-50/80 hover:text-slate-50 transition-colors lg:hidden">
                 <Menu className="w-6 h-6" />
               </button>
             </div>
           </nav>
 
           {/* HERO TYPOGRAPHY */}
-          <main className="flex-1 flex items-center px-8 md:px-16 lg:px-32 relative">
-            <div className="w-full flex flex-col md:flex-row items-start md:items-end justify-between gap-8 translate-y-[-10vh]">
+          <main className="flex-1 flex items-center px-6 md:px-12 lg:px-24 xl:px-32 relative">
+            <div className="w-full flex flex-col md:flex-row items-start md:items-end justify-between gap-6 lg:gap-8 -translate-y-4 md:-translate-y-8 lg:translate-y-[-10vh]">
               
               <h1 
-                className="text-[18vw] md:text-[13vw] lg:text-[11vw] font-black leading-[0.8] tracking-tighter uppercase drop-shadow-2xl overflow-hidden py-4"
+                className="text-[17vw] sm:text-[15vw] md:text-[12vw] lg:text-[11vw] font-black leading-[0.8] tracking-tighter uppercase drop-shadow-2xl overflow-hidden py-4"
               >
                 <div 
                   className="transition-transform duration-[1200ms] ease-[cubic-bezier(0.22,1,0.36,1)] flex"
@@ -231,9 +231,9 @@ export const LandingPage: React.FC = () => {
               </h1>
 
               <div 
-                className={`flex flex-col gap-5 mb-4 md:mb-12 shrink-0 z-20 transition-all duration-1000 delay-300 ${animStep >= 3 ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-8'}`}
+                className={`flex flex-col gap-5 mb-2 md:mb-6 lg:mb-12 shrink-0 z-20 transition-all duration-1000 delay-300 ${animStep >= 3 ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-8'}`}
               >
-                <div className="text-[10px] md:text-[11px] font-mono font-bold tracking-[0.3em] uppercase leading-[1.8] text-slate-900 dark:text-slate-50">
+                <div className="text-[10px] md:text-[11px] font-mono font-bold tracking-[0.3em] uppercase leading-[1.8] text-slate-50 drop-shadow-sm">
                   Smart<br />
                   Attendance<br />
                   Tracker
@@ -272,14 +272,14 @@ export const LandingPage: React.FC = () => {
         <div className="bg-slate-50/95 dark:bg-[#050505]/95 backdrop-blur-xl relative z-20 border-t border-black/10 dark:border-slate-50/10 transition-opacity duration-1000 delay-500">
           
           {/* OVERVIEW SECTION */}
-          <section id="overview" className="py-20 md:py-32 px-6 md:px-16 lg:px-32 max-w-7xl mx-auto">
-            <div className="flex flex-col md:flex-row gap-12 md:gap-16 justify-between items-start">
-              <div className="w-full md:w-1/2">
+          <section id="overview" className="py-16 md:py-24 lg:py-32 px-6 md:px-10 lg:px-24 xl:px-32 max-w-7xl mx-auto">
+            <div className="flex flex-col lg:flex-row gap-10 lg:gap-16 justify-between items-start">
+              <div className="w-full lg:w-1/2">
                 <div className="text-[10px] font-mono font-bold tracking-[0.3em] uppercase text-slate-400 mb-4">01 — Overview</div>
-                <h2 className="text-5xl md:text-6xl lg:text-7xl font-black uppercase tracking-tight mb-8 text-black dark:text-[#ffffff] leading-[0.9]">Built for<br />Modern<br />Campuses.</h2>
+                <h2 className="text-4xl sm:text-5xl lg:text-6xl xl:text-7xl font-black uppercase tracking-tight mb-4 lg:mb-8 text-black dark:text-[#ffffff] leading-[0.9]">Built for<br />Modern<br />Campuses.</h2>
               </div>
-              <div className="w-full md:w-1/2 text-slate-600 dark:text-slate-50/60 leading-relaxed space-y-6 pt-0 md:pt-16">
-                <p className="text-xl font-medium text-slate-900 dark:text-slate-50/90">
+              <div className="w-full lg:w-1/2 text-slate-600 dark:text-slate-50/60 leading-relaxed space-y-6 pt-0 lg:pt-16">
+                <p className="text-lg sm:text-xl font-medium text-slate-900 dark:text-slate-50/90">
                   The smart attendance management platform engineered specifically for students at the <strong>Indian Institute of Information Technology (IIIT) Una</strong>.
                 </p>
                 <p>
@@ -300,50 +300,50 @@ export const LandingPage: React.FC = () => {
           </section>
 
           {/* FEATURES SECTION */}
-          <section id="features" className="py-20 md:py-32 px-6 md:px-16 lg:px-32 max-w-7xl mx-auto border-t border-black/5 dark:border-slate-50/5">
-            <div className="mb-16 md:mb-20">
+          <section id="features" className="py-16 md:py-24 lg:py-32 px-6 md:px-10 lg:px-24 xl:px-32 max-w-7xl mx-auto border-t border-black/5 dark:border-slate-50/5">
+            <div className="mb-12 md:mb-16 lg:mb-20">
               <div className="text-[10px] font-mono font-bold tracking-[0.3em] uppercase text-[#48CAE4] mb-4">02 — Platform</div>
-              <h2 className="text-4xl md:text-6xl font-black uppercase tracking-tight text-black dark:text-[#ffffff] leading-[0.9]">Everything you need<br />to succeed.</h2>
+              <h2 className="text-4xl md:text-5xl lg:text-6xl font-black uppercase tracking-tight text-black dark:text-[#ffffff] leading-[0.9]">Everything you need<br />to succeed.</h2>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8">
-              <div className="bg-white dark:bg-[#111111] border-2 border-black dark:border-[#222222] p-8 hover:-translate-y-2 hover:border-[#48CAE4] hover:shadow-[8px_8px_0px_0px_#48CAE4] transition-all duration-300 group cursor-default">
-                <div className="w-14 h-14 border-2 border-[#48CAE4] bg-[#48CAE4]/10 flex items-center justify-center mb-8">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 lg:gap-8">
+              <div className="bg-white dark:bg-[#111111] border-2 border-black dark:border-[#222222] p-6 lg:p-8 hover:-translate-y-2 hover:border-[#48CAE4] hover:shadow-[8px_8px_0px_0px_#48CAE4] transition-all duration-300 group cursor-default">
+                <div className="w-14 h-14 border-2 border-[#48CAE4] bg-[#48CAE4]/10 flex items-center justify-center mb-6 lg:mb-8">
                   <CalendarDays className="w-6 h-6 text-[#48CAE4] group-hover:scale-110 transition-transform duration-300" />
                 </div>
-                <h3 className="text-xl font-black mb-4 text-black dark:text-[#ffffff] uppercase tracking-wide">Smart Timetable</h3>
+                <h3 className="text-xl font-black mb-3 lg:mb-4 text-black dark:text-[#ffffff] uppercase tracking-wide">Smart Timetable</h3>
                 <p className="text-slate-600 dark:text-slate-50/60 leading-relaxed text-sm font-medium">Interactive dynamic timetable that knows exactly what classes you have today and automatically calculates absences.</p>
               </div>
 
-              <div className="bg-white dark:bg-[#111111] border-2 border-black dark:border-[#222222] p-8 hover:-translate-y-2 hover:border-[#E63946] hover:shadow-[8px_8px_0px_0px_#E63946] transition-all duration-300 group cursor-default">
-                <div className="w-14 h-14 border-2 border-[#E63946] bg-[#E63946]/10 flex items-center justify-center mb-8">
+              <div className="bg-white dark:bg-[#111111] border-2 border-black dark:border-[#222222] p-6 lg:p-8 hover:-translate-y-2 hover:border-[#E63946] hover:shadow-[8px_8px_0px_0px_#E63946] transition-all duration-300 group cursor-default">
+                <div className="w-14 h-14 border-2 border-[#E63946] bg-[#E63946]/10 flex items-center justify-center mb-6 lg:mb-8">
                   <Brain className="w-6 h-6 text-[#E63946] group-hover:scale-110 transition-transform duration-300" />
                 </div>
-                <h3 className="text-xl font-black mb-4 text-black dark:text-[#ffffff] uppercase tracking-wide">Absence Predictions</h3>
+                <h3 className="text-xl font-black mb-3 lg:mb-4 text-black dark:text-[#ffffff] uppercase tracking-wide">Absence Predictions</h3>
                 <p className="text-slate-600 dark:text-slate-50/60 leading-relaxed text-sm font-medium">Set your target (e.g. 75%) and AttendX will tell you exactly how many more classes you can safely skip.</p>
               </div>
 
-              <div className="bg-white dark:bg-[#111111] border-2 border-black dark:border-[#222222] p-8 hover:-translate-y-2 hover:border-[#A855F7] hover:shadow-[8px_8px_0px_0px_#A855F7] transition-all duration-300 group cursor-default">
-                <div className="w-14 h-14 border-2 border-[#A855F7] bg-[#A855F7]/10 flex items-center justify-center mb-8">
+              <div className="md:col-span-2 lg:col-span-1 bg-white dark:bg-[#111111] border-2 border-black dark:border-[#222222] p-6 lg:p-8 hover:-translate-y-2 hover:border-[#A855F7] hover:shadow-[8px_8px_0px_0px_#A855F7] transition-all duration-300 group cursor-default">
+                <div className="w-14 h-14 border-2 border-[#A855F7] bg-[#A855F7]/10 flex items-center justify-center mb-6 lg:mb-8">
                   <Users className="w-6 h-6 text-[#A855F7] group-hover:scale-110 transition-transform duration-300" />
                 </div>
-                <h3 className="text-xl font-black mb-4 text-black dark:text-[#ffffff] uppercase tracking-wide">Classrooms Hub</h3>
+                <h3 className="text-xl font-black mb-3 lg:mb-4 text-black dark:text-[#ffffff] uppercase tracking-wide">Classrooms Hub</h3>
                 <p className="text-slate-600 dark:text-slate-50/60 leading-relaxed text-sm font-medium">Join your batch's classroom to get official announcements and notes directly from your CR.</p>
               </div>
             </div>
           </section>
 
           {/* ABOUT THE CREATOR SECTION */}
-          <section id="about" className="py-20 md:py-32 px-6 md:px-16 lg:px-32 max-w-7xl mx-auto border-t border-black/5 dark:border-slate-50/5">
-          <div className="flex flex-col md:flex-row gap-12 md:gap-16 justify-between items-start">
-              <div className="w-full md:w-1/3">
+          <section id="about" className="py-16 md:py-24 lg:py-32 px-6 md:px-10 lg:px-24 xl:px-32 max-w-7xl mx-auto border-t border-black/5 dark:border-slate-50/5">
+          <div className="flex flex-col lg:flex-row gap-10 lg:gap-16 justify-between items-start">
+              <div className="w-full lg:w-1/3">
                 <div className="text-[10px] font-mono font-bold tracking-[0.3em] uppercase text-[#48CAE4] mb-4">03 — Creator</div>
-                <h2 className="text-5xl md:text-6xl font-black uppercase tracking-tight mb-8 text-black dark:text-[#ffffff] leading-[0.9]">Naman<br />Rai.</h2>
+                <h2 className="text-4xl sm:text-5xl lg:text-6xl font-black uppercase tracking-tight mb-8 text-black dark:text-[#ffffff] leading-[0.9]">Naman<br />Rai.</h2>
                 
 <motion.div 
   ref={photoRef}
   style={{ "--mobile-grayscale": grayscale } as any}
-  className={`w-full max-w-[280px] md:max-w-none aspect-square overflow-hidden border-2 mb-6 transition-all duration-700 mx-auto md:mx-0 cursor-pointer
+  className={`w-full max-w-[260px] lg:max-w-none aspect-square overflow-hidden border-2 mb-6 transition-all duration-700 mx-auto lg:mx-0 cursor-pointer
     [filter:grayscale(var(--mobile-grayscale,100%))] md:!filter-none
     ${isPhotoVisible ? 'border-[#48CAE4] shadow-[8px_8px_0px_0px_#48CAE4] -translate-y-2' : 'border-black dark:border-[#333333] shadow-[8px_8px_0px_0px_rgba(0,0,0,0.1)] dark:shadow-[8px_8px_0px_0px_#222222]'}
     md:grayscale md:border-black md:dark:border-[#333333] md:shadow-[8px_8px_0px_0px_rgba(0,0,0,0.1)] md:dark:shadow-[8px_8px_0px_0px_#222222] md:translate-y-0
@@ -352,11 +352,11 @@ export const LandingPage: React.FC = () => {
 >
                   <img src="/developer-photo.jpg" alt="Naman Rai" className="w-full h-full object-cover bg-slate-100 dark:bg-[#111111]" />
                 </motion.div>
-                <div className="text-sm font-black tracking-widest uppercase text-slate-900 dark:text-slate-50 text-center md:text-left">Founder & Developer</div>
-                <div className="text-xs text-slate-500 font-mono mt-2 text-center md:text-left">IIITU Student</div>
+                <div className="text-sm font-black tracking-widest uppercase text-slate-900 dark:text-slate-50 text-center lg:text-left">Founder & Developer</div>
+                <div className="text-xs text-slate-500 font-mono mt-2 text-center lg:text-left">IIITU Student</div>
               </div>
               
-              <div className="w-full md:w-2/3 text-slate-600 dark:text-slate-50/60 leading-relaxed space-y-6 pt-0 md:pt-8">
+              <div className="w-full lg:w-2/3 text-slate-600 dark:text-slate-50/60 leading-relaxed space-y-6 pt-0 lg:pt-8">
                 <div className="p-6 md:p-8 border-2 border-black dark:border-[#222222] bg-white dark:bg-[#0A0A0A] relative shadow-[8px_8px_0px_0px_#E63946]">
                   <div className="absolute top-0 left-0 w-2 h-full bg-[#E63946]" />
                   <p className="text-xl md:text-2xl font-black uppercase tracking-tight text-black dark:text-[#ffffff] mb-4 leading-snug">
@@ -385,17 +385,17 @@ export const LandingPage: React.FC = () => {
           </section>
 
           {/* SUPPORT & CONNECT SECTION */}
-          <section id="support" className="py-20 md:py-32 px-6 md:px-16 lg:px-32 max-w-7xl mx-auto border-t border-black/5 dark:border-slate-50/5">
-            <div className="flex flex-col md:flex-row gap-12 md:gap-16 justify-between items-start">
-              <div className="w-full md:w-1/3">
+          <section id="support" className="py-16 md:py-24 lg:py-32 px-6 md:px-10 lg:px-24 xl:px-32 max-w-7xl mx-auto border-t border-black/5 dark:border-slate-50/5">
+            <div className="flex flex-col lg:flex-row gap-10 lg:gap-16 justify-between items-start">
+              <div className="w-full lg:w-1/3">
                 <div className="text-[10px] font-mono font-bold tracking-[0.3em] uppercase text-[#E63946] mb-4">04 — Connect</div>
-                <h2 className="text-5xl md:text-6xl font-black uppercase tracking-tight mb-8 text-black dark:text-[#ffffff] leading-[0.9]">Reach<br className="hidden md:block" /> Us.</h2>
-                <p className="text-slate-600 dark:text-slate-50/60 font-medium leading-relaxed max-w-sm">
+                <h2 className="text-4xl sm:text-5xl lg:text-6xl font-black uppercase tracking-tight mb-6 lg:mb-8 text-black dark:text-[#ffffff] leading-[0.9]">Reach<br className="hidden lg:block" /> Us.</h2>
+                <p className="text-slate-600 dark:text-slate-50/60 font-medium leading-relaxed max-w-md">
                   Have questions, feature requests, or need help setting up your college's timetable?
                 </p>
               </div>
 
-              <div className="w-full md:w-2/3 grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-6 md:pl-16">
+              <div className="w-full lg:w-2/3 grid grid-cols-1 sm:grid-cols-2 gap-4 lg:gap-6 lg:pl-12">
                 
                 <a href="tel:+918076408958" className="border-2 border-black dark:border-[#222222] bg-white dark:bg-[#111111] p-6 md:p-8 flex flex-col items-start gap-6 hover:border-[#E63946] dark:hover:border-[#E63946] hover:-translate-y-1 hover:shadow-[6px_6px_0px_0px_#E63946] transition-all group">
                   <div className="w-12 h-12 border-2 border-[#E63946] bg-[#E63946]/10 flex items-center justify-center">
@@ -449,35 +449,35 @@ export const LandingPage: React.FC = () => {
           </section>
           
           {/* FAQ SECTION (SEO & KNOWLEDGE GRAPH) */}
-          <section id="faq" className="py-20 md:py-32 px-6 md:px-16 lg:px-32 max-w-7xl mx-auto border-t border-black/5 dark:border-slate-50/5">
-            <div className="mb-16 md:mb-20">
+          <section id="faq" className="py-16 md:py-24 lg:py-32 px-6 md:px-10 lg:px-24 xl:px-32 max-w-7xl mx-auto border-t border-black/5 dark:border-slate-50/5">
+            <div className="mb-12 md:mb-16 lg:mb-20">
               <div className="text-[10px] font-mono font-bold tracking-[0.3em] uppercase text-[#48CAE4] mb-4">05 — Knowledge & FAQs</div>
-              <h2 className="text-4xl md:text-6xl font-black uppercase tracking-tight text-black dark:text-[#ffffff] leading-[0.9]">Frequently Asked<br />Questions.</h2>
+              <h2 className="text-4xl md:text-5xl lg:text-6xl font-black uppercase tracking-tight text-black dark:text-[#ffffff] leading-[0.9]">Frequently Asked<br />Questions.</h2>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
-              <div className="bg-white dark:bg-[#111111] border-2 border-black dark:border-[#222222] p-8 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] dark:shadow-[6px_6px_0px_0px_#222222]">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 lg:gap-8">
+              <div className="bg-white dark:bg-[#111111] border-2 border-black dark:border-[#222222] p-6 lg:p-8 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] dark:shadow-[6px_6px_0px_0px_#222222]">
                 <h3 className="text-lg font-black uppercase tracking-wide text-black dark:text-[#ffffff] mb-3">What is AttendX?</h3>
                 <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed font-medium">
                   AttendX is the dedicated smart attendance management system and academic schedule planner engineered specifically for students at the <strong>Indian Institute of Information Technology (IIIT) Una</strong>. It automates attendance percentage tracking, safe bunk calculations, timetable syncing, and semester progress.
                 </p>
               </div>
 
-              <div className="bg-white dark:bg-[#111111] border-2 border-black dark:border-[#222222] p-8 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] dark:shadow-[6px_6px_0px_0px_#222222]">
+              <div className="bg-white dark:bg-[#111111] border-2 border-black dark:border-[#222222] p-6 lg:p-8 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] dark:shadow-[6px_6px_0px_0px_#222222]">
                 <h3 className="text-lg font-black uppercase tracking-wide text-black dark:text-[#ffffff] mb-3">How does the IIIT Una 75% rule work?</h3>
                 <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed font-medium">
                   Under IIIT Una Academic Regulation 6.1, a minimum of 75% attendance is mandatory in each course to appear in end-semester examinations. Students with 55%–75% attendance receive an 'L' grade (Lack of Attendance), while attendance below 55% results in an 'R' grade (Redo Course). AttendX alerts you before you enter warning zones.
                 </p>
               </div>
 
-              <div className="bg-white dark:bg-[#111111] border-2 border-black dark:border-[#222222] p-8 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] dark:shadow-[6px_6px_0px_0px_#222222]">
+              <div className="bg-white dark:bg-[#111111] border-2 border-black dark:border-[#222222] p-6 lg:p-8 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] dark:shadow-[6px_6px_0px_0px_#222222]">
                 <h3 className="text-lg font-black uppercase tracking-wide text-black dark:text-[#ffffff] mb-3">Where can I download the AttendX app?</h3>
                 <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed font-medium">
                   You can download the official AttendX Android APK directly from <a href="/download" className="text-[#48CAE4] font-bold underline underline-offset-2">attendx.tech/download</a> or install it as a Progressive Web App (PWA) on any mobile or desktop browser with full offline support.
                 </p>
               </div>
 
-              <div className="bg-white dark:bg-[#111111] border-2 border-black dark:border-[#222222] p-8 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] dark:shadow-[6px_6px_0px_0px_#222222]">
+              <div className="bg-white dark:bg-[#111111] border-2 border-black dark:border-[#222222] p-6 lg:p-8 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] dark:shadow-[6px_6px_0px_0px_#222222]">
                 <h3 className="text-lg font-black uppercase tracking-wide text-black dark:text-[#ffffff] mb-3">How does Safe Bunks calculation work?</h3>
                 <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed font-medium">
                   AttendX continuously models your class attendance ratio against your target (default 75%). It mathematically computes the maximum number of upcoming lectures you can miss while keeping your projected attendance strictly above 75%, and warns you if leave drops you below threshold.
@@ -498,7 +498,7 @@ export const LandingPage: React.FC = () => {
       {/* --- APP DOWNLOAD & QR MODAL --- */}
       {isDownloadModalOpen && (
         <div 
-          className="fixed inset-0 z-[200] flex items-center justify-center p-4 sm:p-6 bg-black/80 backdrop-blur-md animate-in fade-in duration-200"
+          className="fixed inset-0 z-[200] flex items-center justify-center p-4 sm:p-6 bg-slate-950/75 backdrop-blur-md animate-in fade-in duration-200"
           onClick={() => setIsDownloadModalOpen(false)}
         >
           <div 

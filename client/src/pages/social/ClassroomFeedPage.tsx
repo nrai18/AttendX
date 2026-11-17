@@ -624,7 +624,7 @@ export const ClassroomFeedPage = () => {
   }
 
   return (
-    <div className="p-4 md:p-8 space-y-6 max-w-4xl mx-auto w-full pb-28 md:pb-12 animate-in fade-in slide-in-from-bottom-2 duration-300 ease-out">
+    <div className="p-4 md:p-6 lg:p-8 space-y-6 max-w-4xl mx-auto w-full pb-28 md:pb-12 animate-in fade-in slide-in-from-bottom-2 duration-300 ease-out">
       {/* Google Classroom Thematic Hero Header Banner */}
       {(() => {
         const bannerTheme = getClassroomBannerTheme(
@@ -635,7 +635,7 @@ export const ClassroomFeedPage = () => {
 
         return (
           <div className="space-y-4">
-            <div className="relative rounded-3xl overflow-hidden border border-neutral-200 dark:border-white/10 shadow-md p-6 sm:p-8 flex flex-col justify-between min-h-[175px] sm:min-h-[210px] select-none">
+            <div className="relative rounded-3xl overflow-hidden border border-neutral-200 dark:border-white/10 shadow-md p-5 sm:p-8 flex flex-col justify-between min-h-[175px] sm:min-h-[210px] select-none">
               {/* Full-Bleed Vector SVG Artwork */}
               {bannerTheme.renderIllustration()}
 
@@ -646,7 +646,7 @@ export const ClassroomFeedPage = () => {
                   onClick={() => {
                     hapticLight();
                   }}
-                  className="p-2 sm:p-2.5 rounded-full bg-black/40 hover:bg-black/60 text-white backdrop-blur-md transition-all border border-white/15 cursor-pointer active:scale-95 shadow-xs"
+                  className="p-2 sm:p-2.5 rounded-full bg-slate-950/45 hover:bg-slate-950/65 text-slate-50 backdrop-blur-md transition-all border border-white/15 cursor-pointer active:scale-95 shadow-xs"
                   title="Back to Classrooms"
                 >
                   <ArrowLeft className="w-4 h-4" />
@@ -654,12 +654,12 @@ export const ClassroomFeedPage = () => {
 
                 <div className="flex items-center gap-2">
                   {feed.isDeleted ? (
-                    <span className="text-[10px] font-mono font-bold uppercase px-2.5 py-1 rounded-full bg-rose-500/80 backdrop-blur-md text-white shadow-xs">
+                    <span className="text-[10px] font-mono font-bold uppercase px-2.5 py-1 rounded-full bg-rose-500/85 backdrop-blur-md text-slate-50 shadow-xs">
                       Disbanded by CR
                     </span>
                   ) : feed.role === "admin" ? (
-                    <span className="text-[10px] font-mono font-bold uppercase px-2.5 py-1 rounded-full bg-emerald-500/80 backdrop-blur-md text-white shadow-xs inline-flex items-center gap-1.5">
-                      <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+                    <span className="text-[10px] font-mono font-bold uppercase px-2.5 py-1 rounded-full bg-emerald-500/85 backdrop-blur-md text-slate-50 shadow-xs inline-flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-slate-50 animate-pulse" />
                       CR Admin
                     </span>
                   ) : null}
@@ -668,10 +668,10 @@ export const ClassroomFeedPage = () => {
 
               {/* Bottom Area inside Hero: Title, Section & Department */}
               <div className="relative z-10 mt-6 sm:mt-8 space-y-1">
-                <h1 className="text-2xl sm:text-3xl md:text-4xl font-extrabold tracking-tight text-white drop-shadow-md">
+                <h1 className="text-2xl sm:text-3xl md:text-4xl font-extrabold tracking-tight text-slate-50 drop-shadow-md">
                   {feed.classroom?.name || "Classroom Feed"}
                 </h1>
-                <div className="flex items-center gap-2 text-xs sm:text-sm text-white/80 font-medium drop-shadow-xs flex-wrap">
+                <div className="flex items-center gap-2 text-xs sm:text-sm text-slate-100/85 font-medium drop-shadow-xs flex-wrap">
                   {feed.classroom?.department && <span>{feed.classroom.department}</span>}
                   {feed.classroom?.department && feed.classroom?.section && <span>•</span>}
                   {feed.classroom?.section && <span>Section {feed.classroom.section}</span>}
@@ -795,7 +795,7 @@ export const ClassroomFeedPage = () => {
               <ExternalLink className="w-3 h-3" />
             </Link>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
             {feed.assignments.map((task) => {
               const parsedDeadline = task.deadline ? new Date(task.deadline) : null;
               const deadlineLabel =

@@ -64,18 +64,23 @@ export function useNativeUpdates() {
     checkUpdates(false);
   }, [checkUpdates]);
 
-  // Recover from "installing" state if user returns from OS permission settings or cancels PackageInstaller
+  // Recover from "installing" state and check for updates on foreground resume (respects 10m GitHub cache + 24h snooze)
   useEffect(() => {
     if (!nativeUpdater.isAvailable()) return;
     const handle = CapacitorApp.addListener("appStateChange", ({ isActive }) => {
       if (isActive) {
-        setPhase((prev) => (prev === "installing" ? "verified" : prev));
+        const mgrPhase = UpdateManager.getPhase();
+        if (mgrPhase === "downloading" || mgrPhase === "installing") {
+          setPhase((prev) => (prev === "installing" ? "verified" : prev));
+          return;
+        }
+        checkUpdates(false);
       }
     });
     return () => {
       handle.then((h) => h.remove()).catch(() => {});
     };
-  }, []);
+  }, [checkUpdates]);
 
   useEffect(() => {
     const handleOpenSheet = async () => {

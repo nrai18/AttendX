@@ -5,7 +5,7 @@
   <p><i>Engineered for the Indian Institute of Information Technology (IIIT) Una & Modern Universities</i></p>
 
   <p>
-    <a href="https://github.com/nrai18/AttendX/releases/latest"><img src="https://img.shields.io/badge/version-4.3.0-00D2FF.svg?style=for-the-badge&logo=android" alt="Version 4.3.0" /></a>
+    <a href="https://github.com/nrai18/AttendX/releases/latest"><img src="https://img.shields.io/badge/version-4.4.0-00D2FF.svg?style=for-the-badge&logo=android" alt="Version 4.4.0" /></a>
     <a href="https://attendx.tech"><img src="https://img.shields.io/badge/web-attendx.tech-6366F1.svg?style=for-the-badge&logo=googlechrome" alt="Web Portal" /></a>
     <a href="https://github.com/nrai18/AttendX/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-10B981.svg?style=for-the-badge" alt="License MIT" /></a>
     <img src="https://img.shields.io/badge/active_students-200%2B-F59E0B.svg?style=for-the-badge&logo=firebase" alt="200+ Active Students" />
@@ -48,8 +48,9 @@
 - [🎬 Modern Ecosystem Product Film](#-modern-ecosystem-product-film)
 - [📱 Features Showcase & Tabs](#-features-showcase--tabs)
 - [📱 Native Android Home Screen Widgets](#-native-android-home-screen-widgets)
+- [🔐 AttendX Vault: Passcode Lock & Native Android Biometrics](#-attendx-vault-passcode-lock--native-android-biometrics)
 - [🧠 Predictive Attendance & Leave Simulation Engine](#-predictive-attendance--leave-simulation-engine)
-- [🚀 Over-The-Air (OTA) Release Pipeline](#-over-the-air-ota-release-pipeline)
+- [📲 Native Android APK Self-Updater (GitHub Releases & SHA-256)](#-native-android-apk-self-updater-github-releases--sha-256)
 - [🔔 Local Notifications, Alarms & Do Not Disturb (DND)](#-local-notifications-alarms--do-not-disturb-dnd)
 - [🎙️ ElevenLabs Ultra-Low Latency Voice Copilot](#-elevenlabs-ultra-low-latency-voice-copilot)
 - [📬 Transactional Email Infrastructure](#-transactional-email-infrastructure)
@@ -134,6 +135,61 @@ AttendX features native, obsidian-acrylic Android Home Screen widgets built with
 
 ---
 
+### 5. 🔐 AttendX Vault, Biometrics & Frosted-Glass Native APK Updater
+
+| AttendX Vault (`v4.4.0` Security Architecture) | Frosted Glass Native APK Updater (`Light & Dark`) |
+| :---: | :---: |
+| <img src="assets/screenshots/v4_4_0_banner.jpg" width="460" alt="AttendX Vault Release Banner" /> | <img src="assets/screenshots/native_apk_updater.jpg" width="460" alt="Frosted Glass Native APK Updater Showcase" /> |
+| **Biometric + Salted SHA-256 Vault**<br/>Hardware Android `BiometricPrompt` fingerprint unlock paired with salted 4-digit PIN locks, `Immediate / 1m / 5m` background auto-locking, and TopBar quick-lock. | **Direct GitHub Releases APK Pipeline**<br/>Adaptive frosted-glass modal (`NativeUpdateSheet`) with live download progress, `SHA-256` integrity validation, and one-tap Android `PackageInstaller` handoff. |
+
+| PIN Setup Journey | Optical Fingerprint Pairing | Active Security Controls | Cold-Start PIN Barrier |
+| :---: | :---: | :---: | :---: |
+| <img src="assets/screenshots/vault_setup.jpg" width="220" alt="Passcode Lock Intro" /> | <img src="assets/screenshots/vault_biometrics.jpg" width="220" alt="Add Fingerprint Pairing" /> | <img src="assets/screenshots/vault_manage.jpg" width="220" alt="Active Passcode Security Controls" /> | <img src="assets/screenshots/vault_keypad.jpg" width="220" alt="Locked PIN Keypad Screen" /> |
+| **3D Vault Onboarding**<br/>Interactive 4-step enrollment flow under **Settings → Account → Passcode Lock**. | **Hardware Sensor Sync**<br/>Native Android `BiometricPrompt` verification with live enrollment status check. | **Instant Lock & Timers**<br/>Configure `Immediate`, `1 min`, or `5 min` re-lock windows and one-tap **Lock Now**. | **5-Attempt Brute-Force Shield**<br/>Enforces a 30s lockout cooldown after 5 wrong PINs with fallback sign-out reset. |
+
+---
+
+## 🔐 AttendX Vault: Passcode Lock & Native Android Biometrics
+
+AttendX protects offline schedules, attendance logs, and session tokens locally using **AttendX Vault** (`appLockStore.ts` + native `BiometricPlugin.java`), built without third-party auth wrappers.
+
+- **Salted SHA-256 PIN Storage**: Generates a 16-byte random cryptographic salt (`CryptoJS.lib.WordArray.random(16)`) and hashes `${salt}:${pin}` with `SHA-256` inside `capacitorStorage` (never storing plaintext PINs).
+- **Hardware `BiometricPrompt` Integration**: Custom Capacitor plugin (`BiometricPlugin.java`, `androidx.biometric:biometric:1.1.0`) supporting `BIOMETRIC_STRONG | BIOMETRIC_WEAK`, paired with an `isBiometricPromptActive` guard so opening the OS fingerprint sheet never re-triggers background auto-lock.
+- **Zero-Latency Cold Start & Auto-Lock**: Locks before protected routes mount when enabled (`Immediate`, `1 min`, or `5 min` `autoLockTimeoutMs`), enforces a `30s` cooldown after `5` failed PIN attempts, plays synthesized Web Audio chimes (`soundEffects.ts`), and wipes lock state on logout.
+
+```mermaid
+flowchart TD
+    classDef client fill:#e0f2fe,stroke:#0284c7,stroke-width:2px,color:#0f172a,font-weight:bold;
+    classDef native fill:#ede9fe,stroke:#7c3aed,stroke-width:2px,color:#1e1b4b,font-weight:bold;
+    classDef db fill:#dcfce7,stroke:#16a34a,stroke-width:2px,color:#064e3b,font-weight:bold;
+    classDef cache fill:#fef3c7,stroke:#d97706,stroke-width:2px,color:#78350f,font-weight:bold;
+    classDef warn fill:#fee2e2,stroke:#dc2626,stroke-width:2px,color:#7f1d1d,font-weight:bold;
+    classDef action fill:#f1f5f9,stroke:#475569,stroke-width:2px,color:#0f172a,font-weight:bold;
+
+    A["App Cold Launch / Foreground Resume / Quick Lock"]:::action --> B{"isEnabled in appLockStore?"}:::cache
+    B -- No --> C["Render Protected Route Immediately"]:::db
+    B -- Yes --> D{"Elapsed Background Time >= autoLockTimeoutMs?"}:::cache
+    D -- No --> C
+    D -- Yes --> E["Mount PasscodeLockOverlay (Blurs App UI)"]:::client
+
+    E --> F{"Fingerprint Enabled & Device Capable?"}:::cache
+    F -- Yes --> G["Set isBiometricPromptActive = true"]:::cache
+    G --> H["BiometricPlugin.authenticate() -> Android BiometricPrompt"]:::native
+    H -- Fingerprint Verified --> I["Unlock Vault + Play Success Chime"]:::db
+    H -- Cancelled / Fallback --> J["Enter 4-Digit PIN on PasscodeKeypad"]:::client
+    F -- No --> J
+
+    J --> K["Compute CryptoJS.SHA256(salt + ':' + pin)"]:::client
+    K --> L{"Matches Stored pinHash?"}:::cache
+    L -- Match --> I
+    L -- Mismatch --> M["Increment failedAttempts + Error Shake"]:::warn
+    M --> N{"failedAttempts >= 5?"}:::cache
+    N -- Yes --> O["Lock Keypad for 30s Cooldown (lockoutUntil)"]:::warn
+    N -- No --> J
+```
+
+---
+
 ## 🧠 Predictive Attendance & Leave Simulation Engine
 
 AttendX treats academic attendance as a dynamic linear inequality.
@@ -169,34 +225,36 @@ When planning extended leave (e.g., attending a hackathon or going home for a fe
 
 ---
 
-## 🚀 Over-The-Air (OTA) Release Pipeline
+## 📲 Native Android APK Self-Updater (GitHub Releases & SHA-256)
 
-AttendX avoids Google Play Store update delays (which take days to approve) by streaming atomic frontend updates directly to client devices via **`@capgo/capacitor-updater`**.
+AttendX ships updates **exclusively via signed Native Android APK Releases** hosted on GitHub Releases (`GitHubUpdater`, `NativeUpdateSheet`, and `ApkUpdaterPlugin.java`)—eliminating Capgo OTA bundle drift and Play Store review delays.
 
 ```mermaid
 flowchart TD
     classDef client fill:#e0f2fe,stroke:#0284c7,stroke-width:2px,color:#0f172a,font-weight:bold;
-    classDef server fill:#ede9fe,stroke:#7c3aed,stroke-width:2px,color:#1e1b4b,font-weight:bold;
+    classDef native fill:#ede9fe,stroke:#7c3aed,stroke-width:2px,color:#1e1b4b,font-weight:bold;
     classDef db fill:#dcfce7,stroke:#16a34a,stroke-width:2px,color:#064e3b,font-weight:bold;
     classDef cache fill:#fef3c7,stroke:#d97706,stroke-width:2px,color:#78350f,font-weight:bold;
     classDef ai fill:#fae8ff,stroke:#c026d3,stroke-width:2px,color:#701a75,font-weight:bold;
     classDef warn fill:#fee2e2,stroke:#dc2626,stroke-width:2px,color:#7f1d1d,font-weight:bold;
     classDef action fill:#f1f5f9,stroke:#475569,stroke-width:2px,color:#0f172a,font-weight:bold;
 
-    A["Developer Commits Web Assets"]:::action --> B["npm run build (Vite + Rolldown)"]:::client
-    B --> C["node zip_dist.cjs (Bundles dist to update.zip)"]:::server
-    C --> D["server/src/uploads/update.zip (Stored on Backend)"]:::server
-    D --> E["Mobile App Boots (Capacitor WebView)"]:::client
-    E --> F["GET /api/system/update?t=timestamp"]:::server
-    F --> G{"localVersion < latestVersion?"}:::cache
-    G -- No --> H["Serve Local Sandbox Assets (0ms Latency)"]:::db
-    G -- Yes --> I["CapacitorUpdater Downloads update.zip (Background)"]:::ai
-    I --> J["Extracts into Isolated App Sandbox & Verifies Checksum"]:::client
-    J --> K["Seamlessly Reloads WebView to v4.3.0"]:::db
+    A["Android App Boots OR Resumes from Background"]:::action --> B{"verifyNativeUpdaterEligibility()"}:::cache
+    B -- Web / Unsigned-Out --> C["Bypass Updater Silently (No Web Modals)"]:::client
+    B -- Native Android + Active Session --> D["Query GitHub API (/releases/latest, 10m Cache)"]:::ai
+    D --> E{"isVersionNewer(remoteTag, versionName) & Has .apk?"}:::cache
+    E -- Up-To-Date --> F["Clear Cached Update APKs from Sandbox"]:::db
+    E -- Newer APK + Not Snoozed --> G["Open Frosted-Glass NativeUpdateSheet (Light/Dark)"]:::client
+    G --> H["User Taps Download & Install"]:::action
+    H --> I["ApkUpdaterPlugin Streams AttendX.apk with Live MB/s"]:::native
+    I --> J{"SHA-256 Checksum Verified?"}:::cache
+    J -- Mismatch --> K["Delete Corrupt APK & Alert User"]:::warn
+    J -- Match --> L["Launch Android PackageInstaller via FileProvider"]:::db
+    L --> M["Post-Upgrade: CapacitorUpdater.reset() Clears Old Bundles"]:::native
 ```
 
-- **Rollback Safety**: If the newly downloaded bundle crashes on launch, Capacitor automatically rolls back to the previous stable bundle.
-- **Downgrade Loop Guard**: `localVersion` and `latestVersion` are synchronized to prevent redundant asset downloads.
+- **Strict Platform & Session Gate**: `verifyNativeUpdaterEligibility()` ensures the self-updater only activates inside authentic Capacitor Android builds with an active authenticated session.
+- **Cryptographic Integrity & Snooze Control**: Parses the expected `SHA256` hash directly from the GitHub Release body, verifies the downloaded APK file on-device before launching Android's `PackageInstaller`, supports download cancellation and `Remind Tomorrow` (24h snooze), and sets `CapacitorUpdater.resetWhenUpdate: true` so upgraded APKs never boot stale WebView assets.
 
 ---
 
@@ -316,6 +374,7 @@ flowchart TD
         D["cacheStore<br/>L1 Memory SWR Cache (0ms Hydration Engine)"]:::cache
         E["syncStore<br/>P2P 6-Digit Ephemeral Transfer Code & TTL"]:::server
         F["notificationStore<br/>Reminder Lead Times, DND & Location Flags"]:::ai
+        G["appLockStore<br/>Salted SHA-256 Vault, Timers & Biometric Guard"]:::warn
     end
 ```
 
@@ -329,7 +388,7 @@ flowchart TD
 
 ## 🏛️ Comprehensive Architecture & Engineering Diagrams Suite
 
-AttendX is engineered with a strict zero-latency, fault-tolerant, and high-concurrency philosophy. Below is the complete visual specification of the **16 core system workflows, state machines, and data pipelines** powering the platform, fully color-coded by architectural layer.
+AttendX is engineered with a strict zero-latency, fault-tolerant, and high-concurrency philosophy. Below is the complete visual specification of the **17 core system workflows, state machines, and data pipelines** powering the platform, fully color-coded by architectural layer.
 
 ```mermaid
 flowchart TD
@@ -498,8 +557,8 @@ flowchart TD
 
 ---
 
-### 5. 🚀 Over-The-Air (OTA) Release Pipeline
-Instant binary updates bypassing app store approval latencies with cryptographic safety rollbacks.
+### 5. 📲 Native Android APK Self-Updater & Cryptographic Verification Pipeline
+Streams signed `AttendX.apk` releases directly from GitHub Releases with SHA-256 validation and PackageInstaller handoff—zero Capgo OTA drift.
 
 ```mermaid
 flowchart TD
@@ -511,16 +570,18 @@ flowchart TD
     classDef warn fill:#fee2e2,stroke:#dc2626,stroke-width:2px,color:#7f1d1d,font-weight:bold;
     classDef action fill:#f1f5f9,stroke:#475569,stroke-width:2px,color:#0f172a,font-weight:bold;
 
-    A["Developer Packages Web Assets"]:::action --> B["npm run build (Vite + Rolldown)"]:::client
-    B --> C["node zip_dist.cjs (Bundles dist/ into update.zip)"]:::server
-    C --> D["server/src/uploads/update.zip (Stored on Backend)"]:::server
-    D --> E["Mobile App Boots (Capacitor WebView)"]:::client
-    E --> F["GET /api/system/update?t=timestamp"]:::server
-    F --> G{"localVersion < latestVersion?"}:::cache
-    G -- No --> H["Serve Local Sandbox Assets (0ms Latency)"]:::db
-    G -- Yes --> I["CapacitorUpdater Downloads update.zip (Background)"]:::ai
-    I --> J["Extracts into Isolated App Sandbox & Verifies Checksum"]:::client
-    J --> K["Seamlessly Reloads WebView to v4.3.0"]:::db
+    A["CI/CD & Release Packaging"]:::action --> B["npm run build && gradlew assembleDebug"]:::client
+    B --> C["Publish GitHub Release (AttendX.apk + Banner + SHA256)"]:::ai
+    C --> D["Android App Launch / appStateChange Resume"]:::client
+    D --> E{"verifyNativeUpdaterEligibility()"}:::cache
+    E -- Eligible --> F["GitHubUpdater Queries /releases/latest (10m Cache)"]:::server
+    F --> G{"isVersionNewer(remoteTag, versionName)?"}:::cache
+    G -- No --> H["Purge Old Cached APKs & Keep Running"]:::db
+    G -- Yes --> I["NativeUpdateSheet Opens (Light/Dark Frosted Glass)"]:::client
+    I --> J["ApkUpdaterPlugin.downloadApk() + Live Progress Events"]:::server
+    J --> K{"On-Device SHA-256 Verification"}:::cache
+    K -- Passed --> L["Launch Android PackageInstaller via FileProvider"]:::db
+    K -- Failed --> M["Delete Corrupt File & Prompt Retry"]:::warn
 ```
 
 ---
@@ -851,6 +912,32 @@ Cached in Native SharedPreferences")]:::cache
         DrainBuffer --> FeedCache["useCacheStore.appendClassroomAnnouncement()
 Feeds 100% Readable in Airplane Mode!"]:::db
     end
+```
+
+---
+
+### 17. 🔐 AttendX Vault: Salted PIN & Native Android Biometric Lock Lifecycle
+Protects local attendance schedules, logs, and offline caches across cold starts and background resumes without blocking system biometric sheets.
+
+```mermaid
+stateDiagram-v2
+    [*] --> Unlocked: isEnabled == false
+    [*] --> Locked: Cold Start (isEnabled == true)
+
+    Unlocked --> Backgrounded: appStateChange(false) / visibility hidden
+    Backgrounded --> Locked: Elapsed >= autoLockTimeoutMs (0ms / 1m / 5m)
+    Backgrounded --> Unlocked: Elapsed < autoLockTimeoutMs OR isBiometricPromptActive == true
+    Unlocked --> Locked: User Taps TopBar Lock / Lock Now
+
+    Locked --> BiometricPrompt: isFingerprintEnabled && biometricAvailable
+    BiometricPrompt --> Unlocked: Android BiometricPrompt Success + Login Chime
+    BiometricPrompt --> PinEntry: Fallback / Cancelled
+
+    Locked --> PinEntry: Enter 4-Digit PIN
+    PinEntry --> Unlocked: SHA256(salt:pin) == pinHash
+    PinEntry --> Cooldown: 5 Failed Attempts
+    Cooldown --> PinEntry: 30s Timer Expires
+    PinEntry --> SignedOut: Forgot Passcode -> authStore.logout()
 ```
 
 ---

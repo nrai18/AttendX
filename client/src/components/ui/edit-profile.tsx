@@ -141,7 +141,7 @@ export const EditProfile: React.FC<EditProfileProps> = ({ isOpen, onClose, initi
   return createPortal(
     <AnimatePresence>
       {isOpen && (
-        <div className="theme-nova-green fixed inset-0 z-[100] flex items-center justify-center p-0 sm:p-4 touch-none">
+        <div className="theme-nova-green fixed inset-0 z-[100] flex items-center justify-center px-3 pt-[calc(env(safe-area-inset-top,0px)+0.75rem)] pb-[calc(env(safe-area-inset-bottom,0px)+0.75rem)] sm:p-4 touch-none">
           {/* Backdrop */}
           <motion.div
             initial={{ opacity: 0 }}
@@ -149,24 +149,23 @@ export const EditProfile: React.FC<EditProfileProps> = ({ isOpen, onClose, initi
             exit={{ opacity: 0 }}
             transition={{ duration: 0.16, ease: "easeOut" }}
             onClick={!isLoading ? onClose : undefined}
-            className="fixed inset-0 bg-[#0F0A09]/80 dark:bg-[#0F0A09]/90 will-change-[opacity]"
+            className="fixed inset-0 bg-white/50 dark:bg-black/65 backdrop-blur-md will-change-[opacity]"
           />
 
           {/* Modal Container */}
-          <div className="relative w-full h-[100dvh] sm:h-auto max-w-4xl z-[101] flex items-center justify-center pointer-events-none p-0 sm:p-2">
+          <div className="relative w-full max-h-[88dvh] sm:h-auto max-w-4xl z-[101] flex items-center justify-center pointer-events-none p-0 sm:p-2">
             <motion.div
               initial={{ opacity: 0, scale: 0.97, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.97, y: 16 }}
               transition={{ type: "spring", damping: 28, stiffness: 380, mass: 0.8 }}
-              className="pointer-events-auto w-full h-full sm:h-auto sm:max-h-[90vh] rounded-none sm:rounded-[32px] shadow-2xl border-0 sm:border border-[#5A4A46]/30 dark:border-[#5A4A46]/50 overflow-hidden bg-[#E6E1D6] dark:bg-[#0F0A09] text-[#4A1711] dark:text-[#E6E1D6] flex flex-col md:flex-row will-change-transform"
+              className="pointer-events-auto w-full max-h-[86dvh] sm:max-h-[90vh] rounded-3xl sm:rounded-[32px] shadow-2xl border border-slate-900/10 dark:border-[#5A4A46]/50 overflow-hidden bg-[#E6E1D6]/90 dark:bg-[#0F0A09]/85 backdrop-blur-2xl text-[#4A1711] dark:text-[#E6E1D6] flex flex-col md:flex-row will-change-transform"
             >
               
               {/* Left Side: Form */}
               <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
                 <div 
-                  className="flex items-center justify-between px-6 sm:px-8 py-4 sm:py-5 border-b border-[#5A4A46]/20 dark:border-[#5A4A46]/50 shrink-0 bg-[#E6E1D6] dark:bg-[#0F0A09]"
-                  style={{ paddingTop: "calc(env(safe-area-inset-top) + 12px)" }}
+                  className="flex items-center justify-between px-5 sm:px-8 py-4 sm:py-5 border-b border-[#5A4A46]/20 dark:border-[#5A4A46]/50 shrink-0 bg-[#E6E1D6]/75 dark:bg-[#0F0A09]/75 backdrop-blur-xl"
                 >
                   <h2 className="text-xl sm:text-2xl font-bold font-sans tracking-tight">Edit Profile</h2>
                   <button onClick={onClose} disabled={isLoading} className="text-muted-foreground hover:text-foreground transition-colors p-2 rounded-full hover:bg-muted">

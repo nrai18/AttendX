@@ -70,6 +70,7 @@ import {
   History,
   Bell,
   Clock,
+  Lock,
 } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
 
@@ -85,35 +86,14 @@ import { ChangelogModal } from "../../components/settings/ChangelogModal";
 import { NotificationService, calculateNextSummaryDates } from "../../services/NotificationService";
 import { OfflineZipService } from "../../services/OfflineZipService";
 import { hapticSelection, hapticLight } from "../../utils/haptics";
-import { UpdateSettingsCard } from "../../components/updates/UpdateSettingsCard";
-import { UpdateManager } from "../../services/updater/updateManager";
-import { nativeUpdater } from "../../services/updater/nativeUpdater";
+import { useAppLockStore } from "../../stores/appLockStore";
+import { PasscodeSetupModal } from "../../components/security/PasscodeSetupModal";
 import { OFFLINE_CHANGELOG } from "../../constants/offlineChangelog";
 
 export const SettingsPage: React.FC = () => {
-  const currentAppVersion = (Capacitor.isNativePlatform() ? localStorage.getItem("app_version") : null) || import.meta.env.VITE_APP_VERSION || "4.3.1";
+  const currentAppVersion = import.meta.env.VITE_APP_VERSION || "4.4.0";
   const location = useLocation();
   const deletedDocIdsRef = useRef<Set<string>>(new Set());
-
-  const [nativeUpdateInfo, setNativeUpdateInfo] = useState(() =>
-    UpdateManager.getActiveNativeUpdate(),
-  );
-  const [nativeUpdatePhase, setNativeUpdatePhase] = useState(() =>
-    UpdateManager.getPhase(),
-  );
-
-  useEffect(() => {
-    const syncNativeUpdate = () => {
-      setNativeUpdateInfo(UpdateManager.getActiveNativeUpdate());
-      setNativeUpdatePhase(UpdateManager.getPhase());
-    };
-    window.addEventListener("native-update-available", syncNativeUpdate);
-    window.addEventListener("native-update-dismissed", syncNativeUpdate);
-    return () => {
-      window.removeEventListener("native-update-available", syncNativeUpdate);
-      window.removeEventListener("native-update-dismissed", syncNativeUpdate);
-    };
-  }, []);
 
   const renderDocuments = (type: string) => {
     // For backups, only show the most recent one (index 0 because it's sorted desc by createdAt on backend)
@@ -558,6 +538,9 @@ export const SettingsPage: React.FC = () => {
   const [isChangelogOpen, setIsChangelogOpen] = useState(() => initialSec === "changelog" || initialSec === "history" || initialSec === "update-history");
   const [isEditProfileOpen, setIsEditProfileOpen] = useState(() => location.hash === "#edit-profile" || initialSec === "profile" || initialSec === "edit-profile" || searchParams.get("action") === "edit-profile");
   const [isLinkedDevicesOpen, setIsLinkedDevicesOpen] = useState(() => initialSec === "devices" || initialSec === "linked-devices");
+  const [isPasscodeOpen, setIsPasscodeOpen] = useState(() => initialSec === "passcode" || initialSec === "app-lock");
+  const isPasscodeEnabled = useAppLockStore((s) => s.isEnabled);
+  const isFingerprintEnabled = useAppLockStore((s) => s.isFingerprintEnabled);
   const [isTransitionModalOpen, setIsTransitionModalOpen] = useState(false);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
 
@@ -571,12 +554,14 @@ export const SettingsPage: React.FC = () => {
 
     const isEditProfile = location.hash === "#edit-profile" || sec === "profile" || sec === "edit-profile" || searchParams.get("action") === "edit-profile";
     const isDevices = sec === "devices" || sec === "linked-devices";
+    const isPasscodeSec = sec === "passcode" || sec === "app-lock";
     const isChangelog = sec === "changelog" || sec === "history" || sec === "update-history";
     const isFeedback = sec === "feedback" || sec === "support";
     const isAppInfo = sec === "app-info";
 
     if (isEditProfile) setIsEditProfileOpen(true);
     if (isDevices) setIsLinkedDevicesOpen(true);
+    if (isPasscodeSec) setIsPasscodeOpen(true);
     if (isChangelog) setIsChangelogOpen(true);
     if (isFeedback) setIsFeedbackOpen(true);
     if (isAppInfo) setShowAppInfoModal(true);
@@ -585,6 +570,7 @@ export const SettingsPage: React.FC = () => {
     if (!sec && prevSecRef.current) {
       setIsEditProfileOpen(false);
       setIsLinkedDevicesOpen(false);
+      setIsPasscodeOpen(false);
       setIsChangelogOpen(false);
       setIsFeedbackOpen(false);
       setShowAppInfoModal(false);
@@ -1079,6 +1065,12 @@ export const SettingsPage: React.FC = () => {
         restoreScrollPosition(); 
         return true; 
       }
+      if (isPasscodeOpen) {
+        setIsPasscodeOpen(false);
+        if (location.pathname !== "/settings") navigate("/settings", { replace: true });
+        restoreScrollPosition();
+        return true;
+      }
       if (showAppInfoModal) { 
         setShowAppInfoModal(false); 
         if (location.pathname !== "/settings") navigate("/settings", { replace: true });
@@ -1102,7 +1094,7 @@ export const SettingsPage: React.FC = () => {
       return false;
     });
     return () => unregister();
-  }, [isTransitionModalOpen, isEditProfileOpen, isLinkedDevicesOpen, showAppInfoModal, isFeedbackOpen, isChangelogOpen, resetModalType, activeView, location.pathname]);
+  }, [isTransitionModalOpen, isEditProfileOpen, isLinkedDevicesOpen, isPasscodeOpen, showAppInfoModal, isFeedbackOpen, isChangelogOpen, resetModalType, activeView, location.pathname]);
 
   const fetchSubjectsForReset = () => {
     api
@@ -2083,9 +2075,9 @@ export const SettingsPage: React.FC = () => {
                 recordScroll();
                 setIsEditProfileOpen(true);
               }}
-              className="w-full p-4 flex items-center justify-between hover:bg-muted/30 transition-colors cursor-pointer"
+              className="w-full p-4 flex items-center justify-between gap-3 hover:bg-muted/30 transition-colors cursor-pointer"
             >
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-3.5 sm:gap-4 min-w-0 flex-1">
                 <div className="w-12 h-12 avatar-circle rounded-full overflow-hidden bg-muted border-2 border-border/50 shadow-sm shrink-0">
                   <img
                     src={
@@ -2106,16 +2098,16 @@ export const SettingsPage: React.FC = () => {
                     referrerPolicy="no-referrer"
                   />
                 </div>
-                <div className="text-left">
-                  <h3 className="text-base font-extrabold text-foreground">
+                <div className="text-left min-w-0 flex-1">
+                  <h3 className="text-base font-extrabold text-foreground truncate">
                     {user?.name || "User"}
                   </h3>
-                  <p className="text-xs text-muted-foreground font-medium">
+                  <p className="text-xs text-muted-foreground font-medium truncate">
                     {user?.email}
                   </p>
                 </div>
               </div>
-              <div className="bg-primary/10 text-primary p-2 rounded-full">
+              <div className="bg-primary/10 text-primary p-2 rounded-full shrink-0">
                 <ChevronRight className="w-4 h-4" />
               </div>
             </button>
@@ -2125,13 +2117,13 @@ export const SettingsPage: React.FC = () => {
                 recordScroll();
                 setIsLinkedDevicesOpen(true);
               }}
-              className="w-full p-4 flex items-center justify-between hover:bg-muted/30 transition-colors cursor-pointer"
+              className="w-full p-4 flex items-center justify-between gap-3 hover:bg-muted/30 transition-colors cursor-pointer"
             >
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 min-w-0 flex-1">
                 <div className="bg-emerald-500/10 p-2.5 rounded-xl text-emerald-500 shrink-0">
                   <Laptop className="w-5 h-5" />
                 </div>
-                <div className="text-left">
+                <div className="text-left min-w-0">
                   <span className="text-sm font-semibold text-foreground block">
                     Linked Devices
                   </span>
@@ -2140,7 +2132,46 @@ export const SettingsPage: React.FC = () => {
                   </span>
                 </div>
               </div>
-              <ChevronRight className="w-4 h-4 text-muted-foreground" />
+              <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
+            </button>
+            <div className="h-px bg-border/50" />
+            <button
+              onClick={() => {
+                recordScroll();
+                hapticSelection();
+                setIsPasscodeOpen(true);
+              }}
+              className="w-full p-4 flex items-center justify-between gap-3 hover:bg-muted/30 transition-colors cursor-pointer"
+            >
+              <div className="flex items-center gap-3 min-w-0 flex-1">
+                <div className="bg-emerald-500/10 p-2.5 rounded-xl text-emerald-500 shrink-0">
+                  <Lock className="w-5 h-5" />
+                </div>
+                <div className="text-left min-w-0">
+                  <span className="text-sm font-semibold text-foreground block">
+                    Passcode Lock
+                  </span>
+                  <span className="text-xs text-muted-foreground block mt-0.5">
+                    {isPasscodeEnabled
+                      ? isFingerprintEnabled
+                        ? "4-digit PIN & Fingerprint active"
+                        : "4-digit PIN barrier active"
+                      : "Biometric & 4-digit security barrier"}
+                  </span>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <span
+                  className={`text-xs font-mono font-bold px-2 py-0.5 rounded-full border ${
+                    isPasscodeEnabled
+                      ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30"
+                      : "bg-muted text-muted-foreground border-border/60"
+                  }`}
+                >
+                  {isPasscodeEnabled ? "On" : "Off"}
+                </span>
+                <ChevronRight className="w-4 h-4 text-muted-foreground" />
+              </div>
             </button>
           </div>
         </div>
@@ -2171,12 +2202,12 @@ export const SettingsPage: React.FC = () => {
           </h2>
           <div className="bg-card border border-border/70 rounded-2xl divide-y divide-border/50 shadow-md">
             {/* Set criteria */}
-            <div className="p-4 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
+            <div className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
                   <Target className="w-5 h-5" />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <h3 className="text-sm font-bold text-foreground">
                     Set criteria
                   </h3>
@@ -2189,7 +2220,7 @@ export const SettingsPage: React.FC = () => {
                   </p>
                 </div>
               </div>
-              <div className="flex items-center gap-1">
+              <div className="flex items-center justify-between sm:justify-end gap-2 w-full sm:w-auto">
                 <Stepper
                   size="sm"
                   min={1}
@@ -2204,12 +2235,12 @@ export const SettingsPage: React.FC = () => {
             </div>
 
             {/* Set theme */}
-            <div className="p-4 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl bg-purple-500/10 text-purple-500 flex items-center justify-center">
+            <div className="p-4 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3 min-w-0 flex-1">
+                <div className="w-9 h-9 rounded-xl bg-purple-500/10 text-purple-500 flex items-center justify-center shrink-0">
                   <Sun className="w-5 h-5" />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <h3 className="text-sm font-bold text-foreground">
                     Set theme
                   </h3>
@@ -2222,7 +2253,7 @@ export const SettingsPage: React.FC = () => {
                   </p>
                 </div>
               </div>
-              <div className="flex items-center gap-1 bg-muted p-1 rounded-xl">
+              <div className="flex items-center gap-1 bg-muted p-1 rounded-xl shrink-0">
                 <button
                   type="button"
                   onClick={(e) => {
@@ -2311,8 +2342,8 @@ export const SettingsPage: React.FC = () => {
               />
             </div>
             {reminderFrequency.type !== "Never" && (
-              <div className="w-full flex items-center justify-between p-3.5 sm:p-4 mt-2 bg-slate-50/80 dark:bg-slate-900/50 rounded-2xl border border-black/5 dark:border-white/5 transition-all">
-                <div className="flex flex-col gap-0.5">
+              <div className="w-full flex flex-wrap sm:flex-nowrap items-center justify-between gap-2.5 p-3.5 sm:p-4 mt-2 bg-slate-50/80 dark:bg-slate-900/50 rounded-2xl border border-black/5 dark:border-white/5 transition-all">
+                <div className="flex flex-col gap-0.5 min-w-0">
                   <span className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
                     <Clock className="w-4 h-4 text-primary" />
                     {reminderFrequency.type === "Daily"
@@ -2498,7 +2529,7 @@ export const SettingsPage: React.FC = () => {
                 <h3 className="text-sm font-bold text-slate-900 dark:text-white">
                   Class Reminders
                 </h3>
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between flex-wrap gap-2">
                   <p className="text-xs text-slate-500 dark:text-slate-400">
                     Time before class
                   </p>
@@ -2513,7 +2544,7 @@ export const SettingsPage: React.FC = () => {
                           refreshNotifPermission();
                         }
                       }}
-                      className="text-[11px] font-bold text-amber-500 hover:text-amber-400 underline cursor-pointer"
+                      className="text-[11px] font-bold text-amber-500 hover:text-amber-400 underline cursor-pointer text-left"
                     >
                       ⚠️ Notifications Disabled (Tap to enable)
                     </button>
@@ -2539,8 +2570,8 @@ export const SettingsPage: React.FC = () => {
                 ))}
               </div>
 
-              <div className="flex items-center justify-between mt-2">
-                <div className="flex flex-col gap-0.5">
+              <div className="flex items-center justify-between gap-3 mt-2">
+                <div className="flex flex-col gap-0.5 min-w-0">
                   <span className="text-sm font-semibold text-slate-900 dark:text-white">
                     Show Location
                   </span>
@@ -2561,8 +2592,8 @@ export const SettingsPage: React.FC = () => {
                 </button>
               </div>
 
-              <div className="flex items-center justify-between mt-2">
-                <div className="flex flex-col gap-0.5">
+              <div className="flex items-center justify-between gap-3 mt-2">
+                <div className="flex flex-col gap-0.5 min-w-0">
                   <span className="text-sm font-semibold text-foreground">
                     Next Class Heads-up
                   </span>
@@ -2813,12 +2844,12 @@ export const SettingsPage: React.FC = () => {
           </h2>
           <div className="bg-card border border-border/70 rounded-2xl divide-y divide-border/50 shadow-md">
             <div className="p-4 flex flex-col">
-              <div className="flex items-center justify-between w-full">
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-xl bg-purple-500/10 text-purple-500 flex items-center justify-center">
+              <div className="flex items-center justify-between gap-3 w-full">
+                <div className="flex items-center gap-3 min-w-0 flex-1">
+                  <div className="w-9 h-9 rounded-xl bg-purple-500/10 text-purple-500 flex items-center justify-center shrink-0">
                     <FileText className="w-5 h-5" />
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <h3 className="text-sm font-bold text-foreground">
                       Timetable Documents
                     </h3>
@@ -2830,7 +2861,7 @@ export const SettingsPage: React.FC = () => {
                 {(Array.isArray(storedDocuments) ? storedDocuments : []).filter(
                   (d) => d && d.type === "TIMETABLE",
                 ).length === 0 && (
-                  <span className="text-xs font-bold bg-muted text-muted-foreground px-2 py-1 rounded-md">
+                  <span className="text-xs font-bold bg-muted text-muted-foreground px-2 py-1 rounded-md shrink-0">
                     Empty
                   </span>
                 )}
@@ -2839,12 +2870,12 @@ export const SettingsPage: React.FC = () => {
             </div>
 
             <div className="p-4 flex flex-col">
-              <div className="flex items-center justify-between w-full">
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-xl bg-indigo-500/10 text-indigo-500 flex items-center justify-center">
+              <div className="flex items-center justify-between gap-3 w-full">
+                <div className="flex items-center gap-3 min-w-0 flex-1">
+                  <div className="w-9 h-9 rounded-xl bg-indigo-500/10 text-indigo-500 flex items-center justify-center shrink-0">
                     <Calendar className="w-5 h-5" />
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <h3 className="text-sm font-bold text-foreground">
                       Academic Calendars
                     </h3>
@@ -2856,7 +2887,7 @@ export const SettingsPage: React.FC = () => {
                 {(Array.isArray(storedDocuments) ? storedDocuments : []).filter(
                   (d) => d && d.type === "CALENDAR",
                 ).length === 0 && (
-                  <span className="text-xs font-bold bg-muted text-muted-foreground px-2 py-1 rounded-md">
+                  <span className="text-xs font-bold bg-muted text-muted-foreground px-2 py-1 rounded-md shrink-0">
                     Empty
                   </span>
                 )}
@@ -2865,12 +2896,12 @@ export const SettingsPage: React.FC = () => {
             </div>
 
             <div className="p-4 flex flex-col">
-              <div className="flex items-center justify-between w-full">
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center">
+              <div className="flex items-center justify-between gap-3 w-full">
+                <div className="flex items-center gap-3 min-w-0 flex-1">
+                  <div className="w-9 h-9 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center shrink-0">
                     <FileArchive className="w-5 h-5" />
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <h3 className="text-sm font-bold text-foreground">
                       Data Backups
                     </h3>
@@ -2882,7 +2913,7 @@ export const SettingsPage: React.FC = () => {
                 {(Array.isArray(storedDocuments) ? storedDocuments : []).filter(
                   (d) => d && d.type === "BACKUP",
                 ).length === 0 && (
-                  <span className="text-xs font-bold bg-muted text-muted-foreground px-2 py-1 rounded-md">
+                  <span className="text-xs font-bold bg-muted text-muted-foreground px-2 py-1 rounded-md shrink-0">
                     Empty
                   </span>
                 )}
@@ -2981,42 +3012,6 @@ export const SettingsPage: React.FC = () => {
               </div>
               <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
             </button>
-
-            {/* System & Software Update Card - Only visible on Native Android */}
-            {nativeUpdater.isAvailable() && (
-              <div className="p-3">
-                <UpdateSettingsCard
-                  updateInfo={nativeUpdateInfo}
-                  phase={nativeUpdatePhase}
-                  onOpenSheet={() => {
-                    window.dispatchEvent(new CustomEvent("open-update-sheet"));
-                  }}
-                  onCheckAgain={async () => {
-                    const res = await UpdateManager.checkForUpdates(true);
-                    setNativeUpdateInfo(UpdateManager.getActiveNativeUpdate());
-                    setNativeUpdatePhase(UpdateManager.getPhase());
-                    if (res.channel === "native-apk" && res.nativeInfo) {
-                      window.dispatchEvent(
-                        new CustomEvent("open-update-sheet"),
-                      );
-                      return true;
-                    }
-                    if (res.status === "rate-limited") {
-                      toast.error("GitHub update rate limit reached. Try again in a few minutes.");
-                      return false;
-                    }
-                    if (res.status === "network-error") {
-                      toast.error("Unable to reach update server. Check your internet connection.");
-                      return false;
-                    }
-                    toast.success(
-                      `You are on the latest version (v${currentAppVersion})`,
-                    );
-                    return true;
-                  }}
-                />
-              </div>
-            )}
           </div>
         </div>
 
@@ -3735,6 +3730,15 @@ export const SettingsPage: React.FC = () => {
         isOpen={isLinkedDevicesOpen}
         onClose={() => {
           setIsLinkedDevicesOpen(false);
+          if (location.pathname !== "/settings")
+            navigate("/settings", { replace: true });
+          restoreScrollPosition();
+        }}
+      />
+      <PasscodeSetupModal
+        isOpen={isPasscodeOpen}
+        onClose={() => {
+          setIsPasscodeOpen(false);
           if (location.pathname !== "/settings")
             navigate("/settings", { replace: true });
           restoreScrollPosition();

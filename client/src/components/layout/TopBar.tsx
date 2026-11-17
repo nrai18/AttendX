@@ -2,11 +2,13 @@ import React from "react";
 import { useLocation } from "react-router-dom";
 import { api } from "../../lib/api";
 import { useAuthStore } from "../../stores/authStore";
-import { Plus, LogOut, Sun, Moon, Loader2 } from "lucide-react";
+import { Plus, LogOut, Sun, Moon, Loader2, Lock } from "lucide-react";
 import { Button } from "../ui/button";
 import { useAttendanceStore } from "../../stores/attendanceStore";
 import { useThemeStore } from "../../stores/themeStore";
-import { hapticLight, hapticWarning } from "../../utils/haptics";
+import { useAppLockStore } from "../../stores/appLockStore";
+import { SoundFX } from "../../utils/soundEffects";
+import { hapticLight, hapticMedium, hapticWarning } from "../../utils/haptics";
 import { UpdateSnoozedIndicator } from "../updates/UpdateSnoozedIndicator";
 import { UpdateManager } from "../../services/updater/updateManager";
 import { nativeUpdater } from "../../services/updater/nativeUpdater";
@@ -60,6 +62,8 @@ export const TopBar: React.FC<TopBarProps> = ({
   const { overallPercentage, hasActiveSemester } = useAttendanceStore();
   const targetPercentage = user?.targetAttendance ?? 75;
   const { theme, toggleTheme } = useThemeStore();
+  const isPasscodeEnabled = useAppLockStore((state) => state.isEnabled);
+  const lockNow = useAppLockStore((state) => state.lockNow);
 
   // Route-specific styling
   const headerBg = isClassrooms
@@ -142,6 +146,24 @@ export const TopBar: React.FC<TopBarProps> = ({
                 {targetPercentage}%
               </span>
             </div>
+          )}
+
+          {/* Quick Lock Vault Button (only visible when Passcode Lock is enabled) */}
+          {isPasscodeEnabled && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => {
+                hapticMedium();
+                SoundFX.playLogoutChimeSound();
+                lockNow();
+              }}
+              className={`w-9 h-9 rounded-xl ${mutedTextColor} hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-500/10 cursor-pointer active:scale-90 transition-transform`}
+              title="Lock AttendX"
+              aria-label="Lock AttendX"
+            >
+              <Lock className="w-4 h-4" />
+            </Button>
           )}
 
           {/* Theme Toggle Button */}

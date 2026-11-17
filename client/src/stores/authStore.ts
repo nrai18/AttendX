@@ -95,8 +95,13 @@ export const useAuthStore = create<AuthState>()(
         import('./notificationStore').then(({ useNotificationStore }) => useNotificationStore.getState().resetConfig()).catch(() => {});
         import('./attendanceStore').then(({ useAttendanceStore }) => useAttendanceStore.getState().resetAttendanceStore()).catch(() => {});
         import('./assignmentStore').then(({ useAssignmentStore }) => useAssignmentStore.getState().resetAssignments()).catch(() => {});
+        import('./appLockStore').then(({ useAppLockStore }) => useAppLockStore.getState().disablePasscode()).catch(() => {});
+        if (wasAuthenticated) {
+          import('../utils/soundEffects').then(({ SoundFX }) => SoundFX.playLogoutChimeSound()).catch(() => {});
+        }
         const keysToRemove = [
           'attendx-auth',
+          'attendx-app-lock',
           'attendx-attendance-cache',
           'attendx-global-cache',
           'attendx-notification-settings',

@@ -259,19 +259,20 @@ export const useAttendanceStore = create<AttendanceState>()(
               useCacheStore.getState().semester?.activeSemester?.id ||
               null;
 
-            // Fire /semesters/active and all 4 semester-scoped queries in 1 single parallel wave when semesterId is known
+            // Start /attendance/logs in background so large log payloads never block initial overallPercentage hydration
+            const logsPromise = api.get("/attendance/logs");
+
+            // Fire /semesters/active and /attendance/stats immediately (server defaults /attendance/stats to active semester when semesterId is omitted)
             const [
               activeSemSettled,
               preStatsRes,
-              logsRes,
               preEventsRes,
               preTimetableRes,
             ] = await Promise.allSettled([
               api.get("/semesters/active"),
               knownSemId
                 ? api.get(`/attendance/stats?semesterId=${knownSemId}`)
-                : Promise.reject("no_known_sem"),
-              api.get("/attendance/logs"),
+                : api.get("/attendance/stats"),
               knownSemId
                 ? api.get(`/events?semesterId=${knownSemId}`)
                 : Promise.reject("no_known_sem"),
@@ -307,17 +308,113 @@ export const useAttendanceStore = create<AttendanceState>()(
               return;
             }
 
-            // Only re-fetch semester-scoped resources if activeSemesterId changed from knownSemId
-            const [statsRes, eventsRes, timetableRes] =
-              knownSemId === activeSem.id
-                ? [preStatsRes, preEventsRes, preTimetableRes]
-                : await Promise.allSettled([
-                    api.get(
-                      `/attendance/stats?semesterId=${activeSem.id}`,
-                    ),
-                    api.get(`/events?semesterId=${activeSem.id}`),
-                    api.get(`/timetable/${activeSem.id}`),
-                  ]);
+            const hasPendingMutations = useOfflineStore
+              .getState()
+              .queue.some(
+                (q: any) =>
+                  q.url?.includes("/attendance/mark") ||
+                  q.url?.includes("/attendance/mark-day"),
+              );
+
+            const normalizeSubjectStats = (rawList: any[]) => {
+              let attSum = 0;
+              let totSum = 0;
+              const mapped: SubjectStat[] = rawList.map((sub: any) => {
+                const att = Number(sub.attended) || 0;
+                const tot = Number(sub.total) || 0;
+                const missed =
+                  typeof sub.missed === "number" && !isNaN(sub.missed)
+                    ? sub.missed
+                    : Math.max(0, tot - att);
+                const off =
+                  typeof sub.off === "number" && !isNaN(sub.off) ? sub.off : 0;
+                attSum += att;
+                totSum += tot;
+                const pct =
+                  tot > 0 ? (att / tot) * 100 : Number(sub.percentage) || 0;
+                return {
+                  id: sub.id || sub.subjectId || "",
+                  subjectId: sub.id || sub.subjectId || "",
+                  name: sub.name || sub.subjectName || "Course",
+                  code: sub.code || sub.subjectCode || "",
+                  colorHex: sub.colorHex,
+                  attended: att,
+                  missed,
+                  off,
+                  total: tot,
+                  percentage: Number(pct.toFixed(1)),
+                  target: sub.target,
+                  remainingClasses: sub.remainingClasses,
+                  maxRemainingClasses: sub.maxRemainingClasses,
+                  missingBoundaries: sub.missingBoundaries,
+                  futureBreakdown: sub.futureBreakdown,
+                  attendance: sub.attendance,
+                };
+              });
+              return { mapped, attSum, totSum };
+            };
+
+            const extractStatsPayload = (data: any) => {
+              if (Array.isArray(data)) {
+                return { list: data, bounds: get().simulationBounds || null };
+              }
+              if (data && Array.isArray(data.subjects)) {
+                return { list: data.subjects, bounds: data.simulationBounds || null };
+              }
+              return null;
+            };
+
+            const statsMatchActiveSem = !knownSemId || knownSemId === activeSem.id;
+
+            // Immediately hydrate global attendance & subjects on fresh login before /events, /timetable, or /logs finish
+            if (
+              statsMatchActiveSem &&
+              preStatsRes.status === "fulfilled" &&
+              !hasPendingMutations
+            ) {
+              const earlyPayload = extractStatsPayload(preStatsRes.value.data);
+              if (earlyPayload) {
+                const early = normalizeSubjectStats(earlyPayload.list);
+                set({
+                  hasActiveSemester: true,
+                  activeSemesterId: activeSem.id,
+                  targetPercentage: userTarget,
+                  subjects: early.mapped.length > 0 ? early.mapped : get().subjects,
+                  totalAttended: early.totSum > 0 ? early.attSum : get().totalAttended,
+                  totalClasses: early.totSum > 0 ? early.totSum : get().totalClasses,
+                  overallPercentage:
+                    early.totSum > 0
+                      ? (early.attSum / early.totSum) * 100
+                      : get().overallPercentage,
+                  simulationBounds: earlyPayload.bounds,
+                  isLoading: false,
+                });
+              }
+            }
+
+            // Only fetch semester-scoped resources not already covered by Wave 1 (preserving Wave 1 rejection state so offline caches aren't wiped)
+            const needsStatsRefetch =
+              (knownSemId && knownSemId !== activeSem.id) ||
+              preStatsRes.status !== "fulfilled";
+            const needsScopedRefetch = knownSemId !== activeSem.id;
+            const [sSettled, eSettled, tSettled]: PromiseSettledResult<any>[] =
+              needsStatsRefetch || needsScopedRefetch
+                ? await Promise.allSettled([
+                    needsStatsRefetch
+                      ? api.get(`/attendance/stats?semesterId=${activeSem.id}`)
+                      : Promise.resolve(null),
+                    needsScopedRefetch
+                      ? api.get(`/events?semesterId=${activeSem.id}`)
+                      : Promise.resolve(null),
+                    needsScopedRefetch
+                      ? api.get(`/timetable/${activeSem.id}`)
+                      : Promise.resolve(null),
+                  ])
+                : [];
+
+            const statsRes = needsStatsRefetch && sSettled ? sSettled : preStatsRes;
+            const eventsRes = needsScopedRefetch && eSettled ? eSettled : preEventsRes;
+            const timetableRes = needsScopedRefetch && tSettled ? tSettled : preTimetableRes;
 
             // Discard stale pre-mutation responses if a newer fetch or mutation occurred while awaiting
             if (mySeq !== fetchStatsSeq) return;
@@ -354,22 +451,11 @@ export const useAttendanceStore = create<AttendanceState>()(
             // 1. Process Subject Stats
             let rawSubjects = get().subjects || [];
             let simulationBounds = get().simulationBounds || null;
-            const hasPendingMutations = useOfflineStore
-              .getState()
-              .queue.some(
-                (q: any) =>
-                  q.url?.includes("/attendance/mark") ||
-                  q.url?.includes("/attendance/mark-day"),
-              );
             if (statsRes.status === "fulfilled" && !hasPendingMutations) {
-              if (Array.isArray(statsRes.value.data)) {
-                rawSubjects = statsRes.value.data;
-              } else if (
-                statsRes.value.data &&
-                Array.isArray(statsRes.value.data.subjects)
-              ) {
-                rawSubjects = statsRes.value.data.subjects;
-                simulationBounds = statsRes.value.data.simulationBounds || null;
+              const payload = extractStatsPayload(statsRes.value.data);
+              if (payload) {
+                rawSubjects = payload.list;
+                simulationBounds = payload.bounds;
               }
             } else {
               // RESILIENT FALLBACK: Prefer source with real recorded classes (total > 0)
@@ -394,41 +480,14 @@ export const useAttendanceStore = create<AttendanceState>()(
               }
             }
 
-            let totalAttended = 0;
-            let totalClasses = 0;
+            const normalizedStats = normalizeSubjectStats(rawSubjects);
+            let totalAttended = normalizedStats.attSum;
+            let totalClasses = normalizedStats.totSum;
+            let subjects: SubjectStat[] = normalizedStats.mapped;
 
-            let subjects: SubjectStat[] = rawSubjects.map((sub: any) => {
-              const att = Number(sub.attended) || 0;
-              const tot = Number(sub.total) || 0;
-              const missed =
-                typeof sub.missed === "number" && !isNaN(sub.missed)
-                  ? sub.missed
-                  : Math.max(0, tot - att);
-              const off =
-                typeof sub.off === "number" && !isNaN(sub.off) ? sub.off : 0;
-              totalAttended += att;
-              totalClasses += tot;
-              const pct =
-                tot > 0 ? (att / tot) * 100 : Number(sub.percentage) || 0;
-              return {
-                id: sub.id || sub.subjectId || "",
-                subjectId: sub.id || sub.subjectId || "",
-                name: sub.name || sub.subjectName || "Course",
-                code: sub.code || sub.subjectCode || "",
-                colorHex: sub.colorHex,
-                attended: att,
-                missed,
-                off,
-                total: tot,
-                percentage: Number(pct.toFixed(1)),
-                target: sub.target,
-                remainingClasses: sub.remainingClasses,
-                maxRemainingClasses: sub.maxRemainingClasses,
-                missingBoundaries: sub.missingBoundaries,
-                futureBreakdown: sub.futureBreakdown,
-                attendance: sub.attendance,
-              };
-            });
+            // Await background logs without blocking initial stats hydration
+            const [logsRes] = await Promise.allSettled([logsPromise]);
+            if (mySeq !== fetchStatsSeq) return;
             // Self-heal: If totalClasses is 0, reconstruct ground-truth stats from historyLogs
             const allLogs =
               logsRes.status === "fulfilled" && Array.isArray(logsRes.value.data?.logs)

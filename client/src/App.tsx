@@ -32,14 +32,17 @@ import { useNativeUpdates } from "./hooks/useNativeUpdates";
 import { isVersionNewer } from "./services/updater/githubUpdater";
 import { nativeUpdater } from "./services/updater/nativeUpdater";
 import { OfflineLabPage } from "./pages/dev/OfflineLabPage";
+import { useAppLockStore } from "./stores/appLockStore";
+import { PasscodeLockOverlay } from "./components/security/PasscodeLockOverlay";
 
 // Protected Route Guard Component
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
   const { isAuthenticated, user, isLoading, _hasHydrated } = useAuthStore();
+  const lockHydrated = useAppLockStore((s) => s._hasHydrated);
 
-  if (isLoading || !_hasHydrated) {
+  if (isLoading || !_hasHydrated || !lockHydrated) {
     return (
       <div className="min-h-screen bg-background text-foreground flex items-center justify-center">
         <Loader2 className="w-8 h-8 animate-spin text-primary" />
@@ -211,10 +214,13 @@ export function App() {
             const info = await CapacitorApp.getInfo();
             const nativeVersion = info.version;
             const localVer = localStorage.getItem("app_version") || "0.0.0";
-            const isNativeNewer = isVersionNewer(nativeVersion, localVer);
-
-            if (isNativeNewer) {
+            if (localVer !== nativeVersion) {
               localStorage.setItem("app_version", nativeVersion);
+            }
+            const currentBundle = await CapacitorUpdater.current().catch(() => null);
+            const activeBundleId = (currentBundle as any)?.bundle?.id;
+            const isStaleCustomBundle = Boolean(activeBundleId && activeBundleId !== "builtin");
+            if (isVersionNewer(nativeVersion, localVer) || isStaleCustomBundle) {
               try {
                 await CapacitorUpdater.reset();
               } catch (e) {
@@ -412,9 +418,40 @@ export function App() {
     };
   }, []);
 
+  // Passcode Vault background/foreground lock lifecycle
+  useEffect(() => {
+    let lockStateHandle: any = null;
+    if (Capacitor.isNativePlatform()) {
+      CapacitorApp.addListener("appStateChange", ({ isActive }) => {
+        const lockState = useAppLockStore.getState();
+        if (isActive) {
+          lockState.evaluateForegroundResume();
+        } else {
+          lockState.recordBackground();
+        }
+      }).then((h) => {
+        lockStateHandle = h;
+      });
+    }
+    const onVisibility = () => {
+      const lockState = useAppLockStore.getState();
+      if (document.visibilityState === "hidden") {
+        lockState.recordBackground();
+      } else if (document.visibilityState === "visible") {
+        lockState.evaluateForegroundResume();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      if (lockStateHandle) lockStateHandle.remove();
+    };
+  }, []);
+
   return (
     <ErrorBoundary>
       <DynamicIslandHUD />
+      <PasscodeLockOverlay />
       <ShockwaveCelebrationOverlay />
       {!splashFinished && <WebSplashScreen onComplete={handleSplashComplete} />}
       <Toaster

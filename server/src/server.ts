@@ -59,7 +59,7 @@ async function bootstrap() {
   setTimeout(async () => {
     try {
       if (redisClient.status !== "ready") return;
-      let currentVersion = "4.3.1";
+      let currentVersion = "4.4.0";
       try {
         const pkgPath = path.resolve(process.cwd(), "package.json");
         if (fs.existsSync(pkgPath)) {

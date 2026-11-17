@@ -2330,7 +2330,7 @@ const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'vo
             scale: isTriggerVisible && !isInputFocused ? 1 : 0.85,
           }}
           transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
-          className={`fixed bottom-[calc(6.25rem+env(safe-area-inset-bottom,0px))] md:bottom-6 right-4 sm:right-6 z-40 ${
+          className={`fixed bottom-[calc(6.25rem+env(safe-area-inset-bottom,0px))] md:bottom-6 right-3 sm:right-6 z-40 ${
             (!isTriggerVisible || isInputFocused) ? "pointer-events-none" : ""
           }`}
         >
@@ -2345,7 +2345,7 @@ const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'vo
                 return !prev;
               });
             }}
-            className={`chatbot-btn group relative flex items-center gap-2.5 px-4 py-3 rounded-full shadow-xl transition-all cursor-pointer text-xs font-semibold ${getPillClasses()}`}
+            className={`chatbot-btn group relative flex items-center gap-2 sm:gap-2.5 px-3 py-2 sm:px-4 sm:py-3 rounded-full shadow-xl transition-all cursor-pointer text-[11px] sm:text-xs font-semibold ${getPillClasses()}`}
             aria-label="Open AttendX AI"
           >
             <div className="relative">

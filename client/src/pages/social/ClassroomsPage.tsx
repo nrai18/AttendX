@@ -406,7 +406,7 @@ export const ClassroomsPage = () => {
   }
 
   return (
-    <div className="p-4 md:p-8 space-y-8 max-w-5xl mx-auto w-full pb-28 md:pb-12 animate-in fade-in slide-in-from-bottom-2 duration-300 ease-out">
+    <div className="p-4 md:p-6 lg:p-8 space-y-8 max-w-5xl mx-auto w-full pb-28 md:pb-12 animate-in fade-in slide-in-from-bottom-2 duration-300 ease-out">
       {/* Header with Academic Context */}
       <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 border-b border-border/40 pb-6">
         <div className="flex items-start sm:items-center gap-3.5 min-w-0 flex-1">
@@ -425,7 +425,7 @@ export const ClassroomsPage = () => {
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
               Batch Channels & Timetable Sync
             </div>
-            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-foreground truncate">
+            <h1 className="text-xl sm:text-3xl font-extrabold tracking-tight text-foreground leading-tight">
               Classrooms & Sections
             </h1>
             <p className="text-sm text-muted-foreground mt-1 max-w-xl">
@@ -462,7 +462,7 @@ export const ClassroomsPage = () => {
       {classrooms.length === 0 ? (
         <div className="space-y-6">
           {/* Dual Action Cards (High Density Replacement for the Empty Void) */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             {/* Action Card 1: Student Join Card */}
             <div className="rounded-2xl border border-neutral-200 dark:border-white/10 bg-white dark:bg-[#08080a] p-6 flex flex-col justify-between space-y-5 hover:border-neutral-300 dark:hover:border-white/20 transition-all shadow-xs">
               <div className="space-y-3">
@@ -561,7 +561,7 @@ export const ClassroomsPage = () => {
             <h4 className="text-xs font-mono uppercase tracking-widest text-muted-foreground mb-3 px-1">
               Synchronized Section Infrastructure
             </h4>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
               <div className="p-4 rounded-xl border border-neutral-200 dark:border-white/10 bg-white dark:bg-[#08080a] space-y-2">
                 <div className="flex items-center gap-2 text-foreground font-semibold text-sm">
                   <CalendarDays className="w-4 h-4 text-neutral-700 dark:text-neutral-300 shrink-0" />
@@ -596,7 +596,7 @@ export const ClassroomsPage = () => {
         </div>
       ) : (
         /* Active Classrooms Grid */
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <style>{`
             @keyframes hubWhooshTrajectory {
               0% {
@@ -670,26 +670,26 @@ export const ClassroomsPage = () => {
                   <div className="relative z-10 flex items-center justify-between gap-2">
                     <div className="flex items-center gap-1.5 flex-wrap">
                       {cls.department && (
-                        <span className="text-[10px] font-mono uppercase font-semibold px-2 py-0.5 rounded-full bg-black/30 backdrop-blur-md text-white/80 border border-white/10">
+                        <span className="text-[10px] font-mono uppercase font-semibold px-2 py-0.5 rounded-full bg-slate-950/45 backdrop-blur-md text-slate-100 border border-white/15">
                           {cls.department}
                         </span>
                       )}
                       {cls.section && (
-                        <span className="text-[10px] font-mono uppercase font-semibold px-2 py-0.5 rounded-full bg-black/30 backdrop-blur-md text-white/80 border border-white/10">
+                        <span className="text-[10px] font-mono uppercase font-semibold px-2 py-0.5 rounded-full bg-slate-950/45 backdrop-blur-md text-slate-100 border border-white/15">
                           Sec {cls.section}
                         </span>
                       )}
                     </div>
 
                     {cls.isDeleted ? (
-                      <span className="inline-flex items-center gap-1 bg-rose-500/80 backdrop-blur-md text-white text-[10px] font-mono font-bold uppercase px-2 py-0.5 rounded-md shadow-xs">
+                      <span className="inline-flex items-center gap-1 bg-rose-500/85 backdrop-blur-md text-slate-50 text-[10px] font-mono font-bold uppercase px-2 py-0.5 rounded-md shadow-xs">
                         <AlertTriangle className="w-3 h-3" />
                         Disbanded
                       </span>
                     ) : isAdmin ? (
                       <div className="flex items-center gap-1.5 shrink-0">
-                        <span className="inline-flex items-center gap-1 bg-emerald-500/80 backdrop-blur-md text-white text-[10px] font-mono font-bold uppercase px-2.5 py-0.5 rounded-full shadow-xs">
-                          <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+                        <span className="inline-flex items-center gap-1 bg-emerald-500/85 backdrop-blur-md text-slate-50 text-[10px] font-mono font-bold uppercase px-2.5 py-0.5 rounded-full shadow-xs">
+                          <span className="w-1.5 h-1.5 rounded-full bg-slate-50 animate-pulse" />
                           CR / Admin
                         </span>
                         <button
@@ -700,13 +700,13 @@ export const ClassroomsPage = () => {
                             setDeleteConfirmClassroom(cls);
                           }}
                           title="Disband Classroom"
-                          className="w-7 h-7 rounded-full bg-black/40 hover:bg-rose-500/80 backdrop-blur-md text-white/80 hover:text-white flex items-center justify-center transition-colors border border-white/10 cursor-pointer"
+                          className="w-7 h-7 rounded-full bg-slate-950/45 hover:bg-rose-500/85 backdrop-blur-md text-slate-100 hover:text-slate-50 flex items-center justify-center transition-colors border border-white/15 cursor-pointer"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
                       </div>
                     ) : (
-                      <span className="text-[10px] font-mono uppercase text-white/80 px-2 py-0.5 rounded-full bg-black/30 backdrop-blur-md border border-white/10 shrink-0">
+                      <span className="text-[10px] font-mono uppercase text-slate-100 px-2 py-0.5 rounded-full bg-slate-950/45 backdrop-blur-md border border-white/15 shrink-0">
                         Member
                       </span>
                     )}
@@ -714,10 +714,10 @@ export const ClassroomsPage = () => {
 
                   {/* Bottom Row inside Banner: Class Title & Instructor/Creator */}
                   <div className="relative z-10 space-y-0.5">
-                    <h3 className="text-xl sm:text-2xl font-extrabold tracking-tight text-white drop-shadow-md line-clamp-1 group-hover:text-amber-200 transition-colors">
+                    <h3 className="text-xl sm:text-2xl font-extrabold tracking-tight text-slate-50 drop-shadow-md line-clamp-1 group-hover:text-amber-200 transition-colors">
                       {cls.name}
                     </h3>
-                    <p className="text-xs text-white/80 font-medium drop-shadow-xs line-clamp-1">
+                    <p className="text-xs text-slate-100/85 font-medium drop-shadow-xs line-clamp-1">
                       {cls.isDeleted ? (
                         <span className="text-rose-300 font-semibold">⚠️ Section disbanded by CR</span>
                       ) : (
@@ -797,7 +797,7 @@ export const ClassroomsPage = () => {
 
       {/* Delete / Disband Classroom Confirmation Modal */}
       {deleteConfirmClassroom && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-150">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/75 backdrop-blur-md animate-in fade-in duration-150">
           <div className="bg-white dark:bg-[#0c0d0e] border border-neutral-200 dark:border-white/15 rounded-3xl p-6 w-full max-w-md shadow-2xl space-y-5 animate-in zoom-in-95 duration-200">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
@@ -863,7 +863,7 @@ export const ClassroomsPage = () => {
 
       {/* Join Modal */}
       {showJoinModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-150">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/75 backdrop-blur-md animate-in fade-in duration-150">
           <div className="bg-white dark:bg-[#0c0d0e] border border-neutral-200 dark:border-white/15 rounded-3xl p-6 w-full max-w-sm shadow-2xl space-y-5">
             <div className="flex items-center justify-between">
               <div>

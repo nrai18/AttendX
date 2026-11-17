@@ -10,6 +10,7 @@ import { useAuthStore } from "../../stores/authStore";
 import { Capacitor } from "@capacitor/core";
 import { GoogleSignIn } from "@capawesome/capacitor-google-sign-in";
 import { hapticMedium, hapticSuccess, hapticError } from "../../utils/haptics";
+import { SoundFX } from "../../utils/soundEffects";
 
 export const SignupPage: React.FC = () => {
   const navigate = useNavigate();
@@ -43,6 +44,7 @@ export const SignupPage: React.FC = () => {
         });
         
         hapticSuccess();
+        SoundFX.playLoginChimeSound();
         setAuth(res.data.user, res.data.accessToken, res.data.refreshToken);
         navigate("/today");
       } catch (err: any) {

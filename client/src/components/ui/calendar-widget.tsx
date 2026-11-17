@@ -101,7 +101,7 @@ export const CalendarWidget: FC<CalendarWidgetProps> = ({
   });
 
   return (
-      <div className="flex w-[340px] flex-col rounded-[30px] border border-black/10 bg-[#F6F5FA] shadow-lg transition-colors duration-500 select-none dark:border-white/5 dark:bg-zinc-900">
+      <div className="flex w-full max-w-[340px] flex-col rounded-[30px] border border-black/10 bg-[#F6F5FA] shadow-lg transition-colors duration-500 select-none dark:border-white/5 dark:bg-zinc-900">
         <div className="p-4">
           <motion.div
             key={currentMonthYear}

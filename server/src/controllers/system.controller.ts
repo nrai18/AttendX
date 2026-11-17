@@ -14,9 +14,45 @@ export class SystemController {
   static async getUpdateManifest(req: Request, res: Response) {
     const manifest = {
       appDownloadLink: process.env.APP_DOWNLOAD_LINK || "https://github.com/nrai18/AttendX/releases/latest/download/AttendX.apk",
-      latestVersion: "4.3.1",
-      title: "AttendX Interactive Firmware Diagnostics, Native In-App APK Updater & IST Calendar Sync",
+      latestVersion: "4.4.0",
+      title: "AttendX Vault: Passcode Lock, Native Biometrics & Session Chimes",
       changelog: [
+        {
+          "version": "4.4.0",
+          "date": "Nov 17, 2026",
+          "title": "AttendX Vault, Frosted Glass UI & Tablet Polish",
+          "sections": [
+            {
+              "title": "AttendX Vault, Biometrics, Glass UI & Responsiveness (v4.4.0)",
+              "items": [
+                {
+                  "icon": "🔐",
+                  "text": "Passcode Lock & AttendX Vault: Salted SHA-256 4-digit PIN barrier under Account Settings with cold-start protection, auto-lock timers (Immediate / 1m / 5m), 30s lockout cooldown, and one-tap TopBar quick-lock."
+                },
+                {
+                  "icon": "👆",
+                  "text": "Native Android BiometricPrompt Unlock: Added Android hardware fingerprint authentication with live sensor pairing inside Settings."
+                },
+                {
+                  "icon": "🎵",
+                  "text": "Session & Keypad Synthesized Chimes: Zero-asset Web Audio login arpeggios, lock sweeps, and tactile keypad clicks."
+                },
+                {
+                  "icon": "🪟",
+                  "text": "Unified Frosted Glass Modals: Centered floating frosted-glass cards in both Light & Dark modes across mobile and desktop for Update Prompts, Linked Devices, Edit Profile, and Add Extra Class."
+                },
+                {
+                  "icon": "⚡",
+                  "text": "Instant Post-Login Global Attendance & Resume Sync: Eliminated initial 0.00% delay after sign-in and added automatic background-resume GitHub release detection while keeping Settings clean."
+                },
+                {
+                  "icon": "📱",
+                  "text": "Mobile & Tablet Responsive Overhaul: Fixed Today action bars (including 5-button Extra Class rows), Settings Set Criteria controls, Landing Page tablet navbar/grids, and Classrooms Hub tablet card layouts."
+                }
+              ]
+            }
+          ]
+        },
         {
           "version": "4.3.1",
           "date": "Nov 14, 2026",

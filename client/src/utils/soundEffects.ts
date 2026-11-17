@@ -1304,6 +1304,115 @@ class SoundEffectsEngine {
       });
     } catch {}
   }
+
+  private playSynthesizedNotes(
+    notes: Array<{ freq: number; delay: number; dur: number; type?: OscillatorType; gainPeak: number }>,
+    forcePreview = false,
+  ) {
+    if (this.isVoiceModeActive()) return;
+    if (!forcePreview && !this.isEnabled()) return;
+    try {
+      if (!this.ctx) {
+        const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+        if (AudioCtx) this.ctx = new AudioCtx();
+      }
+      const ctx = this.ctx;
+      if (!ctx) return;
+      if (ctx.state !== "running") {
+        ctx.resume().catch(() => {});
+      }
+      const now = ctx.currentTime + 0.002;
+      notes.forEach(({ freq, delay, dur, type = "sine", gainPeak }) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, now + delay);
+        gain.gain.setValueAtTime(0, now + delay);
+        gain.gain.linearRampToValueAtTime(gainPeak, now + delay + 0.015);
+        gain.gain.exponentialRampToValueAtTime(0.0008, now + delay + dur);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now + delay);
+        osc.stop(now + delay + dur);
+      });
+    } catch {}
+  }
+
+  /** Crisp Liquid Glass keypad tap sound (35ms). */
+  playKeyClickSound(forcePreview = false) {
+    if (this.isVoiceModeActive()) return;
+    if (!forcePreview && !this.isEnabled()) return;
+    try {
+      if (!this.ctx) {
+        const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+        if (AudioCtx) this.ctx = new AudioCtx();
+      }
+      const ctx = this.ctx;
+      if (!ctx) return;
+      if (ctx.state !== "running") ctx.resume().catch(() => {});
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(1400, now);
+      osc.frequency.exponentialRampToValueAtTime(300, now + 0.035);
+      gain.gain.setValueAtTime(0.08, now);
+      gain.gain.linearRampToValueAtTime(0.001, now + 0.035);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.036);
+    } catch {}
+  }
+
+  /** Crystalline ascending verification chirp on passcode unlock or activation. */
+  playPasscodeSuccessSound(forcePreview = false) {
+    this.playSynthesizedNotes(
+      [
+        { freq: 523.25, delay: 0.0, dur: 0.25, gainPeak: 0.12 },
+        { freq: 659.25, delay: 0.05, dur: 0.25, gainPeak: 0.12 },
+        { freq: 783.99, delay: 0.1, dur: 0.25, gainPeak: 0.12 },
+        { freq: 1046.5, delay: 0.15, dur: 0.3, gainPeak: 0.12 },
+      ],
+      forcePreview,
+    );
+  }
+
+  /** Subtle muted double low tone for invalid 4-digit passcode input. */
+  playPasscodeErrorSound(forcePreview = false) {
+    this.playSynthesizedNotes(
+      [
+        { freq: 185, delay: 0.0, dur: 0.12, type: "triangle", gainPeak: 0.14 },
+        { freq: 135, delay: 0.1, dur: 0.18, type: "triangle", gainPeak: 0.14 },
+      ],
+      forcePreview,
+    );
+  }
+
+  /** Ascending C-Major pentatonic arpeggio (C4 -> C5) on login hydration. */
+  playLoginChimeSound(forcePreview = false) {
+    this.playSynthesizedNotes(
+      [
+        { freq: 261.63, delay: 0.0, dur: 0.45, gainPeak: 0.18 },
+        { freq: 329.63, delay: 0.08, dur: 0.45, gainPeak: 0.18 },
+        { freq: 392.0, delay: 0.16, dur: 0.45, gainPeak: 0.18 },
+        { freq: 523.25, delay: 0.24, dur: 0.48, gainPeak: 0.18 },
+      ],
+      forcePreview,
+    );
+  }
+
+  /** Descending tripartite sweep (G4 -> Eb4 -> C4) on lock or logout. */
+  playLogoutChimeSound(forcePreview = false) {
+    this.playSynthesizedNotes(
+      [
+        { freq: 392.0, delay: 0.0, dur: 0.4, type: "triangle", gainPeak: 0.15 },
+        { freq: 311.13, delay: 0.11, dur: 0.4, type: "triangle", gainPeak: 0.15 },
+        { freq: 261.63, delay: 0.22, dur: 0.42, type: "triangle", gainPeak: 0.15 },
+      ],
+      forcePreview,
+    );
+  }
 }
 
 export const SoundFX = new SoundEffectsEngine();

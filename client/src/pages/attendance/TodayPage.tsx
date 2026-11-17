@@ -4073,17 +4073,17 @@ export const TodayPage = () => {
         />
 
         {isSemesterActive && effectiveNextEvent && (
-          <div className="bg-sky-50 dark:bg-sky-900/20 border border-sky-200/60 dark:border-sky-800/40 backdrop-blur-md rounded-2xl p-3.5 sm:p-4 flex items-center justify-between gap-3 shadow-xs overflow-hidden">
-            <div className="flex items-center gap-3 min-w-0 flex-1">
-              <Timer className="w-5 h-5 text-sky-600 dark:text-sky-400 shrink-0" />
-              <span className="text-sm font-medium text-sky-800 dark:text-sky-200 truncate">
+          <div className="bg-sky-50 dark:bg-sky-900/20 border border-sky-200/60 dark:border-sky-800/40 backdrop-blur-md rounded-2xl p-3 sm:p-4 flex items-center justify-between gap-2.5 sm:gap-3 shadow-xs overflow-hidden">
+            <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 flex-1">
+              <Timer className="w-4 h-4 sm:w-5 sm:h-5 text-sky-600 dark:text-sky-400 shrink-0" />
+              <span className="text-xs sm:text-sm font-medium text-sky-800 dark:text-sky-200 leading-snug line-clamp-2 sm:line-clamp-1">
                 Upcoming:{" "}
                 <span className="font-bold text-sky-900 dark:text-sky-100">
                   {effectiveNextEvent.title}
                 </span>
               </span>
             </div>
-            <span className="text-xs font-bold bg-sky-200/90 dark:bg-sky-800/50 text-sky-950 dark:text-sky-200 border border-sky-300/60 dark:border-sky-700/50 px-3 py-1 rounded-full uppercase tracking-wider shrink-0 whitespace-nowrap shadow-xs">
+            <span className="text-[11px] sm:text-xs font-bold bg-sky-200/90 dark:bg-sky-800/50 text-sky-950 dark:text-sky-200 border border-sky-300/60 dark:border-sky-700/50 px-2.5 py-0.5 sm:px-3 sm:py-1 rounded-full uppercase tracking-wider shrink-0 whitespace-nowrap shadow-xs">
               {new Date(
                 effectiveNextEvent.date.split("T")[0] + "T00:00:00",
               ).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
@@ -4097,32 +4097,32 @@ export const TodayPage = () => {
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 sm:gap-4">
               {/* Overall Attendance Card */}
               <div
-                className={`relative overflow-hidden rounded-2xl border p-3.5 sm:p-4.5 flex items-center justify-between gap-3 sm:gap-4 transition-all shadow-xs ${
+                className={`relative overflow-hidden rounded-2xl border p-3 sm:p-4.5 flex items-center justify-between gap-2.5 sm:gap-4 transition-all shadow-xs ${
                   overallPercentage >= targetPercentage
                     ? "bg-emerald-500/10 border-emerald-500/25"
                     : "bg-rose-500/10 border-rose-500/25"
                 }`}
               >
-                <div className="flex items-center gap-3 sm:gap-3.5 min-w-0 flex-1">
+                <div className="flex items-center gap-2.5 sm:gap-3.5 min-w-0 flex-1">
                   <div
-                    className={`w-10 h-10 sm:w-11 sm:h-11 rounded-xl flex items-center justify-center shrink-0 ${
+                    className={`w-9 h-9 sm:w-11 sm:h-11 rounded-xl flex items-center justify-center shrink-0 ${
                       overallPercentage >= targetPercentage
                         ? "bg-emerald-500/20"
                         : "bg-rose-500/20"
                     }`}
                   >
                     {overallPercentage >= targetPercentage ? (
-                      <TrendingUp className="w-5 h-5 text-emerald-500 dark:text-emerald-400" />
+                      <TrendingUp className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-500 dark:text-emerald-400" />
                     ) : (
-                      <TrendingDown className="w-5 h-5 text-rose-500 dark:text-rose-400" />
+                      <TrendingDown className="w-4 h-4 sm:w-5 sm:h-5 text-rose-500 dark:text-rose-400" />
                     )}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm sm:text-base font-bold text-foreground truncate">
+                    <p className="text-[13px] sm:text-base font-bold text-foreground leading-tight">
                       Overall Attendance
                     </p>
                     <p
-                      className={`text-xs sm:text-[13px] mt-0.5 font-medium truncate ${
+                      className={`text-[11px] sm:text-[13px] mt-0.5 font-medium leading-snug ${
                         overallPercentage >= targetPercentage
                           ? "text-emerald-600 dark:text-emerald-400"
                           : "text-rose-600 dark:text-rose-400"
@@ -4135,7 +4135,7 @@ export const TodayPage = () => {
                   </div>
                 </div>
                 <div
-                  className={`shrink-0 flex items-center justify-center rounded-xl px-3 py-1.5 sm:px-3.5 sm:py-2 font-mono font-bold text-sm sm:text-base tracking-tight shadow-xs ${
+                  className={`shrink-0 flex items-center justify-center rounded-xl px-2.5 py-1.5 sm:px-3.5 sm:py-2 font-mono font-bold text-xs sm:text-base tracking-tight shadow-xs ${
                     overallPercentage >= targetPercentage
                       ? "bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30"
                       : "bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/30"
@@ -4148,7 +4148,7 @@ export const TodayPage = () => {
               {/* Frovia Berry Landing - Forecast Engine */}
               <div
                 onClick={() => navigate("/predictive")}
-                className="relative overflow-hidden rounded-2xl border border-[#74313A]/25 dark:border-[#EED3CF]/20 bg-[#EED3CF] dark:bg-[#74313A] p-3.5 sm:p-4.5 flex items-center justify-between gap-3 sm:gap-4 cursor-pointer group shadow-xs transition-all hover:scale-[1.008] active:scale-[0.995]"
+                className="relative overflow-hidden rounded-2xl border border-[#74313A]/25 dark:border-[#EED3CF]/20 bg-[#EED3CF] dark:bg-[#74313A] p-3 sm:p-4.5 flex items-center justify-between gap-2.5 sm:gap-4 cursor-pointer group shadow-xs transition-all hover:scale-[1.008] active:scale-[0.995]"
                 style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}
               >
                 {/* Frovia Ambient Animated Gradients */}
@@ -4169,15 +4169,15 @@ export const TodayPage = () => {
                   </div>
                 </div>
 
-                <div className="flex items-center gap-3 sm:gap-3.5 min-w-0 flex-1 relative z-10">
-                  <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-[#74313A] dark:bg-[#EED3CF] text-[#EED3CF] dark:text-[#74313A] flex items-center justify-center shrink-0 group-hover:scale-105 transition-all shadow-md">
-                    <Sparkles className="w-5 h-5" />
+                <div className="flex items-center gap-2.5 sm:gap-3.5 min-w-0 flex-1 relative z-10">
+                  <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl bg-[#74313A] dark:bg-[#EED3CF] text-[#EED3CF] dark:text-[#74313A] flex items-center justify-center shrink-0 group-hover:scale-105 transition-all shadow-md">
+                    <Sparkles className="w-4 h-4 sm:w-5 sm:h-5" />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm sm:text-base font-bold text-[#111827] dark:text-white truncate tracking-tight">
+                    <p className="text-[13px] sm:text-base font-bold text-[#111827] dark:text-white leading-tight tracking-tight">
                       Forecast Engine
                     </p>
-                    <p className="text-xs sm:text-[13px] text-[#4B5563] dark:text-white/80 truncate font-medium transition-colors">
+                    <p className="text-[11px] sm:text-[13px] text-[#4B5563] dark:text-white/80 font-medium leading-snug line-clamp-2 sm:line-clamp-1 transition-colors">
                       Calculate consecutive classes needed for{" "}
                       {targetPercentage}% target
                     </p>
@@ -4254,20 +4254,20 @@ export const TodayPage = () => {
               </div>
 
               {/* Row 2: Action Buttons */}
-              <div className="flex items-center justify-between gap-3 bg-card/60 border border-border/50 p-2.5 rounded-2xl">
-                <div className="flex items-center gap-2 flex-wrap">
+              <div className="flex items-center justify-between gap-2.5 sm:gap-3 bg-card/60 border border-border/50 p-2 sm:p-2.5 rounded-2xl">
+                <div className="grid grid-cols-2 sm:flex sm:items-center gap-1.5 sm:gap-2 sm:flex-wrap flex-1 min-w-0">
                   <button
                     onClick={() => navigate("/assignments")}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-violet-600/15 text-violet-500 border border-violet-500/20 hover:bg-violet-600/25 transition-all shadow-sm cursor-pointer"
+                    className="inline-flex items-center justify-center sm:justify-start gap-1.5 px-2.5 sm:px-3 py-2 sm:py-1.5 rounded-xl text-[11px] sm:text-xs font-bold bg-violet-600/15 text-violet-500 border border-violet-500/20 hover:bg-violet-600/25 transition-all shadow-sm cursor-pointer whitespace-nowrap"
                   >
-                    <BookOpen size={14} /> Assignments
+                    <BookOpen size={14} className="shrink-0" /> Assignments
                   </button>
                   {isSemesterActive && (
                     <button
                       onClick={openAddExtraModal}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-pink-500/10 text-pink-500 border border-pink-500/20 hover:bg-pink-500/20 transition-all shadow-sm cursor-pointer"
+                      className="inline-flex items-center justify-center sm:justify-start gap-1.5 px-2.5 sm:px-3 py-2 sm:py-1.5 rounded-xl text-[11px] sm:text-xs font-bold bg-pink-500/10 text-pink-500 border border-pink-500/20 hover:bg-pink-500/20 transition-all shadow-sm cursor-pointer whitespace-nowrap"
                     >
-                      <Plus className="w-4 h-4" />
+                      <Plus className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
                       Add Extra
                     </button>
                   )}
@@ -4280,10 +4280,10 @@ export const TodayPage = () => {
                           setShowMarkFullDayModal(true);
                         }}
                         disabled={isMarkingFullDay}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 hover:bg-emerald-500/20 transition-all shadow-sm cursor-pointer disabled:opacity-50"
+                        className="inline-flex items-center justify-center sm:justify-start gap-1.5 px-2.5 sm:px-3 py-2 sm:py-1.5 rounded-xl text-[11px] sm:text-xs font-bold bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 hover:bg-emerald-500/20 transition-all shadow-sm cursor-pointer disabled:opacity-50 whitespace-nowrap"
                         title="Mark full day as Attended, Absent, or Off"
                       >
-                        <CheckCheck className="w-4 h-4" />
+                        <CheckCheck className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
                         Mark Full Day
                       </button>
                       {agenda.some((a) => {
@@ -4297,18 +4297,18 @@ export const TodayPage = () => {
                             handleMarkFullDayAction("clear");
                           }}
                           disabled={isMarkingFullDay}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-muted text-muted-foreground border border-border hover:bg-muted/80 hover:text-foreground transition-all shadow-sm cursor-pointer disabled:opacity-50"
+                          className="inline-flex items-center justify-center sm:justify-start gap-1.5 px-2.5 sm:px-3 py-2 sm:py-1.5 rounded-xl text-[11px] sm:text-xs font-bold bg-muted text-muted-foreground border border-border hover:bg-muted/80 hover:text-foreground transition-all shadow-sm cursor-pointer disabled:opacity-50 whitespace-nowrap"
                           title="Undo full day attendance and reset classes"
                         >
-                          <RotateCcw className="w-4 h-4" />
+                          <RotateCcw className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
                           {isMarkingFullDay ? "Clearing..." : "Undo Day"}
                         </button>
                       )}
                     </>
                   )}
                 </div>
-                <div className="flex flex-col items-center justify-center shrink-0 pr-2 pl-4 border-l border-border/50">
-                  <p className="text-xl font-bold text-foreground leading-none">
+                <div className="flex flex-col items-center justify-center shrink-0 pr-1.5 pl-3 sm:pr-2 sm:pl-4 border-l border-border/50">
+                  <p className="text-lg sm:text-xl font-bold text-foreground leading-none">
                     {pendingCount}
                   </p>
                   <p className="text-[9px] text-muted-foreground uppercase tracking-widest mt-0.5">
@@ -4603,11 +4603,11 @@ export const TodayPage = () => {
                           : "bg-card/60 border-border/50 shadow-[0_0_15px_rgba(0,0,0,0.1)] backdrop-blur-md hover:bg-card/80 hover:border-border/80"
                       }`}
                     >
-                      <div className="flex items-center gap-4 min-w-0 flex-1">
-                        <div className="min-w-0">
-                          <h3 className="text-lg font-semibold text-foreground flex items-center gap-2 flex-wrap">
+                      <div className="flex items-center gap-3 sm:gap-4 min-w-0 flex-1 w-full">
+                        <div className="min-w-0 flex-1">
+                          <h3 className="text-base sm:text-lg font-semibold text-foreground flex items-center gap-2 flex-wrap leading-snug">
                             <span
-                              className="truncate cursor-pointer hover:text-primary transition-colors"
+                              className="line-clamp-2 sm:truncate cursor-pointer hover:text-primary transition-colors"
                               onClick={() =>
                                 item.subject?.id &&
                                 navigate(`/subjects/${item.subject.id}`)
@@ -4659,44 +4659,44 @@ export const TodayPage = () => {
                         </div>
                       </div>
 
-                      <div className="flex flex-nowrap items-center gap-2 self-end md:self-auto shrink-0">
+                      <div className="w-full md:w-auto flex flex-wrap sm:flex-nowrap items-center gap-1 sm:gap-2 md:self-auto shrink-0">
                         <button
                           onClick={() => handleStatusClick(item, "present")}
-                          className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold cursor-pointer transition-[transform,opacity] duration-75 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${
+                          className={`flex-1 sm:flex-none justify-center flex items-center gap-1 sm:gap-1.5 px-1.5 sm:px-3 py-2 rounded-xl text-[11px] sm:text-xs font-semibold whitespace-nowrap cursor-pointer transition-[transform,opacity] duration-75 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${
                             ["present", "attended", "medical", "od"].includes(String(item.status || "").toLowerCase())
                               ? "bg-emerald-500 text-white font-bold shadow-md shadow-emerald-500/20"
                               : "bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 hover:text-emerald-600"
                           }`}
                         >
-                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          <CheckCircle2 className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" />
                           Attended
                         </button>
                         <button
                           onClick={() => handleStatusClick(item, "absent")}
-                          className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold cursor-pointer transition-[transform,opacity] duration-75 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${
+                          className={`flex-1 sm:flex-none justify-center flex items-center gap-1 sm:gap-1.5 px-1.5 sm:px-3.5 py-2 rounded-xl text-[11px] sm:text-xs font-semibold whitespace-nowrap cursor-pointer transition-[transform,opacity] duration-75 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${
                             ["absent", "missed"].includes(String(item.status || "").toLowerCase())
                               ? "bg-rose-500 text-white font-bold shadow-md shadow-rose-500/20"
                               : "bg-rose-500/10 text-rose-500 hover:bg-rose-500/20 hover:text-rose-600"
                           }`}
                         >
-                          <XCircle className="w-3.5 h-3.5" />
+                          <XCircle className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" />
                           Missed
                         </button>
                         <button
                           onClick={() => handleStatusClick(item, "off")}
-                          className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold cursor-pointer transition-[transform,opacity] duration-75 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${
+                          className={`flex-1 sm:flex-none justify-center flex items-center gap-1 sm:gap-1.5 px-1.5 sm:px-3 py-2 rounded-xl text-[11px] sm:text-xs font-semibold whitespace-nowrap cursor-pointer transition-[transform,opacity] duration-75 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${
                             ["off", "cancelled"].includes(String(item.status || "").toLowerCase())
                               ? "bg-amber-500 text-white font-bold shadow-md shadow-amber-500/20"
                               : "bg-amber-500/10 text-amber-500 hover:bg-amber-500/20 hover:text-amber-600"
                           }`}
                         >
-                          <AlertCircle className="w-3.5 h-3.5" />
+                          <AlertCircle className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" />
                           Off
                         </button>
                         <button
                           type="button"
                           onClick={() => handleOpenRemarkModal(item)}
-                          className={`flex items-center justify-center p-2 rounded-xl text-xs font-semibold cursor-pointer transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${
+                          className={`flex items-center justify-center p-1.5 sm:p-2 rounded-xl text-xs font-semibold cursor-pointer transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed shrink-0 ${
                             item.remarks
                               ? "bg-primary text-primary-foreground shadow-sm shadow-primary/25"
                               : "bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground"
@@ -4714,10 +4714,10 @@ export const TodayPage = () => {
                           (item.isExtra || item.type === "manual") && (
                             <button
                               onClick={() => handleDeleteExtraClass(item.id)}
-                              className="flex items-center justify-center p-2 rounded-xl bg-rose-500/10 text-rose-500 hover:bg-rose-500 hover:text-white transition-colors cursor-pointer ml-2"
+                              className="flex items-center justify-center p-1.5 sm:p-2 rounded-xl bg-rose-500/10 text-rose-500 hover:bg-rose-500 hover:text-white transition-colors cursor-pointer shrink-0"
                               title="Delete Extra Class"
                             >
-                              <Trash2 className="w-4 h-4" />
+                              <Trash2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                             </button>
                           )}
                       </div>
@@ -4812,8 +4812,8 @@ export const TodayPage = () => {
 
         {/* Add Extra Lecture Modal */}
         {isAddExtraModalOpen && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))]">
-            <div className="bg-card border border-border/80 rounded-3xl p-4 sm:p-6 w-full max-w-md shadow-2xl space-y-4 relative max-h-[82vh] flex flex-col overflow-hidden">
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4 bg-white/50 dark:bg-black/60 backdrop-blur-md animate-in fade-in duration-200 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))]">
+            <div className="bg-white/90 dark:bg-card/90 backdrop-blur-2xl border border-slate-900/10 dark:border-border/80 rounded-3xl p-4 sm:p-6 w-full max-w-md shadow-2xl space-y-4 relative max-h-[82vh] flex flex-col overflow-hidden">
               <div className="flex items-center justify-between shrink-0 border-b border-border/40 pb-3">
                 <h3 className="text-lg sm:text-xl font-extrabold text-foreground tracking-tight">
                   Add extra class

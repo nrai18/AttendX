@@ -2,6 +2,41 @@ import { Release } from "../components/settings/ChangelogModal";
 
 export const OFFLINE_CHANGELOG: Release[] = [
   {
+    version: "4.4.0",
+    date: "Nov 17, 2026",
+    sections: [
+      {
+        title: "AttendX Vault, Frosted Glass UI & Responsive Overhaul",
+        items: [
+          {
+            icon: "🔐",
+            text: "Passcode Lock & AttendX Vault: Added a salted SHA-256 4-digit PIN barrier under Account Settings (Slot 03) with cold-start protection, configurable auto-lock timings, and one-tap TopBar quick-lock.",
+          },
+          {
+            icon: "👆",
+            text: "Native Android Fingerprint Unlock: Integrated BiometricPrompt hardware authentication with optical setup flow and instant one-touch unlock.",
+          },
+          {
+            icon: "🎵",
+            text: "Web Audio Session & Keypad Chimes: Synthesized C-Major login chimes, descending lock sweeps, and crisp keypad glass clicks with zero asset bloat.",
+          },
+          {
+            icon: "🪟",
+            text: "Unified Frosted Glass UI: Centered floating frosted-glass modals on mobile and desktop in both Light and Dark modes across Update Prompts, Linked Devices, Edit Profile, and Add Extra Class.",
+          },
+          {
+            icon: "⚡",
+            text: "Instant Post-Login Attendance & Auto-Update Hygiene: Fixed initial 0.00% delay after sign-in, enabled automatic foreground-resume update detection, and removed manual update clutter from Settings.",
+          },
+          {
+            icon: "📱",
+            text: "Mobile & Tablet Layout Fixes: Fixed Today action bars and 5-button Extra Class rows on narrow phones, Settings criteria stacking, Landing Page tablet navigation, and Classrooms Hub tablet cards.",
+          },
+        ],
+      },
+    ],
+  },
+  {
     version: "4.3.1",
     date: "Nov 14, 2026",
     sections: [

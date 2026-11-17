@@ -10,7 +10,7 @@ function parseFormattedText(text: string) {
   return parts.map((part, i) => {
     if (part.startsWith("**") && part.endsWith("**")) {
       return (
-        <strong key={i} className="font-bold text-foreground dark:text-white tracking-tight">
+        <strong key={i} className="font-bold text-slate-900 dark:text-slate-50 tracking-tight">
           {part.slice(2, -2)}
         </strong>
       );
@@ -74,10 +74,10 @@ export const UpdateChangelog: React.FC<Props> = ({ markdown }) => {
           return (
             <div
               key={idx}
-              className="pt-2.5 pb-1 border-b border-border/80 dark:border-white/10 flex items-center gap-2"
+              className="pt-2.5 pb-1 border-b border-slate-900/10 dark:border-white/10 flex items-center gap-2"
             >
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 dark:bg-emerald-400" />
-              <h4 className="text-[11px] font-mono font-bold text-foreground dark:text-white uppercase tracking-wider">
+              <h4 className="text-[11px] font-mono font-bold text-slate-900 dark:text-slate-50 uppercase tracking-wider">
                 {headerText}
               </h4>
             </div>
@@ -90,10 +90,10 @@ export const UpdateChangelog: React.FC<Props> = ({ markdown }) => {
           return (
             <div
               key={idx}
-              className="p-3.5 rounded-2xl bg-muted/40 dark:bg-white/[0.04] border border-border/80 dark:border-white/[0.08] flex items-start gap-3 shadow-xs"
+              className="p-3.5 rounded-2xl bg-white/60 dark:bg-white/[0.05] backdrop-blur-md border border-slate-900/10 dark:border-white/10 flex items-start gap-3 shadow-xs min-w-0"
             >
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 dark:bg-emerald-400 mt-1.5 shrink-0" />
-              <div className="flex-1 text-foreground/90 dark:text-zinc-200 leading-relaxed font-normal">
+              <div className="flex-1 min-w-0 text-slate-800 dark:text-zinc-200 leading-relaxed font-normal break-words [overflow-wrap:anywhere]">
                 {parseFormattedText(cleanText)}
               </div>
             </div>
@@ -102,7 +102,7 @@ export const UpdateChangelog: React.FC<Props> = ({ markdown }) => {
 
         // 4. Regular Paragraphs
         return (
-          <p key={idx} className="text-foreground/90 dark:text-zinc-200 leading-relaxed px-1 font-normal">
+          <p key={idx} className="text-slate-800 dark:text-zinc-200 leading-relaxed px-1 font-normal break-words [overflow-wrap:anywhere]">
             {parseFormattedText(trimmed)}
           </p>
         );
