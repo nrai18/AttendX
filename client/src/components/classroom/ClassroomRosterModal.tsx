@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
+import { createPortal } from "react-dom";
 import { 
   Users, 
   X, 
@@ -12,7 +13,8 @@ import {
   VolumeX, 
   Megaphone,
   UserCheck,
-  AlertCircle
+  AlertCircle,
+  Lock
 } from "lucide-react";
 import { api } from "../../lib/api";
 import { useCacheStore } from "../../stores/cacheStore";
@@ -20,6 +22,7 @@ import { toast } from "sonner";
 import { SoundFX } from "../../utils/soundEffects";
 import { hapticLight, hapticMedium, hapticSuccess, hapticSelection } from "../../utils/haptics";
 import { triggerDynamicHUD } from "../ui/dynamic-island-hud";
+import { useScrollLock } from "../../hooks/useScrollLock";
 
 export interface ClassroomMemberItem {
   id: string;
@@ -40,6 +43,8 @@ interface ClassroomRosterModalProps {
   classroomId: string;
   classroomName: string;
   isCrOrAdmin: boolean;
+  canBroadcast?: boolean;
+  isDeleted?: boolean;
   initialPermission?: "admins" | "everyone" | "only_selected" | "everyone_except";
   initialAllowedPosterIds?: string[];
   initialDeniedPosterIds?: string[];
@@ -76,6 +81,8 @@ export const ClassroomRosterModal: React.FC<ClassroomRosterModalProps> = ({
   classroomId,
   classroomName,
   isCrOrAdmin,
+  canBroadcast,
+  isDeleted = false,
   initialPermission = "admins",
   initialAllowedPosterIds = [],
   initialDeniedPosterIds = [],
@@ -92,12 +99,24 @@ export const ClassroomRosterModal: React.FC<ClassroomRosterModalProps> = ({
   const [selectedDeniedIds, setSelectedDeniedIds] = useState<string[]>(initialDeniedPosterIds);
   const [isSavingPermissions, setIsSavingPermissions] = useState(false);
 
+  // Only CR / Admins who hold broadcast permission on an active classroom can modify broadcast access
+  const canManageBroadcast = Boolean(isCrOrAdmin && (canBroadcast ?? true) && !isDeleted);
+  const lastInitKeyRef = useRef<string | null>(null);
+
+  useScrollLock(isOpen);
+
   useEffect(() => {
-    if (isOpen && classroomId) {
+    if (!isOpen || !classroomId) {
+      lastInitKeyRef.current = null;
+      return;
+    }
+    if (lastInitKeyRef.current !== classroomId) {
+      lastInitKeyRef.current = classroomId;
       fetchMembers();
       setPermissionMode(initialPermission);
       setSelectedAllowedIds(initialAllowedPosterIds);
       setSelectedDeniedIds(initialDeniedPosterIds);
+      setActiveTab("roster");
     }
   }, [isOpen, classroomId, initialPermission, initialAllowedPosterIds, initialDeniedPosterIds]);
 
@@ -205,23 +224,32 @@ export const ClassroomRosterModal: React.FC<ClassroomRosterModalProps> = ({
 
   if (!isOpen) return null;
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-150">
-      <div className="bg-white dark:bg-[#0c0d0e] border border-neutral-200 dark:border-white/15 rounded-3xl w-full max-w-lg max-h-[88vh] flex flex-col shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+  return createPortal(
+    <div
+      onClick={() => {
+        hapticLight();
+        onClose();
+      }}
+      className="fixed inset-0 z-[100] flex items-center justify-center px-3 pt-[calc(env(safe-area-inset-top,0px)+0.75rem)] pb-[calc(env(safe-area-inset-bottom,0px)+0.75rem)] sm:p-4 bg-white/50 dark:bg-black/60 backdrop-blur-xl animate-in fade-in duration-150"
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="bg-white/85 dark:bg-[#0d0e11]/85 backdrop-blur-2xl border border-slate-900/10 dark:border-white/15 rounded-3xl w-full max-w-lg max-h-[85vh] flex flex-col shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200"
+      >
         {/* Modal Top Header */}
-        <div className="p-5 sm:p-6 pb-4 border-b border-border/40 flex items-start justify-between gap-3 shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-neutral-100 dark:bg-white/5 border border-neutral-200 dark:border-white/10 flex items-center justify-center text-neutral-800 dark:text-neutral-200 shrink-0">
+        <div className="p-5 sm:p-6 pb-4 border-b border-slate-900/10 dark:border-white/10 flex items-start justify-between gap-3 shrink-0">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-10 h-10 rounded-2xl bg-slate-900/[0.05] dark:bg-white/[0.06] border border-slate-900/10 dark:border-white/10 flex items-center justify-center text-neutral-800 dark:text-neutral-200 shrink-0">
               <Users className="w-5 h-5" />
             </div>
-            <div>
-              <h3 className="text-base sm:text-lg font-bold tracking-tight text-foreground flex items-center gap-2">
-                Classroom Roster
-                <span className="text-[11px] font-mono font-semibold px-2 py-0.5 rounded-full bg-neutral-100 dark:bg-white/5 border border-neutral-200 dark:border-white/10 text-neutral-600 dark:text-neutral-400">
+            <div className="min-w-0">
+              <h3 className="text-base sm:text-lg font-bold tracking-tight text-foreground flex items-center gap-2 flex-wrap">
+                <span>Classroom Roster</span>
+                <span className="text-[11px] font-mono font-semibold px-2 py-0.5 rounded-full bg-slate-900/[0.05] dark:bg-white/[0.06] border border-slate-900/10 dark:border-white/10 text-neutral-600 dark:text-neutral-400 whitespace-nowrap">
                   {members.length} {members.length === 1 ? "Peer" : "Peers"}
                 </span>
               </h3>
-              <p className="text-xs text-muted-foreground truncate max-w-[260px] sm:max-w-xs">
+              <p className="text-xs text-muted-foreground truncate max-w-[240px] sm:max-w-xs">
                 {classroomName} • Synchronized Section Roster
               </p>
             </div>
@@ -229,51 +257,70 @@ export const ClassroomRosterModal: React.FC<ClassroomRosterModalProps> = ({
 
           <button
             type="button"
-            onClick={() => {
+            onClick={(e) => {
+              e.stopPropagation();
               hapticLight();
               onClose();
             }}
-            className="w-8 h-8 rounded-full hover:bg-neutral-100 dark:hover:bg-white/5 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors shrink-0"
+            className="w-8 h-8 rounded-full hover:bg-slate-900/10 dark:hover:bg-white/10 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors shrink-0 cursor-pointer"
             title="Close"
+            aria-label="Close roster modal"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        {/* Tab Switcher (Visible to CR/Admins) */}
-        {isCrOrAdmin && (
-          <div className="px-5 pt-3 border-b border-border/40 flex gap-2 bg-neutral-50/60 dark:bg-black/30 shrink-0">
+        {/* Tab Switcher (Broadcast Access enabled only for CR/Admin with broadcast authority; greyed out otherwise) */}
+        {!isDeleted && (
+          <div className="px-5 pt-3 border-b border-slate-900/10 dark:border-white/10 flex gap-2 bg-slate-900/[0.02] dark:bg-white/[0.02] shrink-0">
             <button
               type="button"
               onClick={() => {
                 hapticLight();
                 setActiveTab("roster");
               }}
-              className={`pb-2.5 px-3 text-xs font-semibold border-b-2 transition-all flex items-center gap-1.5 ${
+              className={`pb-2.5 px-3 text-xs font-semibold border-b-2 transition-all flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
                 activeTab === "roster"
-                  ? "border-neutral-900 dark:border-white text-neutral-900 dark:text-white"
+                  ? "border-slate-900 dark:border-white text-slate-900 dark:text-white"
                   : "border-transparent text-muted-foreground hover:text-foreground"
               }`}
             >
-              <Users className="w-3.5 h-3.5" />
-              Classmates List ({members.length})
+              <Users className="w-3.5 h-3.5 shrink-0" />
+              <span>Classmates List ({members.length})</span>
             </button>
             <button
               type="button"
+              aria-disabled={!canManageBroadcast}
+              title={
+                canManageBroadcast
+                  ? "Configure section broadcast permissions"
+                  : "Only CR / Admins with broadcast permission can modify access"
+              }
               onClick={() => {
+                if (!canManageBroadcast) {
+                  hapticLight();
+                  toast.info("Only CR / Admins with broadcast permission can modify broadcast access");
+                  return;
+                }
                 hapticLight();
                 setActiveTab("permissions");
               }}
-              className={`pb-2.5 px-3 text-xs font-semibold border-b-2 transition-all flex items-center gap-1.5 ${
-                activeTab === "permissions"
-                  ? "border-neutral-900 dark:border-white text-neutral-900 dark:text-white"
-                  : "border-transparent text-muted-foreground hover:text-foreground"
+              className={`pb-2.5 px-3 text-xs font-semibold border-b-2 transition-all flex items-center gap-1.5 whitespace-nowrap ${
+                !canManageBroadcast
+                  ? "border-transparent text-neutral-400 dark:text-neutral-500 opacity-45 cursor-not-allowed"
+                  : activeTab === "permissions"
+                  ? "border-slate-900 dark:border-white text-slate-900 dark:text-white cursor-pointer"
+                  : "border-transparent text-muted-foreground hover:text-foreground cursor-pointer"
               }`}
             >
-              <Megaphone className="w-3.5 h-3.5" />
-              Broadcast Access
-              {permissionMode !== "admins" && (
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              <Megaphone className="w-3.5 h-3.5 shrink-0" />
+              <span>Broadcast Access</span>
+              {!canManageBroadcast ? (
+                <Lock className="w-3 h-3 shrink-0 opacity-75" />
+              ) : (
+                permissionMode !== "admins" && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                )
               )}
             </button>
           </div>
@@ -284,7 +331,7 @@ export const ClassroomRosterModal: React.FC<ClassroomRosterModalProps> = ({
           /* TAB 1: CLASSMATES ROSTER */
           <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
             {/* Search Filter Bar */}
-            <div className="p-3 sm:px-5 border-b border-border/40 shrink-0 bg-white dark:bg-[#0c0d0e]">
+            <div className="p-3 sm:px-5 border-b border-slate-900/10 dark:border-white/10 shrink-0 bg-white/40 dark:bg-white/[0.02]">
               <div className="relative flex items-center">
                 <Search className="w-4 h-4 text-muted-foreground absolute left-3.5 pointer-events-none" />
                 <input
@@ -292,7 +339,7 @@ export const ClassroomRosterModal: React.FC<ClassroomRosterModalProps> = ({
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="Filter classmates by name or roll number..."
-                  className="w-full bg-neutral-50 dark:bg-[#050507] border border-neutral-200 dark:border-white/10 rounded-xl pl-9 pr-3.5 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-neutral-900 dark:focus:border-white transition-all"
+                  className="w-full bg-white/70 dark:bg-black/30 border border-slate-900/10 dark:border-white/10 rounded-xl pl-9 pr-3.5 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-slate-900 dark:focus:border-white transition-all"
                 />
                 {searchQuery && (
                   <button
@@ -395,7 +442,7 @@ export const ClassroomRosterModal: React.FC<ClassroomRosterModalProps> = ({
         ) : (
           /* TAB 2: BROADCAST PERMISSIONS CONFIGURATION (CR/Admin) */
           <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-            <div className="p-4 sm:p-5 border-b border-border/40 space-y-3 bg-neutral-50/40 dark:bg-black/20 shrink-0">
+            <div className="p-4 sm:p-5 border-b border-slate-900/10 dark:border-white/10 space-y-3 bg-white/30 dark:bg-white/[0.02] shrink-0">
               <div>
                 <label className="text-xs font-mono uppercase tracking-wider text-muted-foreground block mb-2">
                   Select Who Can Post Announcements
@@ -408,15 +455,15 @@ export const ClassroomRosterModal: React.FC<ClassroomRosterModalProps> = ({
                       hapticLight();
                       setPermissionMode("admins");
                     }}
-                    className={`p-3 rounded-2xl border text-left transition-all ${
+                    className={`p-3 rounded-2xl border text-left transition-all cursor-pointer ${
                       permissionMode === "admins"
-                        ? "bg-neutral-900 text-white dark:bg-white dark:text-black border-transparent shadow-sm"
-                        : "bg-white dark:bg-[#0c0d0e] border-neutral-200 dark:border-white/10 text-foreground hover:bg-neutral-100 dark:hover:bg-white/5"
+                        ? "bg-slate-900 text-slate-50 dark:bg-slate-50 dark:text-slate-950 border-transparent shadow-sm"
+                        : "bg-white/60 dark:bg-white/[0.04] border-slate-900/10 dark:border-white/10 text-foreground hover:bg-white/90 dark:hover:bg-white/[0.08]"
                     }`}
                   >
                     <div className="text-xs font-bold flex items-center gap-1.5">
-                      <ShieldCheck className="w-3.5 h-3.5" />
-                      CR / Admins Only
+                      <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
+                      <span>CR / Admins Only</span>
                     </div>
                     <p className={`text-[10px] mt-1 ${permissionMode === "admins" ? "opacity-80" : "text-muted-foreground"}`}>
                       Strict academic broadcast
@@ -430,15 +477,15 @@ export const ClassroomRosterModal: React.FC<ClassroomRosterModalProps> = ({
                       hapticLight();
                       setPermissionMode("everyone");
                     }}
-                    className={`p-3 rounded-2xl border text-left transition-all ${
+                    className={`p-3 rounded-2xl border text-left transition-all cursor-pointer ${
                       permissionMode === "everyone"
-                        ? "bg-neutral-900 text-white dark:bg-white dark:text-black border-transparent shadow-sm"
-                        : "bg-white dark:bg-[#0c0d0e] border-neutral-200 dark:border-white/10 text-foreground hover:bg-neutral-100 dark:hover:bg-white/5"
+                        ? "bg-slate-900 text-slate-50 dark:bg-slate-50 dark:text-slate-950 border-transparent shadow-sm"
+                        : "bg-white/60 dark:bg-white/[0.04] border-slate-900/10 dark:border-white/10 text-foreground hover:bg-white/90 dark:hover:bg-white/[0.08]"
                     }`}
                   >
                     <div className="text-xs font-bold flex items-center gap-1.5">
-                      <Users className="w-3.5 h-3.5" />
-                      Everyone
+                      <Users className="w-3.5 h-3.5 shrink-0" />
+                      <span>Everyone</span>
                     </div>
                     <p className={`text-[10px] mt-1 ${permissionMode === "everyone" ? "opacity-80" : "text-muted-foreground"}`}>
                       Open section stream
@@ -452,15 +499,15 @@ export const ClassroomRosterModal: React.FC<ClassroomRosterModalProps> = ({
                       hapticLight();
                       setPermissionMode("only_selected");
                     }}
-                    className={`p-3 rounded-2xl border text-left transition-all ${
+                    className={`p-3 rounded-2xl border text-left transition-all cursor-pointer ${
                       permissionMode === "only_selected"
-                        ? "bg-neutral-900 text-white dark:bg-white dark:text-black border-transparent shadow-sm"
-                        : "bg-white dark:bg-[#0c0d0e] border-neutral-200 dark:border-white/10 text-foreground hover:bg-neutral-100 dark:hover:bg-white/5"
+                        ? "bg-slate-900 text-slate-50 dark:bg-slate-50 dark:text-slate-950 border-transparent shadow-sm"
+                        : "bg-white/60 dark:bg-white/[0.04] border-slate-900/10 dark:border-white/10 text-foreground hover:bg-white/90 dark:hover:bg-white/[0.08]"
                     }`}
                   >
                     <div className="text-xs font-bold flex items-center gap-1.5">
-                      <UserCheck className="w-3.5 h-3.5" />
-                      A Few (Selected Peers)
+                      <UserCheck className="w-3.5 h-3.5 shrink-0" />
+                      <span>A Few (Selected Peers)</span>
                     </div>
                     <p className={`text-[10px] mt-1 ${permissionMode === "only_selected" ? "opacity-80" : "text-muted-foreground"}`}>
                       Only designated students
@@ -474,15 +521,15 @@ export const ClassroomRosterModal: React.FC<ClassroomRosterModalProps> = ({
                       hapticLight();
                       setPermissionMode("everyone_except");
                     }}
-                    className={`p-3 rounded-2xl border text-left transition-all ${
+                    className={`p-3 rounded-2xl border text-left transition-all cursor-pointer ${
                       permissionMode === "everyone_except"
-                        ? "bg-neutral-900 text-white dark:bg-white dark:text-black border-transparent shadow-sm"
-                        : "bg-white dark:bg-[#0c0d0e] border-neutral-200 dark:border-white/10 text-foreground hover:bg-neutral-100 dark:hover:bg-white/5"
+                        ? "bg-slate-900 text-slate-50 dark:bg-slate-50 dark:text-slate-950 border-transparent shadow-sm"
+                        : "bg-white/60 dark:bg-white/[0.04] border-slate-900/10 dark:border-white/10 text-foreground hover:bg-white/90 dark:hover:bg-white/[0.08]"
                     }`}
                   >
                     <div className="text-xs font-bold flex items-center gap-1.5">
-                      <VolumeX className="w-3.5 h-3.5" />
-                      Everyone Except A Few
+                      <VolumeX className="w-3.5 h-3.5 shrink-0" />
+                      <span>Everyone Except A Few</span>
                     </div>
                     <p className={`text-[10px] mt-1 ${permissionMode === "everyone_except" ? "opacity-80" : "text-muted-foreground"}`}>
                       Mute restricted students
@@ -492,7 +539,7 @@ export const ClassroomRosterModal: React.FC<ClassroomRosterModalProps> = ({
               </div>
 
               {/* Status Note */}
-              <div className="p-2.5 rounded-xl bg-neutral-100 dark:bg-white/5 border border-neutral-200 dark:border-white/10 text-[11px] text-muted-foreground flex items-center gap-2">
+              <div className="p-2.5 rounded-xl bg-slate-900/[0.04] dark:bg-white/[0.04] border border-slate-900/10 dark:border-white/10 text-[11px] text-muted-foreground flex items-center gap-2">
                 <AlertCircle className="w-3.5 h-3.5 shrink-0 text-amber-500" />
                 <span>
                   {permissionMode === "admins" && "Only designated CRs and Admins can broadcast notices."}
@@ -593,31 +640,32 @@ export const ClassroomRosterModal: React.FC<ClassroomRosterModalProps> = ({
         )}
 
         {/* Modal Bottom Actions */}
-        <div className="p-4 sm:p-5 border-t border-border/40 flex items-center justify-between gap-3 shrink-0 bg-neutral-50/60 dark:bg-black/40">
-          <p className="text-[11px] font-mono text-muted-foreground">
+        <div className="p-4 sm:p-5 border-t border-slate-900/10 dark:border-white/10 flex items-center justify-between gap-3 shrink-0 bg-white/40 dark:bg-white/[0.02]">
+          <p className="text-[11px] font-mono text-muted-foreground truncate">
             {activeTab === "roster"
               ? "All active enrolled section members"
-              : `Selected mode: ${permissionMode}`}
+              : `Mode: ${permissionMode}`}
           </p>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             <button
               type="button"
-              onClick={() => {
+              onClick={(e) => {
+                e.stopPropagation();
                 hapticLight();
                 onClose();
               }}
-              className="px-4 py-2 rounded-xl text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-neutral-100 dark:hover:bg-white/5 transition-colors"
+              className="px-4 py-2 rounded-xl text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-slate-900/5 dark:hover:bg-white/10 transition-colors cursor-pointer whitespace-nowrap"
             >
               {activeTab === "roster" ? "Close" : "Cancel"}
             </button>
 
-            {activeTab === "permissions" && (
+            {activeTab === "permissions" && canManageBroadcast && (
               <button
                 type="button"
                 disabled={isSavingPermissions}
                 onClick={handleSavePermissions}
-                className="px-5 py-2 rounded-xl bg-neutral-900 dark:bg-white text-white dark:text-black hover:bg-neutral-800 dark:hover:bg-neutral-100 text-xs font-semibold tracking-wide transition-all disabled:opacity-40 inline-flex items-center gap-1.5 active:scale-[0.98]"
+                className="px-4 sm:px-5 py-2 rounded-xl bg-slate-900 text-slate-50 dark:bg-slate-50 dark:text-slate-950 hover:opacity-90 text-xs font-semibold tracking-wide transition-all disabled:opacity-40 inline-flex items-center gap-1.5 active:scale-[0.98] cursor-pointer whitespace-nowrap shrink-0"
               >
                 {isSavingPermissions ? (
                   <>
@@ -635,6 +683,7 @@ export const ClassroomRosterModal: React.FC<ClassroomRosterModalProps> = ({
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

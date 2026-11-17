@@ -1,5 +1,6 @@
 import React from "react";
 import { useLocation } from "react-router-dom";
+import { Capacitor } from "@capacitor/core";
 import { api } from "../../lib/api";
 import { useAuthStore } from "../../stores/authStore";
 import { Plus, LogOut, Sun, Moon, Loader2, Lock } from "lucide-react";
@@ -148,8 +149,8 @@ export const TopBar: React.FC<TopBarProps> = ({
             </div>
           )}
 
-          {/* Quick Lock Vault Button (only visible when Passcode Lock is enabled) */}
-          {isPasscodeEnabled && (
+          {/* Quick Lock Vault Button (app-only, visible when Passcode Lock is enabled) */}
+          {Capacitor.isNativePlatform() && isPasscodeEnabled && (
             <Button
               variant="ghost"
               size="icon"

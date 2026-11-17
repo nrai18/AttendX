@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
+import { Capacitor } from "@capacitor/core";
 import {
   ArrowLeft,
   Clock,
@@ -223,7 +224,7 @@ export const PasscodeSetupModal: React.FC<Props> = ({ isOpen, onClose }) => {
     await handleScanFingerprint();
   };
 
-  if (!isOpen || typeof document === "undefined") return null;
+  if (!Capacitor.isNativePlatform() || !isOpen || typeof document === "undefined") return null;
 
   const isPinScreen =
     step === "create" ||

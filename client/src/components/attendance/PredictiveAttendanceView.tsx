@@ -450,17 +450,19 @@ export const PredictiveAttendanceView: React.FC<PredictiveAttendanceViewProps> =
             </div>
 
             {/* Target Percentage Selector */}
-            <div className="flex items-center gap-3 bg-white/60 dark:bg-black/40 backdrop-blur-md border border-slate-200/60 dark:border-white/10 shadow-sm px-3.5 py-2 rounded-2xl shrink-0">
-              <Sliders className="w-4 h-4 text-slate-500 dark:text-slate-400" />
-              <span className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-widest">
-                Target Goal
-              </span>
-              <div className="flex items-center gap-1.5">
+            <div className="w-full sm:w-auto flex flex-wrap items-center justify-between gap-2 sm:gap-3 bg-white/60 dark:bg-black/40 backdrop-blur-md border border-slate-200/60 dark:border-white/10 shadow-sm px-3 sm:px-3.5 py-2 rounded-2xl shrink-0">
+              <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+                <Sliders className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-500 dark:text-slate-400 shrink-0" />
+                <span className="text-[11px] sm:text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider sm:tracking-widest whitespace-nowrap">
+                  Target Goal
+                </span>
+              </div>
+              <div className="flex items-center justify-end gap-1 sm:gap-1.5 flex-1 sm:flex-initial">
                 {[75, 80, 85, 90].map((t) => (
                   <button
                     key={t}
                     onClick={() => handleTargetChange(t)}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                    className={`px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl text-[11px] sm:text-xs font-bold transition-all whitespace-nowrap shrink-0 ${
                       globalTarget === t
                         ? "bg-slate-900 text-[#FFFFFF] dark:bg-white dark:text-slate-900 shadow-md scale-105"
                         : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-white/10"

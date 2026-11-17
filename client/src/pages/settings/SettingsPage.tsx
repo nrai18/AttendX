@@ -89,6 +89,8 @@ import { hapticSelection, hapticLight } from "../../utils/haptics";
 import { useAppLockStore } from "../../stores/appLockStore";
 import { PasscodeSetupModal } from "../../components/security/PasscodeSetupModal";
 import { OFFLINE_CHANGELOG } from "../../constants/offlineChangelog";
+import { PermissionService } from "../../services/PermissionService";
+import { FrostedLockedLevel } from "../../components/ui/frosted-locked-level";
 
 export const SettingsPage: React.FC = () => {
   const currentAppVersion = import.meta.env.VITE_APP_VERSION || "4.4.0";
@@ -538,7 +540,10 @@ export const SettingsPage: React.FC = () => {
   const [isChangelogOpen, setIsChangelogOpen] = useState(() => initialSec === "changelog" || initialSec === "history" || initialSec === "update-history");
   const [isEditProfileOpen, setIsEditProfileOpen] = useState(() => location.hash === "#edit-profile" || initialSec === "profile" || initialSec === "edit-profile" || searchParams.get("action") === "edit-profile");
   const [isLinkedDevicesOpen, setIsLinkedDevicesOpen] = useState(() => initialSec === "devices" || initialSec === "linked-devices");
-  const [isPasscodeOpen, setIsPasscodeOpen] = useState(() => initialSec === "passcode" || initialSec === "app-lock");
+  const isNativeApp = Capacitor.isNativePlatform();
+  const [isPasscodeOpen, setIsPasscodeOpen] = useState(
+    () => isNativeApp && (initialSec === "passcode" || initialSec === "app-lock"),
+  );
   const isPasscodeEnabled = useAppLockStore((s) => s.isEnabled);
   const isFingerprintEnabled = useAppLockStore((s) => s.isFingerprintEnabled);
   const [isTransitionModalOpen, setIsTransitionModalOpen] = useState(false);
@@ -554,7 +559,7 @@ export const SettingsPage: React.FC = () => {
 
     const isEditProfile = location.hash === "#edit-profile" || sec === "profile" || sec === "edit-profile" || searchParams.get("action") === "edit-profile";
     const isDevices = sec === "devices" || sec === "linked-devices";
-    const isPasscodeSec = sec === "passcode" || sec === "app-lock";
+    const isPasscodeSec = isNativeApp && (sec === "passcode" || sec === "app-lock");
     const isChangelog = sec === "changelog" || sec === "history" || sec === "update-history";
     const isFeedback = sec === "feedback" || sec === "support";
     const isAppInfo = sec === "app-info";
@@ -662,13 +667,14 @@ export const SettingsPage: React.FC = () => {
   const [notifyBirthday, setNotifyBirthday] = useState(true);
   const [dndAccessGranted, setDndAccessGranted] = useState<boolean>(false);
   const [hasNotifPermission, setHasNotifPermission] = useState<boolean>(true);
+  const [hasExactAlarmPermission, setHasExactAlarmPermission] = useState<boolean>(true);
 
   const refreshNotifPermission = React.useCallback(async () => {
     try {
-      const status = await NotificationService.checkPermissions();
-      const granted = status === 'granted';
-      setHasNotifPermission(granted);
-      return granted;
+      const snap = await PermissionService.getSnapshot();
+      setHasNotifPermission(snap.notifications);
+      setHasExactAlarmPermission(snap.exactAlarms);
+      return snap.notifications;
     } catch {
       setHasNotifPermission(false);
       return false;
@@ -726,7 +732,14 @@ export const SettingsPage: React.FC = () => {
   }, [refreshDndPermission]);
 
   useEffect(() => {
+    refreshNotifPermission();
     refreshDndPermission();
+
+    const unsubPerms = PermissionService.subscribe((snap) => {
+      setHasNotifPermission(snap.notifications);
+      setHasExactAlarmPermission(snap.exactAlarms);
+      setDndAccessGranted(snap.dndAccess);
+    });
 
     const onWindowFocus = () => {
       refreshNotifPermission();
@@ -747,6 +760,7 @@ export const SettingsPage: React.FC = () => {
       appListenerPromise = import("@capacitor/app").then(({ App: CapApp }) =>
         CapApp.addListener("appStateChange", ({ isActive }) => {
           if (isActive) {
+            refreshNotifPermission();
             refreshDndPermission();
           }
         })
@@ -754,13 +768,14 @@ export const SettingsPage: React.FC = () => {
     }
 
     return () => {
+      unsubPerms();
       window.removeEventListener("focus", onWindowFocus);
       document.removeEventListener("visibilitychange", onVisibilityChange);
       if (appListenerPromise) {
         appListenerPromise.then((h) => h.remove()).catch(() => {});
       }
     };
-  }, [refreshDndPermission]);
+  }, [refreshDndPermission, refreshNotifPermission]);
 
   const { reminderFrequency, setReminderFrequency, frequencyMemory } = useCacheStore();
   const { config: notifConfig, updateConfig } = useNotificationStore();
@@ -2134,45 +2149,49 @@ export const SettingsPage: React.FC = () => {
               </div>
               <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
             </button>
-            <div className="h-px bg-border/50" />
-            <button
-              onClick={() => {
-                recordScroll();
-                hapticSelection();
-                setIsPasscodeOpen(true);
-              }}
-              className="w-full p-4 flex items-center justify-between gap-3 hover:bg-muted/30 transition-colors cursor-pointer"
-            >
-              <div className="flex items-center gap-3 min-w-0 flex-1">
-                <div className="bg-emerald-500/10 p-2.5 rounded-xl text-emerald-500 shrink-0">
-                  <Lock className="w-5 h-5" />
-                </div>
-                <div className="text-left min-w-0">
-                  <span className="text-sm font-semibold text-foreground block">
-                    Passcode Lock
-                  </span>
-                  <span className="text-xs text-muted-foreground block mt-0.5">
-                    {isPasscodeEnabled
-                      ? isFingerprintEnabled
-                        ? "4-digit PIN & Fingerprint active"
-                        : "4-digit PIN barrier active"
-                      : "Biometric & 4-digit security barrier"}
-                  </span>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <span
-                  className={`text-xs font-mono font-bold px-2 py-0.5 rounded-full border ${
-                    isPasscodeEnabled
-                      ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30"
-                      : "bg-muted text-muted-foreground border-border/60"
-                  }`}
+            {isNativeApp && (
+              <>
+                <div className="h-px bg-border/50" />
+                <button
+                  onClick={() => {
+                    recordScroll();
+                    hapticSelection();
+                    setIsPasscodeOpen(true);
+                  }}
+                  className="w-full p-4 flex items-center justify-between gap-3 hover:bg-muted/30 transition-colors cursor-pointer"
                 >
-                  {isPasscodeEnabled ? "On" : "Off"}
-                </span>
-                <ChevronRight className="w-4 h-4 text-muted-foreground" />
-              </div>
-            </button>
+                  <div className="flex items-center gap-3 min-w-0 flex-1">
+                    <div className="bg-emerald-500/10 p-2.5 rounded-xl text-emerald-500 shrink-0">
+                      <Lock className="w-5 h-5" />
+                    </div>
+                    <div className="text-left min-w-0">
+                      <span className="text-sm font-semibold text-foreground block">
+                        Passcode Lock
+                      </span>
+                      <span className="text-xs text-muted-foreground block mt-0.5">
+                        {isPasscodeEnabled
+                          ? isFingerprintEnabled
+                            ? "4-digit PIN & Fingerprint active"
+                            : "4-digit PIN barrier active"
+                          : "Biometric & 4-digit security barrier"}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`text-xs font-mono font-bold px-2 py-0.5 rounded-full border ${
+                        isPasscodeEnabled
+                          ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30"
+                          : "bg-muted text-muted-foreground border-border/60"
+                      }`}
+                    >
+                      {isPasscodeEnabled ? "On" : "Off"}
+                    </span>
+                    <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                  </div>
+                </button>
+              </>
+            )}
           </div>
         </div>
 
@@ -2325,7 +2344,23 @@ export const SettingsPage: React.FC = () => {
           <h2 className="text-xs font-bold text-slate-500 uppercase tracking-wider px-1">
             Summary Reports
           </h2>
-          <div className="bg-white dark:bg-[#111113] border border-black/10 dark:border-white/10 rounded-2xl p-4 shadow-sm space-y-4">
+          <FrostedLockedLevel
+            isLocked={!hasNotifPermission || (isNativeApp && !hasExactAlarmPermission)}
+            title={!hasNotifPermission ? "Notifications Permission Locked" : "Alarms & Reminders Locked"}
+            subtitle={
+              !hasNotifPermission
+                ? "Enable Notifications to unlock Daily Briefings, Weekly Reviews & Monthly Summaries."
+                : "Enable Alarms & Reminders so scheduled academic reports trigger at exact times."
+            }
+            actionLabel={!hasNotifPermission ? "Unlock Notifications" : "Enable Exact Alarms"}
+            onUnlock={async () => {
+              await PermissionService.requestSmart(
+                !hasNotifPermission ? "notifications" : "exactAlarms",
+              );
+              refreshNotifPermission();
+            }}
+          >
+            <div className="bg-white dark:bg-[#111113] border border-black/10 dark:border-white/10 rounded-2xl p-4 shadow-sm space-y-4">
             <div>
               <h3 className="text-sm font-bold text-slate-900 dark:text-white">
                 Reminder Frequency
@@ -2516,7 +2551,8 @@ export const SettingsPage: React.FC = () => {
                 </div>
               </div>
             )}
-          </div>
+            </div>
+          </FrostedLockedLevel>
         </div>
 
         <div className="space-y-3">
@@ -2524,7 +2560,23 @@ export const SettingsPage: React.FC = () => {
             Timetable Alerts
           </h2>
           <div className="bg-white dark:bg-[#111113] border border-black/10 dark:border-white/10 rounded-2xl p-4 shadow-sm space-y-4">
-            <div className="w-full flex flex-col gap-4">
+            <FrostedLockedLevel
+              isLocked={!hasNotifPermission || (isNativeApp && !hasExactAlarmPermission)}
+              title={!hasNotifPermission ? "Class Alerts Locked" : "Alarms Permission Locked"}
+              subtitle={
+                !hasNotifPermission
+                  ? "Grant Notifications permission to unlock Class Reminders, Room Tags, Heads-up & End-of-Day alerts."
+                  : "Allow Alarms & Reminders permission so class reminders fire right before your lecture."
+              }
+              actionLabel={!hasNotifPermission ? "Enable Notifications" : "Enable Alarms"}
+              onUnlock={async () => {
+                await PermissionService.requestSmart(
+                  !hasNotifPermission ? "notifications" : "exactAlarms",
+                );
+                refreshNotifPermission();
+              }}
+            >
+              <div className="w-full flex flex-col gap-4">
               <div className="flex flex-col gap-1">
                 <h3 className="text-sm font-bold text-slate-900 dark:text-white">
                   Class Reminders
@@ -2538,9 +2590,8 @@ export const SettingsPage: React.FC = () => {
                       type="button"
                       onClick={async () => {
                         const granted =
-                          await NotificationService.requestPermissions();
+                          await PermissionService.requestSmart("notifications");
                         if (granted) {
-                          setHasNotifPermission(true);
                           refreshNotifPermission();
                         }
                       }}
@@ -2639,19 +2690,24 @@ export const SettingsPage: React.FC = () => {
                   />
                 </button>
               </div>
+            </div>
+            </FrostedLockedLevel>
 
               <div
                 onClick={!dndAccessGranted ? handleOpenDndSettings : undefined}
-                className={`flex items-center justify-between mt-3 pt-3 border-t border-border/40 ${!dndAccessGranted ? "cursor-pointer" : ""}`}
+                className={`flex items-center justify-between gap-3 pt-3 border-t border-border/40 transition-all duration-500 ${!dndAccessGranted ? "cursor-pointer opacity-80" : ""}`}
               >
-                <div className="flex flex-col gap-0.5">
-                  <span className="text-sm font-semibold text-foreground">
-                    Do Not Disturb (DND) Access
+                <div className="flex flex-col gap-0.5 min-w-0">
+                  <span className="text-sm font-semibold text-foreground flex items-center gap-1.5">
+                    {!dndAccessGranted && (
+                      <Lock className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                    )}
+                    <span>Do Not Disturb (DND) Access</span>
                   </span>
                   <span className="text-xs text-muted-foreground">
                     {dndAccessGranted
                       ? "Allows 1-tap muting from class reminder notifications"
-                      : "Tap Enable Access to open Android DND permission settings"}
+                      : "Locked — Tap Enable Access to allow auto-mute during lectures"}
                   </span>
                 </div>
                 {dndAccessGranted ? (
@@ -2674,7 +2730,7 @@ export const SettingsPage: React.FC = () => {
                       }
                     }}
                     title="Tap to re-verify DND permission"
-                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 transition-colors"
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 transition-all shrink-0"
                   >
                     <CheckCircle2 className="w-3.5 h-3.5" /> Granted
                   </button>
@@ -2685,13 +2741,13 @@ export const SettingsPage: React.FC = () => {
                       e.stopPropagation();
                       handleOpenDndSettings();
                     }}
-                    className="px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-500/20 text-amber-500 hover:bg-amber-500/30 transition-colors shrink-0"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30 hover:bg-amber-500/30 transition-all shrink-0 cursor-pointer"
                   >
-                    Enable Access
+                    <Lock className="w-3 h-3" />
+                    Unlock DND
                   </button>
                 )}
               </div>
-            </div>
           </div>
         </div>
 
@@ -3735,15 +3791,17 @@ export const SettingsPage: React.FC = () => {
           restoreScrollPosition();
         }}
       />
-      <PasscodeSetupModal
-        isOpen={isPasscodeOpen}
-        onClose={() => {
-          setIsPasscodeOpen(false);
-          if (location.pathname !== "/settings")
-            navigate("/settings", { replace: true });
-          restoreScrollPosition();
-        }}
-      />
+      {isNativeApp && (
+        <PasscodeSetupModal
+          isOpen={isPasscodeOpen}
+          onClose={() => {
+            setIsPasscodeOpen(false);
+            if (location.pathname !== "/settings")
+              navigate("/settings", { replace: true });
+            restoreScrollPosition();
+          }}
+        />
+      )}
       <SemesterTransitionModal
         isOpen={isTransitionModalOpen}
         onClose={() => {

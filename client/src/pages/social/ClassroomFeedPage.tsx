@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
+import { createPortal } from "react-dom";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import {
   Loader2,
@@ -33,6 +34,9 @@ import { triggerDynamicHUD } from "../../components/ui/dynamic-island-hud";
 import { useBackHandlerStore } from "../../stores/backHandlerStore";
 import { getClassroomBannerTheme } from "../../components/classroom/ClassroomBanner";
 import { useCacheStore } from "../../stores/cacheStore";
+import { useScrollLock } from "../../hooks/useScrollLock";
+
+const URGENT_PIN_DURATION_MS = 24 * 60 * 60 * 1000;
 
 export interface AnnouncementAttachment {
   name: string;
@@ -48,6 +52,8 @@ interface Announcement {
   body?: string;
   importance?: "low" | "medium" | "high";
   isPinned?: boolean;
+  isActivePin?: boolean;
+  pinExpiresAt?: string | null;
   category?: string;
   attachmentUrls?: string[];
   createdAt: string;
@@ -199,6 +205,25 @@ export const ClassroomFeedPage = () => {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showTransitionModal, setShowTransitionModal] = useState(false);
   const [transitionTermNote, setTransitionTermNote] = useState("");
+  const [transitionNewName, setTransitionNewName] = useState("");
+
+  useScrollLock(Boolean(showCreateModal || showDeleteModal || showTransitionModal));
+
+  // Ensure urgent broadcasts remain pinned for 24h then automatically settle into chronological order
+  const orderedAnnouncements = useMemo(() => {
+    const list = Array.isArray(feed?.announcements) ? [...feed.announcements] : [];
+    const nowMs = Date.now();
+    return list.sort((a, b) => {
+      const aActivePin =
+        Boolean(a.isPinned || a.importance === "high") &&
+        nowMs - new Date(a.createdAt).getTime() < URGENT_PIN_DURATION_MS;
+      const bActivePin =
+        Boolean(b.isPinned || b.importance === "high") &&
+        nowMs - new Date(b.createdAt).getTime() < URGENT_PIN_DURATION_MS;
+      if (aActivePin !== bActivePin) return aActivePin ? -1 : 1;
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
+  }, [feed?.announcements]);
 
   const fetchFeed = async (showLoading = true) => {
     if (typeof navigator !== "undefined" && !navigator.onLine) {
@@ -569,24 +594,52 @@ export const ClassroomFeedPage = () => {
     e.preventDefault();
     try {
       setIsSubmitting(true);
-      const note = transitionTermNote.trim() || "The academic term has transitioned to the next semester. Please verify and synchronize your weekly schedules.";
+      const nextName = transitionNewName.trim();
+      const currentName = feed?.classroom?.name?.trim() || "";
+      const hasRename = Boolean(nextName && nextName !== currentName);
+      const defaultNote = hasRename
+        ? `The academic term has transitioned to "${nextName}". Please verify and synchronize your weekly schedules.`
+        : "The academic term has transitioned to the next semester. Please verify and synchronize your weekly schedules.";
+      const note = transitionTermNote.trim() || defaultNote;
+
       await api.post(`/classrooms/${id}/announcements`, {
-        title: "🎓 Academic Term Transition & Schedule Revision",
+        title: hasRename
+          ? `🎓 Academic Term Transition: ${nextName}`
+          : "🎓 Academic Term Transition & Schedule Revision",
         content: note,
         importance: "high",
       });
+
+      if (hasRename && id) {
+        await api.patch(`/classrooms/${id}`, { name: nextName });
+        const cacheStore = useCacheStore.getState();
+        if (Array.isArray(cacheStore.classrooms)) {
+          cacheStore.cacheClassrooms(
+            cacheStore.classrooms.map((c: any) => (c.id === id ? { ...c, name: nextName } : c))
+          );
+        }
+        setFeed((prev) =>
+          prev && prev.classroom
+            ? { ...prev, classroom: { ...prev.classroom, name: nextName } }
+            : prev
+        );
+      }
+
       SoundFX.playWhooshSound(0.26);
       SoundFX.playLevelUpCelebrationSound();
       hapticSuccess();
       triggerDynamicHUD({
         type: "hub",
-        label: "Academic Term Transition Broadcasted",
-        subtitle: "Classroom schedule revision posted to section",
+        label: hasRename ? `Transitioned to ${nextName}` : "Academic Term Transition Broadcasted",
+        subtitle: hasRename
+          ? "Classroom renamed & transition notice posted"
+          : "Classroom schedule revision posted to section",
         durationMs: 4600,
       });
       setShowTransitionModal(false);
       setTransitionTermNote("");
-      fetchFeed();
+      setTransitionNewName("");
+      fetchFeed(false);
     } catch (error: any) {
       toast.error(error.response?.data?.message || "Failed to broadcast transition notice");
     } finally {
@@ -707,6 +760,7 @@ export const ClassroomFeedPage = () => {
                     <button 
                       onClick={() => {
                         hapticMedium();
+                        setTransitionNewName(feed.classroom?.name || "");
                         setShowTransitionModal(true);
                       }}
                       title="Classroom Semester Transition"
@@ -838,7 +892,7 @@ export const ClassroomFeedPage = () => {
           </h2>
         </div>
 
-        {feed.announcements.length === 0 ? (
+        {orderedAnnouncements.length === 0 ? (
           <div className="p-10 text-center bg-white dark:bg-[#08080a] border border-neutral-200 dark:border-white/10 rounded-2xl space-y-3">
             <div className="w-10 h-10 rounded-xl bg-neutral-100 dark:bg-white/5 border border-neutral-200 dark:border-white/10 flex items-center justify-center text-neutral-600 dark:text-neutral-400 mx-auto">
               <BellRing className="w-5 h-5 opacity-60" />
@@ -850,10 +904,13 @@ export const ClassroomFeedPage = () => {
           </div>
         ) : (
           <div className="space-y-3">
-            {feed.announcements.map((ann) => {
+            {orderedAnnouncements.map((ann) => {
               const authorName = ann.createdBy?.name || ann.author?.name || "Section Representative";
               const isHigh = ann.importance === "high" || ann.isPinned;
               const isMed = ann.importance === "medium";
+              const ageMs = Date.now() - new Date(ann.createdAt).getTime();
+              const isActivePin = Boolean(isHigh && ageMs < URGENT_PIN_DURATION_MS);
+              const hoursLeft = Math.max(1, Math.ceil((URGENT_PIN_DURATION_MS - ageMs) / (60 * 60 * 1000)));
               const contentText = ann.content || ann.body || "";
 
               return (
@@ -876,7 +933,7 @@ export const ClassroomFeedPage = () => {
                       <h3 className="font-bold text-foreground text-sm sm:text-base">{ann.title}</h3>
                       {isHigh && (
                         <span className="text-[10px] font-mono uppercase font-bold px-2 py-0.5 rounded bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30">
-                          Urgent Broadcast
+                          Urgent Broadcast{isActivePin ? ` • Pinned ${hoursLeft}h` : ""}
                         </span>
                       )}
                       {isMed && (
@@ -998,9 +1055,15 @@ export const ClassroomFeedPage = () => {
       </div>
 
       {/* New Announcement Modal */}
-      {showCreateModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-150">
-          <div className="bg-white dark:bg-[#0c0d0e] border border-neutral-200 dark:border-white/15 rounded-3xl p-6 w-full max-w-lg shadow-2xl space-y-5">
+      {showCreateModal && createPortal(
+        <div
+          onClick={() => setShowCreateModal(false)}
+          className="fixed inset-0 z-[100] flex items-center justify-center px-3 pt-[calc(env(safe-area-inset-top,0px)+0.75rem)] pb-[calc(env(safe-area-inset-bottom,0px)+0.75rem)] sm:p-4 bg-white/50 dark:bg-black/60 backdrop-blur-xl animate-in fade-in duration-150"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white/85 dark:bg-[#0d0e11]/85 backdrop-blur-2xl border border-slate-900/10 dark:border-white/15 rounded-3xl p-6 w-full max-w-lg max-h-[88vh] overflow-y-auto shadow-2xl space-y-5 animate-in zoom-in-95 duration-200"
+          >
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-lg font-bold text-foreground">New Class Announcement</h3>
@@ -1008,8 +1071,11 @@ export const ClassroomFeedPage = () => {
               </div>
               <button 
                 type="button"
-                onClick={() => setShowCreateModal(false)}
-                className="w-8 h-8 rounded-full hover:bg-neutral-100 dark:hover:bg-white/5 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowCreateModal(false);
+                }}
+                className="w-8 h-8 rounded-full hover:bg-slate-900/10 dark:hover:bg-white/10 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -1197,13 +1263,20 @@ export const ClassroomFeedPage = () => {
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Delete / Disband Hub Modal */}
-      {showDeleteModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-150">
-          <div className="bg-white dark:bg-[#0c0d0e] border border-neutral-200 dark:border-white/15 rounded-3xl p-6 w-full max-w-md shadow-2xl space-y-5 animate-in zoom-in-95 duration-200">
+      {showDeleteModal && createPortal(
+        <div
+          onClick={() => setShowDeleteModal(false)}
+          className="fixed inset-0 z-[100] flex items-center justify-center px-3 pt-[calc(env(safe-area-inset-top,0px)+0.75rem)] pb-[calc(env(safe-area-inset-bottom,0px)+0.75rem)] sm:p-4 bg-white/50 dark:bg-black/60 backdrop-blur-xl animate-in fade-in duration-150"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white/85 dark:bg-[#0d0e11]/85 backdrop-blur-2xl border border-slate-900/10 dark:border-white/15 rounded-3xl p-6 w-full max-w-md shadow-2xl space-y-5 animate-in zoom-in-95 duration-200"
+          >
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-500">
@@ -1216,14 +1289,17 @@ export const ClassroomFeedPage = () => {
               </div>
               <button 
                 type="button"
-                onClick={() => setShowDeleteModal(false)}
-                className="w-8 h-8 rounded-full hover:bg-neutral-100 dark:hover:bg-white/5 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowDeleteModal(false);
+                }}
+                className="w-8 h-8 rounded-full hover:bg-slate-900/10 dark:hover:bg-white/10 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="p-3.5 rounded-2xl bg-neutral-50 dark:bg-[#050507] border border-neutral-200 dark:border-white/10 space-y-1.5 text-xs text-muted-foreground">
+            <div className="p-3.5 rounded-2xl bg-white/60 dark:bg-white/[0.04] border border-slate-900/10 dark:border-white/10 space-y-1.5 text-xs text-muted-foreground">
               <p className="font-semibold text-foreground">
                 Disband this section classroom?
               </p>
@@ -1239,7 +1315,7 @@ export const ClassroomFeedPage = () => {
               <button 
                 type="button" 
                 onClick={() => setShowDeleteModal(false)} 
-                className="px-4 py-2.5 text-xs font-semibold rounded-xl text-muted-foreground hover:text-foreground hover:bg-neutral-100 dark:hover:bg-white/5 transition-colors"
+                className="px-4 py-2.5 text-xs font-semibold rounded-xl text-muted-foreground hover:text-foreground hover:bg-slate-900/5 dark:hover:bg-white/10 transition-colors cursor-pointer"
               >
                 Cancel
               </button>
@@ -1247,7 +1323,7 @@ export const ClassroomFeedPage = () => {
                 type="button"
                 disabled={isSubmitting}
                 onClick={handleDeleteClassroom}
-                className="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-semibold tracking-wide transition-all disabled:opacity-40 inline-flex items-center gap-1.5 active:scale-[0.98]"
+                className="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-slate-50 rounded-xl text-xs font-semibold tracking-wide transition-all disabled:opacity-40 inline-flex items-center gap-1.5 active:scale-[0.98] cursor-pointer"
               >
                 {isSubmitting ? (
                   <>
@@ -1263,13 +1339,20 @@ export const ClassroomFeedPage = () => {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Classroom Academic Term Transition Modal */}
-      {showTransitionModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-150">
-          <div className="bg-white dark:bg-[#0c0d0e] border border-neutral-200 dark:border-white/15 rounded-3xl p-6 w-full max-w-md shadow-2xl space-y-5 animate-in zoom-in-95 duration-200">
+      {showTransitionModal && createPortal(
+        <div
+          onClick={() => setShowTransitionModal(false)}
+          className="fixed inset-0 z-[100] flex items-center justify-center px-3 pt-[calc(env(safe-area-inset-top,0px)+0.75rem)] pb-[calc(env(safe-area-inset-bottom,0px)+0.75rem)] sm:p-4 bg-white/50 dark:bg-black/60 backdrop-blur-xl animate-in fade-in duration-150"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white/85 dark:bg-[#0d0e11]/85 backdrop-blur-2xl border border-slate-900/10 dark:border-white/15 rounded-3xl p-6 w-full max-w-md shadow-2xl space-y-5 animate-in zoom-in-95 duration-200"
+          >
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
@@ -1277,26 +1360,42 @@ export const ClassroomFeedPage = () => {
                 </div>
                 <div>
                   <h3 className="text-base font-bold text-foreground">Semester Term Transition</h3>
-                  <p className="text-xs text-muted-foreground">Broadcast Academic Progression</p>
+                  <p className="text-xs text-muted-foreground">Broadcast & Rename Hub</p>
                 </div>
               </div>
               <button 
                 type="button"
-                onClick={() => setShowTransitionModal(false)}
-                className="w-8 h-8 rounded-full hover:bg-neutral-100 dark:hover:bg-white/5 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowTransitionModal(false);
+                }}
+                className="w-8 h-8 rounded-full hover:bg-slate-900/10 dark:hover:bg-white/10 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             <form onSubmit={handleBroadcastTransition} className="space-y-4">
-              <div className="p-3.5 rounded-2xl bg-neutral-50 dark:bg-[#050507] border border-neutral-200 dark:border-white/10 space-y-1.5 text-xs text-muted-foreground">
+              <div className="p-3.5 rounded-2xl bg-white/60 dark:bg-white/[0.04] border border-slate-900/10 dark:border-white/10 space-y-1.5 text-xs text-muted-foreground">
                 <p className="font-semibold text-foreground">
                   Transitioning to next semester or revised schedule?
                 </p>
                 <p>
-                  This sends an urgent broadcast to all enrolled section peers notifying them of the term shift and prompting them to synchronize updated timetables.
+                  Post an urgent broadcast for peers AND optionally rename this classroom hub (e.g., Sem 5 → Sem 6).
                 </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-mono uppercase tracking-wider text-muted-foreground mb-1.5">
+                  Classroom Name
+                </label>
+                <input
+                  type="text"
+                  value={transitionNewName}
+                  onChange={(e) => setTransitionNewName(e.target.value)}
+                  placeholder={feed.classroom?.name || "e.g. Sem 6"}
+                  className="w-full bg-white/70 dark:bg-black/30 border border-slate-900/15 dark:border-white/15 rounded-xl px-3.5 py-2.5 text-foreground text-sm font-medium focus:border-slate-900 dark:focus:border-white focus:ring-1 focus:ring-slate-900/10 dark:focus:ring-white/10 outline-none transition-all"
+                />
               </div>
 
               <div>
@@ -1307,7 +1406,8 @@ export const ClassroomFeedPage = () => {
                   rows={3}
                   value={transitionTermNote}
                   onChange={(e) => setTransitionTermNote(e.target.value)}
-                  className="w-full bg-neutral-50 dark:bg-[#050507] border border-neutral-300 dark:border-white/15 rounded-xl p-3.5 text-foreground text-sm focus:border-neutral-900 dark:focus:border-white focus:ring-1 focus:ring-neutral-900/10 dark:focus:ring-white/10 outline-none transition-all resize-none"
+                  placeholder="Optional details about updated timetable or term progression..."
+                  className="w-full bg-white/70 dark:bg-black/30 border border-slate-900/15 dark:border-white/15 rounded-xl p-3.5 text-foreground text-sm focus:border-slate-900 dark:focus:border-white focus:ring-1 focus:ring-slate-900/10 dark:focus:ring-white/10 outline-none transition-all resize-none"
                 />
               </div>
 
@@ -1315,31 +1415,32 @@ export const ClassroomFeedPage = () => {
                 <button 
                   type="button" 
                   onClick={() => setShowTransitionModal(false)} 
-                  className="px-4 py-2.5 text-xs font-semibold rounded-xl text-muted-foreground hover:text-foreground hover:bg-neutral-100 dark:hover:bg-white/5 transition-colors"
+                  className="px-4 py-2.5 text-xs font-semibold rounded-xl text-muted-foreground hover:text-foreground hover:bg-slate-900/5 dark:hover:bg-white/10 transition-colors cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button 
                   type="submit" 
                   disabled={isSubmitting} 
-                  className="px-5 py-2.5 bg-neutral-900 dark:bg-white text-white dark:text-black hover:bg-neutral-800 dark:hover:bg-neutral-100 rounded-xl text-xs font-semibold tracking-wide transition-all disabled:opacity-40 inline-flex items-center gap-1.5"
+                  className="px-5 py-2.5 bg-slate-900 text-slate-50 dark:bg-slate-50 dark:text-slate-950 hover:opacity-90 rounded-xl text-xs font-semibold tracking-wide transition-all disabled:opacity-40 inline-flex items-center gap-1.5 cursor-pointer"
                 >
                   {isSubmitting ? (
                     <>
                       <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      Broadcasting...
+                      Transitioning...
                     </>
                   ) : (
                     <>
                       <GraduationCap className="w-3.5 h-3.5 text-emerald-500" />
-                      Broadcast Term Shift
+                      Broadcast & Save
                     </>
                   )}
                 </button>
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
       {/* Classroom Roster & Classmates Modal */}
       {showRosterModal && (
@@ -1349,11 +1450,34 @@ export const ClassroomFeedPage = () => {
           classroomId={id!}
           classroomName={feed.classroom?.name || "Classroom"}
           isCrOrAdmin={feed.role === "admin"}
+          canBroadcast={Boolean(feed.canPost || feed.role === "admin")}
+          isDeleted={Boolean(feed.isDeleted)}
           initialPermission={feed.broadcastPermission || feed.classroom?.broadcastPermission || "admins"}
           initialAllowedPosterIds={feed.allowedPosterIds || feed.classroom?.allowedPosterIds || []}
           initialDeniedPosterIds={feed.deniedPosterIds || feed.classroom?.deniedPosterIds || []}
-          onPermissionsUpdated={() => {
-            fetchFeed();
+          onPermissionsUpdated={(newPerms) => {
+            setFeed((prev) => {
+              if (!prev) return prev;
+              const updatedFeed: FeedData = {
+                ...prev,
+                broadcastPermission: newPerms.broadcastPermission,
+                allowedPosterIds: newPerms.allowedPosterIds,
+                deniedPosterIds: newPerms.deniedPosterIds,
+                classroom: prev.classroom
+                  ? {
+                      ...prev.classroom,
+                      broadcastPermission: newPerms.broadcastPermission,
+                      allowedPosterIds: newPerms.allowedPosterIds,
+                      deniedPosterIds: newPerms.deniedPosterIds,
+                    }
+                  : prev.classroom,
+              };
+              if (id) {
+                useCacheStore.getState().cacheClassroomFeed(id, updatedFeed);
+              }
+              return updatedFeed;
+            });
+            fetchFeed(false);
           }}
         />
       )}

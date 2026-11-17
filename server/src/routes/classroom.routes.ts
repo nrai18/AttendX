@@ -20,6 +20,7 @@ router.post("/join", joinClassroomLimiter, ClassroomController.joinClassroom);
 router.get("/", ClassroomController.getUserClassrooms);
 router.get("/:id/feed", ClassroomController.getClassroomFeed);
 router.get("/:id/members", ClassroomController.getClassroomMembers);
+router.patch("/:id", ClassroomController.updateClassroom);
 router.patch("/:id/permissions", ClassroomController.updateBroadcastPermissions);
 router.post("/:id/announcements", ClassroomController.createAnnouncement);
 router.delete("/:id/leave", ClassroomController.leaveClassroom);

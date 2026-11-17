@@ -47,7 +47,15 @@ export class SystemController {
                 },
                 {
                   "icon": "📱",
-                  "text": "Mobile & Tablet Responsive Overhaul: Fixed Today action bars (including 5-button Extra Class rows), Settings Set Criteria controls, Landing Page tablet navbar/grids, and Classrooms Hub tablet card layouts."
+                  "text": "Mobile & Tablet Responsive Overhaul: Fixed Today action bars (including 5-button Extra Class rows), Predictive Target Goal pills, Settings Set Criteria controls, Landing Page tablet navbar/grids, and Classrooms Hub tablet card layouts."
+                },
+                {
+                  "icon": "🎓",
+                  "text": "Classroom Hub, 24h Urgent Pins, Invite Links & Broadcast Access: Added shareable invite links (?join=CODE), reliable broadcast permission persistence & peer grey-out gating, 24-hour urgent pin window, and Semester Term Transition classroom renaming."
+                },
+                {
+                  "icon": "🛡️",
+                  "text": "Frosted Game-Level Permission Locks & Login Retention: Added app-only Passcode Lock isolation, login retry retention without bouncing to Landing Page, startup permission re-checks for Notifications/Alarms/Mic, and animated frosted locked controls."
                 }
               ]
             }

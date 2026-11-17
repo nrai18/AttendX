@@ -5,6 +5,12 @@ export interface RingerPlugin {
   setRingerMode(options: { mode: 'silent' | 'vibrate' | 'normal'; unmuteEpochMs?: number; className?: string }): Promise<void>;
   checkDndPermission(): Promise<{ granted: boolean }>;
   requestDndPermission(): Promise<{ opened: boolean }>;
+  checkNotificationPermission(): Promise<{ granted: boolean }>;
+  openNotificationSettings(): Promise<{ opened: boolean }>;
+  checkExactAlarmPermission(): Promise<{ granted: boolean }>;
+  requestExactAlarmPermission(): Promise<{ opened: boolean }>;
+  checkMicrophonePermission(): Promise<{ granted: boolean }>;
+  openAppSettings(): Promise<{ opened: boolean }>;
   testMuteNotification(): Promise<{ success: boolean }>;
   isMuteSessionActive(): Promise<{ active: boolean; unmuteEpochMs: number }>;
 }
@@ -50,6 +56,66 @@ export const requestDndPermission = async (): Promise<boolean> => {
   if (!Capacitor.isNativePlatform()) return false;
   try {
     const res = await RingerMode.requestDndPermission();
+    return !!res?.opened;
+  } catch (e) {
+    return false;
+  }
+};
+
+export const checkNativeNotificationPermission = async (): Promise<boolean> => {
+  if (!Capacitor.isNativePlatform()) return false;
+  try {
+    const res = await RingerMode.checkNotificationPermission();
+    return !!res?.granted;
+  } catch (e) {
+    return false;
+  }
+};
+
+export const openNativeNotificationSettings = async (): Promise<boolean> => {
+  if (!Capacitor.isNativePlatform()) return false;
+  try {
+    const res = await RingerMode.openNotificationSettings();
+    return !!res?.opened;
+  } catch (e) {
+    return false;
+  }
+};
+
+export const checkExactAlarmPermission = async (): Promise<boolean> => {
+  if (!Capacitor.isNativePlatform()) return true;
+  try {
+    const res = await RingerMode.checkExactAlarmPermission();
+    return !!res?.granted;
+  } catch (e) {
+    return true;
+  }
+};
+
+export const requestExactAlarmPermission = async (): Promise<boolean> => {
+  if (!Capacitor.isNativePlatform()) return false;
+  try {
+    const res = await RingerMode.requestExactAlarmPermission();
+    return !!res?.opened;
+  } catch (e) {
+    return false;
+  }
+};
+
+export const checkNativeMicrophonePermission = async (): Promise<boolean> => {
+  if (!Capacitor.isNativePlatform()) return false;
+  try {
+    const res = await RingerMode.checkMicrophonePermission();
+    return !!res?.granted;
+  } catch (e) {
+    return false;
+  }
+};
+
+export const openNativeAppSettings = async (): Promise<boolean> => {
+  if (!Capacitor.isNativePlatform()) return false;
+  try {
+    const res = await RingerMode.openAppSettings();
     return !!res?.opened;
   } catch (e) {
     return false;

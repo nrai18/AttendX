@@ -30,13 +30,15 @@ import {
   AlertTriangle,
   AudioLines,
   Square,
-  Radio
+  Radio,
+  Lock
 } from "lucide-react";
 import { FormattedChatMessage } from "./FormattedChatMessage";
 import { VoiceModeOverlay } from "./VoiceModeOverlay";
 import { useAttendanceStore } from "../../stores/attendanceStore";
 import { useAuthStore } from "../../stores/authStore";
 import { NativeVoiceService, isVoiceBreakoutCommand } from "../../services/NativeVoiceService";
+import { PermissionService } from "../../services/PermissionService";
 import { Capacitor } from "@capacitor/core";
 import { useCacheStore } from "../../stores/cacheStore";
 import { useThemeStore } from "../../stores/themeStore";
@@ -170,6 +172,9 @@ export const FloatingChatbot: React.FC = () => {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [speakingId, setSpeakingId] = useState<string | null>(null);
   const [isListeningMic, setIsListeningMic] = useState(false);
+  const [hasMicPermission, setHasMicPermission] = useState<boolean>(
+    () => PermissionService.getCachedSnapshot().microphone,
+  );
   const [searchStageIndex, setSearchStageIndex] = useState(0);
   const [appVersion, setAppVersion] = useState("Unknown");
 
@@ -248,18 +253,23 @@ export const FloatingChatbot: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    const unsub = PermissionService.subscribe((snap) => {
+      setHasMicPermission(snap.microphone);
+    });
+    PermissionService.getSnapshot().catch(() => {});
+
     const handleOpenVoiceMode = async () => {
       try {
         localStorage.setItem("onboarding_voice_mode", "true");
         api.patch("/users/onboarding-status", { step: "voice_mode" }).catch(() => {});
         window.dispatchEvent(new CustomEvent("onboarding-step-completed", { detail: { step: "voice_mode" } }));
       } catch {}
-      const hasMic = await NativeVoiceService.requestPermissions();
+      const hasMic = await PermissionService.requestSmart("microphone");
       if (!hasMic) {
         triggerDynamicHUD({
           type: "sparkle",
           label: "Microphone Access Required",
-          subtitle: "Please allow microphone access to enter voice mode",
+          subtitle: "Allow microphone access in settings to unlock Voice Mode",
           durationMs: 4000,
         });
         return;
@@ -298,10 +308,14 @@ export const FloatingChatbot: React.FC = () => {
     window.addEventListener('offline', handleOffline);
 
     const appStateListener = App.addListener('appStateChange', ({ isActive }) => {
-      if (isActive) checkHealth();
+      if (isActive) {
+        checkHealth();
+        PermissionService.getSnapshot().catch(() => {});
+      }
     });
 
     return () => {
+      unsub();
       clearInterval(interval);
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
@@ -441,12 +455,12 @@ export const FloatingChatbot: React.FC = () => {
       return;
     }
 
-    const hasMic = await NativeVoiceService.requestPermissions();
+    const hasMic = await PermissionService.requestSmart("microphone");
     if (!hasMic) {
       triggerDynamicHUD({
         type: "sparkle",
         label: "Microphone Access Required",
-        subtitle: "Please allow microphone access to use hands-free mode",
+        subtitle: "Allow microphone access in settings to unlock Hands-Free mode",
         durationMs: 4000,
       });
       return;
@@ -2847,14 +2861,19 @@ const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'vo
                       <button
                         type="button"
                         onClick={startHandsFreeMode}
-                        className={`w-9 h-9 rounded-full flex items-center justify-center transition-colors cursor-pointer ${
-                          isHandsFree 
-                            ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/30 ring-2 ring-emerald-500/40' 
+                        className={`relative w-9 h-9 rounded-full flex items-center justify-center transition-all duration-500 cursor-pointer ${
+                          !hasMicPermission
+                            ? 'bg-slate-200/60 dark:bg-white/5 text-slate-400 opacity-55 grayscale border border-slate-300/60 dark:border-white/10 backdrop-blur-sm'
+                            : isHandsFree
+                            ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/30 ring-2 ring-emerald-500/40'
                             : 'text-slate-400 hover:text-slate-600 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-white/10'
                         }`}
-                        title={isHandsFree ? "Stop Hands-Free Mode" : "Start Hands-Free Mode"}
+                        title={!hasMicPermission ? "Microphone Locked (Tap to unlock)" : isHandsFree ? "Stop Hands-Free Mode" : "Start Hands-Free Mode"}
                       >
                         <Radio className="w-4.5 h-4.5" />
+                        {!hasMicPermission && (
+                          <Lock className="w-2.5 h-2.5 text-amber-500 absolute -top-0.5 -right-0.5 bg-white dark:bg-[#0d0e11] rounded-full p-[1px]" />
+                        )}
                       </button>
                       <button
                         type="button"
@@ -2864,22 +2883,29 @@ const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'vo
                             api.patch("/users/onboarding-status", { step: "voice_mode" }).catch(() => {});
                             window.dispatchEvent(new CustomEvent("onboarding-step-completed", { detail: { step: "voice_mode" } }));
                           } catch {}
-                          const hasMic = await NativeVoiceService.requestPermissions();
+                          const hasMic = await PermissionService.requestSmart("microphone");
                           if (!hasMic) {
                             triggerDynamicHUD({
                               type: "sparkle",
                               label: "Microphone Access Required",
-                              subtitle: "Please allow microphone access to enter voice mode",
+                              subtitle: "Allow microphone access in settings to unlock Voice Mode",
                               durationMs: 4000,
                             });
                             return;
                           }
                           setIsVoiceOpen(true);
                         }}
-                        className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-slate-200 dark:hover:bg-white/10 text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors cursor-pointer"
-                        title="Live Voice Mode"
+                        className={`relative w-9 h-9 rounded-full flex items-center justify-center transition-all duration-500 cursor-pointer ${
+                          !hasMicPermission
+                            ? 'bg-slate-200/60 dark:bg-white/5 text-slate-400 opacity-55 grayscale border border-slate-300/60 dark:border-white/10 backdrop-blur-sm'
+                            : 'hover:bg-slate-200 dark:hover:bg-white/10 text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300'
+                        }`}
+                        title={!hasMicPermission ? "Microphone Locked (Tap to unlock)" : "Live Voice Mode"}
                       >
                         <AudioLines className="w-4.5 h-4.5" />
+                        {!hasMicPermission && (
+                          <Lock className="w-2.5 h-2.5 text-amber-500 absolute -top-0.5 -right-0.5 bg-white dark:bg-[#0d0e11] rounded-full p-[1px]" />
+                        )}
                       </button>
                     </>
                   )}

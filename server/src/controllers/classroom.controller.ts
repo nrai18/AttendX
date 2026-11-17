@@ -77,6 +77,29 @@ export class ClassroomController {
     }
   }
 
+  static async updateClassroom(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { id } = req.params;
+      const { name, section, department, batch } = req.body;
+      if (name !== undefined && (typeof name !== "string" || !name.trim())) {
+        return res.status(400).json({ message: "Classroom name cannot be empty" });
+      }
+      const updated = await ClassroomService.updateClassroom(req.user!.userId, String(id), {
+        name,
+        section,
+        department,
+        batch,
+      });
+      res.json(updated);
+    } catch (error: any) {
+      console.error("[ClassroomController] updateClassroom error:", error);
+      if (error.status === 403 || error.message.includes("Only classroom admins")) {
+        return res.status(403).json({ message: error.message });
+      }
+      res.status(500).json({ message: error.message || "Failed to update classroom" });
+    }
+  }
+
   static async updateBroadcastPermissions(req: AuthenticatedRequest, res: Response) {
     try {
       const { id } = req.params;

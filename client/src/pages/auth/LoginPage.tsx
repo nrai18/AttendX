@@ -42,17 +42,23 @@ export const LoginPage: React.FC<LoginPageProps> = ({ initialForgotPassword = fa
     }
   }, [isForgotPath]);
 
-  // Pre-fill email from query parameter if provided (e.g. from security email links)
+  // Pre-fill email or display retry prompt from query parameters
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const emailParam = params.get("email");
     if (emailParam && !email) {
       setEmail(emailParam);
     }
+    if (params.get("retry") === "1" || params.get("session_expired") === "1") {
+      setError("Authentication failed or session expired. Please try logging in again.");
+    }
   }, [location.search]);
 
   useEffect(() => {
     const unregister = useBackHandlerStore.getState().register(() => {
+      if (loading) {
+        return true;
+      }
       const isAuth = isUserAuthenticated();
       if (isAuth) {
         navigate("/settings", { replace: true });
@@ -73,7 +79,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ initialForgotPassword = fa
       return false;
     });
     return () => unregister();
-  }, [forgotPasswordMode, isForgotPath, navigate]);
+  }, [forgotPasswordMode, isForgotPath, loading, navigate]);
   const [resetEmailSent, setResetEmailSent] = useState(false);
   const [resetToken, setResetToken] = useState("");
   const [otp, setOtp] = useState("");
@@ -122,7 +128,15 @@ export const LoginPage: React.FC<LoginPageProps> = ({ initialForgotPassword = fa
             .then(res => {
               SoundFX.playLoginChimeSound();
               setAuth(res.data, token, refreshToken);
-              navigate("/today");
+              let target = "/today";
+              try {
+                const saved = sessionStorage.getItem("post_login_redirect");
+                if (saved && saved.startsWith("/")) {
+                  sessionStorage.removeItem("post_login_redirect");
+                  target = saved;
+                }
+              } catch {}
+              navigate(target);
             })
             .catch(e => {
               console.error(e);
@@ -139,7 +153,11 @@ export const LoginPage: React.FC<LoginPageProps> = ({ initialForgotPassword = fa
         const hasPerms = await Geolocation.checkPermissions();
         if (hasPerms.location !== 'granted') await Geolocation.requestPermissions();
       }
-      const pos = await Geolocation.getCurrentPosition({ timeout: 15000, maximumAge: 300000, enableHighAccuracy: false });
+      const pos = await Promise.race([
+        Geolocation.getCurrentPosition({ timeout: 3500, maximumAge: 300000, enableHighAccuracy: false }),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 3500)),
+      ]);
+      if (!pos) return null;
       return { lat: pos.coords.latitude, lon: pos.coords.longitude };
     } catch (e) {
       return null;
@@ -160,13 +178,30 @@ export const LoginPage: React.FC<LoginPageProps> = ({ initialForgotPassword = fa
       const res = await api.post("/auth/login", { email, password }, {
         headers: loc ? { 'x-attendx-lat': loc.lat, 'x-attendx-lon': loc.lon } : {}
       });
+      if (!res.data?.user || !res.data?.accessToken || res.data?._queued) {
+        throw new Error("Unable to complete sign-in. Please check your connection and try again.");
+      }
       hapticSuccess();
       SoundFX.playLoginChimeSound();
       setAuth(res.data.user, res.data.accessToken, res.data.refreshToken);
-      navigate("/today");
+      let target = "/today";
+      try {
+        const saved = sessionStorage.getItem("post_login_redirect");
+        if (saved && saved.startsWith("/")) {
+          sessionStorage.removeItem("post_login_redirect");
+          target = saved;
+        }
+      } catch {}
+      navigate(target);
     } catch (e: any) {
       hapticError();
-      setError(e.response?.data?.message || "Login failed");
+      const isNetworkOrTimeout = !e?.response || e?.code === "ECONNABORTED" || e?.response?.status >= 500;
+      setError(
+        e?.response?.data?.message ||
+          (isNetworkOrTimeout
+            ? "Connection to server failed or timed out. Please try again."
+            : e?.message || "Login failed. Please check your credentials and try again.")
+      );
     } finally {
       setLoading(false);
     }
@@ -273,17 +308,34 @@ export const LoginPage: React.FC<LoginPageProps> = ({ initialForgotPassword = fa
         const res = await api.post("/auth/google/native", { idToken: result.idToken }, {
           headers: loc ? { 'x-attendx-lat': loc.lat, 'x-attendx-lon': loc.lon } : {}
         });
+        if (!res.data?.user || !res.data?.accessToken || res.data?._queued) {
+          throw new Error("Could not verify Google account with server. Please try again.");
+        }
         
         hapticSuccess();
         SoundFX.playLoginChimeSound();
         setAuth(res.data.user, res.data.accessToken, res.data.refreshToken);
-        navigate("/today");
+        let target = "/today";
+        try {
+          const saved = sessionStorage.getItem("post_login_redirect");
+          if (saved && saved.startsWith("/")) {
+            sessionStorage.removeItem("post_login_redirect");
+            target = saved;
+          }
+        } catch {}
+        navigate(target);
       } catch (err: any) {
         hapticError();
         console.error("Native Google Login failed:", err);
-        // User canceled if err.message contains 'canceled'
-        if (err.message && !err.message.toLowerCase().includes("canceled")) {
-           setError("Google Sign-In failed.");
+        const msg = String(err?.message || "");
+        if (!msg.toLowerCase().includes("canceled") && !msg.toLowerCase().includes("cancelled")) {
+          const isNetworkOrTimeout = !err?.response || err?.code === "ECONNABORTED" || err?.response?.status >= 500;
+          setError(
+            err?.response?.data?.message ||
+              (isNetworkOrTimeout
+                ? "Google sign-in request failed or timed out. Please try again."
+                : msg || "Google Sign-In failed. Please try again.")
+          );
         }
       } finally {
         setLoading(false);
@@ -537,12 +589,20 @@ export const LoginPage: React.FC<LoginPageProps> = ({ initialForgotPassword = fa
 
               <CardContent className="space-y-4">
                 {error && (
-                  <div className="p-3 text-xs rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 font-medium flex items-center justify-between">
-                    <span>{error}</span>
-                    {error.includes("Account does not exist") && (
-                      <Link to="/signup" className="text-rose-300 underline hover:text-rose-200 shrink-0 ml-2">
-                        Sign Up Now
+                  <div className="p-3 text-xs rounded-xl bg-rose-500/10 border border-rose-500/25 text-rose-500 dark:text-rose-400 font-medium flex items-center justify-between gap-2 animate-in fade-in duration-200">
+                    <span className="leading-snug">{error}</span>
+                    {error.includes("Account does not exist") ? (
+                      <Link to="/signup" className="text-rose-600 dark:text-rose-300 underline hover:opacity-80 shrink-0 font-semibold">
+                        Sign Up
                       </Link>
+                    ) : (
+                      <button
+                        type="submit"
+                        disabled={loading}
+                        className="px-2.5 py-1 rounded-lg bg-rose-500/15 hover:bg-rose-500/25 text-rose-600 dark:text-rose-300 font-bold shrink-0 transition-colors cursor-pointer"
+                      >
+                        Try Again
+                      </button>
                     )}
                   </div>
                 )}

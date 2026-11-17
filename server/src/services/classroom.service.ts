@@ -116,12 +116,30 @@ export class ClassroomService {
       }
     });
 
-    return members.map(m => ({
-      ...m.classroom,
-      userRole: m.role,
-      joinedAt: m.joinedAt,
-      isDeleted: Boolean(m.classroom.deletedAt),
-    }));
+    return members.map(m => {
+      const isCrOrAdmin = m.role === "admin" || m.classroom.createdById === userId;
+      const perm = m.classroom.broadcastPermission || "admins";
+      const allowedList = m.classroom.allowedPosterIds || [];
+      const deniedList = m.classroom.deniedPosterIds || [];
+      let canPost = false;
+      if (isCrOrAdmin) {
+        canPost = true;
+      } else if (perm === "everyone") {
+        canPost = true;
+      } else if (perm === "only_selected") {
+        canPost = allowedList.includes(userId);
+      } else if (perm === "everyone_except") {
+        canPost = !deniedList.includes(userId);
+      }
+
+      return {
+        ...m.classroom,
+        userRole: isCrOrAdmin ? "admin" : m.role,
+        canPost,
+        joinedAt: m.joinedAt,
+        isDeleted: Boolean(m.classroom.deletedAt),
+      };
+    });
   }
 
   /**
@@ -176,7 +194,7 @@ export class ClassroomService {
       canPost = false;
     }
 
-    const announcements = await prisma.announcement.findMany({
+    const announcementsRaw = await prisma.announcement.findMany({
       where: { classroomId },
       include: {
         createdBy: {
@@ -184,11 +202,31 @@ export class ClassroomService {
         },
       },
       orderBy: [
-        { isPinned: 'desc' },
         { createdAt: 'desc' },
       ],
-      take: 50,
+      take: 60,
     });
+
+    // Urgent broadcasts remain pinned at top for 24 hours, then return to chronological order
+    const URGENT_PIN_DURATION_MS = 24 * 60 * 60 * 1000;
+    const nowMs = Date.now();
+    const announcements = announcementsRaw
+      .map((ann) => {
+        const createdMs = new Date(ann.createdAt).getTime();
+        const isActivePin = Boolean(ann.isPinned) && (nowMs - createdMs < URGENT_PIN_DURATION_MS);
+        return {
+          ...ann,
+          content: ann.body,
+          importance: ann.isPinned ? "high" : "low",
+          isActivePin,
+          pinExpiresAt: ann.isPinned ? new Date(createdMs + URGENT_PIN_DURATION_MS).toISOString() : null,
+          attachmentUrls: ann.attachmentUrls || [],
+        };
+      })
+      .sort((a, b) => {
+        if (a.isActivePin !== b.isActivePin) return a.isActivePin ? -1 : 1;
+        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      });
 
     const assignments = await prisma.assignment.findMany({
       where: { classroomId },
@@ -197,19 +235,14 @@ export class ClassroomService {
     });
 
     return {
-      role: member.role,
+      role: isCrOrAdmin ? "admin" : member.role,
       classroom: member.classroom,
       canPost,
       broadcastPermission: perm,
       allowedPosterIds: allowedList,
       deniedPosterIds: deniedList,
       isDeleted: Boolean(member.classroom.deletedAt),
-      announcements: announcements.map((ann) => ({
-        ...ann,
-        content: ann.body,
-        importance: ann.isPinned ? "high" : "low",
-        attachmentUrls: ann.attachmentUrls || [],
-      })),
+      announcements,
       assignments,
     };
   }
@@ -285,30 +318,13 @@ export class ClassroomService {
       deniedPosterIds?: string[];
     }
   ) {
-    const member = await prisma.classroomMember.findUnique({
-      where: {
-        classroomId_userId: {
-          classroomId,
-          userId,
-        },
-      },
-    });
-
-    if (!member || member.role !== "admin") {
-      const err = new Error("Only classroom admins can adjust broadcast permissions");
-      (err as any).status = 403;
-      throw err;
-    }
-
-    const validModes = ["admins", "everyone", "only_selected", "everyone_except"];
-    const mode = (validModes.includes(data.broadcastPermission) ? data.broadcastPermission : "admins") as any;
-
     const existingClassroom = await prisma.classroom.findUnique({
       where: { id: classroomId },
       select: {
         id: true,
         name: true,
         section: true,
+        createdById: true,
         broadcastPermission: true,
         allowedPosterIds: true,
         deniedPosterIds: true,
@@ -318,6 +334,24 @@ export class ClassroomService {
     if (!existingClassroom) {
       throw new Error("Classroom not found");
     }
+
+    const member = await prisma.classroomMember.findUnique({
+      where: {
+        classroomId_userId: {
+          classroomId,
+          userId,
+        },
+      },
+    });
+
+    if (!member || (member.role !== "admin" && existingClassroom.createdById !== userId)) {
+      const err = new Error("Only classroom admins can adjust broadcast permissions");
+      (err as any).status = 403;
+      throw err;
+    }
+
+    const validModes = ["admins", "everyone", "only_selected", "everyone_except"];
+    const mode = (validModes.includes(data.broadcastPermission) ? data.broadcastPermission : "admins") as any;
 
     const updated = await prisma.classroom.update({
       where: { id: classroomId },
@@ -649,5 +683,67 @@ export class ClassroomService {
       success: true,
       message: "Classroom removed from your dashboard",
     };
+  }
+
+  /**
+   * Updates classroom metadata (e.g. renaming classroom during semester transition).
+   */
+  static async updateClassroom(
+    userId: string,
+    classroomId: string,
+    data: {
+      name?: string;
+      section?: string;
+      department?: string;
+      batch?: string;
+    }
+  ) {
+    const existing = await prisma.classroom.findUnique({
+      where: { id: classroomId },
+      select: {
+        id: true,
+        name: true,
+        createdById: true,
+        deletedAt: true,
+      },
+    });
+
+    if (!existing || existing.deletedAt) {
+      throw new Error("Classroom not found");
+    }
+
+    const member = await prisma.classroomMember.findUnique({
+      where: {
+        classroomId_userId: {
+          classroomId,
+          userId,
+        },
+      },
+    });
+
+    if (!member || (member.role !== "admin" && existing.createdById !== userId)) {
+      const err = new Error("Only classroom admins can rename or update classroom details");
+      (err as any).status = 403;
+      throw err;
+    }
+
+    const updatePayload: Record<string, string | null> = {};
+    if (typeof data.name === "string" && data.name.trim()) {
+      updatePayload.name = data.name.trim();
+    }
+    if (typeof data.section === "string") {
+      updatePayload.section = data.section.trim() || null;
+    }
+    if (typeof data.department === "string") {
+      updatePayload.department = data.department.trim() || null;
+    }
+    if (typeof data.batch === "string") {
+      updatePayload.batch = data.batch.trim() || null;
+    }
+
+    return prisma.classroom.update({
+      where: { id: classroomId },
+      data: updatePayload,
+    });
   }
 }

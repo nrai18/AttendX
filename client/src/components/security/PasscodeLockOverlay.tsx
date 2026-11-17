@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { Capacitor } from "@capacitor/core";
 import { Fingerprint, Lock, LogOut, ShieldCheck } from "lucide-react";
 import { useAppLockStore } from "../../stores/appLockStore";
 import { useAuthStore } from "../../stores/authStore";
@@ -22,7 +23,13 @@ export const PasscodeLockOverlay: React.FC = () => {
   } = useAppLockStore();
   const { isAuthenticated, user, logout } = useAuthStore();
 
-  const shouldShow = Boolean(_hasHydrated && isAuthenticated && isEnabled && isLocked);
+  const shouldShow = Boolean(
+    Capacitor.isNativePlatform() &&
+      _hasHydrated &&
+      isAuthenticated &&
+      isEnabled &&
+      isLocked,
+  );
   useScrollLock(shouldShow);
 
   const [pin, setPin] = useState("");

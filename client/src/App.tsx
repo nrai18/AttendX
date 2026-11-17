@@ -1,5 +1,5 @@
 import React from "react";
-import { BrowserRouter, Routes, Route, Navigate, useNavigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
 import { useSilentRefresh } from "./hooks/useSilentRefresh";
 import { useBackgroundSync } from "./hooks/useBackgroundSync";
 import { useTheme } from "./hooks/useTheme";
@@ -34,6 +34,8 @@ import { nativeUpdater } from "./services/updater/nativeUpdater";
 import { OfflineLabPage } from "./pages/dev/OfflineLabPage";
 import { useAppLockStore } from "./stores/appLockStore";
 import { PasscodeLockOverlay } from "./components/security/PasscodeLockOverlay";
+import { PermissionService } from "./services/PermissionService";
+import { PermissionPromptModal } from "./components/permissions/PermissionPromptModal";
 
 // Protected Route Guard Component
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({
@@ -41,6 +43,7 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({
 }) => {
   const { isAuthenticated, user, isLoading, _hasHydrated } = useAuthStore();
   const lockHydrated = useAppLockStore((s) => s._hasHydrated);
+  const location = useLocation();
 
   if (isLoading || !_hasHydrated || !lockHydrated) {
     return (
@@ -56,7 +59,12 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({
   const isAuthorized = isAuthenticated || (isOffline && hasCachedUser) || isUserAuthenticated();
 
   if (!isAuthorized) {
-    return <Navigate to="/" replace />;
+    if (location.pathname !== "/") {
+      try {
+        sessionStorage.setItem("post_login_redirect", `${location.pathname}${location.search}${location.hash}`);
+      } catch {}
+    }
+    return <Navigate to="/login" replace />;
   }
 
   return <>{children}</>;
@@ -68,7 +76,7 @@ import { AssignmentsPage } from "./pages/assignments/AssignmentsPage";
 import { ReportView } from "./pages/reports/ReportView";
 import { PredictiveAttendancePage } from "./pages/attendance/PredictiveAttendancePage";
 import { Toaster } from "sonner";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 
 import { LandingPage } from "./pages/marketing/LandingPage";
 import { PrivacyPage } from "./pages/marketing/PrivacyPage";
@@ -85,7 +93,19 @@ const RootRoute: React.FC = () => {
   const hasCachedUser = Boolean(user && user.id);
   const isAuthorized = isAuthenticated || (isOffline && hasCachedUser) || isUserAuthenticated();
 
-  return isAuthorized ? <Navigate to="/today" replace /> : <LandingPage />;
+  if (isAuthorized) {
+    let target = "/today";
+    try {
+      const saved = sessionStorage.getItem("post_login_redirect");
+      if (saved && saved.startsWith("/")) {
+        sessionStorage.removeItem("post_login_redirect");
+        target = saved;
+      }
+    } catch {}
+    return <Navigate to={target} replace />;
+  }
+
+  return <LandingPage />;
 };
 
 const DEFAULT_APK_DOWNLOAD_URL = "https://github.com/nrai18/AttendX/releases/latest/download/AttendX.apk";
@@ -236,12 +256,6 @@ export function App() {
           await NotificationService.init();
         } catch (e) {
           console.error("Failed to init NotificationService", e);
-        }
-
-        try {
-          await NativeVoiceService.requestPermissions();
-        } catch (e) {
-          console.error("Failed to request voice permissions on launch", e);
         }
 
         try {
@@ -418,27 +432,57 @@ export function App() {
     };
   }, []);
 
-  // Passcode Vault background/foreground lock lifecycle
+  // Passcode Vault background/foreground lock lifecycle (Native App Only) + live Permission refresh
+  const [isPermPromptOpen, setIsPermPromptOpen] = useState(false);
+  const startupPermAuditRanRef = useRef(false);
+
   useEffect(() => {
-    let lockStateHandle: any = null;
-    if (Capacitor.isNativePlatform()) {
-      CapacitorApp.addListener("appStateChange", ({ isActive }) => {
-        const lockState = useAppLockStore.getState();
-        if (isActive) {
-          lockState.evaluateForegroundResume();
-        } else {
-          lockState.recordBackground();
-        }
-      }).then((h) => {
-        lockStateHandle = h;
-      });
+    const openHandler = () => setIsPermPromptOpen(true);
+    window.addEventListener("attendx-open-permissions-modal", openHandler);
+    return () => window.removeEventListener("attendx-open-permissions-modal", openHandler);
+  }, []);
+
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) {
+      PermissionService.getSnapshot().catch(() => {});
+      return;
     }
+    if (!splashFinished || !hydrated || !isAuthenticated || startupPermAuditRanRef.current) {
+      return;
+    }
+    startupPermAuditRanRef.current = true;
+    const timer = setTimeout(async () => {
+      try {
+        const { hasMissing } = await PermissionService.runStartupPermissionAudit();
+        if (hasMissing) {
+          setIsPermPromptOpen(true);
+        }
+      } catch {}
+    }, 650);
+    return () => clearTimeout(timer);
+  }, [splashFinished, hydrated, isAuthenticated]);
+
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    let lockStateHandle: any = null;
+    CapacitorApp.addListener("appStateChange", ({ isActive }) => {
+      const lockState = useAppLockStore.getState();
+      if (isActive) {
+        lockState.evaluateForegroundResume();
+        PermissionService.getSnapshot().catch(() => {});
+      } else {
+        lockState.recordBackground();
+      }
+    }).then((h) => {
+      lockStateHandle = h;
+    });
     const onVisibility = () => {
       const lockState = useAppLockStore.getState();
       if (document.visibilityState === "hidden") {
         lockState.recordBackground();
       } else if (document.visibilityState === "visible") {
         lockState.evaluateForegroundResume();
+        PermissionService.getSnapshot().catch(() => {});
       }
     };
     document.addEventListener("visibilitychange", onVisibility);
@@ -452,6 +496,10 @@ export function App() {
     <ErrorBoundary>
       <DynamicIslandHUD />
       <PasscodeLockOverlay />
+      <PermissionPromptModal
+        isOpen={isPermPromptOpen}
+        onClose={() => setIsPermPromptOpen(false)}
+      />
       <ShockwaveCelebrationOverlay />
       {!splashFinished && <WebSplashScreen onComplete={handleSplashComplete} />}
       <Toaster

@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { createPortal } from "react-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { Capacitor } from "@capacitor/core";
+import { Share } from "@capacitor/share";
 import { 
   Loader2, 
   Users, 
@@ -8,6 +11,7 @@ import {
   LogIn, 
   Copy, 
   Check, 
+  Share2,
   CalendarDays, 
   Megaphone, 
   ShieldCheck, 
@@ -30,6 +34,7 @@ import { ClassroomRosterModal } from "../../components/classroom/ClassroomRoster
 import { getClassroomBannerTheme } from "../../components/classroom/ClassroomBanner";
 import { useBackHandlerStore } from "../../stores/backHandlerStore";
 import { useCacheStore } from "../../stores/cacheStore";
+import { useScrollLock } from "../../hooks/useScrollLock";
 
 interface Classroom {
   id: string;
@@ -39,6 +44,10 @@ interface Classroom {
   batch?: string;
   joinCode: string;
   userRole: "admin" | "member";
+  canPost?: boolean;
+  broadcastPermission?: "admins" | "everyone" | "only_selected" | "everyone_except";
+  allowedPosterIds?: string[];
+  deniedPosterIds?: string[];
   _count: { members: number };
   createdBy: { name: string; email?: string };
   isDeleted?: boolean;
@@ -46,6 +55,7 @@ interface Classroom {
 
 export const ClassroomsPage = () => {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const cachedClassrooms = useCacheStore.getState().classrooms;
   const [classrooms, setClassrooms] = useState<Classroom[]>(
     Array.isArray(cachedClassrooms) ? cachedClassrooms : []
@@ -152,6 +162,33 @@ export const ClassroomsPage = () => {
   }, []);
 
   // Hardware back button support for open modals
+  useScrollLock(Boolean(deleteConfirmClassroom || showJoinModal || showCreateModal));
+
+  useEffect(() => {
+    const joinParam = searchParams.get("join");
+    if (!joinParam) return;
+    const normalizedCode = joinParam.trim().toUpperCase().slice(0, 6);
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete("join");
+    setSearchParams(nextParams, { replace: true });
+
+    if (normalizedCode) {
+      const existing = classrooms.find(
+        (c) => !c.isDeleted && c.joinCode?.toUpperCase() === normalizedCode
+      );
+      if (existing) {
+        hapticLight();
+        toast.info(`Opening ${existing.name}`);
+        navigate(`/classrooms/${existing.id}`);
+      } else {
+        hapticSelection();
+        setJoinCodeInput(normalizedCode);
+        setInlineJoinCode(normalizedCode);
+        setShowJoinModal(true);
+      }
+    }
+  }, [searchParams, classrooms, navigate, setSearchParams]);
+
   useEffect(() => {
     const unregister = useBackHandlerStore.getState().register(() => {
       if (selectedRosterClassroom) {
@@ -185,6 +222,52 @@ export const ClassroomsPage = () => {
     hapticSuccess();
     toast.success(`Join code ${code} copied to clipboard`);
     setTimeout(() => setCopiedCode(null), 2500);
+  };
+
+  const handleShareClassroom = async (cls: Classroom, e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    hapticLight();
+    const inviteUrl = `https://attendx.tech/classrooms?join=${encodeURIComponent(cls.joinCode)}`;
+    const shareTitle = `Join ${cls.name} on AttendX`;
+    const shareText = `Join my AttendX Classroom Hub "${cls.name}"${cls.section ? ` (Sec ${cls.section})` : ""} using code ${cls.joinCode}:`;
+
+    try {
+      if (Capacitor.isNativePlatform()) {
+        await Share.share({
+          title: shareTitle,
+          text: shareText,
+          url: inviteUrl,
+          dialogTitle: "Share Classroom Invite",
+        });
+        hapticSuccess();
+        return;
+      }
+      if (typeof navigator !== "undefined" && navigator.share) {
+        await navigator.share({
+          title: shareTitle,
+          text: shareText,
+          url: inviteUrl,
+        });
+        hapticSuccess();
+        return;
+      }
+    } catch (err: any) {
+      const msg = String(err?.message || err || "").toLowerCase();
+      if (msg.includes("cancel") || err?.name === "AbortError") {
+        return;
+      }
+    }
+
+    try {
+      await navigator.clipboard.writeText(inviteUrl);
+      hapticSuccess();
+      toast.success("Classroom invite link copied to clipboard");
+    } catch {
+      toast.info(`Share link: ${inviteUrl}`);
+    }
   };
 
   const handleJoin = async (e: React.FormEvent, codeToUse?: string) => {
@@ -750,7 +833,7 @@ export const ClassroomsPage = () => {
                         type="button"
                         onClick={(e) => handleCopyCode(cls.joinCode, e)}
                         title="Copy Join Code"
-                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-neutral-100/90 dark:bg-white/[0.06] hover:bg-neutral-200 dark:hover:bg-white/10 text-neutral-900 dark:text-white font-mono text-[11px] border border-neutral-200/90 dark:border-white/10 transition-colors shadow-2xs active:scale-95"
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-neutral-100/90 dark:bg-white/[0.06] hover:bg-neutral-200 dark:hover:bg-white/10 text-neutral-900 dark:text-white font-mono text-[11px] border border-neutral-200/90 dark:border-white/10 transition-colors shadow-2xs active:scale-95 cursor-pointer"
                       >
                         <Hash className="w-3 h-3 text-neutral-500 dark:text-neutral-400" />
                         <span className="tracking-wider font-semibold">{cls.joinCode}</span>
@@ -759,6 +842,18 @@ export const ClassroomsPage = () => {
                         ) : (
                           <Copy className="w-3 h-3 text-neutral-400 hover:text-foreground" />
                         )}
+                      </button>
+                    )}
+
+                    {!cls.isDeleted && (
+                      <button
+                        type="button"
+                        onClick={(e) => handleShareClassroom(cls, e)}
+                        title="Share Classroom Invite Link"
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-neutral-100/90 dark:bg-white/[0.06] hover:bg-neutral-200 dark:hover:bg-white/10 text-neutral-900 dark:text-white text-[11px] font-semibold border border-neutral-200/90 dark:border-white/10 transition-colors shadow-2xs active:scale-95 cursor-pointer"
+                      >
+                        <Share2 className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
+                        <span>Share</span>
                       </button>
                     )}
                   </div>
@@ -796,9 +891,15 @@ export const ClassroomsPage = () => {
       )}
 
       {/* Delete / Disband Classroom Confirmation Modal */}
-      {deleteConfirmClassroom && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/75 backdrop-blur-md animate-in fade-in duration-150">
-          <div className="bg-white dark:bg-[#0c0d0e] border border-neutral-200 dark:border-white/15 rounded-3xl p-6 w-full max-w-md shadow-2xl space-y-5 animate-in zoom-in-95 duration-200">
+      {deleteConfirmClassroom && createPortal(
+        <div
+          onClick={() => setDeleteConfirmClassroom(null)}
+          className="fixed inset-0 z-[100] flex items-center justify-center px-3 pt-[calc(env(safe-area-inset-top,0px)+0.75rem)] pb-[calc(env(safe-area-inset-bottom,0px)+0.75rem)] sm:p-4 bg-white/50 dark:bg-black/60 backdrop-blur-xl animate-in fade-in duration-150"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white/85 dark:bg-[#0d0e11]/85 backdrop-blur-2xl border border-slate-900/10 dark:border-white/15 rounded-3xl p-6 w-full max-w-md shadow-2xl space-y-5 animate-in zoom-in-95 duration-200"
+          >
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-500">
@@ -811,14 +912,17 @@ export const ClassroomsPage = () => {
               </div>
               <button 
                 type="button"
-                onClick={() => setDeleteConfirmClassroom(null)}
-                className="w-8 h-8 rounded-full hover:bg-neutral-100 dark:hover:bg-white/5 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setDeleteConfirmClassroom(null);
+                }}
+                className="w-8 h-8 rounded-full hover:bg-slate-900/10 dark:hover:bg-white/10 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="p-3.5 rounded-2xl bg-neutral-50 dark:bg-[#050507] border border-neutral-200 dark:border-white/10 space-y-1.5 text-xs text-muted-foreground">
+            <div className="p-3.5 rounded-2xl bg-white/60 dark:bg-white/[0.04] border border-slate-900/10 dark:border-white/10 space-y-1.5 text-xs text-muted-foreground">
               <p className="font-semibold text-foreground">
                 Are you sure you want to delete <span className="text-rose-500 font-bold">{deleteConfirmClassroom.name}</span>?
               </p>
@@ -834,7 +938,7 @@ export const ClassroomsPage = () => {
               <button 
                 type="button" 
                 onClick={() => setDeleteConfirmClassroom(null)} 
-                className="px-4 py-2.5 text-xs font-semibold rounded-xl text-muted-foreground hover:text-foreground hover:bg-neutral-100 dark:hover:bg-white/5 transition-colors"
+                className="px-4 py-2.5 text-xs font-semibold rounded-xl text-muted-foreground hover:text-foreground hover:bg-slate-900/5 dark:hover:bg-white/10 transition-colors cursor-pointer"
               >
                 Cancel
               </button>
@@ -842,7 +946,7 @@ export const ClassroomsPage = () => {
                 type="button"
                 disabled={isSubmitting}
                 onClick={() => handleDeleteClassroom(deleteConfirmClassroom.id)}
-                className="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-semibold tracking-wide transition-all disabled:opacity-40 inline-flex items-center gap-1.5 active:scale-[0.98]"
+                className="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-slate-50 rounded-xl text-xs font-semibold tracking-wide transition-all disabled:opacity-40 inline-flex items-center gap-1.5 active:scale-[0.98] cursor-pointer"
               >
                 {isSubmitting ? (
                   <>
@@ -858,13 +962,20 @@ export const ClassroomsPage = () => {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Join Modal */}
-      {showJoinModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/75 backdrop-blur-md animate-in fade-in duration-150">
-          <div className="bg-white dark:bg-[#0c0d0e] border border-neutral-200 dark:border-white/15 rounded-3xl p-6 w-full max-w-sm shadow-2xl space-y-5">
+      {showJoinModal && createPortal(
+        <div
+          onClick={() => setShowJoinModal(false)}
+          className="fixed inset-0 z-[100] flex items-center justify-center px-3 pt-[calc(env(safe-area-inset-top,0px)+0.75rem)] pb-[calc(env(safe-area-inset-bottom,0px)+0.75rem)] sm:p-4 bg-white/50 dark:bg-black/60 backdrop-blur-xl animate-in fade-in duration-150"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white/85 dark:bg-[#0d0e11]/85 backdrop-blur-2xl border border-slate-900/10 dark:border-white/15 rounded-3xl p-6 w-full max-w-sm shadow-2xl space-y-5 animate-in zoom-in-95 duration-200"
+          >
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-lg font-bold text-foreground">Join Classroom</h3>
@@ -872,8 +983,11 @@ export const ClassroomsPage = () => {
               </div>
               <button 
                 type="button"
-                onClick={() => setShowJoinModal(false)}
-                className="w-8 h-8 rounded-full hover:bg-neutral-100 dark:hover:bg-white/5 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowJoinModal(false);
+                }}
+                className="w-8 h-8 rounded-full hover:bg-slate-900/10 dark:hover:bg-white/10 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -890,7 +1004,7 @@ export const ClassroomsPage = () => {
                   onChange={(e) => setJoinCodeInput(e.target.value.toUpperCase())}
                   maxLength={6}
                   autoFocus
-                  className="w-full bg-neutral-50 dark:bg-[#050507] border border-neutral-300 dark:border-white/15 rounded-2xl p-3.5 text-neutral-900 dark:text-white font-mono text-center tracking-[0.4em] text-2xl font-bold focus:border-neutral-900 dark:focus:border-white focus:ring-2 focus:ring-neutral-900/10 dark:focus:ring-white/10 outline-none transition-all uppercase"
+                  className="w-full bg-white/70 dark:bg-black/30 border border-slate-900/15 dark:border-white/15 rounded-2xl p-3.5 text-neutral-900 dark:text-white font-mono text-center tracking-[0.4em] text-2xl font-bold focus:border-slate-900 dark:focus:border-white focus:ring-2 focus:ring-slate-900/10 dark:focus:ring-white/10 outline-none transition-all uppercase"
                   required
                 />
               </div>
@@ -899,14 +1013,14 @@ export const ClassroomsPage = () => {
                 <button 
                   type="button" 
                   onClick={() => setShowJoinModal(false)} 
-                  className="px-4 py-2.5 text-xs font-semibold rounded-xl text-muted-foreground hover:text-foreground hover:bg-neutral-100 dark:hover:bg-white/5 transition-colors"
+                  className="px-4 py-2.5 text-xs font-semibold rounded-xl text-muted-foreground hover:text-foreground hover:bg-slate-900/5 dark:hover:bg-white/10 transition-colors cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button 
                   type="submit" 
                   disabled={isSubmitting || joinCodeInput.trim().length === 0} 
-                  className="px-5 py-2.5 bg-neutral-900 dark:bg-white text-white dark:text-black hover:bg-neutral-800 dark:hover:bg-neutral-100 rounded-xl text-xs font-semibold tracking-wide transition-all disabled:opacity-40 inline-flex items-center gap-1.5"
+                  className="px-5 py-2.5 bg-slate-900 text-slate-50 dark:bg-slate-50 dark:text-slate-950 hover:opacity-90 rounded-xl text-xs font-semibold tracking-wide transition-all disabled:opacity-40 inline-flex items-center gap-1.5 cursor-pointer"
                 >
                   {isSubmitting ? (
                     <>
@@ -920,13 +1034,20 @@ export const ClassroomsPage = () => {
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Create Modal */}
-      {showCreateModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-150">
-          <div className="bg-white dark:bg-[#0c0d0e] border border-neutral-200 dark:border-white/15 rounded-3xl p-6 w-full max-w-md shadow-2xl space-y-5">
+      {showCreateModal && createPortal(
+        <div
+          onClick={() => setShowCreateModal(false)}
+          className="fixed inset-0 z-[100] flex items-center justify-center px-3 pt-[calc(env(safe-area-inset-top,0px)+0.75rem)] pb-[calc(env(safe-area-inset-bottom,0px)+0.75rem)] sm:p-4 bg-white/50 dark:bg-black/60 backdrop-blur-xl animate-in fade-in duration-150"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white/85 dark:bg-[#0d0e11]/85 backdrop-blur-2xl border border-slate-900/10 dark:border-white/15 rounded-3xl p-6 w-full max-w-md shadow-2xl space-y-5 animate-in zoom-in-95 duration-200"
+          >
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-lg font-bold text-foreground">Create Section Hub</h3>
@@ -934,8 +1055,11 @@ export const ClassroomsPage = () => {
               </div>
               <button 
                 type="button"
-                onClick={() => setShowCreateModal(false)}
-                className="w-8 h-8 rounded-full hover:bg-neutral-100 dark:hover:bg-white/5 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowCreateModal(false);
+                }}
+                className="w-8 h-8 rounded-full hover:bg-slate-900/10 dark:hover:bg-white/10 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -950,7 +1074,7 @@ export const ClassroomsPage = () => {
                   type="text" 
                   value={newClassName}
                   onChange={(e) => setNewClassName(e.target.value)}
-                  className="w-full bg-neutral-50 dark:bg-[#050507] border border-neutral-300 dark:border-white/15 rounded-xl px-3.5 py-2.5 text-neutral-900 dark:text-white text-sm focus:border-neutral-900 dark:focus:border-white focus:ring-1 focus:ring-neutral-900/10 dark:focus:ring-white/10 outline-none transition-all"
+                  className="w-full bg-white/70 dark:bg-black/30 border border-slate-900/15 dark:border-white/15 rounded-xl px-3.5 py-2.5 text-neutral-900 dark:text-white text-sm focus:border-slate-900 dark:focus:border-white focus:ring-1 focus:ring-slate-900/10 dark:focus:ring-white/10 outline-none transition-all"
                   required
                 />
               </div>
@@ -964,7 +1088,7 @@ export const ClassroomsPage = () => {
                     type="text" 
                     value={newSection}
                     onChange={(e) => setNewSection(e.target.value)}
-                    className="w-full bg-neutral-50 dark:bg-[#050507] border border-neutral-300 dark:border-white/15 rounded-xl px-3.5 py-2.5 text-neutral-900 dark:text-white text-sm focus:border-neutral-900 dark:focus:border-white focus:ring-1 focus:ring-neutral-900/10 dark:focus:ring-white/10 outline-none transition-all"
+                    className="w-full bg-white/70 dark:bg-black/30 border border-slate-900/15 dark:border-white/15 rounded-xl px-3.5 py-2.5 text-neutral-900 dark:text-white text-sm focus:border-slate-900 dark:focus:border-white focus:ring-1 focus:ring-slate-900/10 dark:focus:ring-white/10 outline-none transition-all"
                   />
                 </div>
 
@@ -976,7 +1100,7 @@ export const ClassroomsPage = () => {
                     type="text" 
                     value={newDepartment}
                     onChange={(e) => setNewDepartment(e.target.value)}
-                    className="w-full bg-neutral-50 dark:bg-[#050507] border border-neutral-300 dark:border-white/15 rounded-xl px-3.5 py-2.5 text-neutral-900 dark:text-white text-sm focus:border-neutral-900 dark:focus:border-white focus:ring-1 focus:ring-neutral-900/10 dark:focus:ring-white/10 outline-none transition-all"
+                    className="w-full bg-white/70 dark:bg-black/30 border border-slate-900/15 dark:border-white/15 rounded-xl px-3.5 py-2.5 text-neutral-900 dark:text-white text-sm focus:border-slate-900 dark:focus:border-white focus:ring-1 focus:ring-slate-900/10 dark:focus:ring-white/10 outline-none transition-all"
                   />
                 </div>
               </div>
@@ -989,7 +1113,7 @@ export const ClassroomsPage = () => {
                   type="text" 
                   value={newBatch}
                   onChange={(e) => setNewBatch(e.target.value)}
-                  className="w-full bg-neutral-50 dark:bg-[#050507] border border-neutral-300 dark:border-white/15 rounded-xl px-3.5 py-2.5 text-neutral-900 dark:text-white text-sm focus:border-neutral-900 dark:focus:border-white focus:ring-1 focus:ring-neutral-900/10 dark:focus:ring-white/10 outline-none transition-all"
+                  className="w-full bg-white/70 dark:bg-black/30 border border-slate-900/15 dark:border-white/15 rounded-xl px-3.5 py-2.5 text-neutral-900 dark:text-white text-sm focus:border-slate-900 dark:focus:border-white focus:ring-1 focus:ring-slate-900/10 dark:focus:ring-white/10 outline-none transition-all"
                 />
               </div>
 
@@ -997,14 +1121,14 @@ export const ClassroomsPage = () => {
                 <button 
                   type="button" 
                   onClick={() => setShowCreateModal(false)} 
-                  className="px-4 py-2.5 text-xs font-semibold rounded-xl text-muted-foreground hover:text-foreground hover:bg-neutral-100 dark:hover:bg-white/5 transition-colors"
+                  className="px-4 py-2.5 text-xs font-semibold rounded-xl text-muted-foreground hover:text-foreground hover:bg-slate-900/5 dark:hover:bg-white/10 transition-colors cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button 
                   type="submit" 
                   disabled={isSubmitting || !newClassName.trim()} 
-                  className="px-5 py-2.5 bg-neutral-900 dark:bg-white text-white dark:text-black hover:bg-neutral-800 dark:hover:bg-neutral-100 rounded-xl text-xs font-semibold tracking-wide transition-all disabled:opacity-40 inline-flex items-center gap-1.5"
+                  className="px-5 py-2.5 bg-slate-900 text-slate-50 dark:bg-slate-50 dark:text-slate-950 hover:opacity-90 rounded-xl text-xs font-semibold tracking-wide transition-all disabled:opacity-40 inline-flex items-center gap-1.5 cursor-pointer"
                 >
                   {isSubmitting ? (
                     <>
@@ -1018,7 +1142,8 @@ export const ClassroomsPage = () => {
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
       {/* Classroom Roster & Classmates Modal */}
       {selectedRosterClassroom && (
@@ -1028,6 +1153,36 @@ export const ClassroomsPage = () => {
           classroomId={selectedRosterClassroom.id}
           classroomName={selectedRosterClassroom.name}
           isCrOrAdmin={selectedRosterClassroom.userRole === "admin"}
+          canBroadcast={selectedRosterClassroom.canPost ?? selectedRosterClassroom.userRole === "admin"}
+          isDeleted={Boolean(selectedRosterClassroom.isDeleted)}
+          initialPermission={selectedRosterClassroom.broadcastPermission || "admins"}
+          initialAllowedPosterIds={selectedRosterClassroom.allowedPosterIds || []}
+          initialDeniedPosterIds={selectedRosterClassroom.deniedPosterIds || []}
+          onPermissionsUpdated={(newPerms) => {
+            setClassrooms((prev) =>
+              prev.map((c) =>
+                c.id === selectedRosterClassroom.id
+                  ? {
+                      ...c,
+                      broadcastPermission: newPerms.broadcastPermission,
+                      allowedPosterIds: newPerms.allowedPosterIds,
+                      deniedPosterIds: newPerms.deniedPosterIds,
+                    }
+                  : c
+              )
+            );
+            setSelectedRosterClassroom((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    broadcastPermission: newPerms.broadcastPermission,
+                    allowedPosterIds: newPerms.allowedPosterIds,
+                    deniedPosterIds: newPerms.deniedPosterIds,
+                  }
+                : null
+            );
+            fetchClassrooms(true);
+          }}
         />
       )}
     </div>

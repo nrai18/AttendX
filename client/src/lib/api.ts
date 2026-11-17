@@ -278,7 +278,7 @@ api.interceptors.request.use(
           const isNetworkError = !error.response || error.response.status === 0 || error.response.status >= 500 || error.code === 'ECONNABORTED' || error.message === 'Network Error' || (error.message && error.message.toLowerCase().includes('timeout'));
           const isOfflineNow = typeof navigator !== 'undefined' && !navigator.onLine;
           if (!isNetworkError && !isOfflineNow) {
-            useAuthStore.getState().logout();
+            useAuthStore.getState().logout(false, { redirectTo: "/login?retry=1" });
             token = null;
           }
         } finally {
@@ -355,8 +355,7 @@ api.interceptors.response.use(
     if (
       error.response?.status === 401 &&
       !originalRequest._retry &&
-      !originalRequest.url?.includes("/auth/login") && !originalRequest.url?.includes("/auth/google") &&
-      !originalRequest.url?.includes("/auth/register") && !originalRequest.url?.includes("/auth/refresh") &&
+      !originalRequest.url?.includes("/auth/") &&
       !originalRequest.url?.includes("/health")
     ) {
       if (typeof navigator !== 'undefined' && !navigator.onLine) {
@@ -411,7 +410,7 @@ api.interceptors.response.use(
         const isNetworkError = !refreshError.response || refreshError.response.status === 0 || refreshError.response.status >= 500 || refreshError.code === 'ECONNABORTED' || refreshError.message === 'Network Error' || (refreshError.message && refreshError.message.toLowerCase().includes('timeout'));
         const isOfflineNow = typeof navigator !== 'undefined' && !navigator.onLine;
         if (!isNetworkError && !isOfflineNow) {
-          useAuthStore.getState().logout();
+          useAuthStore.getState().logout(false, { redirectTo: "/login?retry=1" });
         }
         // If offline and it's a mutation, allow it to fall through to the offline queue
         if (isOfflineNow || isNetworkError) {

@@ -33,7 +33,7 @@ interface AuthState {
   setAccessToken: (token: string | null) => void;
   setRefreshToken: (token: string | null) => void;
   setAuth: (user: User, accessToken: string, refreshToken?: string) => void;
-  logout: (skipBackendCall?: boolean) => void;
+  logout: (skipBackendCall?: boolean, options?: { redirectTo?: string }) => void;
   setLoading: (loading: boolean) => void;
   setHasHydrated: (h: boolean) => void;
 }
@@ -75,7 +75,7 @@ export const useAuthStore = create<AuthState>()(
         });
       },
 
-      logout: async (skipBackendCall = false) => {
+      logout: async (skipBackendCall = false, options?: { redirectTo?: string }) => {
         const wasAuthenticated = get().isAuthenticated;
         const currentRefreshToken = get().refreshToken;
 
@@ -137,8 +137,10 @@ export const useAuthStore = create<AuthState>()(
           isLoading: false,
         });
         
-        if (wasAuthenticated) {
-          window.location.replace("/");
+        const authRoutes = ["/login", "/signup", "/forgot-password", "/reset-password"];
+        const currentPath = typeof window !== "undefined" ? window.location.pathname : "";
+        if (wasAuthenticated && !authRoutes.includes(currentPath)) {
+          window.location.replace(options?.redirectTo || "/");
         }
       },
 
