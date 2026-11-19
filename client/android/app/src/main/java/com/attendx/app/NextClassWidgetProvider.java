@@ -104,7 +104,7 @@ public class NextClassWidgetProvider extends AppWidgetProvider {
             views.setTextViewText(R.id.text_next_room_badge, room.toUpperCase());
             views.setTextViewText(R.id.text_next_countdown, countdown.toUpperCase());
             views.setTextViewText(R.id.text_next_subject, subjectName);
-            views.setTextViewText(R.id.text_next_time, classTime);
+            views.setTextViewText(R.id.text_next_time, TodayWidgetProvider.compactTimeRange(classTime));
             views.setTextViewText(R.id.text_next_runway, runway);
 
             // Keep /today deep link intact so DeepLinkHandler never navigates to /next_class/<id> (404)

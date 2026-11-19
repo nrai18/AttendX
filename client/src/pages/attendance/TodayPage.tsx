@@ -1928,6 +1928,11 @@ export const TodayPage = () => {
 
       fetchStats();
       useCacheStore.getState().setCache("insights", null);
+      if (status === "off" || status === "clear") {
+        import("../../services/NotificationService")
+          .then(({ NotificationService }) => NotificationService.autoScheduleFromTimetable())
+          .catch(() => {});
+      }
       window.dispatchEvent(
         new CustomEvent("attendance-updated", {
           detail: { source: "today-page" },
@@ -2127,8 +2132,16 @@ export const TodayPage = () => {
         });
       }
       fetchStats();
+      import("../../services/NotificationService")
+        .then(({ NotificationService }) => NotificationService.autoScheduleFromTimetable())
+        .catch(() => {});
       window.dispatchEvent(
         new CustomEvent("attendance-updated", {
+          detail: { source: "today-page" },
+        }),
+      );
+      window.dispatchEvent(
+        new CustomEvent("timetable-updated", {
           detail: { source: "today-page" },
         }),
       );
@@ -3117,6 +3130,17 @@ export const TodayPage = () => {
         },
       },
     });
+    if (
+      status === "off" ||
+      status === "cancelled" ||
+      status === "clear" ||
+      item.status === "off" ||
+      item.status === "cancelled"
+    ) {
+      import("../../services/NotificationService")
+        .then(({ NotificationService }) => NotificationService.autoScheduleFromTimetable())
+        .catch(() => {});
+    }
 
     const monthStr = targetDateStr.substring(0, 7);
     const existingMonthCache = state.calendar?.[monthStr] || {
@@ -3737,8 +3761,16 @@ export const TodayPage = () => {
         upsertSubjectLogCache(item.subject.id, savedAttendanceId);
 
       fetchStats();
+      import("../../services/NotificationService")
+        .then(({ NotificationService }) => NotificationService.autoScheduleFromTimetable())
+        .catch(() => {});
       window.dispatchEvent(
         new CustomEvent("attendance-updated", {
+          detail: { source: "today-page" },
+        }),
+      );
+      window.dispatchEvent(
+        new CustomEvent("timetable-updated", {
           detail: { source: "today-page" },
         }),
       );

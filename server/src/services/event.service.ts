@@ -226,6 +226,7 @@ export class EventService {
         userId,
         semesterId,
         title: evtTitle,
+        description: evt.description ? String(evt.description) : null,
         eventType: mappedType,
         date: evtDate,
         endDate: evt.endDate ? new Date(evt.endDate) : null,

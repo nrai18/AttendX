@@ -48,6 +48,7 @@ export function AddEventModal({
     }
 
     const resolvedType = title.toLowerCase().includes("birthday") ? "other" : eventType;
+    const resolvedDescription = resolvedType === "other" ? "Peer Birthday" : undefined;
     const isoStart = `${date}T00:00:00.000Z`;
     const isoEnd = endDate ? `${endDate}T23:59:59.999Z` : undefined;
     const tempId = `temp-evt-${Date.now()}`;
@@ -56,6 +57,7 @@ export function AddEventModal({
       id: tempId,
       title: title.trim(),
       eventType: resolvedType,
+      ...(resolvedDescription ? { description: resolvedDescription } : {}),
       date: isoStart,
       endDate: isoEnd,
       allDay: true,
@@ -85,6 +87,7 @@ export function AddEventModal({
           {
             title: optimisticEvent.title,
             eventType: resolvedType,
+            ...(resolvedDescription ? { description: resolvedDescription } : {}),
             date: isoStart,
             endDate: isoEnd,
           }

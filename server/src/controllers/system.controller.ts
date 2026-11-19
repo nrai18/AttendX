@@ -56,6 +56,14 @@ export class SystemController {
                 {
                   "icon": "🛡️",
                   "text": "Frosted Game-Level Permission Locks & Login Retention: Added app-only Passcode Lock isolation, login retry retention without bouncing to Landing Page, startup permission re-checks for Notifications/Alarms/Mic, and animated frosted locked controls."
+                },
+                {
+                  "icon": "🎙️",
+                  "text": "Voice Mode Sync & 0ms Copilot Fast-Path: Synchronized word-reveal highlights with actual ElevenLabs/TTS playback, isolated mic/turn lifecycles, expanded zero-Gemini Tier-0/1/2 queries with bounded typo matching, and added peer birthday projection."
+                },
+                {
+                  "icon": "🧭",
+                  "text": "Widget Navigation, Compact Layouts & APK Shrinking: Fixed the /today widget deep-link redirect trap across tabs, prevented 4x2 room truncation & 1x2 bottom time clipping, removed mid-word wrapping cutoffs in Linked Devices, aligned End-of-Day alerts with extra classes, and pruned 18.9 MB of web-only promo assets from the APK."
                 }
               ]
             }

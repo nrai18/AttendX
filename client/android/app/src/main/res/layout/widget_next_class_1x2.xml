@@ -5,7 +5,10 @@
     android:layout_height="match_parent"
     android:background="@drawable/widget_bg_dynamic"
     android:orientation="vertical"
-    android:padding="12dp">
+    android:paddingStart="10dp"
+    android:paddingTop="8dp"
+    android:paddingEnd="10dp"
+    android:paddingBottom="8dp">
 
     <!-- Top Row: High-Contrast Room Badge & Countdown -->
     <LinearLayout
@@ -28,13 +31,13 @@
                 android:background="@drawable/widget_room_badge"
                 android:ellipsize="end"
                 android:maxLines="1"
-                android:paddingStart="7dp"
-                android:paddingTop="3dp"
-                android:paddingEnd="7dp"
-                android:paddingBottom="3dp"
+                android:paddingStart="6dp"
+                android:paddingTop="2dp"
+                android:paddingEnd="6dp"
+                android:paddingBottom="2dp"
                 android:text="📍 ROOM 204"
                 android:textColor="#00E5FF"
-                android:textSize="11sp"
+                android:textSize="10sp"
                 android:textStyle="bold" />
         </LinearLayout>
 
@@ -49,24 +52,26 @@
             android:textStyle="bold" />
     </LinearLayout>
 
-    <!-- Subject Title (2 lines max, bold white) -->
+    <!-- Subject Title (Flexible middle region so bottom time + runway row never clips) -->
     <TextView
         android:id="@+id/text_next_subject"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
+        android:layout_height="0dp"
+        android:layout_marginTop="3dp"
+        android:layout_marginBottom="3dp"
+        android:layout_weight="1"
         android:ellipsize="end"
+        android:gravity="center_vertical"
         android:maxLines="2"
         android:text="Digital Communication"
         android:textColor="#FFFFFF"
-        android:textSize="13sp"
+        android:textSize="12sp"
         android:textStyle="bold" />
 
-    <!-- Class Time & Target Status -->
+    <!-- Class Time & Target Status (Always pinned inside bottom edge) -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="6dp"
         android:gravity="center_vertical"
         android:orientation="horizontal">
 
@@ -78,7 +83,7 @@
             android:layout_weight="1"
             android:ellipsize="end"
             android:maxLines="1"
-            android:text="10:00 AM – 11:00 AM"
+            android:text="10:00–11:00 AM"
             android:textColor="#94A3B8"
             android:textSize="10sp" />
 

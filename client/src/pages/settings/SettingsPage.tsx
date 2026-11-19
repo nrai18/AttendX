@@ -2621,17 +2621,20 @@ export const SettingsPage: React.FC = () => {
                 ))}
               </div>
 
-              <div className="flex items-center justify-between gap-3 mt-2">
+              <div className={`flex items-center justify-between gap-3 mt-2 transition-opacity ${notifConfig.classReminderOffset === -1 ? "opacity-60" : ""}`}>
                 <div className="flex flex-col gap-0.5 min-w-0">
                   <span className="text-sm font-semibold text-slate-900 dark:text-white">
                     Show Location
                   </span>
                   <span className="text-xs text-slate-500 dark:text-slate-400">
-                    Include room in notifications
+                    {notifConfig.classReminderOffset === -1
+                      ? "Requires Class Reminders (5–15 min) above"
+                      : "Include room in notifications"}
                   </span>
                 </div>
                 <button
                   onClick={() => {
+                    hapticSelection();
                     updateConfig({ showLocation: !notifConfig.showLocation });
                     NotificationService.autoScheduleFromTimetable();
                   }}
@@ -2643,17 +2646,20 @@ export const SettingsPage: React.FC = () => {
                 </button>
               </div>
 
-              <div className="flex items-center justify-between gap-3 mt-2">
+              <div className={`flex items-center justify-between gap-3 mt-2 transition-opacity ${notifConfig.classReminderOffset === -1 ? "opacity-60" : ""}`}>
                 <div className="flex flex-col gap-0.5 min-w-0">
                   <span className="text-sm font-semibold text-foreground">
                     Next Class Heads-up
                   </span>
                   <span className="text-xs text-muted-foreground">
-                    Notify when current class ends
+                    {notifConfig.classReminderOffset === -1
+                      ? "Requires Class Reminders (5–15 min) above"
+                      : "Notify when current class ends"}
                   </span>
                 </div>
                 <button
                   onClick={() => {
+                    hapticSelection();
                     updateConfig({
                       notifyNextClassOnEnd: !notifConfig.notifyNextClassOnEnd,
                     });
@@ -2667,17 +2673,20 @@ export const SettingsPage: React.FC = () => {
                 </button>
               </div>
 
-              <div className="flex items-center justify-between mt-2">
-                <div className="flex flex-col gap-0.5">
+              <div className="flex items-center justify-between gap-3 mt-2">
+                <div className="flex flex-col gap-0.5 min-w-0">
                   <span className="text-sm font-semibold text-foreground">
                     End of Day Summary
                   </span>
                   <span className="text-xs text-muted-foreground">
-                    Get a 'Done for the day' alert
+                    {notifConfig.classReminderOffset === -1
+                      ? "Active independently after your final class"
+                      : "Get a 'Done for the day' alert"}
                   </span>
                 </div>
                 <button
                   onClick={() => {
+                    hapticSelection();
                     updateConfig({
                       endOfDaySummary: !notifConfig.endOfDaySummary,
                     });

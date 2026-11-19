@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import { Capacitor } from "@capacitor/core";
 import {
   Play,
   Pause,
@@ -33,6 +34,9 @@ import {
   RefreshCw,
   Palette,
 } from "lucide-react";
+
+// Serve /promo media from public CDN/web host when running inside native APK so media is never bundled locally
+const PROMO_MEDIA_ORIGIN = Capacitor.isNativePlatform() ? "https://www.attendx.tech" : "";
 
 // Duration is exactly 90.00 seconds (2700 frames @ 30 FPS)
 const TOTAL_DURATION = 90.0;
@@ -234,8 +238,12 @@ export const PromoVideoPage: React.FC = () => {
   // Direct High-Resolution MP4 Download
   const handleDownloadMp4 = () => {
     const a = document.createElement("a");
-    a.href = "/AttendX_Launch_Video.mp4";
+    a.href = `${PROMO_MEDIA_ORIGIN}/AttendX_Launch_Video.mp4`;
     a.download = "AttendX_Launch_Video.mp4";
+    if (PROMO_MEDIA_ORIGIN) {
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+    }
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -332,7 +340,7 @@ export const PromoVideoPage: React.FC = () => {
       {/* 90-Second Audio Soundtrack */}
       <audio
         ref={audioRef}
-        src="/promo_soundtrack_90s.mp3"
+        src={`${PROMO_MEDIA_ORIGIN}/promo_soundtrack_90s.mp3`}
         preload="auto"
       />
 

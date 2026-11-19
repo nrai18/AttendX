@@ -13,7 +13,7 @@ android {
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
              // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
-            ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
+            ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~:!*AttendX_Launch_Video.mp4:!*promo_soundtrack*.mp3:!*aurora.png:!*aether-bg.jpg:!img'
         }
     }
     buildTypes {
@@ -43,6 +43,20 @@ dependencies {
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
     implementation project(':capacitor-cordova-android-plugins')
 }
+
+tasks.register('pruneWebOnlyAssets') {
+    doLast {
+        delete(
+            file('src/main/assets/public/AttendX_Launch_Video.mp4'),
+            file('src/main/assets/public/promo_soundtrack.mp3'),
+            file('src/main/assets/public/promo_soundtrack_90s.mp3'),
+            file('src/main/assets/public/aurora.png'),
+            file('src/main/assets/public/aether-bg.jpg'),
+            file('src/main/assets/public/img')
+        )
+    }
+}
+preBuild.dependsOn(pruneWebOnlyAssets)
 
 apply from: 'capacitor.build.gradle'
 

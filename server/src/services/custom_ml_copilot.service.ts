@@ -25,6 +25,7 @@ export type IntentType =
   | "REMOVE_TIMETABLE_SLOT"
   | "SWAP_TIMETABLE_DAYS"
   | "SHIFT_TIMETABLE_DAY"
+  | "MANAGE_ASSIGNMENTS"
   | "KNOWLEDGE_BASE"
   | "OUT_OF_SCOPE";
 
@@ -139,6 +140,7 @@ export interface CopilotContext {
   timetable_slots?: any[];
   historyLogs?: any[];
   calendarEvents?: any[];
+  assignments?: any[];
   history?: Array<{ role: string; content?: string; text?: string }>;
 }
 
@@ -733,9 +735,646 @@ export class CustomMlCopilotService {
   /**
    * Normalize speech-to-text splits and common acoustic variations
    */
+  private static stripOuterPunctuation(str: string): string {
+    let prev = str;
+    const re = /^[\s"'“”‘’`.,;:!?~_/\\()[\]{}\-]+|[\s"'“”‘’`.,;:!?~_/\\()[\]{}\-]+$/g;
+    for (let i = 0; i < 4; i++) {
+      const next = prev.replace(re, "").trim();
+      if (next === prev) break;
+      prev = next;
+    }
+    return prev;
+  }
+
+  public static boundedEditDistance(a: string, b: string, maxDist = 2): number {
+    const m = a.length;
+    const n = b.length;
+    if (Math.abs(m - n) > maxDist) return maxDist + 1;
+    if (a === b) return 0;
+
+    const dp: number[][] = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+    for (let i = 0; i <= m; i++) dp[i][0] = i;
+    for (let j = 0; j <= n; j++) dp[0][j] = j;
+
+    for (let i = 1; i <= m; i++) {
+      for (let j = 1; j <= n; j++) {
+        const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+        let val = Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + cost);
+        if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) {
+          val = Math.min(val, dp[i - 2][j - 2] + 1);
+        }
+        dp[i][j] = val;
+      }
+    }
+    return dp[m][n];
+  }
+
+  private static readonly EXPLICIT_DOMAIN_TYPOS: Record<string, string> = {
+    tody: "today",
+    tdy: "today",
+    todays: "today's",
+    tmr: "tomorrow",
+    tmrw: "tomorrow",
+    tomorow: "tomorrow",
+    tommorow: "tomorrow",
+    tomarrow: "tomorrow",
+    tmorow: "tomorrow",
+    tomorrows: "tomorrow's",
+    tomorows: "tomorrow's",
+    yday: "yesterday",
+    yestrday: "yesterday",
+    yestarday: "yesterday",
+    yesterdy: "yesterday",
+    monady: "monday",
+    mnday: "monday",
+    tuesdy: "tuesday",
+    teusday: "tuesday",
+    wednsday: "wednesday",
+    wednesdy: "wednesday",
+    wensday: "wednesday",
+    thrusday: "thursday",
+    thursdy: "thursday",
+    thrsday: "thursday",
+    friady: "friday",
+    fridya: "friday",
+    fiday: "friday",
+    saturdy: "saturday",
+    satrday: "saturday",
+    sundya: "sunday",
+    sundy: "sunday",
+    weeek: "week",
+    wekk: "week",
+    wekly: "weekly",
+    wekley: "weekly",
+    wkly: "weekly",
+    mnth: "month",
+    monts: "months",
+    mntly: "monthly",
+    monhtly: "monthly",
+    mnthly: "monthly",
+    atendance: "attendance",
+    attandance: "attendance",
+    attendence: "attendance",
+    attendnce: "attendance",
+    atendence: "attendance",
+    attendane: "attendance",
+    timetabel: "timetable",
+    timtable: "timetable",
+    timetble: "timetable",
+    timetabl: "timetable",
+    tabel: "table",
+    calender: "calendar",
+    calandar: "calendar",
+    calndr: "calendar",
+    shedule: "schedule",
+    schdule: "schedule",
+    scedule: "schedule",
+    schedual: "schedule",
+    scheduel: "schedule",
+    routin: "routine",
+    routiene: "routine",
+    assignemnt: "assignment",
+    assignmnt: "assignment",
+    asignment: "assignment",
+    assingment: "assignment",
+    assignemnts: "assignments",
+    assignmnts: "assignments",
+    asignments: "assignments",
+    assingments: "assignments",
+    homewrk: "homework",
+    homwork: "homework",
+    pendng: "pending",
+    pnding: "pending",
+    birhtday: "birthday",
+    birtday: "birthday",
+    birthdy: "birthday",
+    brithday: "birthday",
+    birthay: "birthday",
+    birhtdays: "birthdays",
+    birtdays: "birthdays",
+    birthdys: "birthdays",
+    brithdays: "birthdays",
+    bday: "birthday",
+    bdays: "birthdays",
+    holidy: "holiday",
+    holidya: "holiday",
+    holydays: "holidays",
+    holidys: "holidays",
+    holdays: "holidays",
+    holydy: "holiday",
+    festivel: "festival",
+    festvals: "festivals",
+    festivels: "festivals",
+    seting: "settings",
+    setings: "settings",
+    settnigs: "settings",
+    setttings: "settings",
+    notifcation: "notification",
+    notificaton: "notification",
+    notifcations: "notifications",
+    notificatons: "notifications",
+    remider: "reminder",
+    remidner: "reminder",
+    remidners: "reminders",
+    remiders: "reminders",
+    sumary: "summary",
+    summery: "summary",
+    sumarry: "summary",
+    summry: "summary",
+    histroy: "history",
+    histry: "history",
+    ordnance: "ordinance",
+    ordinence: "ordinance",
+    ordinace: "ordinance",
+    condonaton: "condonation",
+    condanation: "condonation",
+    reprot: "report",
+    repot: "report",
+    repots: "reports",
+    reprots: "reports",
+    rport: "report",
+    subjet: "subject",
+    subjets: "subjects",
+    subjct: "subject",
+    subjcts: "subjects",
+    suject: "subject",
+    sujects: "subjects",
+    clasroom: "classroom",
+    clasrooms: "classrooms",
+    classrom: "classroom",
+    classroms: "classrooms",
+    clases: "classes",
+    classs: "classes",
+    lectur: "lecture",
+    lecturs: "lectures",
+    practcal: "practical",
+    practcals: "practicals",
+    semster: "semester",
+    semestr: "semester",
+    semstr: "semester",
+    smester: "semester",
+    coundown: "countdown",
+    coutdown: "countdown",
+    countdwn: "countdown",
+    coundowns: "countdowns",
+    coutdowns: "countdowns",
+    exm: "exam",
+    exms: "exams",
+    exma: "exam",
+    exmas: "exams",
+    midseam: "midsem",
+    midesm: "midsem",
+    endseam: "endsem",
+    endesm: "endsem",
+    predicitive: "predictive",
+    predective: "predictive",
+    forcst: "forecast",
+    forcast: "forecast",
+    simualte: "simulate",
+    simulat: "simulate",
+    simualt: "simulate",
+    simualtion: "simulation",
+    simlation: "simulation",
+    hapens: "happens",
+    bnk: "bunk",
+    skp: "skip",
+    percentge: "percentage",
+    percntage: "percentage",
+    precentage: "percentage",
+    frequncy: "frequency",
+    freuqency: "frequency",
+    profil: "profile",
+    proifle: "profile",
+    devics: "devices",
+    devies: "devices",
+    deivces: "devices",
+    feedbck: "feedback",
+    feddback: "feedback",
+    feeback: "feedback",
+    isue: "issue",
+    issu: "issue",
+    glith: "glitch",
+    gltch: "glitch",
+    complnt: "complaint",
+    complant: "complaint",
+    absnt: "absent",
+    abscent: "absent",
+    abset: "absent",
+    presnt: "present",
+    prsent: "present",
+    preesnt: "present",
+    medicall: "medical",
+    medicl: "medical",
+    attnded: "attended",
+    atended: "attended",
+    missd: "missed",
+    mised: "missed",
+    bunkng: "bunking",
+    bnking: "bunking",
+    skpping: "skipping",
+    skiping: "skipping",
+    becuase: "because",
+    becasue: "because",
+    becuse: "because",
+    reasn: "reason",
+    rmark: "remark",
+    rmk: "remark",
+    upcomng: "upcoming",
+    upcomming: "upcoming",
+    upcmoing: "upcoming",
+    evnt: "event",
+    evnts: "events",
+    evetns: "events",
+    oepn: "open",
+    opne: "open",
+    openn: "open",
+    opn: "open",
+    shwo: "show",
+    chcek: "check",
+    chekc: "check",
+    swtich: "switch",
+    swithc: "switch",
+    toggel: "toggle",
+    toggl: "toggle",
+    mdoe: "mode",
+    thme: "theme",
+    canceld: "canceled",
+    cancled: "canceled",
+    cancelld: "cancelled",
+    delte: "delete",
+    delet: "delete",
+    dlete: "delete",
+    complte: "complete",
+    compelte: "complete",
+    cmplete: "complete",
+    updt: "update",
+    updat: "update",
+    chang: "change",
+    chng: "change",
+    enble: "enable",
+    enabl: "enable",
+    disble: "disable",
+    disabl: "disable",
+    anlytics: "analytics",
+    analyics: "analytics",
+    changlog: "changelog",
+    changelg: "changelog",
+    prefrences: "preferences",
+    prefernces: "preferences",
+  };
+
+  private static readonly DOMAIN_CANONICAL_VOCAB = [
+    "attendance",
+    "timetable",
+    "calendar",
+    "schedule",
+    "routine",
+    "assignment",
+    "assignments",
+    "homework",
+    "birthday",
+    "birthdays",
+    "holiday",
+    "holidays",
+    "festival",
+    "festivals",
+    "vacation",
+    "settings",
+    "preferences",
+    "notification",
+    "notifications",
+    "reminder",
+    "reminders",
+    "frequency",
+    "summary",
+    "history",
+    "ordinance",
+    "condonation",
+    "report",
+    "reports",
+    "analytics",
+    "subject",
+    "subjects",
+    "classroom",
+    "classrooms",
+    "classes",
+    "lecture",
+    "lectures",
+    "practical",
+    "practicals",
+    "semester",
+    "countdown",
+    "countdowns",
+    "midsem",
+    "endsem",
+    "predictive",
+    "forecast",
+    "simulate",
+    "simulation",
+    "percentage",
+    "profile",
+    "devices",
+    "sessions",
+    "feedback",
+    "complaint",
+    "changelog",
+    "absent",
+    "present",
+    "medical",
+    "attended",
+    "missed",
+    "bunking",
+    "skipping",
+    "cancelled",
+    "canceled",
+    "tomorrow",
+    "yesterday",
+    "monday",
+    "tuesday",
+    "wednesday",
+    "thursday",
+    "friday",
+    "saturday",
+    "sunday",
+    "upcoming",
+    "pending",
+    "weekly",
+    "monthly",
+    "events",
+    "switch",
+    "toggle",
+    "delete",
+    "complete",
+    "completed",
+    "update",
+    "enable",
+    "disable",
+    "because",
+    "reason",
+    "remark",
+  ];
+
+  private static readonly DOMAIN_CANONICAL_SET = new Set(CustomMlCopilotService.DOMAIN_CANONICAL_VOCAB);
+
+  private static readonly PROTECTED_ENGLISH_WORDS = new Set([
+    "prevent",
+    "parents",
+    "parent",
+    "preset",
+    "percent",
+    "patience",
+    "patient",
+    "teacher",
+    "weather",
+    "already",
+    "earlier",
+    "friends",
+    "friend",
+    "student",
+    "students",
+    "project",
+    "projects",
+    "object",
+    "suspect",
+    "subtext",
+    "protect",
+    "reject",
+    "glasses",
+    "clauses",
+    "crashes",
+    "victory",
+    "mystery",
+    "sittings",
+    "getting",
+    "medieval",
+    "magical",
+    "median",
+    "attendants",
+    "stimulation",
+    "similar",
+    "remainder",
+    "vocation",
+    "compliant",
+    "advices",
+    "devises",
+    "banking",
+    "dunking",
+    "bunker",
+    "support",
+    "export",
+    "import",
+    "depart",
+    "resort",
+    "problem",
+    "problems",
+    "morning",
+    "evening",
+    "tonight",
+    "weekend",
+    "working",
+    "nothing",
+    "another",
+    "through",
+    "without",
+    "missing",
+    "looking",
+    "feeling",
+    "sitting",
+    "running",
+    "brother",
+    "planned",
+    "calling",
+    "happens",
+    "current",
+    "default",
+    "deleted",
+    "started",
+    "stopped",
+    "writing",
+    "written",
+    "someone",
+    "anybody",
+    "anyone",
+    "everybody",
+    "everyone",
+    "between",
+    "against",
+    "account",
+    "college",
+    "welcome",
+    "offline",
+    "android",
+    "desktop",
+    "windows",
+    "version",
+    "location",
+    "operating",
+    "systems",
+    "database",
+    "management",
+    "computer",
+    "networks",
+    "mathematics",
+    "algorithms",
+    "machine",
+    "learning",
+    "artificial",
+    "intelligence",
+    "software",
+    "engineering",
+    "communication",
+    "physics",
+    "chemistry",
+    "theory",
+    "computation",
+    "architecture",
+    "organization",
+    "science",
+  ]);
+
+  private static readonly ENTITY_FUZZY_STOP_WORDS = new Set([
+    "mark",
+    "record",
+    "log",
+    "set",
+    "my",
+    "me",
+    "attendance",
+    "present",
+    "absent",
+    "medical",
+    "duty",
+    "off",
+    "leave",
+    "today",
+    "tomorrow",
+    "yesterday",
+    "class",
+    "classes",
+    "lecture",
+    "lectures",
+    "session",
+    "sessions",
+    "slot",
+    "slots",
+    "lab",
+    "labs",
+    "practical",
+    "practicals",
+    "demo",
+    "what",
+    "happens",
+    "miss",
+    "skip",
+    "bunk",
+    "attend",
+    "attending",
+    "check",
+    "show",
+    "tell",
+    "current",
+    "overall",
+    "total",
+    "status",
+    "percentage",
+    "summary",
+    "safe",
+    "need",
+    "needed",
+    "many",
+    "until",
+    "reach",
+    "target",
+    "next",
+    "week",
+    "days",
+    "from",
+    "with",
+    "because",
+    "reason",
+    "remark",
+    "note",
+    "comment",
+    "shift",
+    "move",
+    "reschedule",
+    "postpone",
+    "change",
+    "please",
+    "about",
+    "your",
+    "when",
+    "whose",
+    "birthday",
+    "birthdays",
+  ]);
+
+  private static normalizeDomainToken(word: string): string {
+    const low = word.toLowerCase();
+    const explicit = this.EXPLICIT_DOMAIN_TYPOS[low];
+    if (explicit) {
+      return /^[A-Z]/.test(word) ? explicit.charAt(0).toUpperCase() + explicit.slice(1) : explicit;
+    }
+    if (low.length < 6 || this.DOMAIN_CANONICAL_SET.has(low) || this.PROTECTED_ENGLISH_WORDS.has(low)) {
+      return word;
+    }
+
+    const maxDist = low.length >= 8 ? 2 : 1;
+    let bestWord: string | null = null;
+    let bestDist = maxDist + 1;
+    let tied = false;
+
+    for (const cand of this.DOMAIN_CANONICAL_VOCAB) {
+      if (Math.abs(cand.length - low.length) > maxDist) continue;
+      const dist = this.boundedEditDistance(low, cand, maxDist);
+      if (dist > maxDist) continue;
+      if ((dist === 2 || low.length === 6) && low[0] !== cand[0]) continue;
+      if (dist < bestDist) {
+        bestDist = dist;
+        bestWord = cand;
+        tied = false;
+      } else if (dist === bestDist && bestWord !== cand) {
+        tied = true;
+      }
+    }
+
+    if (!bestWord || tied) return word;
+    return /^[A-Z]/.test(word) ? bestWord.charAt(0).toUpperCase() + bestWord.slice(1) : bestWord;
+  }
+
   public static normalizeVoiceQuery(raw: string): string {
     if (!raw) return "";
-    return raw
+
+    const spans: string[] = [];
+    const mask = (s: string) => {
+      const idx = spans.length;
+      spans.push(s);
+      return `__ATTXSPAN${idx}__`;
+    };
+
+    let masked = raw
+      .replace(/"[^"\n]*"/g, (m) => mask(m))
+      .replace(/(?:^|(?<=\s))'[^'\n]{2,}'(?=$|[\s.,!?;:])/g, (m) => mask(m))
+      .replace(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g, (m) => mask(m))
+      .replace(/https?:\/\/\S+|(?:^|(?<=\s))\/[A-Za-z0-9._/-]+/g, (m) => mask(m))
+      .replace(/(\b(?:feedback|complaint|issue|bug|problem|report)\s*[:=]\s*)(.+)$/i, (_m, p1, p2) => `${p1}${mask(p2)}`);
+
+    if (
+      /^\s*(?:please\s+)?(?:mark|record|log|set)\b/i.test(masked) &&
+      !/\b(?:assignment|assignemnt|assignmnt|task|homework|homewrk)\b/i.test(masked)
+    ) {
+      masked = masked.replace(
+        /(\b(?:with\s+(?:a\s+)?)?(?:remarks?|rmarks?|rmks?|reasons?|reasns?|notes?|comments?|bec(?:au|ua|a|u)?se(?:\s+of)?|due\s+to)\s*[:=\s]\s*)(.+)$/i,
+        (_m, p1, p2) => (/^__ATTXSPAN\d+__$/.test(p2.trim()) ? `${p1}${p2}` : `${p1}${mask(p2)}`)
+      );
+    }
+
+    const tokenNormalized = masked.replace(/\b[A-Za-z]{3,}\b/g, (word) => {
+      if (word.startsWith("__ATTXSPAN")) return word;
+      return this.normalizeDomainToken(word);
+    });
+
+    const sttJoined = tokenNormalized
       .replace(/\btime\s+table\b/gi, "timetable")
       .replace(/\bpeer\s*[- ]?sync\b/gi, "peer-sync")
       .replace(/\bclass\s+room(s)?\b/gi, "classroom$1")
@@ -746,6 +1385,12 @@ export class CustomMlCopilotService {
       .replace(/\blight\s+theme\b/gi, "light mode")
       .replace(/\bsystem\s+theme\b/gi, "system mode")
       .replace(/\bheads?\s+up\b/gi, "heads-up");
+
+    let restored = sttJoined;
+    for (let pass = 0; pass < 3 && /__ATTXSPAN\d+__/.test(restored); pass++) {
+      restored = restored.replace(/__ATTXSPAN(\d+)__/g, (_m, idx) => spans[Number(idx)] ?? "");
+    }
+    return restored;
   }
 
   /**
@@ -757,12 +1402,10 @@ export class CustomMlCopilotService {
     context: CopilotContext,
     generalCtx: ReturnType<typeof CustomMlCopilotService.buildGeneralContext>
   ): Promise<CopilotResponse | null> {
-    const rawClean = query
-      .trim()
-      .replace(/^[\s"'“”‘’`.,;:!?~_/\\()[\]{}\-]+|[\s"'“”‘’`.,;:!?~_/\\()[\]{}\-]+$/g, "")
+    const rawClean = this.stripOuterPunctuation(query)
       .replace(/^(?:(?:hey|hi|hello|ok|okay)?\s*(?:attendx|assistant|bot|ai)[\s,:]+)/i, "");
     const normalized = this.normalizeVoiceQuery(rawClean);
-    const lower = normalized.toLowerCase().replace(/^[\s"'“”‘’`.,;:!?~_/\\()[\]{}\-]+|[\s"'“”‘’`.,;:!?~_/\\()[\]{}\-]+$/g, "").trim();
+    const lower = this.stripOuterPunctuation(normalized).toLowerCase();
     const localDate = context.localTime ? new Date(context.localTime) : new Date();
 
     // 1. GREETINGS, FAREWELLS & SMALL TALK (Deterministic Fast-Path <1ms)
@@ -770,9 +1413,11 @@ export class CustomMlCopilotService {
 
     // 1a. Farewells ("see you later", "bye", "goodbye", "cya")
     const farewellPattern =
-      /^(?:bye(?:\s+bye)?|byebye|goodbye|good\s+bye|cya(?:\s+later)?|see\s+(?:you|ya|u)(?:\s+(?:later|soon|around))?|catch\s+you\s+later|talk\s+to\s+you\s+later|take\s+care|have\s+a\s+(?:good|great|nice)\s+day|goodnight|good\s+night)[\s.?!]*$/i;
+      /^(?:bye(?:\s+bye)?|byebye|goodbye|good\s+bye|cya(?:\s+later)?|see\s+(?:you|ya|u)(?:\s+(?:later|soon|around))?|catch\s+you\s+later|talk\s+to\s+you\s+later|take\s+care|have\s+a\s+(?:good|great|nice)\s+day|goodnight|good\s+night)$/i;
     if (farewellPattern.test(lower)) {
-      const reply = `See you later, ${userName}! Stay on top of your ${overall.target}% attendance goal!`;
+      const reply = /\bsee\s+(?:you|ya|u)\s+later\b/i.test(lower)
+        ? `Goodbye, ${userName.split(" ")[0] || userName}! Feel free to reach back out anytime you need help with your timetable or attendance. Have a great day!`
+        : `See you later, ${userName}! Stay on top of your ${overall.target}% attendance goal!`;
       return {
         intent: "CHIT_CHAT",
         reply,
@@ -783,9 +1428,9 @@ export class CustomMlCopilotService {
       };
     }
 
-    // 1b. Gratitude ("thanks", "thank you", "tysm")
+    // 1b. Gratitude ("thanks", "thank you", "thanks a lot", "tysm")
     const gratitudePattern =
-      /^(?:thank(?:s|\s+you|\s+u|\s+you\s+so\s+much|\s+a\s+lot)?|thx|ty|tysm|appreciate\s+it)[\s.?!]*$/i;
+      /^(?:thank(?:s(?:\s+(?:a\s+lot|so\s+much|very\s+much))?|\s+you(?:\s+(?:so\s+much|very\s+much|a\s+lot))?|\s+u)?|thx|ty|tysm|appreciate\s+it)[\s.?!]*$/i;
     if (gratitudePattern.test(lower)) {
       const reply = `You're welcome, ${userName}! Let me know anytime you need help with your attendance or schedule.`;
       return {
@@ -890,22 +1535,87 @@ export class CustomMlCopilotService {
       };
     }
 
+    // 2.5 TIMETABLE SCHEDULE QUERIES BEFORE NAVIGATION ("Today's schedule", "Timetable today", "Tomorrow's routine", "Labs today")
+    const isScheduleQuery =
+      /^(?:what(?:'s|\s+is)\s+(?:my\s+)?)?(?:next\s+(?:class|lecture|lab)|classes\s+today|(?:my\s+)?(?:classes|schedule|timetable|routine)\s+today|today(?:'s)?\s+(?:classes|schedule|timetable)|timetable\s+today)$/i.test(
+        lower
+      ) ||
+      /^what\s+classes\s+(?:do\s+i\s+have|are\s+there)\s+(?:today|tomorrow)\??$/i.test(lower) ||
+      /\b(?:routine|schedule|timetable|classes)\s+(?:for\s+|on\s+)?tomorrow\b/i.test(lower) ||
+      /\btomorrow(?:'s)?\s+(?:routine|schedule|timetable|classes)\b/i.test(lower) ||
+      /\b(?:do\s+i\s+have\s+any|any|are\s+there\s+any|show(?:\s+me)?)\s+labs?\s+(?:today|tomorrow)\b/i.test(lower) ||
+      /^(?:labs?|practicals?)\s+(?:today|tomorrow)\b/i.test(lower);
+
+    if (isScheduleQuery) {
+      const { todayClasses, nextUpcomingClass: nextCls, todayDayName } = generalCtx;
+      if (/next\s+(?:class|lecture|lab)/i.test(lower)) {
+        const reply = nextCls
+          ? `Your next class is **${nextCls.subjectName}** (${nextCls.dayName}, **${nextCls.startTime} – ${nextCls.endTime}**${nextCls.room && nextCls.room !== "TBD" ? `, Room ${nextCls.room}` : ""}).`
+          : `You have no upcoming classes found in your weekly timetable.`;
+        return { intent: "TIMETABLE_QUERY", reply, response: reply, citations: [], actions: [], requiresConfirmation: false };
+      }
+
+      const asksTomorrow = /\btomorrow\b/i.test(lower);
+      const dayNames = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+      const baseNow = this.toWallClock(context.localTime);
+      const todayDayIdx = (baseNow.getUTCDay() + 6) % 7;
+      const targetDayIdx = asksTomorrow ? (todayDayIdx + 1) % 7 : todayDayIdx;
+      const targetDayLabel = asksTomorrow ? `tomorrow (${dayNames[targetDayIdx]})` : `today (${todayDayName})`;
+
+      const subjectNameMap: Record<string, string> = {};
+      for (const s of context.subjects || []) subjectNameMap[s.id] = s.name;
+      const slotsArr = Array.isArray(context.timetable_slots) ? context.timetable_slots : [];
+      const dayClasses = asksTomorrow
+        ? slotsArr
+            .filter((slot: any) => Number(slot.dayOfWeek) === targetDayIdx)
+            .sort((a: any, b: any) => String(a.startTime || "").localeCompare(String(b.startTime || "")))
+            .map((slot: any) => ({
+              startTime: slot.startTime || "09:00",
+              endTime: slot.endTime || "09:50",
+              subjectName: slot.subject?.name || subjectNameMap[slot.subjectId] || "Scheduled Class",
+              room: slot.room || "TBD",
+              slotType: slot.type || slot.slotType || "Lecture",
+            }))
+        : todayClasses;
+
+      if (/\b(?:labs?|practicals?)\b/i.test(lower)) {
+        const labs = dayClasses.filter(
+          (c: any) => /lab|practical/i.test(String(c.slotType || "")) || /\blab\b|practical/i.test(String(c.subjectName || ""))
+        );
+        const reply =
+          labs.length === 0
+            ? `You have **no labs scheduled ${targetDayLabel}**!`
+            : `Yes! You have **${labs.length}** lab session${labs.length !== 1 ? "s" : ""} **${targetDayLabel}**:\n${labs
+                .map((c: any) => `• **${c.startTime} – ${c.endTime}**: ${c.subjectName}${c.room && c.room !== "TBD" ? ` (${c.room})` : ""}`)
+                .join("\n")}`;
+        return { intent: "TIMETABLE_QUERY", reply, response: reply, citations: [], actions: [], requiresConfirmation: false };
+      }
+
+      const reply =
+        dayClasses.length === 0
+          ? `You have **no classes scheduled ${targetDayLabel}**!${!asksTomorrow && nextCls ? ` Your next class is **${nextCls.subjectName}** on ${nextCls.dayName} at ${nextCls.startTime}.` : ""}`
+          : `Here is your schedule for **${targetDayLabel}** (${dayClasses.length} session${dayClasses.length !== 1 ? "s" : ""}):\n${dayClasses
+              .map((c: any) => `• **${c.startTime} – ${c.endTime}**: ${c.subjectName} (${c.slotType}${c.room && c.room !== "TBD" ? `, ${c.room}` : ""})`)
+              .join("\n")}`;
+      return { intent: "TIMETABLE_QUERY", reply, response: reply, citations: [], actions: [], requiresConfirmation: false };
+    }
+
     // 3. APP NAVIGATION (Direct Screen Jumps - Supports command verbs OR bare screen utterances)
-    const strippedNav = lower
-      .replace(/^(?:can\s+you(?:\s+please)?|could\s+you(?:\s+please)?|would\s+you|please|pls|i\s+want\s+to|i\s+need\s+to|help\s+me(?:\s+to)?|let\s+me|just)\s+/i, "")
-      .replace(/^(?:navigate(?:\s+to)?|open(?:\s+up)?|go\s+to|take\s+me\s+to|show(?:\s+me)?|view|switch\s+to|display|check(?:\s+out)?|bring\s+up|launch|see|head\s+to)\s+/i, "")
-      .replace(/^(?:all\s+)?(?:the|my|our)\s+/i, "")
-      .replace(/\s+(?:please|pls|for\s+me|now|right\s+now|asap|screen|tab|page|view|modal|section|form|dialog)$/i, "")
-      .replace(/^[\s"'“”‘’`.,;:!?~_/\\()[\]{}\-]+|[\s"'“”‘’`.,;:!?~_/\\()[\]{}\-]+$/g, "")
-      .trim();
+    const strippedNav = this.stripOuterPunctuation(
+      lower
+        .replace(/^(?:can\s+you(?:\s+please)?|could\s+you(?:\s+please)?|would\s+you|please|pls|i\s+want\s+to|i\s+need\s+to|help\s+me(?:\s+to)?|let\s+me|just)\s+/i, "")
+        .replace(/^(?:navigate(?:\s+to)?|open(?:\s+up)?|go\s+to|take\s+me\s+to|show(?:\s+me)?|view|switch\s+to|display|check(?:\s+out)?|bring\s+up|launch|see|head\s+to)\s+/i, "")
+        .replace(/^(?:all\s+)?(?:the|my|our)\s+/i, "")
+        .replace(/\s+(?:please|pls|for\s+me|now|right\s+now|asap|screen|tab|page|view|modal|section|form|dialog)$/i, "")
+    );
 
     let navTarget: { path: string; title: string } | null = null;
 
     if (/^(?:(?:exam|semester|holiday|academic|event|upcoming)\s+)?countdowns?$|^countdown(?:\s+timers?)?$/i.test(strippedNav)) {
       navTarget = { path: "/semester/countdowns", title: "Semester Countdowns" };
-    } else if (/^(?:(?:semester|academic|upcoming|college)\s+)?holidays?$|^holiday\s+list$/i.test(strippedNav)) {
+    } else if (/^(?:(?:semester|academic|upcoming|college)\s+)?holidays?$|^holiday\s+list$/i.test(strippedNav) && !/^list\b/i.test(lower)) {
       navTarget = { path: "/semester/holidays", title: "Semester Holidays" };
-    } else if (/^(?:(?:semester|academic|upcoming|calendar)\s+)?events?$|^academic\s+calendar$|^event\s+list$/i.test(strippedNav)) {
+    } else if (/^(?:(?:semester|academic|upcoming|calendar)\s+)?events?$|^academic\s+calendar$|^event\s+list$/i.test(strippedNav) && !/^list\b/i.test(lower)) {
       navTarget = { path: "/semester/events", title: "Semester Events" };
     } else if (/^(?:(?:class|weekly|daily)\s+)?(?:timetable|time\s*table|schedule|routine)$/i.test(strippedNav)) {
       navTarget = { path: "/timetable", title: "Timetable" };
@@ -939,7 +1649,7 @@ export class CustomMlCopilotService {
       navTarget = { path: "/semester", title: "Semester Overview" };
     } else if (/^calendar$|^month\s+view$/i.test(strippedNav)) {
       navTarget = { path: "/calendar", title: "Calendar" };
-    } else if (/^(?:today(?:'s)?(?:\s+(?:agenda|dashboard|schedule|classes|attendance|routine|overview|plan))?|daily\s+(?:agenda|dashboard|schedule|overview)|agenda|dashboard|home(?:\s+screen)?|main\s+screen)$/i.test(strippedNav)) {
+    } else if (/^(?:today(?:'s)?(?:\s+(?:agenda|dashboard|overview|plan))?|daily\s+(?:agenda|dashboard|overview)|agenda|dashboard|home(?:\s+screen)?|main\s+screen)$/i.test(strippedNav)) {
       navTarget = { path: "/today", title: "Today's Agenda" };
     }
 
@@ -957,21 +1667,25 @@ export class CustomMlCopilotService {
     }
 
     // 4. WEEKLY / MONTHLY / SEMESTER ATTENDANCE REPORTS (Tier 2 Fast Batch)
-    //    One deterministic rule for every phrasing ("send me weekly reports", "email my monthly report", "send me report"):
-    //    - time/day given ("in 5 minutes", "at 9am on friday", "every monday")  -> schedule it, open Settings
-    //    - nothing given                                                          -> email one now, never touch Settings
+    //    Guard: "check/show my attendance summary" without send/email/recurring cadence belongs to Attendance Summary (#6), NOT email report!
     const wallNow = this.toWallClock(context.localTime);
     const hasReportWord = /\b(reports?|summar(?:y|ies)|digests?|attendance\s+records?)\b/i.test(lower);
     const hasStrongVerb = /\b(send|email|mail|dispatch|generate|forward)\b/i.test(lower);
-    const hasWeakVerb = /\b(schedule|set|remind|notify|give|get|want|need|enable|start|turn on)\b/i.test(lower);
-    const hasPeriod = /\b(daily|weekly|monthly|semester|attendance)\b/i.test(lower);
-    const hasRecurringPeriod = /\b(daily|weekly|monthly)\b/i.test(lower);
+    const hasWeakVerb = /\b(schedule|set|remind|notify|give|get|want|need|enable|start|turn\s+on)\b/i.test(lower);
+    const hasRecurringPeriod = /\b(daily|weekly|monthly|semester)\b/i.test(lower);
+    const isReadOnlyAttendanceSummary =
+      /^(?:what(?:'s|\s+is)|check|show(?:\s+me)?|tell(?:\s+me)?|view|my)\b.*\battendance\s+summary\b/i.test(lower) &&
+      !hasStrongVerb &&
+      !hasRecurringPeriod &&
+      !/\bevery\b/i.test(lower);
+
     if (
-      (hasStrongVerb && (hasReportWord || /\b(attendance|report)\b/i.test(lower))) ||
-      (hasReportWord && hasPeriod) ||
-      (hasReportWord && hasWeakVerb && hasRecurringPeriod) ||
-      /\b(weekly|monthly|semester)\s+attendance\s+(report|records?|email)\b/i.test(lower) ||
-      /\b(email|mail)\s+(me\s+)?(my\s+)?(weekly|monthly|attendance)\b/i.test(lower)
+      !isReadOnlyAttendanceSummary &&
+      ((hasStrongVerb && (hasReportWord || /\b(attendance|report)\b/i.test(lower))) ||
+        (hasReportWord && hasRecurringPeriod) ||
+        (hasReportWord && hasWeakVerb && /\b(daily|weekly|monthly)\b/i.test(lower)) ||
+        /\b(weekly|monthly|semester)\s+attendance\s+(report|records?|email)\b/i.test(lower) ||
+        /\b(email|mail)\s+(me\s+)?(my\s+)?(weekly|monthly|attendance)\b/i.test(lower))
     ) {
       const schedule = this.parseReportSchedule(lower, wallNow);
       if (schedule) {
@@ -1005,32 +1719,85 @@ export class CustomMlCopilotService {
       };
     }
 
-    // 5. NEXT UPCOMING EVENT / HOLIDAY / EXAM / NEXT CLASS / TODAY'S SCHEDULE
+    // 5. NEXT UPCOMING EVENT / HOLIDAY / EXAM / BREAK / FESTIVALS
     if (
-      /^(what('s|\s+is)\s+(my\s+)?)?(next|upcoming)\s+(event|events|holiday|vacation|break|exam|midsem|endsem|milestone|festival|fest)s?$/i.test(lower) ||
-      /\b(when\s+(is|are|was|were)\s+(the\s+)?(next\s+)?(event|holiday|exam|break|vacation|midsem|endsem)|tell\s+me\s+(the\s+)?next\s+upcoming\s+event|upcoming\s+events?|next\s+holiday)\b/i.test(lower) ||
-      /\b(how\s+many\s+days\s+(until|to|left\s+for|before)|days\s+(left\s+)?(until|to|for)|countdown\s+to|time\s+until)\s+(the\s+)?(next\s+)?(exam|midsem|endsem|holiday|vacation|break|event)s?\b/i.test(lower) ||
-      /\b(when\s+(is|are|was|were)\s+(the\s+)?(next\s+)?(exam|midsem|endsem|test|quiz)s?)\b/i.test(lower) ||
-      /^(mid\s*sem(ester)?|end\s*sem(ester)?)\s+(date|dates|schedule|timing|when)$/i.test(lower)
+      /^(?:what(?:'s|\s+is)\s+(?:the\s+|my\s+|our\s+)?)?(?:next|upcoming)\s+(?:event|events|holiday|vacation|break|exam|midsem|endsem|milestone|festival|fest)s?$/i.test(lower) ||
+      /\b(?:when\s+(?:is|are|was|were)\s+(?:the\s+|my\s+|our\s+)?(?:next\s+|upcoming\s+)?(?:event|holiday|exam|break|vacation|midsem|endsem|fest|festival)s?|tell\s+me\s+(?:the\s+)?next\s+(?:upcoming\s+)?event|next\s+holiday)\b/i.test(lower) ||
+      /\b(?:how\s+many\s+days\s+(?:until|to|left\s+for|before)|days\s+(?:left\s+)?(?:until|to|for)|countdown\s+to|time\s+until)\s+(?:the\s+|my\s+|our\s+)?(?:next\s+)?(?:exam|midsem|endsem|holiday|vacation|break|event|fest|festival)s?\b/i.test(lower) ||
+      /\b(?:when\s+(?:is|are|was|were)\s+(?:the\s+|my\s+|our\s+)?(?:next\s+)?(?:exam|midsem|endsem|test|quiz)s?)\b/i.test(lower) ||
+      /^(?:mid\s*sem(ester)?|end\s*sem(ester)?)\s+(?:date|dates|schedule|timing|when|countdowns?)$/i.test(lower) ||
+      /\b(?:list\s+(?:all\s+)?(?:upcoming\s+)?(?:holidays|events|exams|fests|festivals)|what\s+(?:campus\s+)?(?:festivals?|fests?|holidays?|events?)\s+are\s+(?:coming\s+up|upcoming)|all\s+upcoming\s+(?:holidays|events|festivals))\b/i.test(lower)
     ) {
       const isExamEvent = (e: any): boolean => {
         const type = String(e.eventType || "").toLowerCase().replace(/[-_]/g, " ").trim();
         const title = String(e.title || "").toLowerCase();
         if (type.includes("holiday") || type.includes("vacation") || type.includes("break") || type.includes("fest")) return false;
         if (/\b(break|vacation|holiday|fest|festival|puja|diwali|chaturdasi|duj|jayanti|birthday)\b/i.test(title)) return false;
-        if (/\b(exams?|midsem|endsem|tests?|quiz(?:zes)?|assessments?|lab\s+exams?)\b/i.test(type)) return true;
+        if (/\b(exams?|midsem|endsem|tests?|quiz(?:zes)?|assessments?|lab\s+exams?|ct)\b/i.test(type)) return true;
         if (/\b(mid\s*sem(ester)?\s+exam|end\s*sem(ester)?\s+exam|exams?|theory\s+exam|lab\s+exam|practical\s+exam|class\s+test|cycle\s+test|unit\s+test|quiz|assessment)\b/i.test(title)) return true;
         return false;
       };
 
+      const wantsFest = /\b(fest|fests|festival|festivals)\b/i.test(lower);
+      const wantsList = /\b(list|all|what\s+(?:campus\s+)?(?:festivals?|fests?|holidays?|events?)\s+are\s+coming\s+up)\b/i.test(lower);
       const wantsBreak = /\b(break|vacation)\b/i.test(lower);
+      const wantsMidBreak = /\bmidsem\b/i.test(lower) && wantsBreak;
       const wantsEndsem = /\b(end\s*sem(ester)?)\b/i.test(lower) && !wantsBreak;
       const wantsMidsem = /\b(mid\s*sem(ester)?)\b/i.test(lower) && !wantsBreak;
-      const wantsHoliday = /\b(holidays?|fests?|festivals?)\b/i.test(lower);
+      const wantsHoliday = /\b(holidays?|vacations?)\b/i.test(lower);
       const wantsExam = (/\b(exams?|tests?|quiz(?:zes)?|assessments?)\b/i.test(lower) || wantsEndsem || wantsMidsem) && !wantsBreak && !wantsHoliday;
 
       const allEvents: any[] = (generalCtx as any).allCalendarEvents || generalCtx.nextUpcomingEvents || [];
       const upcoming: any[] = generalCtx.nextUpcomingEvents || [];
+
+      if (wantsFest) {
+        const upcomingFests = upcoming.filter(
+          (e: any) =>
+            String(e.eventType || "").toLowerCase().includes("fest") ||
+            /\b(fest|festival|mridang|meraki|techfest|cultural|yalgaar|prabodh|carnival)\b/i.test(e.title || "")
+        );
+        if (upcomingFests.length > 0) {
+          const list = upcomingFests
+            .slice(0, 5)
+            .map((e: any) => `• **${e.title}** — ${e.date}${e.endDate ? ` to ${e.endDate}` : ""} (${e.daysUntil === 0 ? "Today" : `in **${e.daysUntil} days**`})`)
+            .join("\n");
+          const reply = `Here are the upcoming campus festivals on your calendar:\n\n${list}`;
+          return { intent: "TIMETABLE_QUERY", reply, response: reply, citations: [], actions: [], requiresConfirmation: false };
+        }
+        const pastFests = allEvents
+          .filter((e: any) => e.isPast && (String(e.eventType || "").toLowerCase().includes("fest") || /\b(fest|festival|mridang|meraki|techfest|cultural|yalgaar)\b/i.test(e.title || "")))
+          .sort((a: any, b: any) => b.date.localeCompare(a.date));
+        const reply =
+          pastFests.length > 0
+            ? `No upcoming campus festivals are scheduled for the remainder of this semester. The most recent fest was **${pastFests[0].title}** (${pastFests[0].date}${pastFests[0].endDate ? ` – ${pastFests[0].endDate}` : ""}, ${pastFests[0].daysAgo} days ago).`
+            : "You don't have any upcoming campus festivals recorded in your active semester calendar.";
+        return { intent: "TIMETABLE_QUERY", reply, response: reply, citations: [], actions: [], requiresConfirmation: false };
+      }
+
+      if (wantsMidBreak) {
+        const isMidBreak = (e: any) =>
+          (/\bmid\s*sem(?:ester)?\b/i.test(e.title || "") || e.eventType.includes("break") || e.eventType.includes("vacation")) &&
+          /\bmid\s*sem|autumn\b/i.test(e.title || "");
+        const upcomingMidBreaks = upcoming.filter(isMidBreak);
+        if (upcomingMidBreaks.length > 0) {
+          const top = upcomingMidBreaks[0];
+          const countdownText = top.daysUntil === 0 ? "today" : top.daysUntil === 1 ? "tomorrow (in 1 day)" : `in **${top.daysUntil} days**`;
+          const reply = `Your **${top.title}** is scheduled for **${top.date}${top.endDate ? ` – ${top.endDate}` : ""}** (${countdownText}).`;
+          return { intent: "TIMETABLE_QUERY", reply, response: reply, citations: [], actions: [], requiresConfirmation: false };
+        }
+        const pastMidBreaks = allEvents.filter((e: any) => e.isPast && isMidBreak(e)).sort((a: any, b: any) => b.date.localeCompare(a.date));
+        const nextGeneralBreak = upcoming.find(
+          (e: any) => e.eventType.includes("vacation") || e.eventType.includes("break") || /\b(break|vacation)\b/i.test(e.title || "")
+        );
+        if (pastMidBreaks.length > 0) {
+          const past = pastMidBreaks[0];
+          const nextNote = nextGeneralBreak
+            ? ` Next upcoming break: **${nextGeneralBreak.title}** on **${nextGeneralBreak.date}${nextGeneralBreak.endDate ? ` – ${nextGeneralBreak.endDate}` : ""}** (${nextGeneralBreak.daysUntil === 0 ? "today" : `in **${nextGeneralBreak.daysUntil} days**`}).`
+            : "";
+          const reply = `The **${past.title}** has already concluded (${past.date}${past.endDate ? ` – ${past.endDate}` : ""}, ${past.daysAgo} days ago).${nextNote}`;
+          return { intent: "TIMETABLE_QUERY", reply, response: reply, citations: [], actions: [], requiresConfirmation: false };
+        }
+      }
 
       if (wantsMidsem) {
         const upcomingMidsems = upcoming.filter((e: any) => {
@@ -1172,10 +1939,18 @@ export class CustomMlCopilotService {
         const upcomingHolidays = upcoming.filter((e: any) => {
           const type = String(e.eventType || "").toLowerCase();
           const title = String(e.title || "").toLowerCase();
-          return type.includes("holiday") || /\b(holiday|diwali|puja|jayanti|chaturdasi|duj|christmas)\b/i.test(title);
+          return type.includes("holiday") || type.includes("vacation") || /\b(holiday|diwali|puja|jayanti|chaturdasi|duj|christmas|vacation)\b/i.test(title);
         });
 
         if (upcomingHolidays.length > 0) {
+          if (wantsList) {
+            const allList = upcomingHolidays
+              .slice(0, 8)
+              .map((e: any) => `• **${e.title}** — ${e.date}${e.endDate ? ` to ${e.endDate}` : ""} (${e.daysUntil === 0 ? "Today" : `in ${e.daysUntil}d`})`)
+              .join("\n");
+            const reply = `Here are all **${upcomingHolidays.length}** upcoming holidays & breaks on your calendar:\n\n${allList}`;
+            return { intent: "TIMETABLE_QUERY", reply, response: reply, citations: [], actions: [], requiresConfirmation: false };
+          }
           const top = upcomingHolidays[0];
           const countdownText = top.daysUntil === 0 ? "today" : top.daysUntil === 1 ? "tomorrow (in 1 day)" : `in **${top.daysUntil} days**`;
           const moreList = upcomingHolidays
@@ -1235,66 +2010,127 @@ export class CustomMlCopilotService {
       };
     }
 
-    if (
-      /^(what('s|\s+is)\s+(my\s+)?)?(next\s+(class|lecture|lab)|classes\s+today|my\s+(classes|schedule|timetable)\s+today|today('s)?\s+(classes|schedule|timetable|agenda)|what\s+classes\s+(do\s+i\s+have|are\s+there)\s+today|what\s+is\s+my\s+(schedule|timetable))$/i.test(lower) ||
-      /^(classes\s+today|today('s)?\s+(schedule|timetable|agenda|classes))$/i.test(lower)
-    ) {
-      const { todayClasses, nextUpcomingClass, todayDayName } = generalCtx;
-      let reply = "";
-      if (/next\s+(class|lecture|lab)/i.test(lower)) {
-        if (nextUpcomingClass) {
-          reply = `Your next class is **${nextUpcomingClass.subjectName}** (${nextUpcomingClass.dayName}, **${nextUpcomingClass.startTime} – ${nextUpcomingClass.endTime}**${nextUpcomingClass.room && nextUpcomingClass.room !== "TBD" ? `, Room ${nextUpcomingClass.room}` : ""}).`;
-        } else {
-          reply = `You have no upcoming classes found in your weekly timetable.`;
-        }
-      } else {
-        if (todayClasses.length === 0) {
-          reply = `You have **no classes scheduled today (${todayDayName})**!${nextUpcomingClass ? ` Your next class is **${nextUpcomingClass.subjectName}** on ${nextUpcomingClass.dayName} at ${nextUpcomingClass.startTime}.` : ""}`;
-        } else {
-          const formatted = todayClasses
-            .map((c) => `• **${c.startTime} – ${c.endTime}**: ${c.subjectName} (${c.slotType}${c.room && c.room !== "TBD" ? `, ${c.room}` : ""})`)
-            .join("\n");
-          reply = `Here is your schedule for **today (${todayDayName})** (${todayClasses.length} session${todayClasses.length !== 1 ? "s" : ""}):\n${formatted}`;
-        }
-      }
-      return {
+    // 5.5. MULTI-DAY / NEXT WEEK LEAVE SIMULATION (< 1ms Fast-Path)
+    const isMultiDaySim =
+      /\b(?:what\s+(?:happens\s+)?if\s+i|if\s+i|simulate)\s+(?:miss(?:ing)?|skip(?:ping)?|bunk(?:ing)?|take\s+leave\s+for|absent\s+for)\b/i.test(
+        lower
+      ) && /\b(week|weeks|days?|monday|tuesday|wednesday|thursday|friday)\b/i.test(lower);
 
-        intent: "TIMETABLE_QUERY",
-        reply,
-        response: reply,
-        citations: [],
-        actions: [],
-        requiresConfirmation: false,
-      };
+    if (isMultiDaySim) {
+      let daysCount = 0;
+      const daysMatch = lower.match(/\b(\d+)\s*days?\b/i);
+      const weeksMatch = lower.match(/\b(\d+)\s*weeks?\b/i);
+      const hasNextWeek = /\bnext\s+week\b/i.test(lower);
+
+      if (daysMatch) daysCount = Math.min(30, Math.max(1, parseInt(daysMatch[1], 10)));
+      else if (weeksMatch) daysCount = Math.min(30, Math.max(1, parseInt(weeksMatch[1], 10) * 7));
+      else if (hasNextWeek) daysCount = 7;
+
+      if (daysCount > 0 && generalCtx.subjects.length > 0) {
+        const start = new Date(Date.UTC(wallNow.getUTCFullYear(), wallNow.getUTCMonth(), wallNow.getUTCDate()));
+        const todayDayIdx = (start.getUTCDay() + 6) % 7;
+        if (hasNextWeek) {
+          const daysUntilNextMon = (7 - todayDayIdx) % 7 || 7;
+          start.setUTCDate(start.getUTCDate() + daysUntilNextMon);
+        } else {
+          start.setUTCDate(start.getUTCDate() + 1);
+        }
+
+        const holidayDates = new Set<string>();
+        for (const e of context.calendarEvents || []) {
+          const type = String(e.eventType || e.event_type || "").toLowerCase();
+          if (e.isHoliday || type === "holiday" || type === "vacation") {
+            const rawStart = e.date || e.startDate;
+            const rawEnd = e.endDate || rawStart;
+            const sIso = rawStart ? String(rawStart).split("T")[0] : "";
+            const eIso = rawEnd ? String(rawEnd).split("T")[0] : sIso;
+            if (sIso) {
+              const cur = new Date(`${sIso}T00:00:00Z`);
+              const end = new Date(`${eIso}T00:00:00Z`);
+              while (cur <= end) {
+                holidayDates.add(cur.toISOString().split("T")[0]);
+                cur.setUTCDate(cur.getUTCDate() + 1);
+              }
+            }
+          }
+        }
+
+        const missedPerSub: Record<string, number> = {};
+        for (let i = 0; i < daysCount; i++) {
+          const d = new Date(start.getTime() + i * 86400000);
+          const iso = d.toISOString().split("T")[0];
+          if (holidayDates.has(iso)) continue;
+          const dIdx = (d.getUTCDay() + 6) % 7;
+          for (const subId of generalCtx.weekdaySubjectMatrix[dIdx] || []) {
+            missedPerSub[subId] = (missedPerSub[subId] || 0) + 1;
+          }
+        }
+
+        const totalMissedSlots = Object.values(missedPerSub).reduce((a, b) => a + b, 0);
+        const projOverallTot = generalCtx.overall.total + totalMissedSlots;
+        const projOverallPct = projOverallTot > 0 ? (generalCtx.overall.attended / projOverallTot) * 100 : generalCtx.overall.percentage;
+        const lines = generalCtx.subjects
+          .filter((s) => (missedPerSub[s.id] || 0) > 0)
+          .map((s) => {
+            const miss = missedPerSub[s.id];
+            const newTot = s.total + miss;
+            const newPct = newTot > 0 ? (s.attended / newTot) * 100 : 100;
+            const badge = newPct >= s.target ? `Safe (≥${s.target}%)` : `⚠️ Drops below ${s.target}%`;
+            return `• **${s.name}**: −${miss} class${miss !== 1 ? "es" : ""} → **${newPct.toFixed(1)}%** (${s.attended}/${newTot}) — *${badge}*`;
+          });
+
+        const windowLabel = hasNextWeek
+          ? daysMatch
+            ? `the first ${daysCount} days of next week`
+            : "next week"
+          : `the next ${daysCount} days`;
+
+        const reply =
+          lines.length === 0
+            ? `Good news! You have **0 scheduled classes** during **${windowLabel}** (accounting for weekends/holidays), so your overall attendance stays at **${generalCtx.overall.percentage.toFixed(1)}%**.`
+            : `If you miss **${windowLabel}** (**${totalMissedSlots}** scheduled class${totalMissedSlots !== 1 ? "es" : ""}, holidays excluded), your overall attendance moves from **${generalCtx.overall.percentage.toFixed(1)}%** to **${projOverallPct.toFixed(1)}%** (${generalCtx.overall.attended}/${projOverallTot}):\n\n${lines.join("\n")}`;
+
+        return {
+          intent: "FORECAST_SIMULATION",
+          reply,
+          response: reply,
+          citations: [],
+          actions: [],
+          requiresConfirmation: false,
+        };
+      }
     }
 
     // 6. CURRENT ATTENDANCE & SAFE BUNKS QUERY
     const isDirectAttendanceQuery =
-      /^(what('s|\s+is)\s+(my\s+)?)?(current\s+|overall\s+|total\s+)?attendance(\s+status|\s+percentage|\s+right\s+now|\s+summary)?$/i.test(lower) ||
-      /^(show(\s+me)?\s+(my\s+)?|check(\s+my)?\s+|tell(\s+me)?\s+(my\s+)?)?(current\s+|overall\s+)?attendance(\s+in\s+.+)?$/i.test(lower) ||
-      /^(am\s+i\s+safe|how\s+many\s+(classes|lectures|bunks)\s+(can\s+i\s+(bunk|miss|skip)|do\s+i\s+need(\s+to\s+attend)?))(\s+in\s+.+)?$/i.test(lower);
+      /^(?:what(?:'s|\s+is)\s+(?:my\s+)?)?(?:current\s+|overall\s+|total\s+)?attendance(?:\s+status|\s+percentage|\s+right\s+now|\s+summary)?$/i.test(lower) ||
+      /^(?:show(?:\s+me)?\s+(?:my\s+)?|check(?:\s+my)?\s+|tell(?:\s+me)?\s+(?:my\s+)?|view(?:\s+my)?\s+)?(?:current\s+|overall\s+|total\s+)?attendance(?:\s+(?:status|percentage|summary))?(?:\s+in\s+.+)?$/i.test(lower) ||
+      /^(?:am\s+i\s+safe|how\s+many\s+(?:classes|lectures|bunks)\s+(?:can\s+i\s+(?:bunk|miss|skip)|do\s+i\s+need(?:\s+to\s+attend)?))(?:\s+in\s+.+)?$/i.test(lower);
 
     if (isDirectAttendanceQuery && !/\b(if\s+i|next\s+week|from\s+|between\s+|tomorrow|monday|tuesday|wednesday|thursday|friday)\b/i.test(lower)) {
-      const matchedSub = generalCtx.subjects.find(
-        (s) =>
-          (s.name && lower.includes(s.name.toLowerCase())) ||
-          (s.code && s.code.length >= 2 && new RegExp(`\\b${s.code.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(lower))
-      );
+      const requestedTargetMatch = lower.match(/\b(?:reach|hit|get\s+to|achieve)\s+(\d{1,3})\s*%/i);
+      const customTargetPct = requestedTargetMatch ? Math.min(99, Math.max(1, parseInt(requestedTargetMatch[1], 10))) : null;
+
+      const resolvedMatch = this.resolveSubjectWithStatus(lower, context.subjects || []);
+      const matchedSub = resolvedMatch.matched ? generalCtx.subjects.find((s) => s.id === resolvedMatch.id) : undefined;
 
       if (matchedSub) {
+        const effTarget = customTargetPct ?? matchedSub.target;
+        const pEff = effTarget / 100;
+        const safeBunksEff = matchedSub.total > 0 && pEff > 0 ? Math.max(0, Math.floor((matchedSub.attended - pEff * matchedSub.total) / pEff)) : 0;
+        const neededEff = matchedSub.total > 0 && pEff < 1 ? Math.max(0, Math.ceil((pEff * matchedSub.total - matchedSub.attended) / (1 - pEff))) : 0;
         const bufferMsg =
-          matchedSub.pct >= matchedSub.target
-            ? matchedSub.safeBunksLeft > 0
-              ? `You can safely miss **${matchedSub.safeBunksLeft}** consecutive class${matchedSub.safeBunksLeft !== 1 ? "es" : ""} and stay above ${matchedSub.target}%.`
-              : `You are right on the edge of ${matchedSub.target}% — missing the next class will drop you below target.`
-            : `You need to attend the next **${matchedSub.classesNeededForTarget}** consecutive class${matchedSub.classesNeededForTarget !== 1 ? "es" : ""} to reach ${matchedSub.target}%.`;
+          matchedSub.pct >= effTarget
+            ? safeBunksEff > 0
+              ? `You can safely miss **${safeBunksEff}** consecutive class${safeBunksEff !== 1 ? "es" : ""} and stay above ${effTarget}%.`
+              : `You are right on the edge of ${effTarget}% — missing the next class will drop you below target.`
+            : `You need to attend the next **${neededEff}** consecutive class${neededEff !== 1 ? "es" : ""} to reach ${effTarget}%.`;
 
-        const reply = `In **${matchedSub.name}${matchedSub.code ? ` (${matchedSub.code})` : ""}**, your current attendance is **${matchedSub.pct.toFixed(1)}%** (${matchedSub.attended}/${matchedSub.total} classes, Target: ${matchedSub.target}%). ${bufferMsg}`;
-        const skipCount = matchedSub.pct >= matchedSub.target ? Math.max(1, matchedSub.safeBunksLeft) : -matchedSub.classesNeededForTarget;
+        const reply = `In **${matchedSub.name}${matchedSub.code ? ` (${matchedSub.code})` : ""}**, your current attendance is **${matchedSub.pct.toFixed(1)}%** (${matchedSub.attended}/${matchedSub.total} classes, Target: ${effTarget}%). ${bufferMsg}`;
+        const skipCount = matchedSub.pct >= effTarget ? Math.max(1, safeBunksEff) : -neededEff;
         const projTot = matchedSub.total + Math.abs(skipCount);
         const projAtt = skipCount < 0 ? matchedSub.attended + Math.abs(skipCount) : matchedSub.attended;
         return {
-
           intent: "FORECAST_SIMULATION",
           reply,
           response: reply,
@@ -1308,7 +2144,7 @@ export class CustomMlCopilotService {
             currentAttended: matchedSub.attended,
             currentTotal: matchedSub.total,
             projectedPercentage: projTot > 0 ? Math.round((projAtt / projTot) * 1000) / 10 : 100,
-            targetPercentage: matchedSub.target,
+            targetPercentage: effTarget,
           },
         };
       }
@@ -1333,7 +2169,6 @@ export class CustomMlCopilotService {
 
       const reply = `Your overall attendance is **${overall.percentage.toFixed(1)}%** (${overall.attended}/${overall.total} classes). ${overallBuffer}${subjectLines ? `\n\n**Subject Breakdown:**\n${subjectLines}` : ""}`;
       return {
-
         intent: "TIMETABLE_QUERY",
         reply,
         response: reply,
@@ -1345,7 +2180,7 @@ export class CustomMlCopilotService {
 
     // 7. EXPLICIT SINGLE-SUBJECT SIMULATION ("what if I miss 2 classes of DBMS", "if I attend next 3 OS classes")
     const singleSimMatch = lower.match(
-      /^(?:what\s+if\s+i|if\s+i|simulate)\s+(miss|skip|bunk|attend|attending)\s+(?:the\s+)?(?:next\s+)?(\d+)\s+(?:classes|lectures|sessions|labs)?\s*(?:of|in|for)?\s+(.+)$/i
+      /^(?:what\s+(?:happens\s+)?if\s+i|if\s+i|simulate)\s+(miss(?:ing)?|skip(?:ping)?|bunk(?:ing)?|attend(?:ing)?)\s+(?:the\s+)?(?:next\s+)?(\d+)\s+(?:class(?:es)?|lectures?|sessions?|labs?)?\s*(?:of|in|for)?\s+(.+)$/i
     );
     if (singleSimMatch && !/\b(week|month|semester|days|monday|tuesday|wednesday|thursday|friday)\b/i.test(singleSimMatch[3])) {
       const actionVerb = singleSimMatch[1].toLowerCase();
@@ -1406,7 +2241,7 @@ export class CustomMlCopilotService {
 
     // 8. EXPLICIT SHIFT / SWAP TIMETABLE COMMANDS (Tier 2 Deterministic Executor)
     const swapDaysMatch = lower.match(
-      /\b(?:swap|exchange|switch)\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday)(?:'s)?\s+(?:and|with)\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday)(?:'s)?(?:\s+timetable|\s+schedule|\s+classes)?\b/i
+      /\b(?:swap|exchange|switch)\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday)(?:'s)?(?:\s+(?:schedule|timetable|classes))?\s+(?:and|with)\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday)(?:'s)?(?:\s+(?:schedule|timetable|classes))?\b/i
     );
     if (swapDaysMatch) {
       const dayMap: Record<string, number> = { monday: 0, tuesday: 1, wednesday: 2, thursday: 3, friday: 4, saturday: 5, sunday: 6 };
@@ -1433,6 +2268,176 @@ export class CustomMlCopilotService {
       };
     }
 
+    const shiftSlotMatch = lower.match(
+      /\b(?:shift|move|reschedule|postpone|change)\s+(.+?)\s+(?:slot|lecture|class|session|lab)\b.*?\b(?:to|at)\s+(\d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?)?)\b/i
+    ) || lower.match(
+      /\b(?:shift|move|reschedule|postpone)\s+(.+?)\s+(?:on\s+(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)\s+)?(?:to|at)\s+(\d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?)?)\b/i
+    );
+    if (shiftSlotMatch && !/\bentire\s+day\b/i.test(lower)) {
+      const resolvedSub = this.resolveSubjectWithStatus(shiftSlotMatch[1] || query, context.subjects || []);
+      const dayMatch = this.extractDayOfWeek(lower, wallNow);
+      const targetTimeClause = shiftSlotMatch[2] || "";
+      const parsedClock = this.parseClockTime(targetTimeClause) || this.parseClockTime(`at ${targetTimeClause}`);
+      if (parsedClock && (resolvedSub.matched || (context.subjects && context.subjects.length > 0))) {
+        const pad = (n: number) => String(n).padStart(2, "0");
+        const startTime = `${pad(parsedClock.hour)}:${pad(parsedClock.minute)}`;
+        const durMins = /\b(lab|practical)\b/i.test(lower) || /\b(lab|practical)\b/i.test(resolvedSub.name) ? 100 : 50;
+        const endTotalMin = parsedClock.hour * 60 + parsedClock.minute + durMins;
+        const endTime = `${pad(Math.floor(endTotalMin / 60) % 24)}:${pad(endTotalMin % 60)}`;
+        const activeSemId = context.activeSemesterId || "sem_active";
+
+        const action = this.createAction(
+          "SHIFT_TIMETABLE_SLOT",
+          {
+            semesterId: activeSemId,
+            subjectId: resolvedSub.id,
+            dayOfWeek: dayMatch.dayIndex,
+            newStartTime: startTime,
+            newEndTime: endTime,
+          },
+          `timetable:${resolvedSub.name} (${dayMatch.dayName})`,
+          `Shift ${resolvedSub.name} slot on ${dayMatch.dayName} to ${startTime} - ${endTime}`,
+          `Destructive action: Shifts recurring weekly timetable slot for ${resolvedSub.name} on ${dayMatch.dayName} to ${startTime}.`
+        );
+        const reply = `I have staged a timetable shift for **${resolvedSub.name}** on **${dayMatch.dayName}** to **${startTime} – ${endTime}**. Please confirm to apply.`;
+        return {
+          intent: "SHIFT_TIMETABLE",
+          reply,
+          response: reply,
+          citations: [],
+          actions: [action],
+          requiresConfirmation: true,
+        };
+      }
+    }
+
+    // 8.5. ASSIGNMENT MANAGEMENT (ADD / COMPLETE / DELETE) — Run BEFORE Attendance Marking!
+    const rawTrimmed = rawClean.trim();
+    const prefixTokenMatch = rawTrimmed.match(/^(?:please\s+)?([a-z]{3,12})\s+(?:(?:an?|the)\s+)?([a-z]{3,14})\s+(.+?)[\s.?!]*$/i);
+    const pVerbNorm = prefixTokenMatch ? this.normalizeVoiceQuery(prefixTokenMatch[1]).toLowerCase() : "";
+    const pNounNorm = prefixTokenMatch ? this.normalizeVoiceQuery(prefixTokenMatch[2]).toLowerCase() : "";
+    const pRestRaw = prefixTokenMatch ? prefixTokenMatch[3].trim() : "";
+
+    const isAssignmentNoun = /^(?:assignment|task|homework|project)$/.test(pNounNorm);
+    const isAddAssignment =
+      Boolean(prefixTokenMatch) &&
+      /^(?:add|create|new|schedule)$/.test(pVerbNorm) &&
+      isAssignmentNoun &&
+      !/\b(?:extra\s+class|makeup\s+class|timetable\s+slot|subject)\b/i.test(lower);
+
+    if (isAddAssignment && pRestRaw) {
+      let body = pRestRaw;
+      let priority: "high" | "medium" | "low" = "medium";
+      const prioMatch = body.match(/\b(?:with\s+)?(high|medium|low)\s+priority\b/i) || body.match(/\bpriority\s*[:=]?\s*(high|medium|low)\b/i);
+      if (prioMatch) {
+        priority = prioMatch[1].toLowerCase() as "high" | "medium" | "low";
+        body = body.replace(prioMatch[0], " ").trim();
+      }
+
+      let deadlineClause = "";
+      const dueIdx = body.search(/\b(?:due|by|before|deadline(?:\s+on)?)\b/i);
+      let title = body;
+      if (dueIdx >= 0) {
+        title = body.slice(0, dueIdx).trim();
+        deadlineClause = this.normalizeVoiceQuery(body.slice(dueIdx)).trim().toLowerCase();
+      } else {
+        title = body.trim();
+      }
+      title = this.stripOuterPunctuation(title);
+
+      const rel = this.resolveRelativeDate(deadlineClause || "tomorrow", wallNow);
+      const clock = this.parseClockTime(deadlineClause);
+      const pad = (n: number) => String(n).padStart(2, "0");
+      const h = clock ? clock.hour : 23;
+      const m = clock ? clock.minute : 59;
+      const deadlineIsoLocal = `${rel.dateStr}T${pad(h)}:${pad(m)}:00`;
+      const timeLabel = clock ? ` at ${h % 12 === 0 ? 12 : h % 12}:${pad(m)} ${h >= 12 ? "PM" : "AM"}` : " at 11:59 PM";
+
+      const subRes = this.resolveSubjectWithStatus(title, context.subjects || []);
+      const payload: Record<string, any> = {
+        title: title || "New Assignment",
+        description: "",
+        deadline: deadlineIsoLocal,
+        priority,
+        ...(subRes.matched ? { subjectId: subRes.id } : {}),
+      };
+      const action = this.createAction(
+        "ADD_ASSIGNMENT",
+        payload,
+        `assignment:${payload.title}`,
+        `Add assignment "${payload.title}" due ${rel.friendly}${timeLabel} (${priority} priority)`,
+        `Creates task "${payload.title}" due ${rel.friendly}${timeLabel}.`
+      );
+      const reply = `I have staged adding assignment **${payload.title}** (Due: **${rel.friendly}${timeLabel}**, Priority: **${priority}**). Please confirm to save.`;
+      return {
+        intent: "MANAGE_ASSIGNMENTS",
+        reply,
+        response: reply,
+        citations: [],
+        actions: [action],
+        requiresConfirmation: true,
+      };
+    }
+
+    const isCompleteAssignment =
+      Boolean(prefixTokenMatch) &&
+      /^(?:mark|set|complete|finish)$/.test(pVerbNorm) &&
+      isAssignmentNoun;
+
+    if (isCompleteAssignment && pRestRaw) {
+      let rawTarget = pRestRaw;
+      const tailStatusMatch = rawTarget.match(/^(.+?)\s+(?:as\s+)?([a-z]{3,12})$/i);
+      if (tailStatusMatch && /^(?:completed?|done|finished)$/.test(this.normalizeVoiceQuery(tailStatusMatch[2]).toLowerCase())) {
+        rawTarget = tailStatusMatch[1].trim();
+      }
+      const targetTitle = this.stripOuterPunctuation(rawTarget);
+      const matched = this.findAssignmentByFuzzyTitle(targetTitle, context.assignments || []);
+      const resolvedTitle = matched?.title || targetTitle;
+      const action = this.createAction(
+        "MARK_ASSIGNMENT_COMPLETED",
+        { ...(matched?.id ? { assignmentId: matched.id } : {}), title: resolvedTitle },
+        `assignment:${resolvedTitle}`,
+        `Mark assignment "${resolvedTitle}" as completed`,
+        `Marks "${resolvedTitle}" as completed in Assignments.`
+      );
+      const reply = `I have staged marking **${resolvedTitle}** as completed. Please confirm to update.`;
+      return {
+        intent: "MANAGE_ASSIGNMENTS",
+        reply,
+        response: reply,
+        citations: [],
+        actions: [action],
+        requiresConfirmation: true,
+      };
+    }
+
+    const isDeleteAssignment =
+      Boolean(prefixTokenMatch) &&
+      /^(?:delete|remove)$/.test(pVerbNorm) &&
+      isAssignmentNoun;
+
+    if (isDeleteAssignment && pRestRaw) {
+      const targetTitle = this.stripOuterPunctuation(pRestRaw);
+      const matched = this.findAssignmentByFuzzyTitle(targetTitle, context.assignments || []);
+      const resolvedTitle = matched?.title || targetTitle;
+      const action = this.createAction(
+        "DELETE_ASSIGNMENT",
+        { ...(matched?.id ? { assignmentId: matched.id } : {}), title: resolvedTitle },
+        `assignment:${resolvedTitle}`,
+        `Delete assignment "${resolvedTitle}"`,
+        `Destructive action: Permanently deletes "${resolvedTitle}".`
+      );
+      const reply = `I have staged deleting assignment **${resolvedTitle}**. Please confirm to proceed.`;
+      return {
+        intent: "MANAGE_ASSIGNMENTS",
+        reply,
+        response: reply,
+        citations: [],
+        actions: [action],
+        requiresConfirmation: true,
+      };
+    }
+
     // 9. ATTENDANCE MARKING WITH REMARKS & RELATIVE DATES
     const isMarkAttendance =
       /\b(?:mark|record|log|set)\s+(?:my\s+)?(?:attendance|me\s+)?(?:as\s+)?(present|absent|medical|on\s*duty|od|off|leave)\b/i.test(lower) ||
@@ -1440,18 +2445,22 @@ export class CustomMlCopilotService {
       /\b(?:i\s*am\s+(?:bunking|not\s+going|taking\s+a\s+leave)|full\s+day\s+off|taking\s+(?:a\s+)?day\s+off)\b/i.test(lower);
 
     if (isMarkAttendance) {
-      let status = "present";
-      if (/\b(medical|sick|doctor)\b/i.test(lower)) status = "medical";
-      else if (/\b(on\s*duty|od|duty)\b/i.test(lower)) status = "od";
-      else if (/\b(absent|missed|miss|not\s+going|bunking|bunk|skip)\b/i.test(lower)) status = "absent";
-      else if (/\b(off|cancelled|canceled|holiday)\b/i.test(lower)) status = "off";
+      // Split out trailing remark/reason clause BEFORE parsing attendance status so "because of teacher absent" does NOT overwrite "off"!
+      const remarkSplitIdx = lower.search(/\b(?:with\s+(?:a\s+)?(?:remark|reason|note|comment)|remark|reason|note|comment|because|due\s+to)\b/i);
+      const commandPart = (remarkSplitIdx >= 0 ? lower.slice(0, remarkSplitIdx) : lower).trim();
 
-      const relDate = this.resolveRelativeDate(lower, wallNow);
+      let status = "present";
+      if (/\b(off|cancelled|canceled|holiday)\b/i.test(commandPart)) status = "off";
+      else if (/\b(medical|sick|doctor)\b/i.test(commandPart)) status = "medical";
+      else if (/\b(on\s*duty|od|duty)\b/i.test(commandPart)) status = "od";
+      else if (/\b(absent|missed|miss|not\s+going|bunking|bunk|skip)\b/i.test(commandPart)) status = "absent";
+
+      const relDate = this.resolveRelativeDate(commandPart || lower, wallNow);
       let dateStr = relDate.dateStr;
       let friendlyDate = relDate.friendly;
 
       // Bare weekday modifier handling: if user said "Wednesday" without "next", prefer the most recent on/before today
-      const hasFutureModifier = /\b(next|coming|upcoming|tomorrow)\b/i.test(lower);
+      const hasFutureModifier = /\b(next|coming|upcoming|tomorrow)\b/i.test(commandPart);
       if (relDate.kind === "weekday" && !hasFutureModifier) {
         const todayStr = this.resolveRelativeDate("today", wallNow).dateStr;
         if (dateStr > todayStr) {
@@ -1465,13 +2474,20 @@ export class CustomMlCopilotService {
         }
       }
 
-      // Remark extraction (e.g. "with remark 'Sub faculty took lecture'", "remark: fever", "reason: hospital")
-      const remarkMatch =
-        query.match(/(?:with\s+)?(?:remark|reason|note|comment)s?[:\s]+["']?([^"'\n\r]+)["']?/i) ||
-        query.match(/(?:because|due\s+to)\s+([^,.\n\r]+)/i);
-      const remarks = remarkMatch ? remarkMatch[1].trim().slice(0, 200) : undefined;
+      // Remark extraction: supports quoted strings with apostrophes and typo-tolerant "because of ..."
+      const rawBeforeEnd = query.trim();
+      const quotedRemark = rawBeforeEnd.match(/(?:with\s+)?(?:remarks?|rmarks?|rmks?|reasons?|reasns?|notes?|comments?)\s*(?:is|as|:)?\s*(?:"([^"\n\r]+)"|'([^'\n\r]+)')/i);
+      const unquotedRemark =
+        rawBeforeEnd.match(/(?:with\s+(?:a\s+)?)?(?:remarks?|rmarks?|rmks?|reasons?|reasns?|notes?|comments?)\s*[:=\s]\s*([^,.\n\r]+)$/i) ||
+        rawBeforeEnd.match(/\b(?:bec(?:au|ua|a|u)?se(?:\s+of)?|due\s+to)\s+([^,.\n\r]+)$/i);
+      const extractedRemark = quotedRemark
+        ? (quotedRemark[1] || quotedRemark[2] || "").trim()
+        : unquotedRemark
+          ? unquotedRemark[1].trim()
+          : "";
+      const remarks = extractedRemark ? extractedRemark.replace(/^['"]+|['"]+$/g, "").trim().slice(0, 200) : undefined;
 
-      const isFullDay = /\b(full\s+day\s+off|all\s+classes\s+off|day\s+off|holiday\s+today)\b/i.test(lower);
+      const isFullDay = /\b(full\s+day\s+off|all\s+classes\s+off|day\s+off|holiday\s+today)\b/i.test(commandPart);
       if (isFullDay) {
         const action = this.createAction(
           "MARK_FULL_DAY_OFF",
@@ -1491,8 +2507,8 @@ export class CustomMlCopilotService {
         };
       }
 
-      const resolvedSub = this.resolveSubject(query, context.subjects || []);
-      if (resolvedSub && resolvedSub.id) {
+      const resolvedSub = this.resolveSubjectWithStatus(commandPart, context.subjects || []);
+      if (resolvedSub.matched && resolvedSub.id) {
         const isDestructive = status === "absent" || status === "off";
         const action = this.createAction(
           "MARK_ATTENDANCE",
@@ -1501,7 +2517,7 @@ export class CustomMlCopilotService {
           `Mark ${resolvedSub.name} as ${status.toUpperCase()} on ${friendlyDate}`,
           `${isDestructive ? "Destructive" : "Safe"} action: Logs ${status.toUpperCase()} for ${resolvedSub.name}${remarks ? ` (Remark: "${remarks}")` : ""}.`
         );
-        const reply = `Marked **${resolvedSub.name}** as **${status.toUpperCase()}** on **${friendlyDate}**${remarks ? ` (Remark: "${remarks}")` : ""}.`;
+        const reply = `${isDestructive ? "I have staged marking" : "Marked"} **${resolvedSub.name}** as **${status.toUpperCase()}** on **${friendlyDate}**${remarks ? ` (Remark: "${remarks}")` : ""}.${isDestructive ? " Please confirm to apply." : ""}`;
         return {
           intent: "MARK_ATTENDANCE",
           reply,
@@ -1511,20 +2527,57 @@ export class CustomMlCopilotService {
           requiresConfirmation: isDestructive,
         };
       }
+
+      // No specific subject named (e.g. "Mark attendance as medical...", "I am bunking today..."):
+      // Expand across scheduled classes on that day from timetable_slots!
+      const [dy, dm, dd] = dateStr.split("-").map(Number);
+      const targetDayIndex = (new Date(Date.UTC(dy, dm - 1, dd)).getUTCDay() + 6) % 7;
+      const daySlots = (context.timetable_slots || []).filter((sl: any) => Number(sl.dayOfWeek) === targetDayIndex);
+      const uniqueSubIds: string[] = [];
+      for (const sl of daySlots) {
+        if (sl.subjectId && !uniqueSubIds.includes(sl.subjectId)) uniqueSubIds.push(sl.subjectId);
+      }
+
+      const isDestructive = status === "absent" || status === "off";
+      if (uniqueSubIds.length > 0) {
+        const subNameById: Record<string, string> = {};
+        for (const s of context.subjects || []) subNameById[s.id] = s.name;
+        const actions = uniqueSubIds.map((subId) => {
+          const sName = subNameById[subId] || "Scheduled Class";
+          return this.createAction(
+            "MARK_ATTENDANCE",
+            { subjectId: subId, date: dateStr, status, ...(remarks ? { remarks } : {}) },
+            `subject:${sName}`,
+            `Mark ${sName} as ${status.toUpperCase()} on ${friendlyDate}`,
+            `${isDestructive ? "Destructive" : "Safe"} action: Logs ${status.toUpperCase()} for ${sName}${remarks ? ` (Remark: "${remarks}")` : ""}.`
+          );
+        });
+        const namesList = uniqueSubIds.map((id) => subNameById[id] || id).join(", ");
+        const reply = `${isDestructive ? "I have staged marking" : "Marked"} **${uniqueSubIds.length} scheduled class${uniqueSubIds.length !== 1 ? "es" : ""}** (${namesList}) on **${friendlyDate}** as **${status.toUpperCase()}**${remarks ? ` (Remark: "${remarks}")` : ""}.${isDestructive ? " Please confirm to apply." : ""}`;
+        return {
+          intent: "MARK_ATTENDANCE",
+          reply,
+          response: reply,
+          citations: [],
+          actions,
+          requiresConfirmation: isDestructive,
+        };
+      }
     }
 
     // 10. USER COMPLAINTS & BUG REPORTS (SUBMIT_FEEDBACK)
     const isFeedback =
-      /\b(bug|glitch|crash(?:ed|ing|es)?|broken|defect|not\s+working|not\s+updating|not\s+syncing|not\s+sending|not\s+showing|problem\s+with|issue\s+with|complaint|app\s+failed|error\s+in|froze|frozen|freeze|stuck|hang(?:ing|s)?|something\s+(?:is\s+)?wrong|disappeared|stopped\s+working)\b/i.test(lower) &&
+      /\b(bug|glitch|crash(?:ed|ing|es)?|broken|defect|not\s+working|not\s+updating|not\s+syncing|not\s+sending|not\s+showing|not\s+playing|not\s+loading|not\s+responding|problem\s+with|issue\s+with|complaint|app\s+failed|error\s+in|froze|frozen|freeze|stuck|hang(?:ing|s)?|something\s+(?:is\s+)?wrong|disappeared|stopped\s+working)\b/i.test(lower) &&
       !/\b(how\s+do\s+i|can\s+i|what\s+is|when\s+is|ordinance|regulation|75%|policy)\b/i.test(lower);
-    const isExplicitFeedback = /\b(submit\s+(?:a\s+)?(?:bug|feedback|complaint)|report\s+(?:a\s+)?(?:bug|issue|problem)|send\s+feedback|i\s+have\s+a\s+complaint|i\s+want\s+to\s+complain)\b/i.test(lower);
+    const isExplicitFeedback = /\b(submit\s+(?:a\s+)?(?:bug|feedback|complaint)|report\s+(?:an?\s+)?(?:bug|issue|problem)|send\s+feedback|i\s+have\s+a\s+complaint|i\s+want\s+to\s+complain)\b/i.test(lower);
 
     if (isFeedback || isExplicitFeedback) {
       const issueSummary = query.trim().slice(0, 100);
       const userEmail = context.userEmail;
       const userName = context.userName || "Student";
+      const isBugType = /\b(bug|crash|error|broken|glitch|not\s+|issue|failed|froze|frozen|stuck|problem)\b/i.test(lower);
       const feedbackData = {
-        type: "bug",
+        type: isBugType ? "bug" : "feedback",
         issue: issueSummary,
         description: query.trim(),
       };
@@ -1586,9 +2639,10 @@ export class CustomMlCopilotService {
         };
       }
 
+      const leadIn = feedbackData.type === "bug" ? "I'm sorry you're facing this issue! I've logged your report" : "Thank you for your feedback! I've logged your message";
       const reply = userEmail
-        ? `I'm sorry you're facing this issue! I've logged your report: **"${issueSummary}"** and dispatched a confirmation receipt to **${userEmail}**. Our engineering team has received it! (If you need to attach screenshots or diagnostic logs, you can open **Settings > Send Feedback** anytime.)`
-        : `I'm sorry you're facing this issue! I've logged your report: **"${issueSummary}"**. Our engineering team has received it! (If you need to attach screenshots or diagnostic logs, you can open **Settings > Send Feedback** anytime.)`;
+        ? `${leadIn}: **"${issueSummary}"** and dispatched a confirmation receipt to **${userEmail}**. Our engineering team has received it! (If you need to attach screenshots or diagnostic logs, you can open **Settings > Send Feedback** anytime.)`
+        : `${leadIn}: **"${issueSummary}"**. Our engineering team has received it! (If you need to attach screenshots or diagnostic logs, you can open **Settings > Send Feedback** anytime.)`;
       return {
         intent: "SUBMIT_FEEDBACK",
         reply,
@@ -1600,26 +2654,84 @@ export class CustomMlCopilotService {
     }
 
     // 11. BIRTHDAY KNOWLEDGE & BIRTHDAY UPDATES (< 1ms Fast-Path)
-    if (/\b(birthdays?|b'?days?|dob|born)\b/i.test(lower)) {
+    if (/\b(birthdays?|b'?days?|b-?days?|dob|born)\b/i.test(lower)) {
       const isPublicHolidayEvent = (e: any): boolean => {
         if (!e) return false;
-        if (e.isHoliday) return true;
+        if (e.isHoliday || e.isHolidayList) return true;
         const t = String(e.eventType || e.event_type || e.type || "").toLowerCase();
-        if (t === "holiday" || t === "restricted_holiday" || t === "vacation" || t === "exam" || t === "academic") return true;
+        if (["holiday", "restricted_holiday", "vacation", "exam", "midsem", "endsem", "ct", "lab_exam", "fest", "institute", "academic"].includes(t)) return true;
         const title = String(e.title || "").toLowerCase();
         if (/\b(guru\s+nanak|guru\s+gobind|guru\s+tegh|mahatma\s+gandhi|gandhi\s+jayanti|dr\.?\s+b\.?r\.?\s+ambedkar|ambedkar\s+jayanti|subhas\s+chandra|buddha\s+purnima|mahavir\s+jayanti|valmiki|ravidas|hazarat\s+ali|prophet|christmas|diwali|holi|eid|independence|republic|teaching\s+day|semester|break|exam|preparatory)\b/i.test(title)) return true;
         if (/\b(jayanti|utsav|divas|diwas)\b/i.test(title) && !/\bpeer|friend|classmate|my\b/i.test(title)) return true;
         return false;
       };
 
+      const isAcademicMilestoneOther = (e: any): boolean => {
+        const combined = `${e?.title || ""} ${e?.description || ""}`;
+        return /\b(fee\s+payment|registration|fee\s+verification|answer[\s-]*sheets?|shortage|result\s+preparation|declaration|commencement|classes|teaching|convocation|orientation|induction|workshop|seminar|meeting|submission|feedback|enrollment|enrolment|holiday|vacation|break|exam|test|quiz|midsem|endsem|fest|assessment|absentee|makeup|compensation|calendar)\b/i.test(combined);
+      };
+
+      const isPeerBirthdayEvent = (e: any): boolean => {
+        if (!e || isPublicHolidayEvent(e)) return false;
+        const title = String(e.title || e.name || "");
+        const desc = String(e.description || "");
+        const combined = `${title} ${desc}`;
+        if (/\b(birthdays?|b'?days?|b-?days?|dob)\b|🎂/i.test(combined)) return true;
+        const t = String(e.eventType || e.event_type || e.type || "").toLowerCase();
+        if (t === "birthday" || t === "peer_birthday") return true;
+        if (t === "other" && !e.isHolidayList && !isAcademicMilestoneOther(e)) {
+          return Boolean(title.trim());
+        }
+        return false;
+      };
+
+      const toIsoDateOnly = (val: any): string => {
+        if (!val) return "";
+        if (val instanceof Date) return isNaN(val.getTime()) ? "" : val.toISOString().split("T")[0];
+        const s = String(val).trim();
+        if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.substring(0, 10);
+        const parsed = new Date(s);
+        return isNaN(parsed.getTime()) ? "" : parsed.toISOString().split("T")[0];
+      };
+
+      const diffDaysIso = (futureIso: string, baseIso: string): number => {
+        const [fy, fm, fd] = futureIso.split("-").map(Number);
+        const [by, bm, bd] = baseIso.split("-").map(Number);
+        return Math.round((Date.UTC(fy, fm - 1, fd) - Date.UTC(by, bm - 1, bd)) / (1000 * 60 * 60 * 24));
+      };
+
+      const formatUtcDate = (iso: string, opts: Intl.DateTimeFormatOptions): string => {
+        const [y, m, d] = iso.split("-").map(Number);
+        if (!y || !m || !d) return iso;
+        return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString("en-US", { ...opts, timeZone: "UTC" });
+      };
+
+      const nextBirthdayOccurrenceIso = (rawDate: any, todayIsoStr: string): { nextIso: string; daysUntil: number } | null => {
+        const baseIso = toIsoDateOnly(rawDate);
+        if (!baseIso) return null;
+        const [by, bm, bd] = baseIso.split("-").map(Number);
+        const [ty] = todayIsoStr.split("-").map(Number);
+        if (by >= ty) {
+          if (baseIso < todayIsoStr) return null;
+          return { nextIso: baseIso, daysUntil: diffDaysIso(baseIso, todayIsoStr) };
+        }
+        let candidate = `${ty}-${String(bm).padStart(2, "0")}-${String(bd).padStart(2, "0")}`;
+        if (candidate < todayIsoStr) {
+          candidate = `${ty + 1}-${String(bm).padStart(2, "0")}-${String(bd).padStart(2, "0")}`;
+        }
+        return { nextIso: candidate, daysUntil: diffDaysIso(candidate, todayIsoStr) };
+      };
+
+      const formatCountdown = (daysUntil: number): string =>
+        daysUntil === 0 ? "today! 🎉" : daysUntil === 1 ? "tomorrow (in **1 day**)!" : `in **${daysUntil} days**`;
+
       const parseBirthdayString = (
         str: string,
         currentBirthday?: string | Date | null
       ): { isoDate: string; formatted: string; year: number } | null => {
         if (!str) return null;
-        const clean = str.trim().replace(/^[\s"'“‘`.,;:!?~_/\\()[\]{}\-]+|[\s"'”’`.,;:!?~_/\\()[\]{}\-]+$/g, "").trim();
+        const clean = this.stripOuterPunctuation(str);
 
-        // 1. ISO format: YYYY-MM-DD
         const isoMatch = clean.match(/\b(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})\b/);
         if (isoMatch) {
           const y = parseInt(isoMatch[1], 10);
@@ -1627,36 +2739,29 @@ export class CustomMlCopilotService {
           const d = parseInt(isoMatch[3], 10);
           if (m >= 1 && m <= 12 && d >= 1 && d <= 31 && y >= 1970 && y <= 2030) {
             const isoDate = `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-            const dt = new Date(Date.UTC(y, m - 1, d));
-            const formatted = dt.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric", timeZone: "UTC" });
+            const formatted = formatUtcDate(isoDate, { month: "long", day: "numeric", year: "numeric" });
             return { isoDate, formatted, year: y };
           }
         }
 
-        // 2. DMY format: DD/MM/YYYY or DD-MM-YYYY
         const dmyMatch = clean.match(/\b(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})\b/);
         if (dmyMatch) {
-          let p1 = parseInt(dmyMatch[1], 10);
-          let p2 = parseInt(dmyMatch[2], 10);
+          const p1 = parseInt(dmyMatch[1], 10);
+          const p2 = parseInt(dmyMatch[2], 10);
           const y = parseInt(dmyMatch[3], 10);
           let d = p1;
           let m = p2;
-          if (p1 > 12 && p2 <= 12) {
-            d = p1;
-            m = p2;
-          } else if (p2 > 12 && p1 <= 12) {
+          if (p2 > 12 && p1 <= 12) {
             m = p1;
             d = p2;
           }
           if (m >= 1 && m <= 12 && d >= 1 && d <= 31 && y >= 1970 && y <= 2030) {
             const isoDate = `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-            const dt = new Date(Date.UTC(y, m - 1, d));
-            const formatted = dt.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric", timeZone: "UTC" });
+            const formatted = formatUtcDate(isoDate, { month: "long", day: "numeric", year: "numeric" });
             return { isoDate, formatted, year: y };
           }
         }
 
-        // 3. Named month matching
         const monthMap: Record<string, number> = {
           jan: 1, january: 1, feb: 2, february: 2, mar: 3, march: 3,
           apr: 4, april: 4, may: 5, june: 6, jun: 6, jul: 7, july: 7,
@@ -1672,28 +2777,26 @@ export class CustomMlCopilotService {
           return 2004;
         };
 
-        const mFirst = clean.match(/\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+(\d{1,2})(?:st|nd|rd|th)?(?:\s*,?\s*(\d{4}))?\b/i);
+        const mFirst = clean.match(/\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|sept|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+(\d{1,2})(?:st|nd|rd|th)?(?:\s*,?\s*(\d{4}))?\b/i);
         if (mFirst) {
           const m = monthMap[mFirst[1].toLowerCase()];
           const d = parseInt(mFirst[2], 10);
           const y = mFirst[3] ? parseInt(mFirst[3], 10) : getDefaultYear();
           if (m >= 1 && m <= 12 && d >= 1 && d <= 31) {
             const isoDate = `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-            const dt = new Date(Date.UTC(y, m - 1, d));
-            const formatted = dt.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric", timeZone: "UTC" });
+            const formatted = formatUtcDate(isoDate, { month: "long", day: "numeric", year: "numeric" });
             return { isoDate, formatted, year: y };
           }
         }
 
-        const dFirst = clean.match(/\b(\d{1,2})(?:st|nd|rd|th)?(?:\s+of)?\s+(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)(?:\s*,?\s*(\d{4}))?\b/i);
+        const dFirst = clean.match(/\b(\d{1,2})(?:st|nd|rd|th)?(?:\s+of)?\s+(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|sept|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)(?:\s*,?\s*(\d{4}))?\b/i);
         if (dFirst) {
           const d = parseInt(dFirst[1], 10);
           const m = monthMap[dFirst[2].toLowerCase()];
           const y = dFirst[3] ? parseInt(dFirst[3], 10) : getDefaultYear();
           if (m >= 1 && m <= 12 && d >= 1 && d <= 31) {
             const isoDate = `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-            const dt = new Date(Date.UTC(y, m - 1, d));
-            const formatted = dt.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric", timeZone: "UTC" });
+            const formatted = formatUtcDate(isoDate, { month: "long", day: "numeric", year: "numeric" });
             return { isoDate, formatted, year: y };
           }
         }
@@ -1737,7 +2840,7 @@ export class CustomMlCopilotService {
         }
       }
 
-      // 11b. Asking about user's own birthday (comprehensive matcher: "do you know my birthday", "my birthday", "when is my birthday", etc.)
+      // 11b. Asking about user's own birthday
       const isMyBirthdayQuery = (
         /\bmy\s+(?:birthdays?|b'?days?|dob)\b/i.test(lower) ||
         /\b(?:when|what)\s+(?:is\s+)?my\b/i.test(lower) ||
@@ -1745,269 +2848,222 @@ export class CustomMlCopilotService {
         /\b(?:tell\s+me|check|show)\s+(?:my\s+)?(?:birthdays?|b'?days?|dob)\b/i.test(lower) ||
         /\bwhen\s+was\s+i\s+born\b/i.test(lower) ||
         /^(?:my\s+)?(?:birthdays?|b'?days?|dob)\??$/i.test(lower.trim())
-      ) && !/\b(whose|who\s+has|anybody|anyone|peer|friend|classmate|next|upcoming)\b/i.test(lower) && !/\b(?:set|update|change|save|make|put|record|register)\b/i.test(lower);
+      ) && !/\b(whose|who(?:'s|\s+has|\s+is)|anybody|anyone|peer|friend|classmate|next|upcoming|coming\s+up)\b/i.test(lower) && !/\b(?:set|update|change|save|make|put|record|register)\b/i.test(lower);
 
       if (isMyBirthdayQuery) {
         if (context.userBirthday) {
-          const bDate = new Date(context.userBirthday);
-          const bFormatted = bDate.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric", timeZone: "UTC" });
-          const reply = `Yes, ${context.userName || "Naman"}! According to your profile, your birthday is **${bFormatted}**! 🎂 Let me know if you need to update it.`;
-          return {
-            intent: "CHIT_CHAT",
-            reply,
-            response: reply,
-            citations: [],
-            actions: [],
-            requiresConfirmation: false,
-          };
-        } else {
-          const navAction = this.createAction("NAVIGATE", { path: "/settings/profile" }, "route:/settings/profile", "Open Profile", "Safe navigation action: opens Profile.");
-          const reply = `You don't have a birthday saved in your profile yet! You can set it in **Settings > Edit Profile**, or just tell me here (e.g. "Set my birthday to November 18")! 🎂`;
-          return {
-            intent: "CHIT_CHAT",
-            reply,
-            response: reply,
-            citations: [],
-            actions: [navAction],
-            requiresConfirmation: false,
-          };
+          const bIso = toIsoDateOnly(context.userBirthday);
+          const bFormatted = formatUtcDate(bIso, { month: "long", day: "numeric", year: "numeric" });
+          const reply = `Yes, ${context.userName || "Student"}! According to your profile, your birthday is **${bFormatted}**! 🎂 Let me know if you need to update it.`;
+          return { intent: "CHIT_CHAT", reply, response: reply, citations: [], actions: [], requiresConfirmation: false };
         }
+        const navAction = this.createAction("NAVIGATE", { path: "/settings/profile" }, "route:/settings/profile", "Open Profile", "Safe navigation action: opens Profile.");
+        const reply = `You don't have a birthday saved in your profile yet! You can set it in **Settings > Edit Profile**, or just tell me here (e.g. "Set my birthday to November 18")! 🎂`;
+        return { intent: "CHIT_CHAT", reply, response: reply, citations: [], actions: [navAction], requiresConfirmation: false };
       }
 
-      const toIsoDateOnly = (val: any): string => {
-        if (!val) return "";
-        if (val instanceof Date) return val.toISOString().split("T")[0];
-        const s = String(val).trim();
-        if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.substring(0, 10);
-        const parsed = new Date(s);
-        return isNaN(parsed.getTime()) ? "" : parsed.toISOString().split("T")[0];
+      const allCalendarEvents = Array.isArray(context.calendarEvents) ? context.calendarEvents : [];
+      const todayIsoStr = generalCtx.todayIso;
+
+      const buildUpcomingBirthdays = () => {
+        const items: Array<{ label: string; isUser: boolean; nextIso: string; daysUntil: number; dateLabel: string }> = [];
+        if (context.userBirthday) {
+          const occ = nextBirthdayOccurrenceIso(context.userBirthday, todayIsoStr);
+          if (occ) {
+            items.push({
+              label: "Yours",
+              isUser: true,
+              nextIso: occ.nextIso,
+              daysUntil: occ.daysUntil,
+              dateLabel: formatUtcDate(occ.nextIso, { month: "long", day: "numeric" }),
+            });
+          }
+        }
+        for (const e of allCalendarEvents) {
+          if (!isPeerBirthdayEvent(e)) continue;
+          const occ = nextBirthdayOccurrenceIso(e.date || e.startDate, todayIsoStr);
+          if (!occ) continue;
+          items.push({
+            label: String(e.title || e.name || "Peer Birthday").trim(),
+            isUser: false,
+            nextIso: occ.nextIso,
+            daysUntil: occ.daysUntil,
+            dateLabel: formatUtcDate(occ.nextIso, { month: "long", day: "numeric" }),
+          });
+        }
+        items.sort((a, b) => a.daysUntil - b.daysUntil || (a.isUser === b.isUser ? a.label.localeCompare(b.label) : a.isUser ? -1 : 1));
+        return items;
       };
 
-      const allCalendarEvents = (Array.isArray(context.calendarEvents) ? context.calendarEvents : []);
+      const upcomingHolidayBirthdays = allCalendarEvents
+        .filter((e: any) => {
+          const startStr = toIsoDateOnly(e.date || e.startDate);
+          return startStr >= todayIsoStr && isPublicHolidayEvent(e) && /\b(birthdays?|b'?days?|jayanti)\b/i.test(e.title || "");
+        })
+        .sort((a: any, b: any) => toIsoDateOnly(a.date || a.startDate).localeCompare(toIsoDateOnly(b.date || b.startDate)))
+        .slice(0, 2);
 
-      // 11c. Asking for NEXT birthday
-      const isNextBirthday = /\b(?:next|upcoming)\s+(?:birthdays?|b'?days?)\b/i.test(lower) || /^(?:what(?:'s|\s+is)\s+)?(?:the\s+)?next\s+birthday\??$/i.test(lower.trim());
-      if (isNextBirthday) {
-        const todayMonth = wallNow.getUTCMonth() + 1;
-        const todayDay = wallNow.getUTCDate();
-        const thisYear = wallNow.getUTCFullYear();
+      const holidayNote =
+        upcomingHolidayBirthdays.length > 0
+          ? `\n\n*(Note: ${upcomingHolidayBirthdays
+              .map((h: any) => `**${h.title}** on ${formatUtcDate(toIsoDateOnly(h.date || h.startDate), { month: "long", day: "numeric" })}`)
+              .join(", ")} is an official institute holiday, not a peer birthday).*`
+          : "";
 
-        // 1. Calculate days until user's own birthday
-        let userBdayInfo: { dateStr: string; daysUntil: number; formatted: string } | null = null;
-        if (context.userBirthday) {
-          const ub = new Date(context.userBirthday);
-          const ubMonth = ub.getUTCMonth() + 1;
-          const ubDay = ub.getUTCDate();
-          let targetYear = thisYear;
-          if (ubMonth < todayMonth || (ubMonth === todayMonth && ubDay < todayDay)) {
-            targetYear = thisYear + 1;
-          }
-          const nextUBDate = new Date(Date.UTC(targetYear, ubMonth - 1, ubDay));
-          const todayMid = new Date(Date.UTC(thisYear, todayMonth - 1, todayDay));
-          const diffMs = nextUBDate.getTime() - todayMid.getTime();
-          const daysUntil = Math.round(diffMs / (1000 * 60 * 60 * 24));
-          const formatted = nextUBDate.toLocaleDateString("en-US", { month: "long", day: "numeric" });
-          userBdayInfo = {
-            dateStr: `${targetYear}-${String(ubMonth).padStart(2, "0")}-${String(ubDay).padStart(2, "0")}`,
-            daysUntil,
-            formatted,
-          };
+      // 11c. Next / Upcoming Birthdays (BOTH peer + user chronological merge)
+      const isNextOrUpcomingBday =
+        /\b(?:next|upcoming|coming\s+up)\s+(?:peer\s+|friend'?s?\s+)?(?:birthdays?|b'?days?)\b/i.test(lower) ||
+        /\b(?:whose|who(?:'s|\s+is|\s+has)|which\s+(?:peer|friend)?'?s?)\s+(?:(?:the\s+)?next\s+)?(?:birthdays?|b'?days?)\s+(?:is\s+)?(?:next|coming\s+up|soonest)\b/i.test(lower) ||
+        /\bwho\s+has\s+(?:the\s+)?next\s+(?:birthdays?|b'?days?)\b/i.test(lower) ||
+        /\b(?:list|show|all)\s+(?:upcoming\s+)?(?:peer\s+)?(?:birthdays?|b'?days?)\b/i.test(lower);
+
+      if (isNextOrUpcomingBday) {
+        const combined = buildUpcomingBirthdays();
+        const peersOnly = combined.filter((i) => !i.isUser);
+        const userEntry = combined.find((i) => i.isUser) || null;
+        const wantsList = /\b(upcoming\s+birthdays|list|all|every)\b/i.test(lower);
+
+        if (combined.length === 0) {
+          const reply = `You don't have any upcoming peer birthdays scheduled on your calendar, and your birthday isn't saved yet. Add peer birthdays in **Semester Overview > Add Event** or set yours in **Settings > Edit Profile**!${holidayNote}`;
+          return { intent: "CHIT_CHAT", reply, response: reply, citations: [], actions: [], requiresConfirmation: false };
         }
 
-        // 2. Check upcoming peer birthdays on calendar (strictly excluding public holidays)
-        const todayIso = `${thisYear}-${String(todayMonth).padStart(2, "0")}-${String(todayDay).padStart(2, "0")}`;
-        const upcomingPeerBirthdays = allCalendarEvents
-          .filter((e: any) => {
-            const startStr = toIsoDateOnly(e.date);
-            const isBday = /\b(birthdays?|b'?days?|dob)\b/i.test(e.title || "") || /\b(birthdays?|b'?days?|dob)\b/i.test(e.description || "");
-            return startStr >= todayIso && isBday && !isPublicHolidayEvent(e);
-          })
-          .sort((a: any, b: any) => toIsoDateOnly(a.date).localeCompare(toIsoDateOnly(b.date)));
-
-        // 3. Find any upcoming public holidays with "Birthday" or "Jayanti" in title for disambiguation
-        const upcomingHolidayBirthdays = allCalendarEvents
-          .filter((e: any) => {
-            const startStr = toIsoDateOnly(e.date);
-            return startStr >= todayIso && isPublicHolidayEvent(e) && /\b(birthdays?|b'?days?|jayanti)\b/i.test(e.title || "");
-          })
-          .sort((a: any, b: any) => toIsoDateOnly(a.date).localeCompare(toIsoDateOnly(b.date)))
-          .slice(0, 2);
-
-        let holidayNote = "";
-        if (upcomingHolidayBirthdays.length > 0) {
-          const hList = upcomingHolidayBirthdays.map((h: any) => {
-            const hd = new Date(toIsoDateOnly(h.date) + "T00:00:00");
-            return `${h.title} on ${hd.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`;
-          }).join(", ");
-          holidayNote = ` *(Note: ${hList} is an official holiday on your academic calendar).*`;
+        if (wantsList) {
+          const lines = combined
+            .slice(0, 5)
+            .map((item) => {
+              const label = item.isUser ? "**Your Birthday**" : `**${item.label}**`;
+              return `• ${label} — ${item.dateLabel} (${item.daysUntil === 0 ? "Today! 🎉" : item.daysUntil === 1 ? "Tomorrow!" : `in ${item.daysUntil} days`})`;
+            })
+            .join("\n");
+          const reply = `Here are the upcoming birthdays on your calendar:\n\n${lines}${holidayNote}`;
+          return { intent: "CHIT_CHAT", reply, response: reply, citations: [], actions: [], requiresConfirmation: false };
         }
 
-        if (userBdayInfo && (!upcomingPeerBirthdays.length || userBdayInfo.dateStr <= toIsoDateOnly(upcomingPeerBirthdays[0].date))) {
-          const whenText = userBdayInfo.daysUntil === 0 ? "today! 🎉" : userBdayInfo.daysUntil === 1 ? "tomorrow! 🎂" : `in ${userBdayInfo.daysUntil} days on ${userBdayInfo.formatted}! 🎂`;
-          const reply = `The next birthday coming up is **yours**, ${context.userName || "Student"}—${whenText}${holidayNote}`;
-          return {
-            intent: "CHIT_CHAT",
-            reply,
-            response: reply,
-            citations: [],
-            actions: [],
-            requiresConfirmation: false,
-          };
-        } else if (upcomingPeerBirthdays.length > 0) {
-          const nextPeer = upcomingPeerBirthdays[0];
-          const peerDate = new Date(toIsoDateOnly(nextPeer.date) + "T00:00:00");
-          const peerFormatted = peerDate.toLocaleDateString("en-US", { month: "long", day: "numeric" });
-          const userNote = userBdayInfo ? ` (Your birthday is coming up on ${userBdayInfo.formatted}).` : "";
-          const reply = `The next birthday coming up is **${nextPeer.title}** on **${peerFormatted}**! 🎂${userNote}${holidayNote}`;
-          return {
-            intent: "CHIT_CHAT",
-            reply,
-            response: reply,
-            citations: [],
-            actions: [],
-            requiresConfirmation: false,
-          };
+        const first = combined[0];
+        const asksSpecificallyPeer = /\b(peer|whose|who\s+has|friend|classmate|his|her)\b/i.test(lower);
+        const sameDayMatches = combined.filter((i) => i.daysUntil === first.daysUntil);
+        let reply = "";
+        if (sameDayMatches.length > 1) {
+          const names = sameDayMatches.map((m) => (m.isUser ? "**yours**" : `**${m.label}**`)).join(" and ");
+          reply = `The next birthdays coming up are ${names} on **${first.dateLabel}** (${formatCountdown(first.daysUntil)})! 🎂`;
+        } else if (first.isUser && asksSpecificallyPeer && peersOnly.length > 0) {
+          const topPeer = peersOnly[0];
+          reply = `Your own birthday comes up first on **${first.dateLabel}** (${formatCountdown(first.daysUntil)}), and the next peer birthday on your calendar is **${topPeer.label}** on **${topPeer.dateLabel}** (${formatCountdown(topPeer.daysUntil)})! 🎂`;
+        } else if (first.isUser) {
+          const peerNote =
+            peersOnly.length > 0
+              ? ` Next peer birthday: **${peersOnly[0].label}** on **${peersOnly[0].dateLabel}** (${formatCountdown(peersOnly[0].daysUntil)}).`
+              : "";
+          reply = `The next birthday coming up is **yours on ${first.dateLabel}** (${formatCountdown(first.daysUntil)})! 🎂${peerNote}`;
         } else {
-          const userNote = userBdayInfo ? ` Your birthday on record is **${userBdayInfo.formatted}**.` : " (You haven't set your birthday yet in Settings > Edit Profile).";
-          const reply = `There are no peer birthdays scheduled on your calendar.${userNote}${holidayNote}`;
-          return {
-            intent: "CHIT_CHAT",
-            reply,
-            response: reply,
-            citations: [],
-            actions: [],
-            requiresConfirmation: false,
-          };
+          const morePeers = peersOnly.slice(1, 3).map((p) => `**${p.label}** (${p.dateLabel})`).join(", ");
+          const followParts: string[] = [];
+          if (morePeers) followParts.push(`Following up: ${morePeers}`);
+          if (userEntry) followParts.push(`Your birthday is on **${userEntry.dateLabel}** (${formatCountdown(userEntry.daysUntil)})`);
+          reply = `The next birthday coming up is **${first.label}** on **${first.dateLabel}** (${formatCountdown(first.daysUntil)})! 🎂${followParts.length ? ` ${followParts.join(". ")}.` : ""}`;
         }
+
+        return { intent: "CHIT_CHAT", reply: reply + holidayNote, response: reply + holidayNote, citations: [], actions: [], requiresConfirmation: false };
       }
 
-      // 11d. Asking whose birthday is today / peer birthdays / upcoming birthdays
-      const isWhoseBirthdayQuery = (
-        /\b(whose|who\s+has|anybody('s)?|anyone('s)?|any|check)\s+(?:peer\s+)?(?:birthdays?|b'?days?)\b/i.test(lower) ||
-        /\b(?:birthdays?|b'?days?)\s+(?:is\s+)?today\b/i.test(lower) ||
-        /\bis\s+today\s+(?:anybody('s)?|anyone('s)?|a)\s+(?:birthdays?|b'?days?)\b/i.test(lower) ||
-        /\bupcoming\s+(?:birthdays?|b'?days?)\b/i.test(lower)
-      );
+      // 11d. Specific person's birthday ("When is Raghav's birthday?", "When is Priya Didi's birthday?")
+      const specificMatch =
+        lower.match(/(?:when|what|is)\s+(?:is\s+)?([a-z0-9\s'-]+?)(?:'s|\s+has)?\s+(?:birthdays?|b'?days?|dob)\b/i) ||
+        lower.match(/(?:when|is\s+it)\s+([a-z0-9\s'-]+?)(?:'s)?\s+(?:birthdays?|b'?days?)\b/i) ||
+        lower.match(/\b([a-z0-9\s'-]+?)'s\s+(?:birthdays?|b'?days?|dob)\b/i);
 
-      if (isWhoseBirthdayQuery) {
-        const todayMonth = wallNow.getUTCMonth() + 1;
-        const todayDay = wallNow.getUTCDate();
-        const todayIso = `${wallNow.getUTCFullYear()}-${String(todayMonth).padStart(2, "0")}-${String(todayDay).padStart(2, "0")}`;
-        const todayFormatted = wallNow.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-
-        // 1. Is it the user's own birthday today?
-        let isUserBirthday = false;
-        if (context.userBirthday) {
-          const b = new Date(context.userBirthday);
-          if (b.getUTCMonth() + 1 === todayMonth && b.getUTCDate() === todayDay) {
-            isUserBirthday = true;
-          }
-        }
-
-        if (isUserBirthday) {
-          const reply = `Today is **YOUR birthday**, ${context.userName || "Student"}! 🎉🎂 Wishing you a wonderful birthday filled with joy and academic success from the entire AttendX team!`;
-          return {
-            intent: "CHIT_CHAT",
-            reply,
-            response: reply,
-            citations: [],
-            actions: [],
-            requiresConfirmation: false,
-          };
-        }
-
-        // 2. Check context.calendarEvents for peer birthday events scheduled on today (strictly exclude holidays)
-        const todayEvents = allCalendarEvents.filter((e: any) => {
-          const startStr = toIsoDateOnly(e.date);
-          const endStr = toIsoDateOnly(e.endDate) || startStr;
-          return startStr <= todayIso && todayIso <= endStr && !isPublicHolidayEvent(e);
-        });
-
-        // Match explicit peer birthday events on today
-        const explicitBdayEvents = todayEvents.filter((e: any) =>
-          (/\b(birthdays?|b'?days?|dob)\b/i.test(e.title || "") || /\b(birthdays?|b'?days?|dob)\b/i.test(e.description || "")) && !isPublicHolidayEvent(e)
-        );
-
-        if (explicitBdayEvents.length > 0) {
-          const titles = explicitBdayEvents.map((e: any) => e.title).join(", ");
-          const reply = `Today on your calendar: **${titles}**! 🎉🎂 Let them know you're celebrating with them today!`;
-          return {
-            intent: "CHIT_CHAT",
-            reply,
-            response: reply,
-            citations: [],
-            actions: [],
-            requiresConfirmation: false,
-          };
-        }
-
-        // 3. Check for upcoming peer birthdays on the calendar (strictly exclude public holidays and academic milestones)
-        const upcomingBdayEvents = allCalendarEvents
-          .filter((e: any) => {
-            const startStr = toIsoDateOnly(e.date);
-            const isBday = /\b(birthdays?|b'?days?|dob)\b/i.test(e.title || "") || /\b(birthdays?|b'?days?|dob)\b/i.test(e.description || "");
-            return startStr >= todayIso && isBday && !isPublicHolidayEvent(e);
-          })
-          .sort((a: any, b: any) => toIsoDateOnly(a.date).localeCompare(toIsoDateOnly(b.date)))
-          .slice(0, 3);
-
-        if (upcomingBdayEvents.length > 0) {
-          const list = upcomingBdayEvents.map((e: any) => {
-            const d = new Date(toIsoDateOnly(e.date) + "T00:00:00");
-            return `**${e.title}** (${d.toLocaleDateString("en-US", { month: "short", day: "numeric" })})`;
-          }).join(", ");
-          const userBdayStr = context.userBirthday ? ` Your birthday on record is **${new Date(context.userBirthday).toLocaleDateString("en-US", { month: "long", day: "numeric" })}**.` : "";
-          const reply = `There are no peer birthdays scheduled for today. Upcoming on your calendar: ${list}.${userBdayStr}`;
-          return {
-            intent: "CHIT_CHAT",
-            reply,
-            response: reply,
-            citations: [],
-            actions: [],
-            requiresConfirmation: false,
-          };
-        }
-
-        const userBdayNotice = context.userBirthday ? ` Your birthday on record is **${new Date(context.userBirthday).toLocaleDateString("en-US", { month: "long", day: "numeric" })}**.` : " (Set your birthday in Settings > Edit Profile).";
-        const reply = `There are no peer birthdays scheduled for today.${userBdayNotice}`;
-        return {
-          intent: "CHIT_CHAT",
-          reply,
-          response: reply,
-          citations: [],
-          actions: [],
-          requiresConfirmation: false,
-        };
-      }
-
-      // 11e. Asking about a specific person or event's birthday
-      const specificMatch = lower.match(/(?:when|what|is)\s+(?:is\s+)?([a-z0-9\s'-]+?)(?:'s|\s+has)?\s+(?:birthdays?|b'?days?|dob)\b/i) ||
-        lower.match(/(?:when|is\s+it)\s+([a-z0-9\s'-]+?)(?:'s)?\s+(?:birthdays?|b'?days?)\b/i);
       if (specificMatch) {
         const queryName = specificMatch[1].trim().toLowerCase();
-        if (queryName && !/^(my|your|the)$/.test(queryName)) {
-          const allCalendarEvents = (Array.isArray(context.calendarEvents) ? context.calendarEvents : []);
-          const matchedEvent = allCalendarEvents.find((e: any) => {
+        if (queryName && !/^(my|your|the|whose|who|any|anyone|anybody|next|upcoming|today)$/.test(queryName)) {
+          let matchedEvent = allCalendarEvents.find((e: any) => {
             const t = String(e.title || "").toLowerCase();
-            return t.includes(queryName) || queryName.split(" ").some(part => part.length >= 3 && t.includes(part));
+            return t.includes(queryName) || queryName.split(" ").some((part) => part.length >= 3 && t.includes(part));
           });
+          if (!matchedEvent) {
+            const qParts = (queryName.match(/[a-z]{4,}/g) || []).filter((p) => !this.ENTITY_FUZZY_STOP_WORDS.has(p));
+            let bestDist = Infinity;
+            for (const e of allCalendarEvents) {
+              const titleWords = (String(e.title || "").toLowerCase().match(/[a-z]{4,}/g) || []).filter(
+                (w) => w !== "birthday" && w !== "bday"
+              );
+              for (const qp of qParts) {
+                const maxDist = qp.length >= 7 ? 2 : 1;
+                for (const tw of titleWords) {
+                  if (qp[0] !== tw[0]) continue;
+                  const d = this.boundedEditDistance(qp, tw, maxDist);
+                  if (d <= maxDist && (d < bestDist || (d === bestDist && isPeerBirthdayEvent(e)))) {
+                    bestDist = d;
+                    matchedEvent = e;
+                  }
+                }
+              }
+            }
+          }
           if (matchedEvent) {
-            const d = new Date(String(matchedEvent.date).split("T")[0] + "T00:00:00");
-            const formatted = d.toLocaleDateString("en-US", { month: "long", day: "numeric" });
-            const isHol = isPublicHolidayEvent(matchedEvent);
-            const reply = isHol
-              ? `According to your calendar, **${matchedEvent.title}** is an official holiday on **${formatted}**!`
-              : `According to your calendar, **${matchedEvent.title}** is on **${formatted}**! 🎂`;
-            return {
-              intent: "CHIT_CHAT",
-              reply,
-              response: reply,
-              citations: [],
-              actions: [],
-              requiresConfirmation: false,
-            };
+            const baseIso = toIsoDateOnly(matchedEvent.date || matchedEvent.startDate);
+            if (isPublicHolidayEvent(matchedEvent)) {
+              const formatted = formatUtcDate(baseIso, { month: "long", day: "numeric" });
+              const reply = `According to your calendar, **${matchedEvent.title}** is an official holiday on **${formatted}**! 🌴`;
+              return { intent: "CHIT_CHAT", reply, response: reply, citations: [], actions: [], requiresConfirmation: false };
+            }
+            const occ = nextBirthdayOccurrenceIso(baseIso, todayIsoStr);
+            const formatted = formatUtcDate(occ ? occ.nextIso : baseIso, { month: "long", day: "numeric" });
+            const timing = occ ? ` (${formatCountdown(occ.daysUntil)})` : "";
+            const titleStr = String(matchedEvent.title || "").trim();
+            const hasBdayWord = /\b(birthdays?|b'?days?|b-?days?)\b/i.test(titleStr);
+            const reply = hasBdayWord
+              ? `According to your calendar, **${titleStr}** is on **${formatted}**${timing}! 🎂`
+              : `According to your calendar, **${titleStr}**'s birthday is on **${formatted}**${timing}! 🎂`;
+            return { intent: "CHIT_CHAT", reply, response: reply, citations: [], actions: [], requiresConfirmation: false };
           }
         }
+      }
+
+      // 11e. Asking whose birthday is today
+      const isWhoseBirthdayQuery =
+        /\b(whose|who\s+has|anybody(?:'s)?|anyone(?:'s)?|any|check)\s+(?:peer\s+)?(?:birthdays?|b'?days?)\b/i.test(lower) ||
+        /\b(?:birthdays?|b'?days?)\s+(?:is\s+)?today\b/i.test(lower) ||
+        /\bis\s+today\s+(?:anybody(?:'s)?|anyone(?:'s)?|a)\s+(?:birthdays?|b'?days?)\b/i.test(lower);
+
+      if (isWhoseBirthdayQuery) {
+        const todayMmDd = todayIsoStr.slice(5);
+        const userBdayIso = toIsoDateOnly(context.userBirthday);
+        const isUserBirthday = Boolean(userBdayIso && userBdayIso.slice(5) === todayMmDd);
+        const todayPeerBdays = allCalendarEvents.filter((e: any) => {
+          if (!isPeerBirthdayEvent(e)) return false;
+          const s = toIsoDateOnly(e.date || e.startDate);
+          return s.slice(5) === todayMmDd || s === todayIsoStr;
+        });
+
+        if (isUserBirthday && todayPeerBdays.length > 0) {
+          const titles = todayPeerBdays.map((e: any) => e.title).join(", ");
+          const reply = `Today is **YOUR birthday**, ${context.userName || "Student"}, AND **${titles}**'s birthday! 🎉🎂 Double celebration today!`;
+          return { intent: "CHIT_CHAT", reply, response: reply, citations: [], actions: [], requiresConfirmation: false };
+        }
+        if (isUserBirthday) {
+          const reply = `Today is **YOUR birthday**, ${context.userName || "Student"}! 🎉🎂 Wishing you a wonderful birthday filled with joy and academic success from the entire AttendX team!`;
+          return { intent: "CHIT_CHAT", reply, response: reply, citations: [], actions: [], requiresConfirmation: false };
+        }
+        if (todayPeerBdays.length > 0) {
+          const titles = todayPeerBdays.map((e: any) => e.title).join(", ");
+          const reply = `Today on your calendar: **${titles}**! 🎉🎂 Let them know you're celebrating with them today!`;
+          return { intent: "CHIT_CHAT", reply, response: reply, citations: [], actions: [], requiresConfirmation: false };
+        }
+
+        const combined = buildUpcomingBirthdays();
+        const peersUpcoming = combined.filter((i) => !i.isUser).slice(0, 3);
+        const userBdayStr = context.userBirthday
+          ? ` Your birthday on record is **${formatUtcDate(toIsoDateOnly(context.userBirthday), { month: "long", day: "numeric" })}**.`
+          : " (Set your birthday in Settings > Edit Profile).";
+
+        const reply =
+          peersUpcoming.length > 0
+            ? `There are no peer birthdays scheduled for today. Upcoming on your calendar: ${peersUpcoming
+                .map((p) => `**${p.label}** (${p.dateLabel}, ${p.daysUntil === 1 ? "tomorrow" : `in ${p.daysUntil}d`})`)
+                .join(", ")}.${userBdayStr}`
+            : `There are no peer birthdays scheduled for today.${userBdayStr}`;
+        return { intent: "CHIT_CHAT", reply, response: reply, citations: [], actions: [], requiresConfirmation: false };
       }
     }
 
@@ -2145,13 +3201,13 @@ export class CustomMlCopilotService {
 
     // B. Show Location (Include room in notifications)
     if (
-      /\b(?:don'?t|do\s+not|stop|hide|remove|disable|turn\s+off|no|without|not)\s+(?:include|including|show|showing|display|displaying)?\s*(?:the\s+)?(?:room|location|classroom)\b/i.test(lower) ||
-      /\b(?:hide|remove|disable)\s+(?:room|location)\s+(?:in\s+notifications?|in\s+alerts?)?\b/i.test(lower)
+      /\b(?:don'?t|do\s+not|stop|hide|remove|disable|turn\s+off|no|without|not)\s+(?:include|including|show|showing|display|displaying)?\s*(?:the\s+)?(?:room\s+location|room|location|classroom)(?:\s+(?:in|from)\s+(?:notifications?|alerts?))?\b/i.test(lower) ||
+      /\b(?:hide|remove|disable)\s+(?:room(?:\s+location)?|location)(?:\s+(?:in|from)\s+(?:notifications?|alerts?))?\b/i.test(lower)
     ) {
       alertUpdates.showLocation = false;
       alertNotes.push("configured notifications to **hide room location**");
     } else if (
-      /\b(?:include|including|show|showing|display|displaying|add|adding|enable|turn\s+on|with)\s+(?:the\s+)?(?:room|location|classroom)\s+(?:in|on)\s+(?:the\s+)?(?:notifications?|alerts?)\b/i.test(lower) ||
+      /\b(?:include|including|show|showing|display|displaying|add|adding|enable|turn\s+on|with)\s+(?:the\s+)?(?:room(?:\s+location)?|location|classroom)\s+(?:in|on)\s+(?:the\s+)?(?:notifications?|alerts?)\b/i.test(lower) ||
       /\b(?:turn\s+on\s+show\s+location|show\s+room|include\s+location)\b/i.test(lower)
     ) {
       alertUpdates.showLocation = true;
@@ -2175,12 +3231,12 @@ export class CustomMlCopilotService {
 
     // D. End of Day Summary ('Done for the day' alert)
     if (
-      /\b(?:don'?t|do\s+not|stop|disable|turn\s+off|no|i\s+do\s+not\s+want|without)\s+(?:the\s+)?(?:end\s+of\s+day\s+summary|done\s+for\s+the\s+day\s+alert|daily\s+completion\s+alert)\b/i.test(lower)
+      /\b(?:don'?t|do\s+not|stop|disable|turn\s+off|no|i\s+do\s+not\s+want|without)\s+(?:the\s+)?(?:end\s+of\s+day(?:\s+summary)?|done\s+for\s+the\s+day(?:\s+alert)?|daily\s+completion(?:\s+alert)?)\b/i.test(lower)
     ) {
       alertUpdates.endOfDaySummary = false;
       alertNotes.push("turned **OFF** the End of Day Summary alert");
     } else if (
-      /\b(?:enable|turn\s+on|activate|start|i\s+want)\s+(?:the\s+)?(?:end\s+of\s+day\s+summary|done\s+for\s+the\s+day\s+alert)\b/i.test(lower)
+      /\b(?:enable|turn\s+on|activate|start|i\s+want)\s+(?:the\s+)?(?:end\s+of\s+day(?:\s+summary)?|done\s+for\s+the\s+day(?:\s+alert)?)\b/i.test(lower)
     ) {
       alertUpdates.endOfDaySummary = true;
       alertNotes.push("turned **ON** the End of Day Summary alert ('Done for the day')");
@@ -3483,11 +4539,52 @@ ${ordContext}`;
     };
   }
 
+  private static findAssignmentByFuzzyTitle(targetTitle: string, assignments: any[] = []): any | undefined {
+    const tLower = targetTitle.toLowerCase();
+    const exact = assignments.find((a: any) => {
+      const at = String(a.title || "").toLowerCase();
+      return at === tLower || at.includes(tLower) || tLower.includes(at);
+    });
+    if (exact) return exact;
+
+    const qTokens = tLower.match(/[a-z0-9]{2,}/g) || [];
+    if (qTokens.length === 0) return undefined;
+
+    let best: any;
+    let bestScore = 0;
+    for (const a of assignments) {
+      const aTokens = String(a.title || "").toLowerCase().match(/[a-z0-9]{2,}/g) || [];
+      let hits = 0;
+      let score = 0;
+      for (const qt of qTokens) {
+        let bestTokScore = 0;
+        for (const at of aTokens) {
+          if (qt === at) {
+            bestTokScore = Math.max(bestTokScore, 30);
+          } else if (Math.min(qt.length, at.length) >= 4 && (qt[0] === at[0] || qt.length >= 6)) {
+            const maxDist = Math.min(qt.length, at.length) >= 7 ? 2 : 1;
+            const d = this.boundedEditDistance(qt, at, maxDist);
+            if (d <= maxDist) bestTokScore = Math.max(bestTokScore, 24 - d * 8);
+          }
+        }
+        if (bestTokScore > 0) {
+          hits++;
+          score += bestTokScore;
+        }
+      }
+      if (hits > 0 && hits >= Math.ceil(qTokens.length * 0.5) && score > bestScore) {
+        bestScore = score;
+        best = a;
+      }
+    }
+    return best;
+  }
+
   /**
-   * Search ordinance knowledge base using BM25 token matching
+   * Search ordinance knowledge base using BM25 + bounded typo fallback token matching
    */
   public static searchOrdinance(query: string): { section: string; title: string; summary: string } {
-    const qTokens = query
+    const qTokens = this.normalizeVoiceQuery(query)
       .toLowerCase()
       .replace(/[^\w\s%]/g, " ")
       .split(/\s+/)
@@ -3501,17 +4598,34 @@ ${ordContext}`;
       const title = ord.title.toLowerCase();
       const text = ord.text.toLowerCase();
       const keywords = (ord.keywords || []).map((k) => k.toLowerCase());
+      const keywordWords = keywords.flatMap((k) => k.match(/[a-z0-9]{4,}/g) || []);
 
       for (const t of qTokens) {
         if (t.length > 1000) continue;
-        if (keywords.some((k) => k.includes(t))) score += 6;
-        if (title.includes(t)) score += 4;
+        let matchedExact = false;
+        if (keywords.some((k) => k.includes(t))) {
+          score += 6;
+          matchedExact = true;
+        }
+        if (title.includes(t)) {
+          score += 4;
+          matchedExact = true;
+        }
         try {
           const escapedToken = t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
           const matches = (text.match(new RegExp("\\b" + escapedToken + "\\b", "g")) || []).length;
+          if (matches > 0) matchedExact = true;
           score += Math.min(matches, 5);
         } catch {
           // Guard against regex pattern overflow or syntax errors
+        }
+        if (!matchedExact && /^[a-z]{5,}$/.test(t)) {
+          for (const kw of keywordWords) {
+            if (this.boundedEditDistance(t, kw, 1) <= 1) {
+              score += 4;
+              break;
+            }
+          }
         }
       }
 
@@ -3534,16 +4648,18 @@ ${ordContext}`;
   }
 
   /**
-   * Resolve enrolled subject by fuzzy matching and alias lookup
+   * Resolve enrolled subject by fuzzy matching and alias lookup, returning whether an explicit match succeeded.
    */
-  public static resolveSubject(query: string, subjects: SubjectContext[] = []): { id: string; name: string; target: number; attended: number; total: number } {
+  public static resolveSubjectWithStatus(
+    query: string,
+    subjects: SubjectContext[] = []
+  ): { id: string; name: string; target: number; attended: number; total: number; matched: boolean } {
     const lower = query.toLowerCase();
-
-    // Map common academic abbreviations to full names
     const aliasMap: Record<string, string> = {
       dbms: "Database Management Systems",
       os: "Operating Systems",
       cn: "Computer Networks",
+      dc: "Data Communication",
       math: "Mathematics",
       mathematics: "Mathematics",
       algo: "Algorithms",
@@ -3555,80 +4671,135 @@ ${ordContext}`;
       ai: "Artificial Intelligence",
       ml: "Machine Learning",
       physics: "Physics",
-      dc: "Digital Communication",
     };
+
+    const wantsLab = /\b(lab|practical|demo)\b/i.test(lower);
+    let bestSub: SubjectContext | null = null;
+    let bestScore = 0;
+
+    for (const sub of subjects) {
+      const nameLower = (sub.name || "").toLowerCase();
+      const codeLower = (sub.code || "").toLowerCase();
+      let score = 0;
+
+      if (nameLower && lower.includes(nameLower)) score += 100 + nameLower.length;
+      if (codeLower && codeLower.length >= 2 && new RegExp(`\\b${codeLower.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(lower)) {
+        score += 90 + codeLower.length;
+      }
+
+      for (const [alias, fullName] of Object.entries(aliasMap)) {
+        if (new RegExp(`\\b${alias}\\b`, "i").test(lower)) {
+          if (nameLower.includes(alias) || nameLower.includes(fullName.toLowerCase())) {
+            score += alias.length * 10;
+          }
+        }
+      }
+
+      if (score > 0 && wantsLab && /\b(lab|practical)\b/i.test(nameLower)) score += 40;
+      else if (score > 0 && !wantsLab && /\b(lab|practical)\b/i.test(nameLower)) score -= 10;
+
+      if (score > bestScore) {
+        bestScore = score;
+        bestSub = sub;
+      }
+    }
+
+    if (bestSub && bestScore > 0) {
+      return {
+        id: bestSub.id,
+        name: bestSub.name,
+        target: bestSub.target || 75,
+        attended: bestSub.attended || 0,
+        total: bestSub.total || 0,
+        matched: true,
+      };
+    }
 
     for (const [alias, fullName] of Object.entries(aliasMap)) {
       if (new RegExp(`\\b${alias}\\b`, "i").test(lower)) {
-        const found = subjects.find(
-          (s) => s.name.toLowerCase().includes(alias) || s.name.toLowerCase().includes(fullName.toLowerCase())
+        return { id: `sub_${alias}`, name: fullName, target: 75, attended: 24, total: 30, matched: true };
+      }
+    }
+
+    // Stage 2: Bounded fuzzy subject fallback when exact/code/alias matching yields 0
+    const qTokens = (lower.match(/[a-z]{4,}/g) || []).filter((t) => !this.ENTITY_FUZZY_STOP_WORDS.has(t));
+    if (qTokens.length > 0 && subjects.length > 0) {
+      for (const sub of subjects) {
+        const nameLower = (sub.name || "").toLowerCase();
+        const subWords = (nameLower.match(/[a-z]{4,}/g) || []).filter(
+          (w) => !["lab", "practical", "laboratory", "and", "for", "the"].includes(w)
         );
-        if (found) {
-          return {
+        let score = 0;
 
-            id: found.id,
-            name: found.name,
-            target: found.target || 75,
-            attended: found.attended || 0,
-            total: found.total || 0,
-          };
+        for (const qt of qTokens) {
+          for (const sw of subWords) {
+            const minLen = Math.min(qt.length, sw.length);
+            if (minLen <= 4 && qt[0] !== sw[0]) continue;
+            const maxDist = minLen >= 6 && qt[0] === sw[0] ? 2 : 1;
+            const dist = this.boundedEditDistance(qt, sw, maxDist);
+            if (dist <= maxDist) {
+              score += Math.max(15, sw.length * 10 - dist * 18);
+            }
+          }
+          for (const [alias, fullName] of Object.entries(aliasMap)) {
+            if (alias.length < 4 || qt[0] !== alias[0]) continue;
+            const maxDist = alias.length >= 7 ? 2 : 1;
+            const dist = this.boundedEditDistance(qt, alias, maxDist);
+            if (dist <= maxDist && (nameLower.includes(alias) || nameLower.includes(fullName.toLowerCase()))) {
+              score += Math.max(15, alias.length * 10 - dist * 15);
+            }
+          }
         }
-        return {
 
-          id: `sub_${alias}`,
-          name: fullName,
-          target: 75,
-          attended: 24,
-          total: 30,
+        if (score > 0 && wantsLab && /\b(lab|practical)\b/i.test(nameLower)) score += 40;
+        else if (score > 0 && !wantsLab && /\b(lab|practical)\b/i.test(nameLower)) score -= 10;
+
+        if (score > bestScore) {
+          bestScore = score;
+          bestSub = sub;
+        }
+      }
+
+      if (bestSub && bestScore > 0) {
+        return {
+          id: bestSub.id,
+          name: bestSub.name,
+          target: bestSub.target || 75,
+          attended: bestSub.attended || 0,
+          total: bestSub.total || 0,
+          matched: true,
         };
       }
     }
 
-    // Match directly against student's enrolled subjects
-    for (const sub of subjects) {
-      if (sub.name && lower.includes(sub.name.toLowerCase())) {
-        return {
-
-          id: sub.id,
-          name: sub.name,
-          target: sub.target || 75,
-          attended: sub.attended || 0,
-          total: sub.total || 0,
-        };
-      }
-      if (sub.code && lower.includes(sub.code.toLowerCase())) {
-        return {
-
-          id: sub.id,
-          name: sub.name,
-          target: sub.target || 75,
-          attended: sub.attended || 0,
-          total: sub.total || 0,
-        };
-      }
-    }
-
-    // Fallback if subjects list is available
     if (subjects && subjects.length > 0) {
       const first = subjects[0];
       return {
-
         id: first.id,
         name: first.name,
         target: first.target || 75,
         attended: first.attended || 0,
         total: first.total || 0,
+        matched: false,
       };
     }
 
     return {
-
-      id: "unknown_subject", // AI-H03 FIX: Clear string ID instead of null
+      id: "unknown_subject",
       name: "Enrolled Course",
       target: 75,
       attended: 20,
       total: 25,
+      matched: false,
     };
+  }
+
+  /**
+   * Resolve enrolled subject by fuzzy matching and alias lookup
+   */
+  public static resolveSubject(query: string, subjects: SubjectContext[] = []): { id: string; name: string; target: number; attended: number; total: number } {
+    const res = this.resolveSubjectWithStatus(query, subjects);
+    return { id: res.id, name: res.name, target: res.target, attended: res.attended, total: res.total };
   }
 
   public static extractSubject = CustomMlCopilotService.resolveSubject;

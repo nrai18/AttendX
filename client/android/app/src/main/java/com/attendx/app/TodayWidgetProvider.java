@@ -59,6 +59,14 @@ public class TodayWidgetProvider extends AppWidgetProvider {
         }
     }
 
+    public static String compactTimeRange(String timeRange) {
+        if (timeRange == null || timeRange.trim().isEmpty()) return "--";
+        String compact = timeRange.trim().replaceAll("\\s*[–—-]\\s*", "–");
+        // Drop duplicated AM/PM on start time when both endpoints share the same period
+        compact = compact.replaceFirst("^(\\d{1,2}:\\d{2})\\s*(AM|PM)–(\\d{1,2}:\\d{2}\\s*\\2)$", "$1–$3");
+        return compact;
+    }
+
     @Override
     public void onUpdate(Context context, AppWidgetManager appWidgetManager, int[] appWidgetIds) {
         for (int appWidgetId : appWidgetIds) {
@@ -185,7 +193,7 @@ public class TodayWidgetProvider extends AppWidgetProvider {
                                 ? (nowMins >= sMins && nowMins < effEnd)
                                 : (effEnd != sMins && eMins > 0 && (nowMins >= sMins || nowMins < effEnd));
                             if (isOngoing) {
-                                timingChip = "🟢 ONGOING • ";
+                                timingChip = "🟢 LIVE • ";
                             } else if (nowMins < sMins) {
                                 int diff = sMins - nowMins;
                                 if (diff <= 60) {
@@ -195,7 +203,7 @@ public class TodayWidgetProvider extends AppWidgetProvider {
                         }
 
                         views.setTextViewText(nameTextIds[i], subName);
-                        views.setTextViewText(infoTextIds[i], timingChip + timeStr + " • " + roomStr);
+                        views.setTextViewText(infoTextIds[i], timingChip + roomStr + " • " + compactTimeRange(timeStr));
 
                         // Configure 1-Tap Attendance Buttons visual states
                         if ("present".equalsIgnoreCase(status) || "attended".equalsIgnoreCase(status)

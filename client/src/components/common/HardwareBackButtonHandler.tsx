@@ -7,6 +7,8 @@ import { useAuthStore, isUserAuthenticated } from "../../stores/authStore";
 
 export const HardwareBackButtonHandler = () => {
   const navigate = useNavigate();
+  const navigateRef = useRef(navigate);
+  navigateRef.current = navigate;
   const location = useLocation();
   const historyStack = useRef<string[]>([]);
   const locationRef = useRef(location.pathname);
@@ -52,13 +54,13 @@ export const HardwareBackButtonHandler = () => {
           historyStack.current.pop();
           const prev = historyStack.current[historyStack.current.length - 1];
           if (!prev || prev === "/" || prev === "/login" || prev === "/signup" || prev === "/privacy" || prev === "/terms") {
-            navigate(isAuth ? "/settings" : "/", { replace: true });
+            navigateRef.current(isAuth ? "/settings" : "/", { replace: true });
           } else {
-            navigate(-1);
+            navigateRef.current(-1);
           }
         } else {
           // Cold boot / memory-evicted launch fallback: return to settings if logged in, else landing page
-          navigate(isAuth ? "/settings" : "/", { replace: true });
+          navigateRef.current(isAuth ? "/settings" : "/", { replace: true });
         }
         return;
       }
@@ -68,62 +70,62 @@ export const HardwareBackButtonHandler = () => {
       if (authRoutes.includes(currentPath)) {
         const isAuth = isUserAuthenticated();
         if (isAuth) {
-          navigate("/settings", { replace: true });
+          navigateRef.current("/settings", { replace: true });
           return;
         }
         if (currentPath === "/forgot-password" || currentPath === "/reset-password") {
           const hasInternalHistory = Boolean(window.history.state && typeof window.history.state.idx === 'number' && window.history.state.idx > 0) && historyStack.current.length > 1;
           if (hasInternalHistory) {
             historyStack.current.pop();
-            navigate(-1);
+            navigateRef.current(-1);
           } else {
-            navigate("/login", { replace: true });
+            navigateRef.current("/login", { replace: true });
           }
           return;
         }
-        navigate("/", { replace: true });
+        navigateRef.current("/", { replace: true });
         return;
       }
       
       // Sub-routes for subjects, semester, settings, and classrooms: backing from logs, tabs, or sub-pages returns to parent tab
       if (currentPath.startsWith("/subjects/")) {
-        navigate("/subjects", { replace: true });
+        navigateRef.current("/subjects", { replace: true });
         return;
       }
       if (currentPath.startsWith("/semester/")) {
-        navigate("/semester", { replace: true });
+        navigateRef.current("/semester", { replace: true });
         return;
       }
       if (currentPath.startsWith("/settings/")) {
-        navigate("/settings", { replace: true });
+        navigateRef.current("/settings", { replace: true });
         return;
       }
       if (currentPath.startsWith("/classrooms/")) {
-        navigate("/classrooms", { replace: true });
+        navigateRef.current("/classrooms", { replace: true });
         return;
       }
 
       // Secondary pages opened from Subjects or Settings return to their parent page
       if (currentPath === "/semester" || currentPath === "/predictive" || currentPath.startsWith("/predictive/")) {
-        navigate("/subjects", { replace: true });
+        navigateRef.current("/subjects", { replace: true });
         return;
       }
       if (currentPath === "/report" || currentPath === "/reports" || currentPath.startsWith("/report/")) {
-        navigate("/settings", { replace: true });
+        navigateRef.current("/settings", { replace: true });
         return;
       }
       if (currentPath === "/classrooms") {
-        navigate("/settings", { replace: true });
+        navigateRef.current("/settings", { replace: true });
         return;
       }
       if (currentPath === "/404") {
-        navigate(isUserAuthenticated() ? "/today" : "/", { replace: true });
+        navigateRef.current(isUserAuthenticated() ? "/today" : "/", { replace: true });
         return;
       }
 
       // Top-level tabs return to the main dashboard
       if (currentPath === "/timetable" || currentPath === "/calendar" || currentPath === "/subjects" || currentPath === "/settings") {
-        navigate("/today", { replace: true });
+        navigateRef.current("/today", { replace: true });
         return;
       }
 
@@ -134,22 +136,22 @@ export const HardwareBackButtonHandler = () => {
         
         // If the previous path is the same (somehow), just navigate to /today as fallback
         if (previousPath === currentPath) {
-          navigate("/today", { replace: true });
+          navigateRef.current("/today", { replace: true });
         } else {
           // Standard React Router back navigation
-          navigate(-1);
+          navigateRef.current(-1);
         }
       } else {
         // We are deep in the app but have no history (e.g., opened via deep link/notification/cold memory boot)
         // Fallback safely so the user isn't trapped
-        navigate(isUserAuthenticated() ? "/today" : "/", { replace: true });
+        navigateRef.current(isUserAuthenticated() ? "/today" : "/", { replace: true });
       }
     });
 
     return () => {
       backButtonListener.then((listener: any) => listener.remove());
     };
-  }, [navigate]);
+  }, []);
 
   return null;
 };

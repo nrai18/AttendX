@@ -8,6 +8,7 @@ import { NativeVoiceService, isVoiceBreakoutCommand } from "../../services/Nativ
 import { useBackHandlerStore } from "../../stores/backHandlerStore";
 import { api } from "../../lib/api";
 import { maskProfanity } from "../../utils/profanityMask";
+import { normalizeCopilotQuery } from "../../utils/copilotFastPath";
 
 interface VoiceModeOverlayProps {
   isOpen: boolean;
@@ -168,9 +169,11 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
   
   const [transcript, setTranscript] = useState("");
   const [lastResponse, setLastResponse] = useState("");
+  const [processingLabel, setProcessingLabel] = useState("Thinking...");
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [speechDuration, setSpeechDuration] = useState(0);
   const [speechStartTime, setSpeechStartTime] = useState(0);
+  const turnIdRef = useRef(0);
 
   const cleanedResponseText = useMemo(() => {
     return NativeVoiceService.cleanTextForSpeech(lastResponse);
@@ -410,7 +413,11 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
   }, []);
 
   const handleClose = () => {
-    isOpenRef.current = false; // Killswitch for TTS
+    turnIdRef.current++;
+    isOpenRef.current = false; // Killswitch for TTS & async turns
+    isProcessingRef.current = false;
+    isSpeakingRef.current = false;
+    isListeningRef.current = false;
     if (silenceTimeoutRef.current) {
       clearTimeout(silenceTimeoutRef.current);
       silenceTimeoutRef.current = null;
@@ -421,6 +428,16 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
     setIsSpeaking(false);
     setIsListening(false);
     setIsProcessing(false);
+    setTranscript("");
+    transcriptRef.current = "";
+    lastSubmittedVoiceQueryRef.current = "";
+    currentUtteranceRef.current = "";
+    setLastResponse("");
+    setProcessingLabel("Thinking...");
+    speechStartTimeRef.current = 0;
+    setSpeechStartTime(0);
+    speechTotalDurationRef.current = 0;
+    setSpeechDuration(0);
   };
 
   const getListenOptions = () => ({
@@ -429,7 +446,9 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
       micStartTimeRef.current = Date.now();
       if (isOpenRef.current) {
         setIsListening(true);
+        isListeningRef.current = true;
         setTranscript("");
+        transcriptRef.current = "";
       }
     },
     onPartialResult: (text: string) => {
@@ -437,7 +456,14 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
         if (text === lastSubmittedVoiceQueryRef.current && (Date.now() - micStartTimeRef.current < 1500)) {
           return;
         }
+        // Clear previous AI answer the instant new user speech arrives
+        if (text.trim()) {
+          setLastResponse("");
+          speechStartTimeRef.current = 0;
+          setSpeechStartTime(0);
+        }
         setTranscript(text);
+        transcriptRef.current = text;
         resetSilenceTimeout();
         checkVoiceBreakout(text);
       }
@@ -447,7 +473,13 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
         if (text === lastSubmittedVoiceQueryRef.current && (Date.now() - micStartTimeRef.current < 1500)) {
           return;
         }
+        if (text.trim()) {
+          setLastResponse("");
+          speechStartTimeRef.current = 0;
+          setSpeechStartTime(0);
+        }
         setTranscript(text);
+        transcriptRef.current = text;
         resetSilenceTimeout();
         checkVoiceBreakout(text);
       }
@@ -461,17 +493,18 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
       }
       if (isOpenRef.current) {
         setIsListening(false);
+        isListeningRef.current = false;
       }
     },
     onEnd: () => {
-      if (isOpenRef.current && !NativeVoiceService.isSpeaking() && !isProcessingRef.current) {
+      if (isOpenRef.current && !NativeVoiceService.isSpeaking() && !isSpeakingRef.current && !isProcessingRef.current) {
         if (transcriptRef.current.trim()) {
            // OS killed mic with text: force submit immediately
            setIsListening(false);
+           isListeningRef.current = false;
            handleProcessVoiceInput();
         } else {
            // OS killed mic with NO text (inactivity). 
-           // Respect the inactivity and turn off the mic, as requested by the user.
            stopListening();
         }
       }
@@ -480,9 +513,19 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
 
   const startListening = async () => {
     if (!isOpenRef.current) return;
+    turnIdRef.current++;
     await NativeVoiceService.stopSpeaking();
     setIsSpeaking(false);
+    isSpeakingRef.current = false;
     setIsProcessing(false);
+    isProcessingRef.current = false;
+    // Clear previous answer & word-reveal timers when user activates listening
+    setLastResponse("");
+    currentUtteranceRef.current = "";
+    speechStartTimeRef.current = 0;
+    setSpeechStartTime(0);
+    speechTotalDurationRef.current = 0;
+    setSpeechDuration(0);
     setTranscript("");
     transcriptRef.current = "";
 
@@ -491,6 +534,7 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
     const started = await NativeVoiceService.startListening(options);
     if (!started && isOpenRef.current) {
       setIsListening(false);
+      isListeningRef.current = false;
     }
   };
 
@@ -500,11 +544,12 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
       silenceTimeoutRef.current = null;
     }
     setIsListening(false);
-    NativeVoiceService.stopContinuousLoop();
+    isListeningRef.current = false;
+    await NativeVoiceService.stopContinuousLoop();
   };
 
-  const handleSpeakText = async (text: string) => {
-    if (!isOpenRef.current) return; // Abort if closed
+  const handleSpeakText = async (text: string, expectedTurnId = turnIdRef.current) => {
+    if (!isOpenRef.current || expectedTurnId !== turnIdRef.current) return; // Abort if closed or superseded
 
     if (silenceTimeoutRef.current) {
       clearTimeout(silenceTimeoutRef.current);
@@ -513,6 +558,9 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
 
     const cleanText = NativeVoiceService.cleanTextForSpeech(text);
     if (!cleanText) {
+      setIsProcessing(false);
+      isProcessingRef.current = false;
+      setLastResponse("");
       if (isOpenRef.current) {
         startListening();
       }
@@ -521,61 +569,81 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
 
     currentUtteranceRef.current = cleanText;
     const wordCount = cleanText.split(/\s+/).length;
-    // Assume ~2.3 words per second for speech rate 1.05 with punctuation pauses
-    const expectedDurationMs = (wordCount / 2.3) * 1000 + 1000;
-    
-    // DO NOT set speechStartTimeRef.current to Date.now() here!
-    // This allows the uiState to remain PROCESSING while the native TTS engine boots up and downloads audio.
-    // We only want the UI to transition to SPEAKING once the audio actually starts playing.
-    speechStartTimeRef.current = 0; 
+    // Calibrated initial duration until real audio duration arrives from metadata
+    const expectedDurationMs = (wordCount / 2.3) * 1000 + 800;
+
+    // Keep speechStartTime at 0 until audio physically starts coming from ElevenLabs or Google TTS
+    speechStartTimeRef.current = 0;
     setSpeechStartTime(0);
     speechTotalDurationRef.current = expectedDurationMs;
     setSpeechDuration(expectedDurationMs);
 
     if (voiceEnabledRef.current) {
       await NativeVoiceService.stopSpeaking();
+      if (!isOpenRef.current || expectedTurnId !== turnIdRef.current) return;
+
       await NativeVoiceService.speak(cleanText, {
         lang: "en-IN",
         autoResumeListening: true,
         listenOptions: getListenOptions(),
         onDuration: (durationMs) => {
-          // If speech already started, adjust the startTime so the cursor doesn't jump
-          if (speechStartTimeRef.current > 0) {
+          if (!isOpenRef.current || expectedTurnId !== turnIdRef.current) return;
+          if (speechStartTimeRef.current > 0 && speechTotalDurationRef.current > 0) {
             const oldDuration = speechTotalDurationRef.current;
             const now = Date.now();
             const elapsed = now - speechStartTimeRef.current;
-            const ratio = elapsed / oldDuration;
-            
+            const ratio = Math.min(1, Math.max(0, elapsed / oldDuration));
             const newElapsed = ratio * durationMs;
             const newStartTime = now - newElapsed;
-            
             speechStartTimeRef.current = newStartTime;
             setSpeechStartTime(newStartTime);
           }
-          
           speechTotalDurationRef.current = durationMs;
           setSpeechDuration(durationMs);
         },
         onStart: () => {
-          // Now the audio has physically started playing.
-          speechStartTimeRef.current = Date.now();
-          setSpeechStartTime(Date.now());
+          if (!isOpenRef.current || expectedTurnId !== turnIdRef.current) return;
+          // Voice audio has physically started playing from ElevenLabs or Google TTS: reveal & start word parser now
+          const startedAt = Date.now();
+          speechStartTimeRef.current = startedAt;
+          setSpeechStartTime(startedAt);
+          setLastResponse(cleanText);
+          setIsProcessing(false);
+          isProcessingRef.current = false;
           setIsSpeaking(true);
+          isSpeakingRef.current = true;
         },
         onEnd: () => {
+          if (expectedTurnId !== turnIdRef.current) return;
+          setIsProcessing(false);
+          isProcessingRef.current = false;
           setIsSpeaking(false);
-          // Restart the 20s global inactivity timer now that the AI has finished answering
+          isSpeakingRef.current = false;
           resetSilenceTimeout();
         },
         onError: () => {
+          if (expectedTurnId !== turnIdRef.current) return;
+          setIsProcessing(false);
+          isProcessingRef.current = false;
           setIsSpeaking(false);
+          isSpeakingRef.current = false;
+          // Show text response gracefully when muted/offline TTS fails instead of eating the reply
+          setLastResponse(cleanText);
           if (isOpenRef.current) {
             startListening();
           }
         }
       });
     } else {
+      // Speaker muted intentionally: reveal text immediately and resume listening
+      setIsProcessing(false);
+      isProcessingRef.current = false;
       setIsSpeaking(false);
+      isSpeakingRef.current = false;
+      setLastResponse(cleanText);
+      const startedAt = Date.now();
+      speechStartTimeRef.current = startedAt;
+      setSpeechStartTime(startedAt);
       if (isOpenRef.current) {
         startListening();
       }
@@ -584,7 +652,7 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
 
   const handleProcessVoiceInput = async () => {
     const currentTranscript = transcriptRef.current || transcript;
-    if (!currentTranscript.trim() || isProcessingRef.current) return;
+    if (!isOpenRef.current || !currentTranscript.trim() || isProcessingRef.current) return;
 
     if (silenceTimeoutRef.current) {
       clearTimeout(silenceTimeoutRef.current);
@@ -597,20 +665,16 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
     }
     
     // Normalize common speech splits (e.g. "time table" -> "timetable")
-    const query = rawQuery
-      .replace(/\btime\s+table\b/gi, "timetable")
-      .replace(/\bpeer\s*[- ]?sync\b/gi, "peer-sync")
-      .replace(/\bclass\s+room(s)?\b/gi, "classroom$1")
-      .replace(/\bmid\s+sem(ester)?\b/gi, "midsem")
-      .replace(/\bend\s+sem(ester)?\b/gi, "endsem")
-      .replace(/\battend\s+x\b/gi, "attendx")
-      .replace(/\bdark\s+theme\b/gi, "dark mode")
-      .replace(/\blight\s+theme\b/gi, "light mode");
+    const query = normalizeCopilotQuery(rawQuery);
     
-    // On native, we must stop the mic to avoid feedback loops and crashes.
-    // IMPORTANT: Only pause the mic session — do NOT kill the continuous loop flag
-    // so that handlePlaybackEnd can auto-resume listening after TTS finishes.
+    const currentTurn = ++turnIdRef.current;
+
+    // On native, pause mic before AI thinking & TTS so STT cannot catch echo or fire stale onEnd
     if (Capacitor.isNativePlatform()) {
+      setIsListening(false);
+      isListeningRef.current = false;
+      await NativeVoiceService.stopListening();
+    } else {
       setIsListening(false);
       isListeningRef.current = false;
       await NativeVoiceService.stopListening();
@@ -619,6 +683,11 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
     setIsProcessing(true);
     isProcessingRef.current = true;
     lastSubmittedVoiceQueryRef.current = query;
+    // Clear previous answer immediately when starting a new request
+    setLastResponse("");
+    speechStartTimeRef.current = 0;
+    setSpeechStartTime(0);
+    setSpeechDuration(0);
 
     if (pendingActionMsgId) {
       const cleanQuery = query.trim().toLowerCase().replace(/[.,!]/g, '');
@@ -628,78 +697,107 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
       if (isConfirming) {
         onConfirmPendingAction?.(pendingActionMsgId);
         setTranscript("");
-        setIsProcessing(false);
-        await handleSpeakText("Action confirmed.");
+        transcriptRef.current = "";
+        setProcessingLabel("Preparing voice...");
+        await handleSpeakText("Action confirmed.", currentTurn);
         return;
       } else if (isCanceling) {
         onCancelPendingAction?.(pendingActionMsgId);
         setTranscript("");
-        setIsProcessing(false);
-        await handleSpeakText("Action cancelled.");
+        transcriptRef.current = "";
+        setProcessingLabel("Preparing voice...");
+        await handleSpeakText("Action cancelled.", currentTurn);
         return;
       }
     }
 
-    // Visually show we are processing, but do not block with spoken filler audio
+    // Show processing filler label separately without putting stale/dummy text into the response parser
     const randomFiller = VISUAL_FILLER_PHRASES[Math.floor(Math.random() * VISUAL_FILLER_PHRASES.length)];
-    setLastResponse(randomFiller);
+    setProcessingLabel(randomFiller);
 
     try {
       const response = await onSendMessage(query, 'voice_overlay');
-      // When the actual response is ready, stop any ongoing filler speech first
+      if (!isOpenRef.current || currentTurn !== turnIdRef.current) return;
+
       await NativeVoiceService.stopSpeaking();
-      if (response && isOpenRef.current) {
-        setIsProcessing(false); // Stop processing state so onEnd can trigger listening
+      if (!isOpenRef.current || currentTurn !== turnIdRef.current) return;
+
+      if (response) {
         setTranscript("");
-        setLastResponse(response);
-        await handleSpeakText(response);
+        transcriptRef.current = "";
+        // Stay in PROCESSING ("Generating voice...") until TTS audio physically starts playing!
+        setProcessingLabel("Preparing voice...");
+        await handleSpeakText(response, currentTurn);
       } else {
         setIsProcessing(false);
+        isProcessingRef.current = false;
         setTranscript("");
-        // Break the infinite error loop if the API returns undefined or empty
+        transcriptRef.current = "";
+        setLastResponse("");
         stopListening();
       }
     } catch (err) {
       await NativeVoiceService.stopSpeaking();
       setIsProcessing(false);
+      isProcessingRef.current = false;
       setTranscript("");
-      if (isOpenRef.current) {
-        setLastResponse("I encountered an error connecting to the policy advisor. Please try again.");
-        await handleSpeakText("I encountered an error. Please try again.");
+      transcriptRef.current = "";
+      setLastResponse("");
+      if (isOpenRef.current && currentTurn === turnIdRef.current) {
+        setProcessingLabel("Preparing voice...");
+        await handleSpeakText("I encountered an error. Please try again.", currentTurn);
       }
     }
   };
 
   // Auto-submit after silence or when manually stopped
   useEffect(() => {
-    if (transcript.trim() && !isProcessing && !isSpeaking) {
+    if (isOpen && transcript.trim() && !isProcessing && !isSpeaking) {
       const delay = isListening ? 1200 : 500;
       const timer = setTimeout(() => {
         handleProcessVoiceInput();
       }, delay);
       return () => clearTimeout(timer);
     }
-  }, [isListening, transcript, isProcessing, isSpeaking]);
+  }, [isOpen, isListening, transcript, isProcessing, isSpeaking]);
 
-  // When Voice Mode opens, we immediately start listening
+  // When Voice Mode opens, clear stale answers and start listening fresh
   useEffect(() => {
     if (isOpen) {
+      turnIdRef.current++;
       setTranscript("");
+      transcriptRef.current = "";
+      lastSubmittedVoiceQueryRef.current = "";
+      currentUtteranceRef.current = "";
+      setLastResponse("");
+      setProcessingLabel("Thinking...");
+      speechStartTimeRef.current = 0;
+      setSpeechStartTime(0);
+      speechTotalDurationRef.current = 0;
+      setSpeechDuration(0);
       setIsProcessing(false);
+      isProcessingRef.current = false;
       setIsSpeaking(false);
+      isSpeakingRef.current = false;
       
-      const greeting = "Hey there, how can I help you today?";
-      setLastResponse(greeting);
-      
-      // Start listening instantly for better UX instead of waiting for a TTS greeting
-      setTimeout(() => {
+      // Start listening cleanly without storing fake answer text in lastResponse
+      const t = setTimeout(() => {
         if (isOpenRef.current) {
           startListening();
         }
-      }, 100);
+      }, 120);
+      return () => clearTimeout(t);
     } else {
+      turnIdRef.current++;
       stopListening();
       NativeVoiceService.stopSpeaking();
+      setTranscript("");
+      transcriptRef.current = "";
+      setLastResponse("");
+      speechStartTimeRef.current = 0;
+      setSpeechStartTime(0);
+      setIsProcessing(false);
+      setIsSpeaking(false);
     }
   }, [isOpen]);
 
@@ -785,12 +883,14 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
                     </motion.p>
                   ) : uiState === "PROCESSING" ? (
                      <motion.div key="processing" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} className="flex flex-col items-center gap-3">
-                        <p className="text-sm text-white/50 italic">Heard: "{maskProfanity(transcript)}"</p>
-                        <p className="text-xl text-white/80 animate-pulse">{lastResponse}</p>
+                        {transcript && (
+                          <p className="text-sm text-white/50 italic">Heard: "{maskProfanity(transcript)}"</p>
+                        )}
+                        <p className="text-xl text-white/80 animate-pulse">{processingLabel}</p>
                      </motion.div>
-                   ) : uiState === "SPEAKING" || (uiState === "LISTENING" && !transcript && lastResponse) ? (
+                   ) : uiState === "SPEAKING" || (cleanedResponseText && !transcript) ? (
                       <motion.div 
-                        key="speaking" 
+                        key={`speaking-${speechStartTime}`} 
                         initial={{opacity:0}} 
                         animate={{opacity:1}} 
                         exit={{opacity:0}}
@@ -805,7 +905,7 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
                       </motion.div>
                    ) : (
                      <motion.p key="idle" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} className="text-lg text-white/50 font-light">
-                       {uiState === "LISTENING" ? "Listening..." : "Tap the microphone to speak"}
+                       {uiState === "LISTENING" ? "Hey there, how can I help you today?" : "Tap the microphone to speak"}
                      </motion.p>
                   )}
                </AnimatePresence>

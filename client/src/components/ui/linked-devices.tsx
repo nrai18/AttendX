@@ -191,8 +191,8 @@ function SessionRow({
       >
         <DeviceAvatar os={session.os} browser={session.browser} />
         <div className="flex-1 min-w-0 flex flex-col justify-center">
-          <div className="flex items-center gap-2">
-            <p className="text-[15px] font-semibold text-foreground leading-tight truncate">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <p className="text-[15px] font-semibold text-foreground leading-tight break-words">
               {getSessionTitle(session)}
             </p>
             {session.isCurrent && (
@@ -201,13 +201,19 @@ function SessionRow({
               </span>
             )}
           </div>
-          <p className="text-[13px] text-muted-foreground leading-snug mt-0.5 truncate">{subtitle}</p>
-          <p className="text-[13px] text-muted-foreground/80 leading-snug truncate">
-            {locationText && <span>{locationText}{" \u2022 "}</span>}
-            {session.isCurrent
-              ? <span className="text-emerald-500 font-medium">online</span>
-              : <span>{formatShortDate(session.lastActive)}</span>
-            }
+          <p className="text-[13px] text-muted-foreground leading-snug mt-0.5 break-words">{subtitle}</p>
+          <p className="text-[13px] text-muted-foreground/80 leading-snug flex flex-wrap items-center gap-x-1 gap-y-0.5">
+            {locationText && (
+              <span>
+                {locationText}
+                {" •"}
+              </span>
+            )}
+            {session.isCurrent ? (
+              <span className="text-emerald-500 font-medium">online</span>
+            ) : (
+              <span>{formatShortDate(session.lastActive)}</span>
+            )}
             {session.isCurrent && !locationText && onRequestLocation && (
               <span
                 role="button"
@@ -667,9 +673,9 @@ export const LinkedDevicesModal: React.FC<LinkedDevicesProps> = ({ isOpen, onClo
             </div>
 
             {/* Content */}
-            <div className="flex-1 overflow-y-auto pb-[calc(2rem+env(safe-area-inset-bottom))] pr-1">
+            <div className="flex-1 overflow-y-auto pb-[calc(1rem+env(safe-area-inset-bottom))]">
               {!navigator.onLine && sessions.length > 0 && (
-                <div className="mx-4 mt-2 px-3 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs font-mono text-amber-500 flex items-center justify-between">
+                <div className="mx-3 sm:mx-4 mt-3 px-3 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs font-mono text-amber-500 flex items-center justify-between">
                   <span className="flex items-center gap-1.5">
                     <span>📶</span>
                     <span>Showing cached devices (Offline)</span>
@@ -682,7 +688,7 @@ export const LinkedDevicesModal: React.FC<LinkedDevicesProps> = ({ isOpen, onClo
                   <div className="animate-spin w-8 h-8 border-4 border-primary/30 border-t-primary rounded-full" />
                 </div>
               ) : (
-                <div className="space-y-6 pt-2">
+                <div className="space-y-4 pt-3">
                   {/* This Device */}
                   <style>{`
                     @keyframes sessionWhooshTrajectory {
@@ -705,7 +711,7 @@ export const LinkedDevicesModal: React.FC<LinkedDevicesProps> = ({ isOpen, onClo
                     }
                   `}</style>
                   {currentSession && (
-                    <div className="bg-card sm:rounded-xl border-y sm:border border-border mx-0 sm:mx-4 overflow-hidden shadow-sm">
+                    <div className="bg-card/85 rounded-2xl border border-border/70 mx-3 sm:mx-4 overflow-hidden shadow-sm">
                       <p className="text-[13px] font-semibold text-[#2AABEE] px-4 pt-3 pb-1">
                         This device
                       </p>
@@ -760,14 +766,14 @@ export const LinkedDevicesModal: React.FC<LinkedDevicesProps> = ({ isOpen, onClo
                   )}
 
                   {otherSessions.length > 0 && currentSession && (
-                    <p className="text-[13px] text-muted-foreground px-4 -mt-4 text-center sm:text-left">
+                    <p className="text-[13px] text-muted-foreground px-4 -mt-2 text-center sm:text-left">
                       Logs out all devices except for this one.
                     </p>
                   )}
 
                   {/* Active Sessions */}
                   {otherSessions.length > 0 && (
-                    <div className="bg-card sm:rounded-xl border-y sm:border border-border mx-0 sm:mx-4 overflow-hidden shadow-sm">
+                    <div className="bg-card/85 rounded-2xl border border-border/70 mx-3 sm:mx-4 overflow-hidden shadow-sm">
                       <p className="text-[13px] font-semibold text-[#2AABEE] px-4 pt-3 pb-1">
                         Active sessions
                       </p>
@@ -785,12 +791,12 @@ export const LinkedDevicesModal: React.FC<LinkedDevicesProps> = ({ isOpen, onClo
                     </div>
                   )}
 
-                  <p className="text-[14px] text-muted-foreground px-4 text-center sm:text-left leading-relaxed">
+                  <p className="text-[13px] text-muted-foreground px-4 text-center sm:text-left leading-relaxed">
                     The official AttendX app is currently available for Windows, macOS, and Android.
                   </p>
 
                   {/* Auto-terminate setting */}
-                  <div className="bg-card sm:rounded-xl border-y sm:border border-border mx-0 sm:mx-4 overflow-hidden mb-6 shadow-sm">
+                  <div className="bg-card/85 rounded-2xl border border-border/70 mx-3 sm:mx-4 overflow-hidden mb-1 shadow-sm">
                     <p className="text-[13px] font-semibold text-[#2AABEE] px-4 pt-3 pb-1">
                       Automatically terminate old sessions
                     </p>

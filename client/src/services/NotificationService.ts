@@ -1390,16 +1390,21 @@ export class NotificationService {
           activeSemester: activeSem,
         });
 
+        const todayIso = formatLocalDate(new Date());
         const shouldRefreshStats =
           force ||
           useAttendanceStore.getState().subjects.length === 0 ||
           Date.now() - this.lastStatsSyncAt > 60_000;
+        const needsTodayAgenda = !useCacheStore.getState().today?.[todayIso]?.agenda;
 
-        const [ttSettled, evSettled, statsSettled] = await Promise.allSettled([
+        const [ttSettled, evSettled, statsSettled, todaySettled] = await Promise.allSettled([
           api.get(`/timetable/${activeSem.id}`),
           api.get(`/events?semesterId=${activeSem.id}`),
           shouldRefreshStats
             ? api.get(`/attendance/stats?semesterId=${activeSem.id}`)
+            : Promise.resolve(null),
+          needsTodayAgenda
+            ? api.get(`/attendance/today?date=${todayIso}`)
             : Promise.resolve(null),
         ]);
 
@@ -1458,6 +1463,23 @@ export class NotificationService {
               ...curSubCache,
               stats: rawStats,
               activeSemesterId: activeSem.id,
+            });
+          }
+        }
+        if (
+          !hasPendingAttendanceOrSubjects &&
+          todaySettled.status === "fulfilled" &&
+          Array.isArray(todaySettled.value?.data)
+        ) {
+          const curTodayCache = useCacheStore.getState().today || {};
+          if (!curTodayCache[todayIso]?.agenda) {
+            useCacheStore.getState().setCache("today", {
+              ...curTodayCache,
+              [todayIso]: {
+                ...(curTodayCache[todayIso] || {}),
+                agenda: todaySettled.value.data,
+                activeSemester: activeSem,
+              },
             });
           }
         }
@@ -1702,18 +1724,35 @@ export class NotificationService {
 
           if (eventCancelsClasses) isClassOff = true;
 
-          // 1. Handle Birthdays (Exclude public holidays with "Birthday" in the title)
+          // 1. Handle Birthdays (Exclude public holidays & official academic milestones)
+          const isAcademicOtherMilestone =
+            /\b(fee\s+payment|registration|fee\s+verification|answer[\s-]*sheets?|shortage|result\s+preparation|declaration|commencement|classes|teaching|convocation|orientation|induction|workshop|seminar|meeting|submission|feedback|enrollment|enrolment)\b/i.test(
+              lowerTitle,
+            );
+          const isExplicitPeerBday =
+            /\b(birthdays?|b'?days?|b-?days?|dob)\b|🎂/i.test(
+              `${lowerTitle} ${String(e.description || "").toLowerCase()}`,
+            ) ||
+            (typeLower === "other" &&
+              !e.isHolidayList &&
+              !isHolidayEvent &&
+              !isRestricted &&
+              !(e as any).isHoliday &&
+              !isAcademicOtherMilestone);
           if (
-            lowerTitle.includes("birthday") &&
+            isExplicitPeerBday &&
+            !isHolidayEvent &&
+            !isRestricted &&
+            !(e as any).isHoliday &&
             !typeLower.includes("holiday")
           ) {
             const notifyTime = setHours(currentDay, 9);
             if (notifyTime.getTime() > Date.now()) {
               let cleanName = (e.title || "Friend").trim();
               cleanName = cleanName
-                .replace(/^(?:happy\s+)?birthday\s+of\s+/i, "")
-                .replace(/^(?:happy\s+)?birthday\s+/i, "")
-                .replace(/(?:'s|s)?\s*birthday.*$/i, "")
+                .replace(/^(?:happy\s+)?(?:birthday|b'?day)\s+of\s+/i, "")
+                .replace(/^(?:happy\s+)?(?:birthday|b'?day)\s+/i, "")
+                .replace(/(?:'s|s)?\s*(?:birthday|b'?day).*$/i, "")
                 .replace(/^(?:of\s+)/i, "")
                 .trim();
               if (!cleanName) cleanName = "Friend";
@@ -1784,13 +1823,55 @@ export class NotificationService {
         if (dbDay === -1) dbDay = 6;
 
         const daySlots = slots.filter((s) => s.dayOfWeek === dbDay);
-        daySlots.sort((a, b) => a.startTime.localeCompare(b.startTime));
+
+        // Merge date-specific Extra Classes & Cancelled/OFF overrides when cached (TodayPage / Widget / Offline)
+        const cachedAgenda = useCacheStore.getState().today?.[currentIso]?.agenda;
+        const agendaList: any[] = Array.isArray(cachedAgenda) ? cachedAgenda : [];
+        const offOrCancelledIds = new Set(
+          agendaList
+            .filter((item) => {
+              const st = String(item?.status || "").toLowerCase();
+              return st === "off" || st === "cancelled";
+            })
+            .map((item) => String(item.id)),
+        );
+        const extraDaySlots = agendaList
+          .filter((item) => {
+            const isExtraItem = Boolean(
+              item?.isExtra ||
+                item?.overrideType === "extra_class" ||
+                item?.type === "override",
+            );
+            const st = String(item?.status || "").toLowerCase();
+            return (
+              isExtraItem &&
+              st !== "off" &&
+              st !== "cancelled" &&
+              item?.startTime &&
+              !daySlots.some((s) => String(s.id) === String(item.id))
+            );
+          })
+          .map((item) => ({
+            id: item.id,
+            subject: item.subject,
+            startTime: String(item.startTime).slice(0, 5),
+            endTime: item.endTime ? String(item.endTime).slice(0, 5) : undefined,
+            room: item.room,
+            isExtra: true,
+          }));
+
+        const activeDaySlots = [
+          ...daySlots.filter((s) => !offOrCancelledIds.has(String(s.id))),
+          ...extraDaySlots,
+        ].sort((a, b) =>
+          String(a.startTime || "").localeCompare(String(b.startTime || "")),
+        );
 
         let maxEndTimeObj: Date | null = null;
 
-        for (let j = 0; j < daySlots.length; j++) {
-          const slot = daySlots[j];
-          const prevSlot = j > 0 ? daySlots[j - 1] : null;
+        for (let j = 0; j < activeDaySlots.length; j++) {
+          const slot = activeDaySlots[j];
+          const prevSlot = j > 0 ? activeDaySlots[j - 1] : null;
 
           const subjectName = (
             slot.subject?.name ||
@@ -1835,9 +1916,8 @@ export class NotificationService {
           ) {
             classEndObj = addDays(classEndObj, 1);
           }
-          const calculatedEndMs = classEndObj
-            ? classEndObj.getTime()
-            : classStartObj.getTime() + 60 * 60 * 1000;
+          const resolvedEndObj = classEndObj || addMinutes(classStartObj, 60);
+          const calculatedEndMs = resolvedEndObj.getTime();
           if (reminderOffset > -1) {
             if (headsUpTime && headsUpTime.getTime() > Date.now()) {
               const headsUpId = getNotificationIdForSlot(
@@ -1900,12 +1980,12 @@ export class NotificationService {
             }
           }
 
-          if (classEndObj && (!maxEndTimeObj || classEndObj > maxEndTimeObj)) {
-            maxEndTimeObj = classEndObj;
+          if (!maxEndTimeObj || resolvedEndObj > maxEndTimeObj) {
+            maxEndTimeObj = resolvedEndObj;
           }
         }
 
-        if (config?.endOfDaySummary && maxEndTimeObj && daySlots.length > 0) {
+        if (config?.endOfDaySummary && maxEndTimeObj && activeDaySlots.length > 0) {
           if (maxEndTimeObj.getTime() > Date.now()) {
             let endOfDayTitle = "Done for the day!";
             let endOfDayBody = "All classes have ended. Enjoy your evening!";
@@ -1934,7 +2014,7 @@ export class NotificationService {
                 endOfDayLargeBody = `\u2728 All classes for today have concluded. All the best for ${tomorrowOff.title} tomorrow!`;
                 endOfDayBody = `Classes ended. Best of luck for ${tomorrowOff.title} tomorrow!`;
               } else {
-                endOfDayLargeBody = `\u2728 All classes for today have concluded. Prepare for ${tomorrowOff.title} tomorrow!`;
+                endOfDayLargeBody = `\u2728 All classes for today have concluded. Enjoy ${tomorrowOff.title} tomorrow!`;
                 endOfDayBody = `Classes ended. Enjoy ${tomorrowOff.title} tomorrow!`;
               }
             } else if (currentDay.getDay() === 5) {
@@ -1979,6 +2059,12 @@ export class NotificationService {
               largeIcon: "attendx_notification_icon",
               iconColor: "#3B82F6",
               channelId: "class_alerts",
+              extra: {
+                type: "endofday",
+                scheduledDate: currentIso,
+                endTimeMs: maxEndTimeObj.getTime(),
+                route: "/today",
+              },
             });
             scheduledCount++;
           }
@@ -2028,6 +2114,13 @@ export class NotificationService {
         const staleClassNotifs = delivered.notifications.filter((n) => {
           const id = Number(n.id);
           if (id >= TIMETABLE_NOTIF_START_ID && id <= TIMETABLE_NOTIF_END_ID) {
+            if (n.extra?.type === "endofday") {
+              if (!config?.endOfDaySummary) return true;
+              const scheduledDate = n.extra?.scheduledDate;
+              return Boolean(
+                typeof scheduledDate === "string" && scheduledDate < todayIso,
+              );
+            }
             const endTimeMs = Number(n.extra?.endTimeMs);
             if (Number.isFinite(endTimeMs) && endTimeMs > 0) {
               return endTimeMs <= Date.now();

@@ -17,6 +17,8 @@ export const AppShell: React.FC<AppShellProps> = ({ title, onAddClick }) => {
   const { fetchStats } = useAttendanceStore();
   const location = useLocation();
   const navigate = useNavigate();
+  const navigateRef = useRef(navigate);
+  navigateRef.current = navigate;
   const prevPathRef = useRef(location.pathname);
 
   useEffect(() => {
@@ -59,7 +61,7 @@ export const AppShell: React.FC<AppShellProps> = ({ title, onAddClick }) => {
         try {
           sessionStorage.removeItem("pending_push_route");
         } catch (_) {}
-        navigate(e.detail);
+        navigateRef.current(e.detail);
       }
     };
     
@@ -69,14 +71,14 @@ export const AppShell: React.FC<AppShellProps> = ({ title, onAddClick }) => {
       const pendingRoute = sessionStorage.getItem("pending_push_route");
       if (pendingRoute) {
         sessionStorage.removeItem("pending_push_route");
-        navigate(pendingRoute);
+        navigateRef.current(pendingRoute);
       }
     } catch (_) {}
     return () => {
       window.removeEventListener("attendance-updated", handleUpdate);
       window.removeEventListener("push_route", handlePushRoute);
     };
-  }, [fetchStats, navigate]);
+  }, [fetchStats]);
 
   const isReports = location.pathname.startsWith("/report");
   const isSubjects = location.pathname === "/subjects" || location.pathname.startsWith("/subjects/");

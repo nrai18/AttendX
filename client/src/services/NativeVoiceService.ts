@@ -84,8 +84,10 @@ export class NativeVoiceService {
   private static startPromise: Promise<any> | null = null; // FE-H09 FIX: Promise lock for native plugin start
   private static currentAudio: HTMLAudioElement | null = null;
   private static currentSessionId = 0;
+  private static speakSessionId = 0;
   private static pendingStartPromise: Promise<any> | null = null;
   private static cooldownTimeoutId: any = null;
+  private static ttsRangeListener: { remove: () => Promise<void> } | null = null;
 
   /**
    * Check whether speech recognition is currently active.
@@ -286,15 +288,21 @@ export class NativeVoiceService {
           }
 
           await SpeechRecognition.addListener('partialResults', (data: any) => {
+            if (sessionId !== this.currentSessionId || !this.isListeningState || this.isSpeakingState) {
+              return;
+            }
             if (data.matches && data.matches.length > 0) {
               const transcript = data.matches[0];
               options.onPartialResult?.(transcript);
-              options.onFinalResult?.(transcript);
             }
           });
 
           await SpeechRecognition.addListener('listeningState', (event: any) => {
+            if (sessionId !== this.currentSessionId) {
+              return;
+            }
             if (event.state === 'stopped') {
+              if (!this.isListeningState) return;
               this.isListeningState = false;
               options.onEnd?.();
             }
@@ -323,11 +331,11 @@ export class NativeVoiceService {
           const result = await this.startPromise;
           // DO NOT call onEnd here! On Android 11+, partialResults: true causes this promise 
           // to resolve instantly (0-5ms). We must rely on the listeningState event above.
-          if (result && result.matches && result.matches.length > 0) {
+          if (sessionId === this.currentSessionId && this.isListeningState && result && result.matches && result.matches.length > 0) {
             const transcript = result.matches[0];
             options.onFinalResult?.(transcript);
           }
-          return true;
+          return sessionId === this.currentSessionId;
         } catch (err) {
           console.error("Native speech recognition error:", err);
           this.isListeningState = false;
@@ -437,6 +445,15 @@ export class NativeVoiceService {
   static async stopListening(): Promise<void> {
     this.currentSessionId++;
     this.isListeningState = false;
+
+    if (Capacitor.isNativePlatform()) {
+      // Remove listeners FIRST so calling SpeechRecognition.stop() never emits a stale onEnd callback
+      try {
+        await SpeechRecognition.removeAllListeners();
+      } catch {
+        // ignore
+      }
+    }
     
     // Invalidate and await any in-flight startup sequence
     if (this.pendingStartPromise) {
@@ -454,18 +471,17 @@ export class NativeVoiceService {
       } catch {
         // ignore
       }
-      try {
-        await SpeechRecognition.removeAllListeners();
-      } catch {
-        // ignore
-      }
     } else if (this.activeWebRecognition) {
+      const rec = this.activeWebRecognition;
+      this.activeWebRecognition = null;
       try {
-        this.activeWebRecognition.abort();
+        rec.onresult = null;
+        rec.onerror = null;
+        rec.onend = null;
+        rec.abort();
       } catch {
         // ignore
       }
-      this.activeWebRecognition = null;
       // Allow the browser hardware loop to fully release the mic before returning
       await new Promise(r => setTimeout(r, 150));
     }
@@ -507,6 +523,7 @@ export class NativeVoiceService {
     await this.stopListening();
     // Audio clash prevention: stop any ongoing audio before starting new playback
     await this.stopSpeaking();
+    const mySpeakId = ++this.speakSessionId;
     this.isSpeakingState = true;
 
     const safeStorageGet = (key: string) => {
@@ -531,7 +548,15 @@ export class NativeVoiceService {
 
     const prefElevenLabsVoiceId = options?.elevenlabsVoiceId || safeStorageGet("attendx_elevenlabs_voice_id");
 
+    let hasStartedPlayback = false;
+    const firePlaybackStart = () => {
+      if (mySpeakId !== this.speakSessionId || hasStartedPlayback) return;
+      hasStartedPlayback = true;
+      options?.onStart?.();
+    };
+
     const handlePlaybackEnd = async () => {
+      if (mySpeakId !== this.speakSessionId) return;
       this.isSpeakingState = false;
       options?.onEnd?.();
 
@@ -547,10 +572,83 @@ export class NativeVoiceService {
         // Acoustic echo buffer (500ms) to ensure speaker hardware & room reverberation clear
         this.cooldownTimeoutId = setTimeout(async () => {
           this.cooldownTimeoutId = null;
-          if (this.isLoopActive && !this.isSpeakingState && !this.isListeningState) {
+          if (
+            mySpeakId === this.speakSessionId &&
+            this.isLoopActive &&
+            !this.isSpeakingState &&
+            !this.isListeningState
+          ) {
             await this.startListening(targetListenOptions);
           }
         }, 500);
+      }
+    };
+
+    const speakWithNativeFallback = async (): Promise<boolean> => {
+      if (mySpeakId !== this.speakSessionId) return false;
+      let startFallbackTimer: ReturnType<typeof setTimeout> | null = null;
+      let finished = false;
+      try {
+        if (this.ttsRangeListener) {
+          await this.ttsRangeListener.remove().catch(() => {});
+          this.ttsRangeListener = null;
+        }
+        try {
+          this.ttsRangeListener = await TextToSpeech.addListener('onRangeStart', () => {
+            if (startFallbackTimer) {
+              clearTimeout(startFallbackTimer);
+              startFallbackTimer = null;
+            }
+            firePlaybackStart();
+          });
+        } catch {
+          // Web or unsupported listener falls back to calibrated start timer
+        }
+        startFallbackTimer = setTimeout(() => {
+          if (!finished && mySpeakId === this.speakSessionId) {
+            firePlaybackStart();
+          }
+        }, Capacitor.isNativePlatform() ? 450 : 120);
+
+        await TextToSpeech.speak({
+          text: cleanText,
+          lang: options?.lang || 'en-IN',
+          rate: finalRate,
+          pitch: finalPitch,
+          volume: options?.volume ?? 1.0,
+          voice: !isNaN(finalVoiceIndex as any) ? finalVoiceIndex : undefined,
+          queueStrategy: 0,
+        });
+        finished = true;
+        if (startFallbackTimer) {
+          clearTimeout(startFallbackTimer);
+          startFallbackTimer = null;
+        }
+        if (this.ttsRangeListener) {
+          await this.ttsRangeListener.remove().catch(() => {});
+          this.ttsRangeListener = null;
+        }
+        if (mySpeakId === this.speakSessionId) {
+          firePlaybackStart();
+          await handlePlaybackEnd();
+        }
+        return true;
+      } catch (fallbackErr) {
+        finished = true;
+        if (startFallbackTimer) {
+          clearTimeout(startFallbackTimer);
+          startFallbackTimer = null;
+        }
+        if (this.ttsRangeListener) {
+          await this.ttsRangeListener.remove().catch(() => {});
+          this.ttsRangeListener = null;
+        }
+        if (mySpeakId === this.speakSessionId) {
+          this.isSpeakingState = false;
+          options?.onError?.(fallbackErr);
+          options?.onEnd?.();
+        }
+        return false;
       }
     };
     
@@ -560,79 +658,61 @@ export class NativeVoiceService {
       let blobUrl = '';
       const voiceId = prefElevenLabsVoiceId || 'hpp4J3VqNfWAUOO0d1Us';
       
-      // Instead of downloading files natively or converting blobs (which crashes WebView memory),
-      // we can just use the standard HTML5 Audio player by giving it a direct streaming GET URL!
-      // The backend now supports ?token= in the query string to authenticate the Audio player.
+      // Direct authenticated streaming GET URL for HTML5 Audio
       blobUrl = `${api.defaults.baseURL}/ai/tts?text=${encodeURIComponent(cleanText)}&voiceId=${encodeURIComponent(voiceId)}&token=${encodeURIComponent(accessToken)}`;
       
       const audio = new Audio(blobUrl);
+      audio.preload = "auto";
       this.currentAudio = audio;
       
-      audio.onloadedmetadata = () => {
-        if (audio.duration && audio.duration !== Infinity && options?.onDuration) {
+      const syncAudioDuration = () => {
+        if (mySpeakId !== this.speakSessionId) return;
+        if (audio.duration && Number.isFinite(audio.duration) && audio.duration > 0 && options?.onDuration) {
           options.onDuration(audio.duration * 1000);
         }
       };
+      audio.onloadedmetadata = syncAudioDuration;
+      audio.ondurationchange = syncAudioDuration;
 
       const cleanupFile = () => {
         if (blobUrl.startsWith('blob:')) URL.revokeObjectURL(blobUrl);
       };
 
+      const detachAudio = () => {
+        audio.onloadedmetadata = null;
+        audio.ondurationchange = null;
+        audio.onplaying = null;
+        audio.onended = null;
+        audio.onerror = null;
+      };
+
       audio.onended = async () => {
+        detachAudio();
         cleanupFile();
         if (this.currentAudio === audio) this.currentAudio = null;
         await handlePlaybackEnd();
       };
       
       audio.onerror = async (e) => {
+        detachAudio();
         cleanupFile();
         if (this.currentAudio === audio) this.currentAudio = null;
+        if (mySpeakId !== this.speakSessionId) return;
         console.warn("Audio stream failed, falling back to native TTS...", e);
-        try {
-          options?.onStart?.();
-          await TextToSpeech.speak({
-            text: cleanText,
-            lang: options?.lang || 'en-IN',
-            rate: finalRate,
-            pitch: finalPitch,
-            volume: options?.volume ?? 1.0,
-            voice: !isNaN(finalVoiceIndex as any) ? finalVoiceIndex : undefined,
-            queueStrategy: 0,
-          });
-          await handlePlaybackEnd();
-        } catch (fallbackErr) {
-          this.isSpeakingState = false;
-          options?.onError?.(fallbackErr);
-          options?.onEnd?.();
-        }
+        await speakWithNativeFallback();
       };
 
-      audio.onplay = () => {
-        options?.onStart?.();
+      // Only trigger UI parser/start once ElevenLabs audio buffers finish and playback ACTUALLY begins
+      audio.onplaying = () => {
+        syncAudioDuration();
+        firePlaybackStart();
       };
       await audio.play();
       return true;
     } catch (err) {
+      if (mySpeakId !== this.speakSessionId) return false;
       console.error("ElevenLabs TTS error:", err);
-      try {
-        options?.onStart?.();
-        await TextToSpeech.speak({
-          text: cleanText,
-          lang: options?.lang || 'en-IN',
-          rate: finalRate,
-          pitch: finalPitch,
-          volume: options?.volume ?? 1.0,
-          voice: !isNaN(finalVoiceIndex as any) ? finalVoiceIndex : undefined,
-          queueStrategy: 0, // QueueStrategy.Flush on native
-        });
-        await handlePlaybackEnd();
-        return true;
-      } catch (fallbackErr) {
-        this.isSpeakingState = false;
-        options?.onError?.(fallbackErr);
-        options?.onEnd?.();
-        return false;
-      }
+      return await speakWithNativeFallback();
     }
   }
 
@@ -640,15 +720,32 @@ export class NativeVoiceService {
    * Explicitly stop any active text-to-speech audio across platforms.
    */
   static async stopSpeaking(): Promise<void> {
+    this.speakSessionId++;
     if (this.cooldownTimeoutId) {
       clearTimeout(this.cooldownTimeoutId);
       this.cooldownTimeoutId = null;
     }
     this.isSpeakingState = false;
+    if (this.ttsRangeListener) {
+      await this.ttsRangeListener.remove().catch(() => {});
+      this.ttsRangeListener = null;
+    }
     if (this.currentAudio) {
-      this.currentAudio.pause();
-      this.currentAudio.currentTime = 0;
+      const audio = this.currentAudio;
       this.currentAudio = null;
+      try {
+        // Detach handlers BEFORE pausing/emptying src so aborted streams never trigger Google TTS fallback!
+        audio.onloadedmetadata = null;
+        audio.ondurationchange = null;
+        audio.onplaying = null;
+        audio.onended = null;
+        audio.onerror = null;
+        audio.pause();
+        audio.removeAttribute("src");
+        audio.load();
+      } catch {
+        // ignore
+      }
     }
     
     try {

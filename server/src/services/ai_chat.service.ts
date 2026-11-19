@@ -32,7 +32,31 @@ export class AiChatService {
     const commencementDate = context.commencementDate || startDate;
     const lastWorkingDay = context.lastWorkingDay || endDate;
     const todayIso = (context.localTime ? new Date(context.localTime) : new Date()).toISOString().split("T")[0];
-    const upcomingEventsList =
+    const normalizedQuery = CustomMlCopilotService.normalizeVoiceQuery(text || "");
+    const queryWords = (normalizedQuery.toLowerCase().match(/[a-z0-9]{4,}/g) || []);
+    const scoreEventRelevance = (titleStr: string): number => {
+      if (queryWords.length === 0 || !titleStr) return 0;
+      const tLower = titleStr.toLowerCase();
+      const tWords = tLower.match(/[a-z0-9]{4,}/g) || [];
+      let score = 0;
+      for (const qw of queryWords) {
+        if (tLower.includes(qw)) score += 10;
+        else {
+          for (const tw of tWords) {
+            if (qw[0] !== tw[0]) continue;
+            const maxDist = Math.min(qw.length, tw.length) >= 7 ? 2 : 1;
+            const d = CustomMlCopilotService.boundedEditDistance(qw, tw, maxDist);
+            if (d <= maxDist) {
+              score += 8 - d * 2;
+              break;
+            }
+          }
+        }
+      }
+      return score;
+    };
+
+    const upcomingEventsRaw =
       context.calendarEvents && Array.isArray(context.calendarEvents) && context.calendarEvents.length > 0
         ? context.calendarEvents
             .filter((e: any) => {
@@ -41,7 +65,21 @@ export class AiChatService {
               const dStr = rawEnd instanceof Date ? rawEnd.toISOString().split("T")[0] : String(rawEnd).split("T")[0];
               return dStr >= todayIso;
             })
-            .slice(0, 12)
+            .sort((a: any, b: any) => {
+              const aTitle = String(a.title || a.name || a.eventName || "");
+              const bTitle = String(b.title || b.name || b.eventName || "");
+              const relDiff = scoreEventRelevance(bTitle) - scoreEventRelevance(aTitle);
+              if (relDiff !== 0) return relDiff;
+              const aD = (a.date || a.startDate || "").toString().slice(0, 10);
+              const bD = (b.date || b.startDate || "").toString().slice(0, 10);
+              return aD.localeCompare(bD);
+            })
+        : [];
+
+    const upcomingEventsList =
+      upcomingEventsRaw.length > 0
+        ? upcomingEventsRaw
+            .slice(0, 15)
             .map((e: any) => {
               let dateStr = "Unknown Date";
               if (e.date) {
@@ -97,7 +135,9 @@ export class AiChatService {
             .join("\n")
         : "None";
 
-    const needsHistoryLogs = /\b(when was i|history|log|logs|past|last week|yesterday|marked on|absent on|present on|did i attend|did i miss)\b/i.test(text);
+    const needsHistoryLogs = /\b(when was i|history|log|logs|past|last\s+week|yesterday|marked\s+on|absent(?:\s+on)?|present(?:\s+on)?|did\s+i\s+attend|did\s+i\s+miss|attended|missed)\b/i.test(
+      normalizedQuery
+    );
     const historyLogsSummary =
       needsHistoryLogs && context.historyLogs && context.historyLogs.length > 0
         ? context.historyLogs
@@ -205,11 +245,11 @@ ${formattedHistory}
       userBirthday: effectiveContext.user_birthday || effectiveContext.userBirthday,
       appVersion: effectiveContext.app_version || effectiveContext.appVersion || "4.0.0",
       activeSemesterId: effectiveContext.active_semester_id || effectiveContext.activeSemesterId || null,
-      semesterName: effectiveContext.semester_name || effectiveContext.semesterName,
+      semesterName: effectiveContext.active_semester_name || effectiveContext.semester_name || effectiveContext.semesterName,
       startDate: effectiveContext.active_semester_start_date || effectiveContext.startDate,
       endDate: effectiveContext.active_semester_end_date || effectiveContext.endDate,
       commencementDate: effectiveContext.commencementDate,
-      lastWorkingDay: effectiveContext.lastWorkingDay,
+      lastWorkingDay: effectiveContext.lastWorkingDay || effectiveContext.active_semester_end_date || effectiveContext.endDate,
       overallPercentage: effectiveContext.overall_percentage ?? effectiveContext.overallPercentage,
       targetPercentage: effectiveContext.target_percentage ?? effectiveContext.targetPercentage,
       totalAttended: effectiveContext.total_attended ?? effectiveContext.totalAttended,
@@ -221,6 +261,7 @@ ${formattedHistory}
       timetable_slots: effectiveContext.timetable_slots || effectiveContext.timetableSlots || [],
       historyLogs: effectiveContext.history_logs || effectiveContext.historyLogs || [],
       calendarEvents: effectiveContext.calendar_events || effectiveContext.calendarEvents || [],
+      assignments: effectiveContext.assignments || [],
       history: effectiveHistory,
     };
 
@@ -334,7 +375,9 @@ ${formattedHistory}
       response: result.response || result.reply || '',
       citations: result.citations || [],
       actions: result.actions || [],
+      requiresConfirmation: result.requiresConfirmation,
       simulation: result.simulation,
+      semesterProjection: result.semesterProjection,
       action: (result.actions && result.actions.length > 0) ? result.actions[0] : null,
       masterPromptSummary: {
         systemIdentity: "Loaded",

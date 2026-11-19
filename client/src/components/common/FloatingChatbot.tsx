@@ -46,7 +46,8 @@ import { useNotificationStore } from "../../stores/notificationStore";
 import { NotificationService } from "../../services/NotificationService";
 import { useAssignmentStore } from "../../stores/assignmentStore";
 import { App } from "@capacitor/app";
-import { maskProfanity, TOXIC_PATTERN } from "../../utils/profanityMask";
+import { maskProfanity } from "../../utils/profanityMask";
+import { evaluateClientFastPath, toIsoDateOnly } from "../../utils/copilotFastPath";
 import { triggerDynamicHUD } from "../ui/dynamic-island-hud";
 import { SoundFX } from "../../utils/soundEffects";
 
@@ -836,1015 +837,83 @@ const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'vo
       const currentAttended = state.totalAttended || totalAttended;
       const currentTotal = state.totalClasses || totalClasses;
       const currentLogs = state.historyLogs || [];
-      const cachedEvents = useCacheStore.getState().semester?.events || [];
+      const semCache = useCacheStore.getState().semester;
+      const cachedEvents = semCache?.events || [];
       const eventMap = new Map<string, any>();
-      (cachedEvents || []).forEach((e: any) => {
-        if (e && (e.id || e.title)) eventMap.set(String(e.id || `${e.title}_${e.date}`), e);
-      });
-      (state.events || []).forEach((e: any) => {
-        if (e && (e.id || e.title)) eventMap.set(String(e.id || `${e.title}_${e.date}`), e);
-      });
+      const pushEvt = (e: any) => {
+        if (!e || (!e.id && !e.title)) return;
+        const dKey = toIsoDateOnly(e.date || e.startDate);
+        const dedupeKey = e.id ? String(e.id) : `${String(e.title).trim().toLowerCase()}_${dKey}`;
+        eventMap.set(dedupeKey, e);
+      };
+      (cachedEvents || []).forEach(pushEvt);
+      (state.events || []).forEach(pushEvt);
       const currentEvents = Array.from(eventMap.values());
       const timetableSlots = useCacheStore.getState().timetable?.slots || [];
+      const semesterMeta = semCache?.activeSemester;
+      const endBoundsDate = state.simulationBounds?.endDate || semesterMeta?.endDate;
       const today = new Date();
       const pad2 = (n: number) => String(n).padStart(2, "0");
       const localTodayStr = `${today.getFullYear()}-${pad2(today.getMonth() + 1)}-${pad2(today.getDate())}`;
 
-      const toIsoDateOnly = (val: any): string => {
-        if (!val) return "";
-        if (val instanceof Date) return val.toISOString().split("T")[0];
-        const s = String(val).trim();
-        if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.substring(0, 10);
-        const parsed = new Date(s);
-        return isNaN(parsed.getTime()) ? "" : parsed.toISOString().split("T")[0];
-      };
-
       // --- TIER 0 & TIER 1: CLIENT-SIDE 0ms DETERMINISTIC FAST-PATH ---
-      const tryClientFastPath = (): { reply: string; simulation?: SimulationPayload; semesterProjection?: SemesterProjectionPayload } | null => {
-        // Multi-layer query sanitizer: strips surrounding quotes, brackets, bot greetings, and trailing punctuation
-        const rawClean = query
-          .trim()
-          .replace(/^[\s"'“”‘’`.,;:!?~_/\\()[\]{}\-]+|[\s"'“”‘’`.,;:!?~_/\\()[\]{}\-]+$/g, "")
-          .replace(/^(?:(?:hey|hi|hello|ok|okay)?\s*(?:attendx|assistant|bot|ai)[\s,:]+)/i, "");
+      const prefersDarkSystem =
+        typeof window !== "undefined" && window.matchMedia
+          ? window.matchMedia("(prefers-color-scheme: dark)").matches
+          : true;
+      const fastLocalResult = evaluateClientFastPath({
+        query,
+        user,
+        subjects: currentSubjects,
+        overallPercentage: currentOverall,
+        targetPercentage: currentTarget,
+        totalAttended: currentAttended,
+        totalClasses: currentTotal,
+        events: currentEvents,
+        timetableSlots,
+        assignments: useAssignmentStore.getState().assignments || [],
+        history,
+        lastWorkingDay: endBoundsDate,
+        semesterName: semesterMeta?.name,
+        semesterEndDate: endBoundsDate,
+        now: today,
+        prefersDarkSystem,
+      });
 
-        const normalized = rawClean
-          .replace(/\btime\s+table\b/gi, "timetable")
-          .replace(/\bpeer\s*[- ]?sync\b/gi, "peer-sync")
-          .replace(/\bclass\s+room(s)?\b/gi, "classroom$1")
-          .replace(/\bmid\s+sem(ester)?\b/gi, "midsem")
-          .replace(/\bend\s+sem(ester)?\b/gi, "endsem")
-          .replace(/\battend\s+x\b/gi, "attendx")
-          .replace(/\bdark\s+theme\b/gi, "dark mode")
-          .replace(/\blight\s+theme\b/gi, "light mode")
-          .replace(/\bsystem\s+theme\b/gi, "system mode")
-          .replace(/\bheads?\s+up\b/gi, "heads-up");
-        const lower = normalized.trim().toLowerCase().replace(/^[\s"'“”‘’`.,;:!?~_/\\()[\]{}\-]+|[\s"'“”‘’`.,;:!?~_/\\()[\]{}\-]+$/g, "").trim();
-
-        // 1. Abusive / Toxic Language Guardrail (0ms) - Raw and Pre-Starred Matching
-        if (TOXIC_PATTERN.test(lower)) {
-          return { reply: "I'm here to help you manage your attendance, timetable, assignments, and academic queries for AttendX. Please keep our conversation respectful so I can assist you effectively." };
-        }
-
-        // Pre-compute General Context Digest
-        const pGlobal = currentTarget / 100;
-        const overallSafeBunks = currentTotal > 0 && pGlobal > 0 ? Math.max(0, Math.floor((currentAttended - pGlobal * currentTotal) / pGlobal)) : 0;
-        const overallNeeded = currentTotal > 0 && pGlobal < 1 ? Math.max(0, Math.ceil((pGlobal * currentTotal - currentAttended) / (1 - pGlobal))) : 0;
-        const overallStatus = currentOverall >= currentTarget ? "Safe" : currentOverall >= currentTarget - 5 ? "Warning" : "Danger";
-
-        const todayDayIndex = (today.getDay() + 6) % 7;
-        const dayNames = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
-        const subjectNameById: Record<string, string> = {};
-        for (const s of currentSubjects as any[]) subjectNameById[s.id] = s.name;
-
-        const todayClasses = timetableSlots
-          .filter((slot: any) => Number(slot.dayOfWeek) === todayDayIndex)
-          .sort((a: any, b: any) => String(a.startTime || "").localeCompare(String(b.startTime || "")))
-          .map((slot: any) => ({
-            startTime: slot.startTime || "09:00",
-            endTime: slot.endTime || "09:50",
-            subjectName: slot.subject?.name || subjectNameById[slot.subjectId] || "Scheduled Class",
-            room: slot.room || "TBD",
-            slotType: slot.type || slot.slotType || "Lecture",
-          }));
-
-        const currentHHMM = `${pad2(today.getHours())}:${pad2(today.getMinutes())}`;
-        let nextUpcomingClass: { subjectName: string; dayName: string; startTime: string; endTime: string; room: string } | null = null;
-        const remainingToday = todayClasses.filter((c: any) => c.startTime >= currentHHMM);
-        if (remainingToday.length > 0) {
-          nextUpcomingClass = { ...remainingToday[0], dayName: "Today" };
-        } else {
-          for (let offset = 1; offset <= 7; offset++) {
-            const checkDay = (todayDayIndex + offset) % 7;
-            const daySlots = timetableSlots
-              .filter((slot: any) => Number(slot.dayOfWeek) === checkDay)
-              .sort((a: any, b: any) => String(a.startTime || "").localeCompare(String(b.startTime || "")));
-            if (daySlots.length > 0) {
-              const first = daySlots[0];
-              nextUpcomingClass = {
-                subjectName: first.subject?.name || subjectNameById[first.subjectId] || "Scheduled Class",
-                dayName: offset === 1 ? `Tomorrow (${dayNames[checkDay]})` : dayNames[checkDay],
-                startTime: first.startTime || "09:00",
-                endTime: first.endTime || "09:50",
-                room: first.room || "TBD",
-              };
-              break;
-            }
-          }
-        }
-
-        // 2. Greetings & Identity (0ms)
-        const farewellPattern =
-          /^(?:bye(?:\s+bye)?|byebye|goodbye|good\s+bye|cya(?:\s+later)?|see\s+(?:you|ya|u)(?:\s+(?:later|soon|around))?|catch\s+you\s+later|talk\s+to\s+you\s+later|take\s+care|have\s+a\s+(?:good|great|nice)\s+day|goodnight|good\s+night)$/i;
-
-        if (farewellPattern.test(lower)) {
-          const uName = user?.name || "Student";
-          return { reply: `See you later, ${uName}! Stay on top of your ${currentTarget}% attendance goal!` };
-        }
-
-        const greetingPattern =
-          /^(?:hi+|he+y+|hello+|heya|howdy|sup|yo|namaste|greetings|good\s+(?:morning|afternoon|evening|day)|how\s+(?:are|r)\s+(?:you|u|ya)(?:\s+doing)?|how(?:'s|\s+is)\s+it\s+going|what(?:'s|\s+is)\s+up|whats\s+up|who\s+(?:are|r)\s+(?:you|u)|what\s+is\s+your\s+name|what(?:'s|\s+is)\s+your\s+name|who\s+(?:made|created|built|developed|designed)\s+(?:you|u)|what\s+can\s+you\s+do|help|thank(?:s|\s+you|\s+u|\s+you\s+so\s+much|\s+a\s+lot)?|thx|ty|tysm)$/i;
-
-        if (greetingPattern.test(lower)) {
-          const uName = user?.name || "Student";
-          if (/\b(who (made|created|built|developed|designed) (you|u))\b/i.test(lower)) {
-            return { reply: `I am AttendX AI Copilot, created and engineered by **Naman Rai** as your intelligent academic companion and policy advisor for IIIT Una.` };
-          }
-          if (/\b(what can you do|help)\b/i.test(lower)) {
-            return { reply: `I can instantly check your attendance & safe bunks, simulate leaves, switch light/dark themes, navigate across the app, tell you your next class or upcoming holiday, swap timetable slots, and email your weekly or monthly attendance reports!` };
-          }
-          if (/^(thank|thx|ty|tysm)/i.test(lower)) {
-            return { reply: `You're welcome, ${uName}! Let me know anytime you need help with your attendance or schedule.` };
-          }
-          let reply = `Hey ${uName}! Your overall attendance is **${Number(currentOverall).toFixed(1)}%** (${currentAttended}/${currentTotal} classes — **${overallStatus}** vs your ${currentTarget}% target).`;
-          if (nextUpcomingClass) {
-            reply += ` Your next class is **${nextUpcomingClass.subjectName}** (${nextUpcomingClass.dayName} at ${nextUpcomingClass.startTime}).`;
-          }
-          reply += ` How can I help you today?`;
-          return { reply };
-        }
-
-        // 3. Theme Switching (0ms)
-        const themeMatch =
-          lower.match(/^(?:please\s+)?(?:switch|change|set|turn|enable|toggle|go|use)?\s*(?:to\s+|on\s+)?(dark|light)\s*(?:mode|theme)?$/i) ||
-          lower.match(/\b(?:switch|change|set|turn)\s+(?:the\s+)?(?:app\s+)?(?:theme|mode)\s+to\s+(dark|light)\b/i);
-        if (themeMatch) {
-          const targetTheme = themeMatch[1].toLowerCase() as "dark" | "light";
-          useThemeStore.getState().setTheme(targetTheme);
-          return { reply: `Switched your app appearance to **${targetTheme} mode**.` };
-        }
-
-        // 3.6. Birthday & Peer Birthday Knowledge (0ms Client Fast-Path)
-        const isPublicHolidayEvent = (e: any): boolean => {
-          if (!e) return false;
-          if (e.isHoliday) return true;
-          const t = String(e.eventType || e.event_type || e.type || "").toLowerCase();
-          if (t === "holiday" || t === "restricted_holiday" || t === "vacation" || t === "exam" || t === "midsem" || t === "endsem") return true;
-          const title = String(e.title || "").toLowerCase();
-          if (/\b(guru\s*nanak|guru\s*gobind|guru\s*tegh|mahatma\s*gandhi|gandhi\s*jayanti|hazarat\s*ali|ambedkar|mahavir|buddha|valmiki|ravidas|krishna\s*janmashtami|ram\s*navami|diwali|holi|eid|christmas|dussera|dussehra|independence|republic|teaching\s+day|working\s+day)\b/i.test(title)) {
-            return true;
-          }
-          return false;
-        };
-
-        const parseDateInput = (str: string, currentBirthday?: string | null): { isoDate: string; formatted: string } | null => {
-          if (!str) return null;
-          const clean = str.trim().replace(/^[\s"'“‘`.,;:!?~_/\\()[\]{}\-]+|[\s"'”’`.,;:!?~_/\\()[\]{}\-]+$/g, "").trim();
-
-          // 1. ISO format: YYYY-MM-DD
-          const isoMatch = clean.match(/\b(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})\b/);
-          if (isoMatch) {
-            const y = parseInt(isoMatch[1], 10);
-            const m = parseInt(isoMatch[2], 10);
-            const d = parseInt(isoMatch[3], 10);
-            if (m >= 1 && m <= 12 && d >= 1 && d <= 31 && y >= 1970 && y <= 2030) {
-              const isoDate = `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-              const dt = new Date(`${isoDate}T00:00:00`);
-              const formatted = dt.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
-              return { isoDate, formatted };
-            }
-          }
-
-          // 2. DMY format: DD/MM/YYYY or DD-MM-YYYY
-          const dmyMatch = clean.match(/\b(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})\b/);
-          if (dmyMatch) {
-            let p1 = parseInt(dmyMatch[1], 10);
-            let p2 = parseInt(dmyMatch[2], 10);
-            const y = parseInt(dmyMatch[3], 10);
-            let d = p1;
-            let m = p2;
-            if (p1 > 12 && p2 <= 12) {
-              d = p1;
-              m = p2;
-            } else if (p2 > 12 && p1 <= 12) {
-              m = p1;
-              d = p2;
-            }
-            if (m >= 1 && m <= 12 && d >= 1 && d <= 31 && y >= 1970 && y <= 2030) {
-              const isoDate = `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-              const dt = new Date(`${isoDate}T00:00:00`);
-              const formatted = dt.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
-              return { isoDate, formatted };
-            }
-          }
-
-          // 3. Named month matching
-          const monthMap: Record<string, number> = {
-            jan: 1, january: 1, feb: 2, february: 2, mar: 3, march: 3,
-            apr: 4, april: 4, may: 5, jun: 6, june: 6, jul: 7, july: 7,
-            aug: 8, august: 8, sep: 9, sept: 9, september: 9,
-            oct: 10, october: 10, nov: 11, november: 11, dec: 12, december: 12,
-          };
-
-          const getDefaultYear = (): number => {
-            if (currentBirthday) {
-              const ey = new Date(currentBirthday).getFullYear();
-              if (!isNaN(ey) && ey >= 1970 && ey <= 2025) return ey;
-            }
-            return 2004;
-          };
-
-          const mFirst = clean.match(/\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+(\d{1,2})(?:st|nd|rd|th)?(?:\s*,?\s*(\d{4}))?\b/i);
-          if (mFirst) {
-            const m = monthMap[mFirst[1].toLowerCase()];
-            const d = parseInt(mFirst[2], 10);
-            const y = mFirst[3] ? parseInt(mFirst[3], 10) : getDefaultYear();
-            if (m >= 1 && m <= 12 && d >= 1 && d <= 31) {
-              const isoDate = `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-              const dt = new Date(`${isoDate}T00:00:00`);
-              const formatted = dt.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
-              return { isoDate, formatted };
-            }
-          }
-
-          const dFirst = clean.match(/\b(\d{1,2})(?:st|nd|rd|th)?(?:\s+of)?\s+(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)(?:\s*,?\s*(\d{4}))?\b/i);
-          if (dFirst) {
-            const d = parseInt(dFirst[1], 10);
-            const m = monthMap[dFirst[2].toLowerCase()];
-            const y = dFirst[3] ? parseInt(dFirst[3], 10) : getDefaultYear();
-            if (m >= 1 && m <= 12 && d >= 1 && d <= 31) {
-              const isoDate = `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-              const dt = new Date(`${isoDate}T00:00:00`);
-              const formatted = dt.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
-              return { isoDate, formatted };
-            }
-          }
-
-          return null;
-        };
-
-        const uName = user?.name || "Student";
-
-        // Check if user is asking to SET / UPDATE their birthday
-        const setBdayMatch =
-          lower.match(/\b(?:set|update|change|save|make|put|record|register)\s+(?:my\s+)?(?:birthdays?|b'?days?|dob)(?:\s+(?:date|to|as|=|is))?\s+([^?.!]+)/i) ||
-          lower.match(/^(?:my\s+)?(?:birthdays?|b'?days?|dob)\s+(?:is|=|to)\s+([^?.!]+)/i) ||
-          lower.match(/\b(?:i\s+was\s+born\s+(?:on|in))\s+([^?.!]+)/i);
-
-        // Check follow-up context: if the previous assistant message prompted to set a birthday
-        let isFollowUpBday = false;
-        let followUpCandidate = "";
-        if (!setBdayMatch) {
-          const lastAssistant = history.slice().reverse().find(m => m.role === "assistant");
-          if (lastAssistant && /birthday/i.test(lastAssistant.content) && /(?:saved\s+in\s+your\s+profile|tell\s+me\s+here|what\s+is\s+your\s+birthday|set\s+my\s+birthday)/i.test(lastAssistant.content)) {
-            const parsedDirect = parseDateInput(lower, user?.birthday);
-            if (parsedDirect) {
-              isFollowUpBday = true;
-              followUpCandidate = lower;
-            }
-          }
-        }
-
-        if (setBdayMatch || isFollowUpBday) {
-          const candidate = setBdayMatch ? setBdayMatch[1].trim() : followUpCandidate.trim();
-          const parsed = parseDateInput(candidate, user?.birthday);
-          if (parsed) {
-            const { isoDate, formatted } = parsed;
-            const isoPayload = `${isoDate}T00:00:00.000Z`;
-
-            // Asynchronously persist to backend user profile
-            api.patch("/users/me", { birthday: isoPayload })
+      if (fastLocalResult) {
+        for (const eff of fastLocalResult.effects || []) {
+          if (eff.type === "NAVIGATE") {
+            navigate(eff.path);
+          } else if (eff.type === "SET_THEME") {
+            useThemeStore.getState().setTheme(eff.theme);
+          } else if (eff.type === "UPDATE_TIMETABLE_ALERTS") {
+            useNotificationStore.getState().updateConfig(eff.updates);
+            NotificationService.autoScheduleFromTimetable().catch(() => {});
+          } else if (eff.type === "UPDATE_BIRTHDAY") {
+            api.patch("/users/me", { birthday: eff.isoPayload })
               .then((res) => {
-                if (res.data) {
-                  useAuthStore.getState().setUser(res.data);
-                }
+                if (res.data) useAuthStore.getState().setUser(res.data);
               })
               .catch((err) => {
                 console.warn("Failed to persist birthday update via chat:", err);
               });
-
-            // Optimistically update local auth store
             const cu = useAuthStore.getState().user;
             if (cu) {
-              useAuthStore.getState().setUser({ ...cu, birthday: isoPayload });
+              useAuthStore.getState().setUser({ ...cu, birthday: eff.isoPayload });
             }
-
-            // Reschedule proactive notifications with new birthday
             NotificationService.scheduleAllProactiveNotifications().catch(() => {});
-
-            // Tactile feedback & Dynamic HUD
             SoundFX.playSnapPopSound();
             triggerDynamicHUD({
               type: "sparkle",
               label: "Birthday Saved",
-              subtitle: `Birthday updated to ${formatted}`,
+              subtitle: `Birthday updated to ${eff.formatted}`,
               durationMs: 4000,
             });
-
-            return {
-              reply: `Done, ${uName}! 🎂 I have updated your birthday to **${formatted}**. You'll get a special celebration greeting on your birthday!`,
-            };
           }
         }
-
-        // Asking about birthday
-        if (/\b(birthdays?|b'?days?|dob|born)\b/i.test(lower)) {
-          // A. User's own birthday query
-          const isMyBirthday = (
-            /\bmy\s+(?:birthdays?|b'?days?|dob)\b/i.test(lower) ||
-            /\b(?:when|what)\s+(?:is\s+)?my\b/i.test(lower) ||
-            /\bdo\s+you\s+(?:know|remember|have)\s+my\s+(?:birthdays?|b'?days?|dob)\b/i.test(lower) ||
-            /\b(?:tell\s+me|check|show)\s+(?:my\s+)?(?:birthdays?|b'?days?|dob)\b/i.test(lower) ||
-            /\bwhen\s+was\s+i\s+born\b/i.test(lower) ||
-            /^(?:my\s+)?(?:birthdays?|b'?days?|dob)\??$/i.test(lower.trim())
-          ) && !/\b(whose|who\s+has|anybody|anyone|peer|friend|classmate|next|upcoming)\b/i.test(lower) && !/\b(?:set|update|change|save|make|put|record|register)\b/i.test(lower);
-
-          if (isMyBirthday) {
-            const rawBday = user?.birthday;
-            if (rawBday) {
-              const bDate = new Date(rawBday);
-              const bFormatted = bDate.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
-              return { reply: `Yes, ${uName}! According to your profile, your birthday is **${bFormatted}**! 🎂 Let me know if you need to update it.` };
-            } else {
-              return { reply: `You don't have a birthday saved in your profile yet! You can set it in **Settings > Edit Profile**, or just tell me here (e.g. "Set my birthday to November 18")! 🎂` };
-            }
-          }
-
-          // B. Next Birthday Query
-          const isNextBirthday = /\b(?:next|upcoming)\s+(?:birthdays?|b'?days?)\b/i.test(lower) || /^(?:what(?:'s|\s+is)\s+)?(?:the\s+)?next\s+birthday\??$/i.test(lower.trim());
-          if (isNextBirthday) {
-            // Check user's own upcoming birthday
-            let userBdayInfo: { dateStr: string; daysUntil: number } | null = null;
-            if (user?.birthday) {
-              const ub = new Date(user.birthday);
-              const thisYear = today.getFullYear();
-              let targetBday = new Date(thisYear, ub.getMonth(), ub.getDate());
-              const todayMidnight = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
-              if (targetBday.getTime() < todayMidnight) {
-                targetBday = new Date(thisYear + 1, ub.getMonth(), ub.getDate());
-              }
-              const daysUntil = Math.max(0, Math.round((targetBday.getTime() - todayMidnight) / (1000 * 60 * 60 * 24)));
-              userBdayInfo = {
-                dateStr: targetBday.toLocaleDateString("en-US", { month: "long", day: "numeric" }),
-                daysUntil,
-              };
-            }
-
-            // Check peer birthdays on calendar (strictly excluding public holidays)
-            const upcomingPeerBirthdays = (currentEvents || [])
-              .filter((e: any) => {
-                if (isPublicHolidayEvent(e)) return false;
-                const startStr = toIsoDateOnly(e.date);
-                if (!startStr || startStr < localTodayStr) return false;
-                return /\b(birthdays?|b'?days?|dob)\b/i.test(e.title || "") || /\b(birthdays?|b'?days?|dob)\b/i.test(e.description || "");
-              })
-              .sort((a: any, b: any) => toIsoDateOnly(a.date).localeCompare(toIsoDateOnly(b.date)));
-
-            // Check upcoming public holidays that have "Birthday" in title for explicit disambiguation
-            const upcomingHolidayBirthdays = (currentEvents || [])
-              .filter((e: any) => {
-                if (!isPublicHolidayEvent(e)) return false;
-                const startStr = toIsoDateOnly(e.date);
-                if (!startStr || startStr < localTodayStr) return false;
-                return /\b(birthdays?|jayanti)\b/i.test(e.title || "");
-              })
-              .sort((a: any, b: any) => toIsoDateOnly(a.date).localeCompare(toIsoDateOnly(b.date)));
-
-            let nextEventTitle = "";
-            let nextEventDate = "";
-            let nextEventDays = 9999;
-            if (upcomingPeerBirthdays.length > 0) {
-              const topPeer = upcomingPeerBirthdays[0];
-              const pDate = new Date(toIsoDateOnly(topPeer.date) + "T00:00:00");
-              const todayMidnight = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
-              nextEventDays = Math.max(0, Math.round((pDate.getTime() - todayMidnight) / (1000 * 60 * 60 * 24)));
-              nextEventTitle = topPeer.title;
-              nextEventDate = pDate.toLocaleDateString("en-US", { month: "long", day: "numeric" });
-            }
-
-            let reply = "";
-            if (userBdayInfo && userBdayInfo.daysUntil <= nextEventDays) {
-              const countdown = userBdayInfo.daysUntil === 0 ? "today! 🎉" : userBdayInfo.daysUntil === 1 ? "tomorrow!" : `in **${userBdayInfo.daysUntil} days**`;
-              reply = `The next birthday coming up is **yours on ${userBdayInfo.dateStr}** (${countdown})! 🎂`;
-            } else if (nextEventTitle) {
-              const countdown = nextEventDays === 0 ? "today!" : nextEventDays === 1 ? "tomorrow!" : `in **${nextEventDays} days**`;
-              reply = `The next birthday coming up on your calendar is **${nextEventTitle}** on **${nextEventDate}** (${countdown})! 🎂`;
-            } else if (userBdayInfo) {
-              reply = `The next birthday coming up is **yours on ${userBdayInfo.dateStr}**! 🎂`;
-            } else {
-              reply = `You don't have any upcoming peer birthdays scheduled on your calendar, and your birthday isn't saved yet. You can tell me your birthday anytime (e.g. "Set my birthday to November 18")!`;
-            }
-
-            if (upcomingHolidayBirthdays.length > 0) {
-              const topHol = upcomingHolidayBirthdays[0];
-              const hDate = new Date(toIsoDateOnly(topHol.date) + "T00:00:00").toLocaleDateString("en-US", { month: "long", day: "numeric" });
-              reply += `\n\n*(Note: **${topHol.title}** on ${hDate} is an official institute holiday, not a peer birthday).*`;
-            }
-
-            return { reply };
-          }
-
-          // C. Whose birthday is today / Peer birthday query
-          const isWhoseBirthday = (
-            /\b(whose|who\s+has|anybody('s)?|anyone('s)?|any|check)\s+(?:peer\s+)?(?:birthdays?|b'?days?)\b/i.test(lower) ||
-            /\b(?:birthdays?|b'?days?)\s+(?:is\s+)?today\b/i.test(lower) ||
-            /\bis\s+today\s+(?:anybody('s)?|anyone('s)?|a)\s+(?:birthdays?|b'?days?)\b/i.test(lower)
-          );
-
-          if (isWhoseBirthday) {
-            const todayFormatted = today.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-
-            // Check if user's own birthday is today
-            let isUserBdayToday = false;
-            if (user?.birthday) {
-              const ub = new Date(user.birthday);
-              if (ub.getMonth() === today.getMonth() && ub.getDate() === today.getDate()) {
-                isUserBdayToday = true;
-              }
-            }
-
-            if (isUserBdayToday) {
-              return { reply: `Today is **YOUR birthday**, ${uName}! 🎉🎂 Wishing you a wonderful birthday filled with joy and academic success from the entire AttendX team!` };
-            }
-
-            // Check calendar events for today (strictly excluding public holidays)
-            const todayEvents = (currentEvents || []).filter((e: any) => {
-              const startStr = toIsoDateOnly(e.date);
-              const endStr = toIsoDateOnly(e.endDate) || startStr;
-              return startStr <= localTodayStr && localTodayStr <= endStr;
-            });
-
-            const explicitBdayEvents = todayEvents.filter((e: any) =>
-              !isPublicHolidayEvent(e) && (
-                /\b(birthdays?|b'?days?|dob)\b/i.test(e.title || "") ||
-                /\b(birthdays?|b'?days?|dob)\b/i.test(e.description || "")
-              )
-            );
-
-            if (explicitBdayEvents.length > 0) {
-              const names = explicitBdayEvents.map((e: any) => e.title).join(", ");
-              return { reply: `Today on your calendar: **${names}**! 🎉🎂 Let them know you're celebrating with them today!` };
-            }
-
-            // Upcoming peer birthdays only
-            const upcomingBdayEvents = (currentEvents || [])
-              .filter((e: any) => {
-                if (isPublicHolidayEvent(e)) return false;
-                const startStr = toIsoDateOnly(e.date);
-                return startStr >= localTodayStr && (
-                  /\b(birthdays?|b'?days?|dob)\b/i.test(e.title || "") ||
-                  /\b(birthdays?|b'?days?|dob)\b/i.test(e.description || "")
-                );
-              })
-              .sort((a: any, b: any) => toIsoDateOnly(a.date).localeCompare(toIsoDateOnly(b.date)))
-              .slice(0, 3);
-
-            if (upcomingBdayEvents.length > 0) {
-              const formattedList = upcomingBdayEvents.map((e: any) => {
-                const d = new Date(toIsoDateOnly(e.date) + "T00:00:00");
-                return `**${e.title}** (${d.toLocaleDateString("en-US", { month: "short", day: "numeric" })})`;
-              }).join(", ");
-              const userBdayStr = user?.birthday ? ` Your birthday on record is **${new Date(user.birthday).toLocaleDateString("en-US", { month: "long", day: "numeric" })}**.` : "";
-              return { reply: `There are no peer birthdays scheduled for today. Upcoming on your calendar: ${formattedList}.${userBdayStr}` };
-            }
-
-            const userBdayStr = user?.birthday ? ` Your birthday on record is **${new Date(user.birthday).toLocaleDateString("en-US", { month: "long", day: "numeric" })}**.` : " (Set your birthday anytime by saying 'Set my birthday to November 18').";
-            return { reply: `There are no peer birthdays scheduled for today.${userBdayStr}` };
-          }
-
-          // D. Asking about a specific person or event's birthday
-          const specificMatch = lower.match(/(?:when|what|is)\s+(?:is\s+)?([a-z0-9\s'-]+?)(?:'s|\s+has)?\s+(?:birthdays?|b'?days?|dob)\b/i) ||
-            lower.match(/(?:when|is\s+it)\s+([a-z0-9\s'-]+?)(?:'s)?\s+(?:birthdays?|b'?days?)\b/i);
-          if (specificMatch) {
-            const queryName = specificMatch[1].trim().toLowerCase();
-            if (queryName && !/^(my|your|the)$/.test(queryName)) {
-              const matchedEvent = (currentEvents || []).find((e: any) => {
-                const t = String(e.title || "").toLowerCase();
-                return t.includes(queryName) || queryName.split(" ").some(part => part.length >= 3 && t.includes(part));
-              });
-              if (matchedEvent) {
-                const d = new Date(String(matchedEvent.date).split("T")[0] + "T00:00:00");
-                const formatted = d.toLocaleDateString("en-US", { month: "long", day: "numeric" });
-                const isHoliday = isPublicHolidayEvent(matchedEvent);
-                if (isHoliday) {
-                  return { reply: `According to your calendar, **${matchedEvent.title}** is an official institute holiday on **${formatted}**! 🌴` };
-                }
-                return { reply: `According to your calendar, **${matchedEvent.title}** is on **${formatted}**! 🎂` };
-              }
-            }
-          }
-        }
-
-        // 3.5. Timetable Alerts & Notification Settings (0ms)
-        const alertUpdates: Partial<any> = {};
-        const alertNotes: string[] = [];
-
-        // Class reminder lead time (Off, 5, 10, 15)
-        const reminderLeadMatch =
-          lower.match(/\b(?:switch|set|change|turn|make)?\s*(?:the\s+)?(?:class\s+reminders?|lecture\s+alerts?|reminder\s+offset|time\s+before\s+class)\s*(?:to\s+|as\s+)?(5|10|15|off|never|none|disable)\s*(?:min(?:ute)?s?)?\b/i) ||
-          lower.match(/\b(?:switch|change)\s+(?:from\s+)?\d+\s*(?:min(?:ute)?s?)?\s+(?:to\s+|into\s+)(5|10|15|off|never|none)\s*(?:min(?:ute)?s?)?\b/i) ||
-          lower.match(/\b(?:remind|notify)\s+me\s+(5|10|15)\s*(?:minutes?|mins?)\s+before\b/i) ||
-          lower.match(/\b(5|10|15)\s*(?:minutes?|mins?)\s+(?:before\s+class|class\s+reminder)\b/i) ||
-          lower.match(/\b(?:turn\s+off|disable|stop|no)\s+(?:class\s+reminders?|lecture\s+alerts?)\b/i);
-
-        if (reminderLeadMatch) {
-          const rawVal = (reminderLeadMatch[1] || "off").toLowerCase();
-          if (/^(off|never|none|disable)$/.test(rawVal) || /turn\s+off|disable|stop|no/.test(reminderLeadMatch[0])) {
-            alertUpdates.classReminderOffset = -1;
-            alertNotes.push("turned **OFF** class reminders (no pre-lecture alerts)");
-          } else {
-            const mins = parseInt(rawVal, 10);
-            if ([5, 10, 15].includes(mins)) {
-              alertUpdates.classReminderOffset = mins;
-              alertNotes.push(`set class reminder lead time to **${mins} minutes before class**`);
-            }
-          }
-        }
-
-        // Show location in notifications
-        if (
-          /\b(?:don'?t|do\s+not|stop|hide|remove|disable|turn\s+off|no|without|not)\s+(?:include|including|show|showing|display|displaying)?\s*(?:the\s+)?(?:room|location|classroom)\b/i.test(lower) ||
-          /\b(?:hide|remove|disable)\s+(?:room|location)\s+(?:in\s+notifications?|in\s+alerts?)?\b/i.test(lower)
-        ) {
-          alertUpdates.showLocation = false;
-          alertNotes.push("configured notifications to **hide room location**");
-        } else if (
-          /\b(?:include|including|show|showing|display|displaying|add|adding|enable|turn\s+on|with)\s+(?:the\s+)?(?:room|location|classroom)\s+(?:in|on)\s+(?:the\s+)?(?:notifications?|alerts?)\b/i.test(lower) ||
-          /\b(?:turn\s+on\s+show\s+location|show\s+room|include\s+location)\b/i.test(lower)
-        ) {
-          alertUpdates.showLocation = true;
-          alertNotes.push("configured notifications to **include room location**");
-        }
-
-        // Next class heads-up
-        if (
-          /\b(?:don'?t|do\s+not|stop|disable|turn\s+off|no|i\s+do\s+not\s+want|without)\s+(?:want\s+)?(?:the\s+)?(?:next\s+class\s+)?heads[\s-]*up\b/i.test(lower) ||
-          /\b(?:don'?t|do\s+not|stop)\s+notify(?:ing)?\s+(?:me\s+)?when\s+(?:current\s+)?class\s+ends\b/i.test(lower)
-        ) {
-          alertUpdates.notifyNextClassOnEnd = false;
-          alertNotes.push("turned **OFF** the Next Class Heads-up alert");
-        } else if (
-          /\b(?:enable|turn\s+on|activate|start|i\s+want)\s+(?:the\s+)?(?:next\s+class\s+)?heads[\s-]*up\b/i.test(lower) ||
-          /\bnotify\s+(?:me\s+)?when\s+(?:current\s+)?class\s+ends\b/i.test(lower)
-        ) {
-          alertUpdates.notifyNextClassOnEnd = true;
-          alertNotes.push("turned **ON** the Next Class Heads-up alert");
-        }
-
-        // End of day summary
-        if (
-          /\b(?:don'?t|do\s+not|stop|disable|turn\s+off|no|i\s+do\s+not\s+want|without)\s+(?:the\s+)?(?:end\s+of\s+day\s+summary|done\s+for\s+the\s+day\s+alert|daily\s+completion\s+alert)\b/i.test(lower)
-        ) {
-          alertUpdates.endOfDaySummary = false;
-          alertNotes.push("turned **OFF** the End of Day Summary alert");
-        } else if (
-          /\b(?:enable|turn\s+on|activate|start|i\s+want)\s+(?:the\s+)?(?:end\s+of\s+day\s+summary|done\s+for\s+the\s+day\s+alert)\b/i.test(lower)
-        ) {
-          alertUpdates.endOfDaySummary = true;
-          alertNotes.push("turned **ON** the End of Day Summary alert");
-        }
-
-        if (Object.keys(alertUpdates).length > 0) {
-          useNotificationStore.getState().updateConfig(alertUpdates);
-          NotificationService.autoScheduleFromTimetable().catch(() => {});
-          return { reply: `Done! I have ${alertNotes.join(" and ")}. Your alarms and local notifications have been rescheduled immediately.` };
-        }
-
-        // 4. Direct App Navigation (0ms Client Fast-Path)
-        const strippedNav = lower
-          .replace(/^(?:can\s+you(?:\s+please)?|could\s+you(?:\s+please)?|would\s+you|please|pls|i\s+want\s+to|i\s+need\s+to|help\s+me(?:\s+to)?|let\s+me|just)\s+/i, "")
-          .replace(/^(?:navigate(?:\s+to)?|open(?:\s+up)?|go\s+to|take\s+me\s+to|show(?:\s+me)?|view|switch\s+to|display|check(?:\s+out)?|bring\s+up|launch|see|head\s+to)\s+/i, "")
-          .replace(/^(?:all\s+)?(?:the|my|our)\s+/i, "")
-          .replace(/\s+(?:please|pls|for\s+me|now|right\s+now|asap|screen|tab|page|view|modal|section|form|dialog)$/i, "")
-          .replace(/^[\s"'“”‘’`.,;:!?~_/\\()[\]{}\-]+|[\s"'“”‘’`.,;:!?~_/\\()[\]{}\-]+$/g, "")
-          .trim();
-
-        let navTarget: { path: string; title: string } | null = null;
-
-        if (/^(?:(?:exam|semester|holiday|academic|event|upcoming)\s+)?countdowns?$|^countdown(?:\s+timers?)?$/i.test(strippedNav)) {
-          navTarget = { path: "/semester/countdowns", title: "Semester Countdowns" };
-        } else if (/^(?:(?:semester|academic|upcoming|college)\s+)?holidays?$|^holiday\s+list$/i.test(strippedNav)) {
-          navTarget = { path: "/semester/holidays", title: "Semester Holidays" };
-        } else if (/^(?:(?:semester|academic|upcoming|calendar)\s+)?events?$|^academic\s+calendar$|^event\s+list$/i.test(strippedNav)) {
-          navTarget = { path: "/semester/events", title: "Semester Events" };
-        } else if (/^(?:(?:class|weekly|daily)\s+)?(?:timetable|time\s*table|schedule|routine)$/i.test(strippedNav)) {
-          navTarget = { path: "/timetable", title: "Timetable" };
-        } else if (/^(?:edit\s+)?profile$|^my\s+account$|^user\s+profile$/i.test(strippedNav)) {
-          navTarget = { path: "/settings/profile", title: "Edit Profile" };
-        } else if (/^(?:(?:linked|active|connected|logged\s*in)\s+)?(?:devices|sessions)$/i.test(strippedNav)) {
-          navTarget = { path: "/settings/devices", title: "Linked Devices" };
-        } else if (/^peer\s*[- ]?sync$|^friends\s+sync$|^data\s+transfer$/i.test(strippedNav)) {
-          navTarget = { path: "/settings/peer-sync", title: "Peer Sync" };
-        } else if (/^(?:(?:send|give|open|show|submit)\s+)?feedback(?:\s+(?:form|page|screen|tab|dialog|modal))?$|^report\s+(?:a\s+)?(?:bug|issue)$/i.test(strippedNav)) {
-          navTarget = { path: "/settings/feedback", title: "Send Feedback" };
-        } else if (/^changelog$|^what'?s\s+new$|^update\s+history$|^release\s+notes$/i.test(strippedNav)) {
-          navTarget = { path: "/settings/changelog", title: "Update History" };
-        } else if (/^contact(?:\s+us)?$|^support$/i.test(strippedNav)) {
-          navTarget = { path: "/settings/contact", title: "Contact Us" };
-        } else if (/^faqs?$|^help(?:\s+(?:desk|center|&?\s*support))?$/i.test(strippedNav)) {
-          navTarget = { path: "/settings/faq", title: "FAQ" };
-        } else if (/^(?:app\s+)?(?:settings|preferences|options)$/i.test(strippedNav)) {
-          navTarget = { path: "/settings", title: "Settings" };
-        } else if (/^(?:(?:detailed|attendance|analytics)\s+)?reports?$|^analytics$|^bunk\s+calculator$|^attendance\s+stats?$/i.test(strippedNav)) {
-          navTarget = { path: "/report", title: "Analytics Reports" };
-        } else if (/^(?:attendance\s+)?(?:forecast|predictive|prediction)(?:\s+engine)?$|^what\s*if\s+calculator$/i.test(strippedNav)) {
-          navTarget = { path: "/predictive", title: "Forecast Engine" };
-        } else if (/^(?:my\s+)?(?:subjects?|courses?)$|^attendance\s+cards?$/i.test(strippedNav)) {
-          navTarget = { path: "/subjects", title: "Subjects" };
-        } else if (/^(?:(?:pending|upcoming|academic|my)\s+)?(?:assignments?|tasks?)$|^todo(?:\s*list)?$|^homework$/i.test(strippedNav)) {
-          navTarget = { path: "/assignments", title: "Assignments" };
-        } else if (/^(?:campus\s+)?classrooms?$|^campus\s+rooms?$/i.test(strippedNav)) {
-          navTarget = { path: "/classrooms", title: "Classrooms" };
-        } else if (/^semester(?:\s+(?:overview|hub))?$|^timeline$/i.test(strippedNav)) {
-          navTarget = { path: "/semester", title: "Semester Overview" };
-        } else if (/^calendar$|^month\s+view$/i.test(strippedNav)) {
-          navTarget = { path: "/calendar", title: "Calendar" };
-        } else if (/^(?:today(?:'s)?(?:\s+(?:agenda|dashboard|schedule|classes|attendance|routine|overview|plan))?|daily\s+(?:agenda|dashboard|schedule|overview)|agenda|dashboard|home(?:\s+screen)?|main\s+screen)$/i.test(strippedNav)) {
-          navTarget = { path: "/today", title: "Today's Agenda" };
-        }
-
-        if (navTarget) {
-          navigate(navTarget.path);
-          return { reply: `Opening **${navTarget.title}**.` };
-        }
-
-        // 5. Next Upcoming Event / Holiday / Exam & Next Class / Today's Schedule (0ms)
-        if (
-          /^(what('s|\s+is)\s+(my\s+)?)?(next|upcoming)\s+(event|events|holiday|vacation|break|exam|midsem|endsem|milestone|festival|fest)s?$/i.test(lower) ||
-          /\b(when\s+is\s+(the\s+)?next\s+(event|holiday|exam|break|vacation)|tell\s+me\s+(the\s+)?next\s+upcoming\s+event|upcoming\s+events?|next\s+holiday)\b/i.test(lower) ||
-          /\b(how\s+many\s+days\s+(until|to|left\s+for|before)|days\s+(left\s+)?(until|to|for)|countdown\s+to|time\s+until)\s+(the\s+)?(next\s+)?(exam|midsem|endsem|holiday|vacation|break|event)s?\b/i.test(lower) ||
-          /\b(when\s+(is|are|was|were)\s+(the\s+)?(next\s+)?(exam|midsem|endsem|test|quiz)s?)\b/i.test(lower) ||
-          /^(when\s+(is|are|was|were)|countdown\s+to)\s+(midsem|endsem)s?$/i.test(lower)
-        ) {
-          const todayMidnight = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
-          
-          const allParsedEvents = (currentEvents || []).map((e: any) => {
-            const rawStart = e.date || e.startDate;
-            const rawEnd = e.endDate || rawStart;
-            const dStr = rawStart ? String(rawStart).split("T")[0] : "";
-            const endStr = rawEnd ? String(rawEnd).split("T")[0] : dStr;
-            const startObj = dStr ? new Date(`${dStr}T00:00:00`) : new Date(NaN);
-            const endObj = endStr ? new Date(`${endStr}T23:59:59`) : startObj;
-            const daysUntil = !isNaN(startObj.getTime())
-              ? Math.round((startObj.getTime() - todayMidnight) / (1000 * 60 * 60 * 24))
-              : 999;
-            const daysAgo = !isNaN(endObj.getTime()) && endObj.getTime() < todayMidnight
-              ? Math.max(1, Math.round((todayMidnight - endObj.getTime()) / (1000 * 60 * 60 * 24)))
-              : 0;
-            return {
-              title: e.title || e.name || "Academic Event",
-              date: dStr,
-              endDate: endStr !== dStr ? endStr : undefined,
-              daysUntil,
-              daysAgo,
-              isPast: !isNaN(endObj.getTime()) && endObj.getTime() < todayMidnight,
-              endMs: !isNaN(endObj.getTime()) ? endObj.getTime() : 0,
-              startMs: !isNaN(startObj.getTime()) ? startObj.getTime() : 0,
-              eventType: String(e.eventType || "other").toLowerCase(),
-            };
-          }).filter((e: any) => Boolean(e.date));
-
-          const upcoming = allParsedEvents
-            .filter((e: any) => !e.isPast)
-            .sort((a: any, b: any) => a.date.localeCompare(b.date));
-
-          const isExamEvent = (e: any): boolean => {
-            const type = String(e.eventType || "").toLowerCase().replace(/[-_]/g, " ").trim();
-            const title = String(e.title || "").toLowerCase();
-            if (type.includes("holiday") || type.includes("vacation") || type.includes("break") || type.includes("fest")) return false;
-            if (/\b(break|vacation|holiday|fest|festival|puja|diwali|chaturdasi|duj|jayanti|birthday)\b/i.test(title)) return false;
-            if (/\b(exams?|midsem|endsem|tests?|quiz(?:zes)?|assessments?|lab\s+exams?)\b/i.test(type)) return true;
-            if (/\b(mid\s*sem(ester)?\s+exam|end\s*sem(ester)?\s+exam|exams?|theory\s+exam|lab\s+exam|practical\s+exam|class\s+test|cycle\s+test|unit\s+test|quiz|assessment)\b/i.test(title)) return true;
-            return false;
-          };
-
-          const wantsBreak = /\b(break|vacation)\b/i.test(lower);
-          const wantsEndsem = /\b(end\s*sem(ester)?)\b/i.test(lower) && !wantsBreak;
-          const wantsMidsem = /\b(mid\s*sem(ester)?)\b/i.test(lower) && !wantsBreak;
-          const wantsHoliday = /\b(holidays?|fests?|festivals?)\b/i.test(lower);
-          const wantsExam = (/\b(exams?|tests?|quiz(?:zes)?|assessments?)\b/i.test(lower) || wantsEndsem || wantsMidsem) && !wantsBreak && !wantsHoliday;
-
-          if (wantsMidsem) {
-            const upcomingMidsems = upcoming.filter((e: any) => {
-              const type = String(e.eventType || "").toLowerCase();
-              const title = String(e.title || "").toLowerCase();
-              return (type.includes("midsem") || /\bmid\s*sem(ester)?\b/i.test(title)) && !type.includes("break") && !title.includes("break") && !type.includes("holiday");
-            });
-
-            if (upcomingMidsems.length > 0) {
-              const top = upcomingMidsems[0];
-              const countdownText = top.daysUntil === 0 ? "today" : top.daysUntil === 1 ? "tomorrow (in 1 day)" : `in **${top.daysUntil} days**`;
-              const moreList = upcomingMidsems
-                .slice(1, 4)
-                .map((e: any) => `• **${e.title}** — ${e.date}${e.endDate ? ` to ${e.endDate}` : ""} (${e.daysUntil === 0 ? "Today" : `in ${e.daysUntil}d`})`)
-                .join("\n");
-              return {
-                reply: `Your next upcoming mid-semester exam is **${top.title}** on **${top.date}${top.endDate ? ` – ${top.endDate}` : ""}** (${countdownText}).${moreList ? `\n\n**Following up:**\n${moreList}` : ""}`,
-              };
-            }
-
-            // Check if midsem exams already occurred in the past
-            const pastMidsems = allParsedEvents
-              .filter((e: any) => {
-                const type = String(e.eventType || "").toLowerCase();
-                const title = String(e.title || "").toLowerCase();
-                return e.isPast && (type.includes("midsem") || /\bmid\s*sem(ester)?\b/i.test(title)) && !type.includes("break") && !title.includes("break") && !type.includes("holiday");
-              })
-              .sort((a: any, b: any) => b.date.localeCompare(a.date));
-
-            if (pastMidsems.length > 0) {
-              const past = pastMidsems[0];
-              const daysAgoText = past.daysAgo === 0 ? "today" : past.daysAgo === 1 ? "yesterday (1 day ago)" : `${past.daysAgo} days ago`;
-              return {
-                reply: `The **${past.title}** for this semester has already concluded. It took place on **${past.date}${past.endDate ? ` – ${past.endDate}` : ""}** (${daysAgoText}).`,
-              };
-            }
-
-            return {
-              reply: "You don't have any mid-semester exams recorded in your active semester calendar.",
-            };
-          }
-
-          if (wantsEndsem) {
-            const upcomingEndsems = upcoming.filter((e: any) => {
-              const type = String(e.eventType || "").toLowerCase();
-              const title = String(e.title || "").toLowerCase();
-              return (type.includes("endsem") || /\bend\s*sem(ester)?\b/i.test(title)) && !type.includes("break") && !title.includes("break") && !type.includes("holiday");
-            });
-
-            if (upcomingEndsems.length > 0) {
-              const top = upcomingEndsems[0];
-              const countdownText = top.daysUntil === 0 ? "today" : top.daysUntil === 1 ? "tomorrow (in 1 day)" : `in **${top.daysUntil} days**`;
-              const moreList = upcomingEndsems
-                .slice(1, 4)
-                .map((e: any) => `• **${e.title}** — ${e.date}${e.endDate ? ` to ${e.endDate}` : ""} (${e.daysUntil === 0 ? "Today" : `in ${e.daysUntil}d`})`)
-                .join("\n");
-              return {
-                reply: `Your next upcoming end-semester exam is **${top.title}** on **${top.date}${top.endDate ? ` – ${top.endDate}` : ""}** (${countdownText}).${moreList ? `\n\n**Following up:**\n${moreList}` : ""}`,
-              };
-            }
-
-            const pastEndsems = allParsedEvents
-              .filter((e: any) => {
-                const type = String(e.eventType || "").toLowerCase();
-                const title = String(e.title || "").toLowerCase();
-                return e.isPast && (type.includes("endsem") || /\bend\s*sem(ester)?\b/i.test(title)) && !type.includes("break") && !title.includes("break") && !type.includes("holiday");
-              })
-              .sort((a: any, b: any) => b.date.localeCompare(a.date));
-
-            if (pastEndsems.length > 0) {
-              const past = pastEndsems[0];
-              const daysAgoText = past.daysAgo === 0 ? "today" : past.daysAgo === 1 ? "yesterday (1 day ago)" : `${past.daysAgo} days ago`;
-              return {
-                reply: `The **${past.title}** for this semester has already concluded. It took place on **${past.date}${past.endDate ? ` – ${past.endDate}` : ""}** (${daysAgoText}).`,
-              };
-            }
-
-            return {
-              reply: "You don't have any end-semester exams recorded in your active semester calendar.",
-            };
-          }
-
-          if (wantsBreak) {
-            const upcomingBreaks = upcoming.filter((e: any) => {
-              const type = String(e.eventType || "").toLowerCase();
-              const title = String(e.title || "").toLowerCase();
-              return type.includes("vacation") || type.includes("break") || /\b(break|vacation)\b/i.test(title);
-            });
-
-            if (upcomingBreaks.length > 0) {
-              const top = upcomingBreaks[0];
-              const countdownText = top.daysUntil === 0 ? "today" : top.daysUntil === 1 ? "tomorrow (in 1 day)" : `in **${top.daysUntil} days**`;
-              const moreList = upcomingBreaks
-                .slice(1, 4)
-                .map((e: any) => `• **${e.title}** — ${e.date}${e.endDate ? ` to ${e.endDate}` : ""} (${e.daysUntil === 0 ? "Today" : `in ${e.daysUntil}d`})`)
-                .join("\n");
-              return {
-                reply: `Your next upcoming break / vacation is **${top.title}** on **${top.date}${top.endDate ? ` – ${top.endDate}` : ""}** (${countdownText}).${moreList ? `\n\n**Following up:**\n${moreList}` : ""}`,
-              };
-            }
-
-            const pastBreaks = allParsedEvents
-              .filter((e: any) => {
-                const type = String(e.eventType || "").toLowerCase();
-                const title = String(e.title || "").toLowerCase();
-                return e.isPast && (type.includes("vacation") || type.includes("break") || /\b(break|vacation)\b/i.test(title));
-              })
-              .sort((a: any, b: any) => b.date.localeCompare(a.date));
-
-            if (pastBreaks.length > 0) {
-              const past = pastBreaks[0];
-              const daysAgoText = past.daysAgo === 0 ? "today" : past.daysAgo === 1 ? "yesterday (1 day ago)" : `${past.daysAgo} days ago`;
-              return {
-                reply: `The **${past.title}** has already ended. It ran from **${past.date}${past.endDate ? ` to ${past.endDate}` : ""}** (${daysAgoText}).`,
-              };
-            }
-
-            return {
-              reply: "You don't have any breaks or vacations recorded in your active semester calendar.",
-            };
-          }
-
-          if (wantsExam) {
-            const upcomingExams = upcoming.filter(isExamEvent);
-
-            if (upcomingExams.length > 0) {
-              const top = upcomingExams[0];
-              const countdownText = top.daysUntil === 0 ? "today" : top.daysUntil === 1 ? "tomorrow (in 1 day)" : `in **${top.daysUntil} days**`;
-              const moreList = upcomingExams
-                .slice(1, 4)
-                .map((e: any) => `• **${e.title}** — ${e.date}${e.endDate ? ` to ${e.endDate}` : ""} (${e.daysUntil === 0 ? "Today" : `in ${e.daysUntil}d`})`)
-                .join("\n");
-              return {
-                reply: `Your next upcoming exam is **${top.title}** on **${top.date}${top.endDate ? ` – ${top.endDate}` : ""}** (${countdownText}).${moreList ? `\n\n**Following up:**\n${moreList}` : ""}`,
-              };
-            }
-
-            const pastExams = allParsedEvents.filter((e: any) => e.isPast && isExamEvent(e)).sort((a: any, b: any) => b.date.localeCompare(a.date));
-            if (pastExams.length > 0) {
-              const past = pastExams[0];
-              const daysAgoText = past.daysAgo === 0 ? "today" : past.daysAgo === 1 ? "yesterday (1 day ago)" : `${past.daysAgo} days ago`;
-              return {
-                reply: `All examinations and assessments for this term have concluded. The last conducted exam was **${past.title}** on **${past.date}${past.endDate ? ` – ${past.endDate}` : ""}** (${daysAgoText}).`,
-              };
-            }
-
-            return {
-              reply: "You don't have any upcoming exams or tests recorded in your active semester calendar.",
-            };
-          }
-
-          if (wantsHoliday) {
-            const upcomingHolidays = upcoming.filter((e: any) => {
-              const type = String(e.eventType || "").toLowerCase();
-              const title = String(e.title || "").toLowerCase();
-              return type.includes("holiday") || /\b(holiday|diwali|puja|jayanti|chaturdasi|duj|christmas)\b/i.test(title);
-            });
-
-            if (upcomingHolidays.length > 0) {
-              const top = upcomingHolidays[0];
-              const countdownText = top.daysUntil === 0 ? "today" : top.daysUntil === 1 ? "tomorrow (in 1 day)" : `in **${top.daysUntil} days**`;
-              const moreList = upcomingHolidays
-                .slice(1, 4)
-                .map((e: any) => `• **${e.title}** — ${e.date}${e.endDate ? ` to ${e.endDate}` : ""} (${e.daysUntil === 0 ? "Today" : `in ${e.daysUntil}d`})`)
-                .join("\n");
-              return {
-                reply: `Your next upcoming holiday is **${top.title}** on **${top.date}${top.endDate ? ` – ${top.endDate}` : ""}** (${countdownText}).${moreList ? `\n\n**Following up:**\n${moreList}` : ""}`,
-              };
-            }
-
-            return {
-              reply: "You don't have any more upcoming holidays recorded in your active semester calendar.",
-            };
-          }
-
-          // General next event
-          if (upcoming.length === 0) {
-            return { reply: "You don't have any upcoming events recorded in your active semester calendar." };
-          }
-          const top = upcoming[0];
-          const countdownText = top.daysUntil === 0 ? "today" : top.daysUntil === 1 ? "tomorrow (in 1 day)" : `in **${top.daysUntil} days**`;
-          const moreList = upcoming
-            .slice(1, 4)
-            .map((e: any) => `• **${e.title}** — ${e.date}${e.endDate ? ` to ${e.endDate}` : ""} (${e.daysUntil === 0 ? "Today" : `in ${e.daysUntil}d`})`)
-            .join("\n");
-          return {
-            reply: `Your next upcoming event is **${top.title}** on **${top.date}${top.endDate ? ` – ${top.endDate}` : ""}** (${countdownText}).${moreList ? `\n\n**Following up:**\n${moreList}` : ""}`,
-          };
-        }
-
-        if (/^(what('s|\s+is)\s+(my\s+)?)?(next\s+(class|lecture|lab)|classes\s+today|my\s+(classes|schedule|timetable)\s+today|today('s)?\s+(classes|schedule|timetable|agenda))$/i.test(lower)) {
-          const todayDayName = dayNames[todayDayIndex];
-          if (/next\s+(class|lecture|lab)/i.test(lower)) {
-            if (nextUpcomingClass) {
-              return {
-                reply: `Your next class is **${nextUpcomingClass.subjectName}** (${nextUpcomingClass.dayName}, **${nextUpcomingClass.startTime} – ${nextUpcomingClass.endTime}**${nextUpcomingClass.room && nextUpcomingClass.room !== "TBD" ? `, Room ${nextUpcomingClass.room}` : ""}).`,
-              };
-            }
-            return { reply: `You have no upcoming classes found in your weekly timetable.` };
-          }
-          if (todayClasses.length === 0) {
-            return {
-              reply: `You have **no classes scheduled today (${todayDayName})**!${nextUpcomingClass ? ` Your next class is **${nextUpcomingClass.subjectName}** on ${nextUpcomingClass.dayName} at ${nextUpcomingClass.startTime}.` : ""}`,
-            };
-          }
-          const formatted = todayClasses
-            .map((c: any) => `• **${c.startTime} – ${c.endTime}**: ${c.subjectName} (${c.slotType}${c.room && c.room !== "TBD" ? `, ${c.room}` : ""})`)
-            .join("\n");
-          return { reply: `Here is your schedule for **today (${todayDayName})** (${todayClasses.length} session${todayClasses.length !== 1 ? "s" : ""}):\n${formatted}` };
-        }
-
-        // 6. Current Attendance & Safe Bunks Query (0ms)
-        const isDirectAttendanceQuery =
-          /^(what('s|\s+is)\s+(my\s+)?)?(current\s+|overall\s+|total\s+)?attendance(\s+status|\s+percentage|\s+right\s+now|\s+summary)?$/i.test(lower) ||
-          /^(show(\s+me)?\s+(my\s+)?|check(\s+my)?\s+|tell(\s+me)?\s+(my\s+)?)?(current\s+|overall\s+)?attendance(\s+in\s+.+)?$/i.test(lower) ||
-          /^(am\s+i\s+safe|how\s+many\s+(classes|lectures|bunks)\s+(can\s+i\s+(bunk|miss|skip)|do\s+i\s+need(\s+to\s+attend)?))(\s+in\s+.+)?$/i.test(lower);
-
-        if (isDirectAttendanceQuery && !/\b(if\s+i|next\s+week|from\s+|between\s+|tomorrow|monday|tuesday|wednesday|thursday|friday)\b/i.test(lower)) {
-          const matchedSub = (currentSubjects as any[]).find(
-            (s) =>
-              (s.name && lower.includes(s.name.toLowerCase())) ||
-              (s.code && s.code.length >= 2 && new RegExp(`\\b${s.code.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(lower))
-          );
-
-          if (matchedSub) {
-            const att = Number(matchedSub.attended || 0);
-            const tot = Number(matchedSub.total || 0);
-            const tgt = Number(matchedSub.target ?? currentTarget);
-            const pct = matchedSub.percentage !== undefined ? Number(matchedSub.percentage) : tot > 0 ? (att / tot) * 100 : 100;
-            const p = tgt / 100;
-            const safeBunksLeft = tot > 0 && p > 0 ? Math.max(0, Math.floor((att - p * tot) / p)) : 0;
-            const classesNeeded = tot > 0 && p < 1 ? Math.max(0, Math.ceil((p * tot - att) / (1 - p))) : 0;
-            const bufferMsg =
-              pct >= tgt
-                ? safeBunksLeft > 0
-                  ? `You can safely miss **${safeBunksLeft}** consecutive class${safeBunksLeft !== 1 ? "es" : ""} and stay above ${tgt}%.`
-                  : `You are right on the edge of ${tgt}% — missing the next class will drop you below target.`
-                : `You need to attend the next **${classesNeeded}** consecutive class${classesNeeded !== 1 ? "es" : ""} to reach ${tgt}%.`;
-            const skipCount = pct >= tgt ? Math.max(1, safeBunksLeft) : -classesNeeded;
-            const projTot = tot + Math.abs(skipCount);
-            const projAtt = skipCount < 0 ? att + Math.abs(skipCount) : att;
-            return {
-              reply: `In **${matchedSub.name}${matchedSub.code ? ` (${matchedSub.code})` : ""}**, your current attendance is **${pct.toFixed(1)}%** (${att}/${tot} classes, Target: ${tgt}%). ${bufferMsg}`,
-              simulation: {
-                subjectId: matchedSub.id,
-                subjectName: matchedSub.name,
-                skipCount,
-                currentAttended: att,
-                currentTotal: tot,
-                projectedPercentage: projTot > 0 ? Math.round((projAtt / projTot) * 1000) / 10 : 100,
-                targetPercentage: tgt,
-              },
-            };
-          }
-
-          const overallBuffer =
-            currentOverall >= currentTarget
-              ? `You are **Safe** (+${(currentOverall - currentTarget).toFixed(1)}% above ${currentTarget}%) with an overall buffer of **${overallSafeBunks}** class${overallSafeBunks !== 1 ? "es" : ""}.`
-              : `You are below your ${currentTarget}% target and need **${overallNeeded}** consecutive classes overall.`;
-          const subjectLines = (currentSubjects as any[])
-            .map((s) => {
-              const att = Number(s.attended || 0);
-              const tot = Number(s.total || 0);
-              const tgt = Number(s.target ?? currentTarget);
-              const pct = s.percentage !== undefined ? Number(s.percentage) : tot > 0 ? (att / tot) * 100 : 100;
-              const p = tgt / 100;
-              const bunks = tot > 0 && p > 0 ? Math.max(0, Math.floor((att - p * tot) / p)) : 0;
-              const need = tot > 0 && p < 1 ? Math.max(0, Math.ceil((p * tot - att) / (1 - p))) : 0;
-              const tag = pct >= tgt ? (bunks > 0 ? `Safe: can miss ${bunks}` : `On edge (0 bunks)`) : `Attend next ${need}`;
-              return `• **${s.name}**: **${pct.toFixed(1)}%** (${att}/${tot}) — *${tag}*`;
-            })
-            .join("\n");
-          return {
-            reply: `Your overall attendance is **${Number(currentOverall).toFixed(1)}%** (${currentAttended}/${currentTotal} classes). ${overallBuffer}${subjectLines ? `\n\n**Subject Breakdown:**\n${subjectLines}` : ""}`,
-          };
-        }
-
-        // 7. Single-Subject Simulation (0ms)
-        const singleSimMatch = lower.match(
-          /^(?:what\s+if\s+i|if\s+i|simulate)\s+(miss|skip|bunk|attend|attending)\s+(?:the\s+)?(?:next\s+)?(\d+)\s+(?:classes|lectures|sessions|labs)?\s*(?:of|in|for)?\s+(.+)$/i
-        );
-        if (singleSimMatch && !/\b(week|month|semester|days|monday|tuesday|wednesday|thursday|friday)\b/i.test(singleSimMatch[3])) {
-          const isMiss = /miss|skip|bunk/.test(singleSimMatch[1].toLowerCase());
-          const count = Math.max(1, parseInt(singleSimMatch[2], 10));
-          const subQ = singleSimMatch[3].trim().toLowerCase();
-          const matchedSub = (currentSubjects as any[]).find(
-            (s) => (s.name && s.name.toLowerCase().includes(subQ)) || (s.code && s.code.toLowerCase() === subQ)
-          );
-          if (matchedSub) {
-            const att = Number(matchedSub.attended || 0);
-            const tot = Number(matchedSub.total || 0);
-            const tgt = Number(matchedSub.target ?? currentTarget);
-            const pct = tot > 0 ? (att / tot) * 100 : 100;
-            const projTot = tot + count;
-            const projAtt = isMiss ? att : att + count;
-            const projPct = projTot > 0 ? (projAtt / projTot) * 100 : 100;
-            const p = tgt / 100;
-            let reply = "";
-            if (isMiss) {
-              reply = `If you miss **${count}** class${count !== 1 ? "es" : ""} of **${matchedSub.name}**, your attendance moves from **${pct.toFixed(1)}%** to **${projPct.toFixed(1)}%** (${projAtt}/${projTot} classes). `;
-              if (projPct >= tgt) {
-                const bunksAfter = Math.max(0, Math.floor((projAtt - p * projTot) / p));
-                reply += `You remain **safe** above your ${tgt}% target with **${bunksAfter}** safe bunk${bunksAfter !== 1 ? "s" : ""} remaining.`;
-              } else {
-                const recoverNeeded = p < 1 ? Math.max(0, Math.ceil((p * projTot - projAtt) / (1 - p))) : 0;
-                reply += `Warning: This drops you **below your ${tgt}% target**! You would need to attend **${recoverNeeded}** consecutive classes to recover.`;
-              }
-            } else {
-              reply = `If you attend the next **${count}** class${count !== 1 ? "es" : ""} of **${matchedSub.name}**, your attendance rises from **${pct.toFixed(1)}%** to **${projPct.toFixed(1)}%** (${projAtt}/${projTot} classes).`;
-            }
-            return {
-              reply,
-              simulation: {
-                subjectId: matchedSub.id,
-                subjectName: matchedSub.name,
-                skipCount: isMiss ? count : -count,
-                currentAttended: att,
-                currentTotal: tot,
-                projectedPercentage: Math.round(projPct * 10) / 10,
-                targetPercentage: tgt,
-              },
-            };
-          }
-        }
-
-        return null;
-      };
-
-      const fastLocalResult = tryClientFastPath();
-      if (fastLocalResult) {
         const textToSpeak = fastLocalResult.reply.replace(/\*\*/g, "").replace(/\*/g, "");
         if (isHandsFreeRef.current && textToSpeak) {
-          setHandsFreeStatus("SPEAKING");
+          setHandsFreeStatus("THINKING");
           await NativeVoiceService.stopSpeaking();
           NativeVoiceService.speak(textToSpeak, {
             autoResumeListening: true,
@@ -1889,9 +958,11 @@ const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'vo
         attendance_rule: "Refer to official Institute Ordinances for attendance thresholds.",
         current_date: localTodayStr,
         has_active_semester: currentSubjects.length > 0 || currentLogs.length > 0 || currentTotal > 0,
-        active_semester_id: useAttendanceStore.getState().activeSemesterId,
-        active_semester_start_date: useAttendanceStore.getState().simulationBounds?.startDate,
-        active_semester_end_date: useAttendanceStore.getState().simulationBounds?.endDate,
+        active_semester_id: useAttendanceStore.getState().activeSemesterId || semesterMeta?.id,
+        active_semester_name: semesterMeta?.name,
+        active_semester_start_date: useAttendanceStore.getState().simulationBounds?.startDate || semesterMeta?.startDate,
+        active_semester_end_date: endBoundsDate,
+        lastWorkingDay: endBoundsDate,
         overall_percentage: currentOverall,
         target_percentage: currentTarget,
         total_attended: currentAttended,
@@ -1901,6 +972,8 @@ const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'vo
         history_logs: needsHistoryLogs ? currentLogs.slice(0, 30) : [],
         calendar_events: currentEvents
           .filter(e => {
+            const evtType = String(e.eventType || e.type || "").toLowerCase();
+            if (evtType === "other" || /\b(birthdays?|b'?days?|dob)\b/i.test(e.title || "")) return true;
             const dateStr = toIsoDateOnly(e.endDate) || toIsoDateOnly(e.date);
             if (!dateStr) return true;
             const eventDate = new Date(dateStr + "T00:00:00");
@@ -1908,7 +981,13 @@ const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'vo
             monthAgo.setDate(monthAgo.getDate() - 30);
             return eventDate >= monthAgo;
           })
-          .slice(0, 50),
+          .sort((a, b) => {
+            const aBday = String(a.eventType || "").toLowerCase() === "other" ? 0 : 1;
+            const bBday = String(b.eventType || "").toLowerCase() === "other" ? 0 : 1;
+            if (aBday !== bBday) return aBday - bBday;
+            return toIsoDateOnly(a.date || a.startDate).localeCompare(toIsoDateOnly(b.date || b.startDate));
+          })
+          .slice(0, 60),
         assignments: useAssignmentStore.getState().assignments || []
       };
 
@@ -1939,7 +1018,7 @@ const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'vo
       // The overlay handles its own speech (voice_overlay), so we only speak if it's the inline mic ('voice')
       const textToSpeak = data.response || data.reply;
       if (isHandsFreeRef.current && textToSpeak) {
-        setHandsFreeStatus("SPEAKING");
+        setHandsFreeStatus("THINKING");
         await NativeVoiceService.stopSpeaking();
         NativeVoiceService.speak(textToSpeak, {
           autoResumeListening: true,
@@ -2032,6 +1111,7 @@ const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'vo
                   subjectId: item.subject.id,
                   date: dateStr,
                   status: "off",
+                  ...(action.payload.remarks ? { remarks: action.payload.remarks } : {}),
                   timetableSlotId: item.type === "slot" ? item.id : undefined,
                   overrideId: item.type === "override" ? item.id : undefined,
                 });
@@ -2139,7 +1219,7 @@ const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'vo
           const ttRes = await api.get(`/timetable/${activeSemesterId}`);
           const timetable = ttRes.data;
           let targetSlotId = null;
-          const slot = timetable.find((s: any) => s.subject.id === action.payload.subjectId && s.dayOfWeek === action.payload.dayOfWeek && s.startTime === action.payload.startTime);
+          const slot = timetable.find((s: any) => (s.subject?.id || s.subjectId) === action.payload.subjectId && Number(s.dayOfWeek) === Number(action.payload.dayOfWeek) && s.startTime === action.payload.startTime);
           if (slot) {
             targetSlotId = slot.id;
           }
@@ -2156,7 +1236,7 @@ const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'vo
           const timetable = ttRes.data;
           // Find the slot matching subjectId and dayOfWeek
           let targetSlotId = null;
-          const slot = timetable.find((s: any) => s.subject.id === action.payload.subjectId && s.dayOfWeek === action.payload.dayOfWeek);
+          const slot = timetable.find((s: any) => (s.subject?.id || s.subjectId) === action.payload.subjectId && Number(s.dayOfWeek) === Number(action.payload.dayOfWeek));
           if (slot) {
             targetSlotId = slot.id;
           }

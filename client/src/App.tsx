@@ -81,7 +81,9 @@ import { useState, useEffect, useRef } from "react";
 import { LandingPage } from "./pages/marketing/LandingPage";
 import { PrivacyPage } from "./pages/marketing/PrivacyPage";
 import { TermsPage } from "./pages/marketing/TermsPage";
-import { PromoVideoPage } from "./pages/promo/PromoVideoPage";
+const PromoVideoPage = React.lazy(() =>
+  import("./pages/promo/PromoVideoPage").then((m) => ({ default: m.PromoVideoPage }))
+);
 
 const RootRoute: React.FC = () => {
   const { isAuthenticated, user, isLoading, _hasHydrated } = useAuthStore();
@@ -135,8 +137,12 @@ const DownloadRedirect: React.FC = () => {
   );
 };
 
+let lastHandledLaunchUrl: string | null = null;
+
 const DeepLinkHandler: React.FC = () => {
   const navigate = useNavigate();
+  const navigateRef = useRef(navigate);
+  navigateRef.current = navigate;
 
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
@@ -151,7 +157,7 @@ const DeepLinkHandler: React.FC = () => {
           return;
         }
         if (pathname !== "/") {
-          navigate(`${pathname}${parsed.search}${parsed.hash}`, { replace: true });
+          navigateRef.current(`${pathname}${parsed.search}${parsed.hash}`, { replace: true });
         }
       } catch (e) {
         console.error("Failed to parse deep link URL:", rawUrl, e);
@@ -160,20 +166,24 @@ const DeepLinkHandler: React.FC = () => {
 
     CapacitorApp.getLaunchUrl()
       .then((launchUrl) => {
-        if (launchUrl?.url) {
+        if (launchUrl?.url && launchUrl.url !== lastHandledLaunchUrl) {
+          lastHandledLaunchUrl = launchUrl.url;
           routeIncomingUrl(launchUrl.url);
         }
       })
       .catch(() => {});
 
     const listenerPromise = CapacitorApp.addListener("appUrlOpen", (event) => {
+      if (event?.url) {
+        lastHandledLaunchUrl = event.url;
+      }
       routeIncomingUrl(event.url);
     });
 
     return () => {
       listenerPromise.then((handle) => handle.remove()).catch(() => {});
     };
-  }, [navigate]);
+  }, []);
 
   return null;
 };
@@ -533,7 +543,20 @@ export function App() {
             {/* Public Landing Page */}
             <Route path="/" element={<RootRoute />} />
             <Route path="/download" element={<DownloadRedirect />} />
-            <Route path="/promo" element={<PromoVideoPage />} />
+            <Route
+              path="/promo"
+              element={
+                <React.Suspense
+                  fallback={
+                    <div className="min-h-screen bg-background flex items-center justify-center">
+                      <Loader2 className="w-7 h-7 animate-spin text-primary" />
+                    </div>
+                  }
+                >
+                  <PromoVideoPage />
+                </React.Suspense>
+              }
+            />
 
             {/* Auth Routes */}
             <Route path="/login" element={<LoginPage />} />
