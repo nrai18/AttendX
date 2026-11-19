@@ -110,6 +110,12 @@ enum ClassroomMemberRole {
   admin
 }
 
+enum PollMode {
+  yes_no
+  single
+  multiple
+}
+
 // ─────────────────────────────────────────────────────────
 // USERS
 // ─────────────────────────────────────────────────────────
@@ -147,6 +153,9 @@ model User {
   classroomMemberships    ClassroomMember[]
   events                  Event[]
   announcements           Announcement[]
+  createdPolls            ClassroomPoll[]          @relation("PollCreator")
+  stoppedPolls            ClassroomPoll[]          @relation("PollStopper")
+  pollVotes               ClassroomPollVote[]
   assignments             Assignment[]
   assignmentCompletions   AssignmentCompletion[]
   notes                   Note[]
@@ -332,6 +341,7 @@ model Classroom {
   semester      Semester?         @relation(fields: [semesterId], references: [id], onDelete: Cascade)
   members       ClassroomMember[]
   announcements Announcement[]
+  polls         ClassroomPoll[]
   events        Event[]
   assignments   Assignment[]
   notes         Note[]
@@ -400,6 +410,64 @@ model Announcement {
   createdBy User      @relation(fields: [createdById], references: [id], onDelete: Cascade)
 
   @@map("announcements")
+}
+
+// ─────────────────────────────────────────────────────────
+// CLASSROOM POLLS
+// ─────────────────────────────────────────────────────────
+
+model ClassroomPoll {
+  id                     String    @id @default(uuid())
+  classroomId            String
+  createdById            String
+  question               String    @db.Text
+  mode                   PollMode  @default(single)
+  isPinned               Boolean   @default(false)
+  closesAt               DateTime?
+  stoppedAt              DateTime?
+  stoppedById            String?
+  hideResultsUntilClosed Boolean   @default(false)
+  allowVoteChange        Boolean   @default(true)
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
+  classroom Classroom             @relation(fields: [classroomId], references: [id], onDelete: Cascade)
+  createdBy User                  @relation("PollCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  stoppedBy User?                 @relation("PollStopper", fields: [stoppedById], references: [id], onDelete: SetNull)
+  options   ClassroomPollOption[]
+  votes     ClassroomPollVote[]
+
+  @@index([classroomId, createdAt])
+  @@map("classroom_polls")
+}
+
+model ClassroomPollOption {
+  id        String @id @default(uuid())
+  pollId    String
+  label     String
+  sortOrder Int    @default(0)
+
+  poll  ClassroomPoll       @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  votes ClassroomPollVote[]
+
+  @@index([pollId, sortOrder])
+  @@map("classroom_poll_options")
+}
+
+model ClassroomPollVote {
+  id       String   @id @default(uuid())
+  pollId   String
+  optionId String
+  userId   String
+  votedAt  DateTime @default(now())
+
+  poll   ClassroomPoll       @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  option ClassroomPollOption @relation(fields: [optionId], references: [id], onDelete: Cascade)
+  user   User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([pollId, optionId, userId])
+  @@index([pollId, userId])
+  @@map("classroom_poll_votes")
 }
 
 // ─────────────────────────────────────────────────────────

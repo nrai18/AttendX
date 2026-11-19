@@ -2,6 +2,41 @@ import { Release } from "../components/settings/ChangelogModal";
 
 export const OFFLINE_CHANGELOG: Release[] = [
   {
+    version: "4.4.1",
+    date: "Nov 20, 2026",
+    sections: [
+      {
+        title: "Classroom Polls, Deep-Link Stability & System Hardening",
+        items: [
+          {
+            icon: "📊",
+            text: "Classroom Polls (Stream Bars): Added Yes/No, Single-Answer, and Multiple-Answer polls inside Classrooms with live voter avatar stacks, vote counts, percentages, and Light/Dark mode contrast parity.",
+          },
+          {
+            icon: "⏱️",
+            text: "Urgent Pinned Deadlines & Stop Controls: Pin polls urgently at the top of the stream with live 1-second closing countdowns, automatic lock & result reveal on expiry, early Stop Poll controls for the author or CR Admin, optional hidden results until closed, and optional vote-lock mode.",
+          },
+          {
+            icon: "👥",
+            text: "Full Voter Stats & Silent Live Sync: Everyone in the classroom can inspect Poll Details (turnout meter, option filters, name/roll-number search, timestamps) backed by silent background polling with zero error toasts on network drops.",
+          },
+          {
+            icon: "🔁",
+            text: "Classroom Invite Deep-Link Loop Fix: Fixed the infinite classroom reopen loop when opening an invite link (?join=CODE) for an already-joined hub and prevented cold-start race popups.",
+          },
+          {
+            icon: "🔐",
+            text: "Passcode Vault & Permission Modal Fixes: Prevented stale mid-use re-locks, enforced Passcode Lock during offline cold starts, blocked hardware Back leaks behind the lock screen, and stopped the Permission Modal from auto-closing during optional DND unlock.",
+          },
+          {
+            icon: "🛡️",
+            text: "Backend Security & Android Plugin Hardening: Hardened session revocation ownership, assignment IDOR & document download containment, fail-closed APK signature validation with same-version amended support, Android 12–15 RingerForegroundService crash guards, UTC FCM timestamps, and sanitized APK download links.",
+          },
+        ],
+      },
+    ],
+  },
+  {
     version: "4.4.0",
     date: "Nov 17, 2026",
     sections: [

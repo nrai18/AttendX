@@ -1,5 +1,6 @@
 import { prisma } from "../lib/prisma";
 import { PushNotificationService } from "./push_notification.service";
+import { ClassroomPollService } from "./classroom_poll.service";
 
 export class ClassroomService {
   /**
@@ -228,11 +229,26 @@ export class ClassroomService {
         return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
       });
 
-    const assignments = await prisma.assignment.findMany({
-      where: { classroomId },
-      orderBy: { deadline: 'asc' },
-      take: 20,
-    });
+    const startOfToday = new Date();
+    startOfToday.setUTCHours(0, 0, 0, 0);
+    const [assignments, totalMembers] = await Promise.all([
+      prisma.assignment.findMany({
+        where: {
+          classroomId,
+          deadline: { gte: startOfToday },
+        },
+        orderBy: { deadline: 'asc' },
+        take: 20,
+      }),
+      prisma.classroomMember.count({ where: { classroomId } }),
+    ]);
+
+    const polls = await ClassroomPollService.listPollsForClassroom(
+      userId,
+      classroomId,
+      isCrOrAdmin,
+      totalMembers
+    );
 
     return {
       role: isCrOrAdmin ? "admin" : member.role,
@@ -242,7 +258,9 @@ export class ClassroomService {
       allowedPosterIds: allowedList,
       deniedPosterIds: deniedList,
       isDeleted: Boolean(member.classroom.deletedAt),
+      totalMembers,
       announcements,
+      polls,
       assignments,
     };
   }
@@ -351,14 +369,44 @@ export class ClassroomService {
     }
 
     const validModes = ["admins", "everyone", "only_selected", "everyone_except"];
-    const mode = (validModes.includes(data.broadcastPermission) ? data.broadcastPermission : "admins") as any;
+    const mode = (validModes.includes(data.broadcastPermission) ? data.broadcastPermission : "admins") as
+      | "admins"
+      | "everyone"
+      | "only_selected"
+      | "everyone_except";
+
+    // Restrict allowedPosterIds / deniedPosterIds strictly to enrolled classroom members
+    // to prevent persisting arbitrary user IDs or spamming push notifications to non-members.
+    const enrolledMembers = await prisma.classroomMember.findMany({
+      where: { classroomId },
+      select: { userId: true, role: true },
+    });
+    const enrolledMemberIds = new Set(enrolledMembers.map((m) => m.userId));
+    const nonAdminMemberIds = enrolledMembers
+      .filter((m) => m.role !== "admin" && m.userId !== existingClassroom.createdById)
+      .map((m) => m.userId);
+
+    const sanitizedAllowed = Array.from(
+      new Set(
+        (Array.isArray(data.allowedPosterIds) ? data.allowedPosterIds : []).filter(
+          (id): id is string => typeof id === "string" && enrolledMemberIds.has(id)
+        )
+      )
+    );
+    const sanitizedDenied = Array.from(
+      new Set(
+        (Array.isArray(data.deniedPosterIds) ? data.deniedPosterIds : []).filter(
+          (id): id is string => typeof id === "string" && enrolledMemberIds.has(id)
+        )
+      )
+    );
 
     const updated = await prisma.classroom.update({
       where: { id: classroomId },
       data: {
         broadcastPermission: mode,
-        allowedPosterIds: Array.isArray(data.allowedPosterIds) ? data.allowedPosterIds : [],
-        deniedPosterIds: Array.isArray(data.deniedPosterIds) ? data.deniedPosterIds : [],
+        allowedPosterIds: sanitizedAllowed,
+        deniedPosterIds: sanitizedDenied,
       },
       select: {
         id: true,
@@ -371,21 +419,43 @@ export class ClassroomService {
     });
 
     const className = updated.section ? `${updated.name} (Sec ${updated.section})` : updated.name;
-    const oldAllowed = existingClassroom.allowedPosterIds || [];
-    const newAllowed = updated.allowedPosterIds || [];
-    const oldDenied = existingClassroom.deniedPosterIds || [];
-    const newDenied = updated.deniedPosterIds || [];
+    const oldMode = (existingClassroom.broadcastPermission || "admins") as
+      | "admins"
+      | "everyone"
+      | "only_selected"
+      | "everyone_except";
+    const oldAllowedSet = new Set(existingClassroom.allowedPosterIds || []);
+    const newAllowedSet = new Set(updated.allowedPosterIds || []);
+    const oldDeniedSet = new Set(existingClassroom.deniedPosterIds || []);
+    const newDeniedSet = new Set(updated.deniedPosterIds || []);
 
-    // Track targeted users to send personalized notification
+    const canMemberPost = (
+      targetId: string,
+      permMode: string,
+      allowedSet: Set<string>,
+      deniedSet: Set<string>
+    ): boolean => {
+      if (permMode === "everyone") return true;
+      if (permMode === "only_selected") return allowedSet.has(targetId);
+      if (permMode === "everyone_except") return !deniedSet.has(targetId);
+      return false;
+    };
+
+    // Track enrolled non-admin members whose effective posting capability actually changed
     const targetedUsersGranted = new Set<string>();
     const targetedUsersRestricted = new Set<string>();
 
-    if (mode === "only_selected") {
-      newAllowed.filter((id) => !oldAllowed.includes(id)).forEach((id) => targetedUsersGranted.add(id));
-      oldAllowed.filter((id) => !newAllowed.includes(id)).forEach((id) => targetedUsersRestricted.add(id));
-    } else if (mode === "everyone_except") {
-      newDenied.filter((id) => !oldDenied.includes(id)).forEach((id) => targetedUsersRestricted.add(id));
-      oldDenied.filter((id) => !newDenied.includes(id)).forEach((id) => targetedUsersGranted.add(id));
+    if (mode === "only_selected" || mode === "everyone_except") {
+      for (const memberId of nonAdminMemberIds) {
+        if (memberId === userId) continue;
+        const wasAllowed = canMemberPost(memberId, oldMode, oldAllowedSet, oldDeniedSet);
+        const isNowAllowed = canMemberPost(memberId, mode, newAllowedSet, newDeniedSet);
+        if (!wasAllowed && isNowAllowed) {
+          targetedUsersGranted.add(memberId);
+        } else if (wasAllowed && !isNowAllowed) {
+          targetedUsersRestricted.add(memberId);
+        }
+      }
     }
 
     // 1. Send personalized 1-on-1 push to students granted permission

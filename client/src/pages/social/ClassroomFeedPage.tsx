@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import {
@@ -22,9 +22,15 @@ import {
   FileText,
   Image as ImageIcon,
   Download,
-  ExternalLink
+  ExternalLink,
+  BarChart3
 } from "lucide-react";
 import { ClassroomRosterModal } from "../../components/classroom/ClassroomRosterModal";
+import { PollCard } from "../../components/classroom/PollCard";
+import { PollVotesModal } from "../../components/classroom/PollVotesModal";
+import { CreatePollModal } from "../../components/classroom/CreatePollModal";
+import { ClassroomPoll } from "../../types/classroomPoll";
+import { useAuthStore } from "../../stores/authStore";
 import { downloadBlob } from "../../lib/download";
 import { api } from "../../lib/api";
 import { toast } from "sonner";
@@ -78,7 +84,9 @@ interface FeedData {
   allowedPosterIds?: string[];
   deniedPosterIds?: string[];
   isDeleted?: boolean;
+  totalMembers?: number;
   announcements: Announcement[];
+  polls?: ClassroomPoll[];
   assignments?: Array<{
     id: string;
     title: string;
@@ -207,12 +215,26 @@ export const ClassroomFeedPage = () => {
   const [transitionTermNote, setTransitionTermNote] = useState("");
   const [transitionNewName, setTransitionNewName] = useState("");
 
+  // Classroom Polls State
+  const [showCreatePollModal, setShowCreatePollModal] = useState(false);
+  const [inspectingPollId, setInspectingPollId] = useState<string | null>(null);
+  const [streamFilter, setStreamFilter] = useState<"all" | "polls" | "announcements">("all");
+  const [nowMs, setNowMs] = useState<number>(() => Date.now());
+  const inFlightPollIdsRef = useRef<Set<string>>(new Set());
+  const triggeredExpiryIdsRef = useRef<Set<string>>(new Set());
+
   useScrollLock(Boolean(showCreateModal || showDeleteModal || showTransitionModal));
+
+  const currentUser = useAuthStore((state) => state.user);
+
+  const inspectingPoll = useMemo(() => {
+    if (!inspectingPollId || !Array.isArray(feed?.polls)) return null;
+    return feed.polls.find((p) => p.id === inspectingPollId) || null;
+  }, [inspectingPollId, feed?.polls]);
 
   // Ensure urgent broadcasts remain pinned for 24h then automatically settle into chronological order
   const orderedAnnouncements = useMemo(() => {
     const list = Array.isArray(feed?.announcements) ? [...feed.announcements] : [];
-    const nowMs = Date.now();
     return list.sort((a, b) => {
       const aActivePin =
         Boolean(a.isPinned || a.importance === "high") &&
@@ -223,7 +245,83 @@ export const ClassroomFeedPage = () => {
       if (aActivePin !== bActivePin) return aActivePin ? -1 : 1;
       return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     });
-  }, [feed?.announcements]);
+  }, [feed?.announcements, nowMs]);
+
+  const orderedPolls = useMemo(() => {
+    const list = Array.isArray(feed?.polls) ? [...feed.polls] : [];
+    return list.sort((a, b) => {
+      const aClosed =
+        a.isClosed ||
+        (Boolean(a.closesAt) && !a.stoppedAt && new Date(a.closesAt!).getTime() <= nowMs);
+      const bClosed =
+        b.isClosed ||
+        (Boolean(b.closesAt) && !b.stoppedAt && new Date(b.closesAt!).getTime() <= nowMs);
+      const aPin = Boolean(a.isPinned && !aClosed);
+      const bPin = Boolean(b.isPinned && !bClosed);
+      if (aPin !== bPin) return aPin ? -1 : 1;
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
+  }, [feed?.polls, nowMs]);
+
+  const orderedStream = useMemo(() => {
+    type StreamEntry =
+      | { kind: "poll"; id: string; isActivePin: boolean; createdAtMs: number; poll: ClassroomPoll }
+      | { kind: "announcement"; id: string; isActivePin: boolean; createdAtMs: number; announcement: Announcement };
+
+    const items: StreamEntry[] = [];
+
+    if (streamFilter !== "announcements") {
+      for (const poll of orderedPolls) {
+        const closed =
+          poll.isClosed ||
+          (Boolean(poll.closesAt) && !poll.stoppedAt && new Date(poll.closesAt!).getTime() <= nowMs);
+        items.push({
+          kind: "poll",
+          id: `poll-${poll.id}`,
+          isActivePin: Boolean(poll.isPinned && !closed),
+          createdAtMs: new Date(poll.createdAt).getTime(),
+          poll,
+        });
+      }
+    }
+
+    if (streamFilter !== "polls") {
+      for (const ann of orderedAnnouncements) {
+        const createdAtMs = new Date(ann.createdAt).getTime();
+        const isActivePin =
+          Boolean(ann.isPinned || ann.importance === "high") &&
+          nowMs - createdAtMs < URGENT_PIN_DURATION_MS;
+        items.push({
+          kind: "announcement",
+          id: `ann-${ann.id}`,
+          isActivePin,
+          createdAtMs,
+          announcement: ann,
+        });
+      }
+    }
+
+    return items.sort((a, b) => {
+      if (a.isActivePin !== b.isActivePin) return a.isActivePin ? -1 : 1;
+      return b.createdAtMs - a.createdAtMs;
+    });
+  }, [orderedPolls, orderedAnnouncements, streamFilter, nowMs]);
+
+  const upsertPollInFeed = (updatedPoll: ClassroomPoll) => {
+    setFeed((prev) => {
+      if (!prev) return prev;
+      const existing = Array.isArray(prev.polls) ? prev.polls : [];
+      const found = existing.some((p) => p.id === updatedPoll.id);
+      const nextPolls = found
+        ? existing.map((p) => (p.id === updatedPoll.id ? updatedPoll : p))
+        : [updatedPoll, ...existing];
+      const nextFeed = { ...prev, polls: nextPolls };
+      if (id) {
+        useCacheStore.getState().cacheClassroomFeed(id, nextFeed);
+      }
+      return nextFeed;
+    });
+  };
 
   const fetchFeed = async (showLoading = true) => {
     if (typeof navigator !== "undefined" && !navigator.onLine) {
@@ -238,8 +336,13 @@ export const ClassroomFeedPage = () => {
     }
     try {
       if (showLoading && !feed) setIsLoading(true);
-      const res = await api.get(`/classrooms/${id}/feed`, { params: { t: Date.now() } });
-      const data = typeof res.data === "string" ? { role: "member", announcements: [] } : res.data;
+      // Always silent + skipToast so background polling never surfaces transient error toasts
+      const res = await api.get(`/classrooms/${id}/feed`, {
+        params: { t: Date.now() },
+        silent: true,
+        skipToast: true,
+      });
+      const data = typeof res.data === "string" ? { role: "member", announcements: [], polls: [] } : res.data;
       if (data.isDeleted) {
         triggerDynamicHUD({
           type: "trash",
@@ -251,12 +354,32 @@ export const ClassroomFeedPage = () => {
         navigate("/classrooms", { replace: true });
         return;
       }
-      setFeed(data);
-      if (id) {
-        useCacheStore.getState().cacheClassroomFeed(id, data);
-      }
-    } catch (error) {
-      console.error("Failed to fetch feed:", error);
+      setFeed((prev) => {
+        // Preserve any poll with an in-flight optimistic vote so background polling never flickers it
+        let mergedData = data;
+        if (
+          prev &&
+          Array.isArray(prev.polls) &&
+          Array.isArray(data.polls) &&
+          inFlightPollIdsRef.current.size > 0
+        ) {
+          const localById = new Map(prev.polls.map((p) => [p.id, p]));
+          mergedData = {
+            ...data,
+            polls: data.polls.map((p: ClassroomPoll) =>
+              inFlightPollIdsRef.current.has(p.id) && localById.has(p.id)
+                ? localById.get(p.id)!
+                : p
+            ),
+          };
+        }
+        if (id) {
+          useCacheStore.getState().cacheClassroomFeed(id, mergedData);
+        }
+        return mergedData;
+      });
+    } catch {
+      // Silently fall back to cache on polling/network failures without showing any toast
       if (id) {
         const cached = useCacheStore.getState().classroom_feeds?.[id];
         if (cached) {
@@ -267,6 +390,43 @@ export const ClassroomFeedPage = () => {
       if (showLoading) setIsLoading(false);
     }
   };
+
+  // Live 1-second timer for open poll countdowns & immediate auto-sync upon expiry
+  const hasActiveDeadlines = useMemo(
+    () =>
+      Boolean(
+        feed?.polls?.some(
+          (p) => !p.isClosed && !p.stoppedAt && Boolean(p.closesAt)
+        )
+      ),
+    [feed?.polls]
+  );
+
+  useEffect(() => {
+    if (!hasActiveDeadlines) return;
+    const ticker = setInterval(() => {
+      const tickNow = Date.now();
+      setNowMs(tickNow);
+      const currentPolls = feed?.polls || [];
+      let shouldSyncExpired = false;
+      for (const p of currentPolls) {
+        if (
+          !p.isClosed &&
+          !p.stoppedAt &&
+          p.closesAt &&
+          new Date(p.closesAt).getTime() <= tickNow &&
+          !triggeredExpiryIdsRef.current.has(p.id)
+        ) {
+          triggeredExpiryIdsRef.current.add(p.id);
+          shouldSyncExpired = true;
+        }
+      }
+      if (shouldSyncExpired) {
+        fetchFeed(false);
+      }
+    }, 1000);
+    return () => clearInterval(ticker);
+  }, [hasActiveDeadlines, feed?.polls]);
 
   useEffect(() => {
     if (!id) return;
@@ -318,22 +478,31 @@ export const ClassroomFeedPage = () => {
     };
 
     const handleFocus = () => {
+      setNowMs(Date.now());
       fetchFeed(false);
     };
 
     const handleVisibility = () => {
       if (document.visibilityState === "visible") {
+        setNowMs(Date.now());
         fetchFeed(false);
       }
     };
 
+    const handleOnline = () => {
+      setNowMs(Date.now());
+      fetchFeed(false);
+    };
+
     window.addEventListener("fcm_classroom_broadcast", handleBroadcastReceived);
+    window.addEventListener("fcm_classroom_poll_updated", handleBroadcastReceived);
     window.addEventListener("fcm_classroom_access_updated", handleAccessUpdated);
     window.addEventListener("fcm_classroom_deleted", handleClassroomDeleted);
     window.addEventListener("focus", handleFocus);
+    window.addEventListener("online", handleOnline);
     document.addEventListener("visibilitychange", handleVisibility);
 
-    // Snappy 2.5s polling while active on screen and online for instant real-time message stream
+    // Snappy 2.5s silent polling while active on screen and online for live broadcasts & polls
     const interval = setInterval(() => {
       if (
         document.visibilityState === "visible" &&
@@ -346,9 +515,11 @@ export const ClassroomFeedPage = () => {
     return () => {
       unsubCache();
       window.removeEventListener("fcm_classroom_broadcast", handleBroadcastReceived);
+      window.removeEventListener("fcm_classroom_poll_updated", handleBroadcastReceived);
       window.removeEventListener("fcm_classroom_access_updated", handleAccessUpdated);
       window.removeEventListener("fcm_classroom_deleted", handleClassroomDeleted);
       window.removeEventListener("focus", handleFocus);
+      window.removeEventListener("online", handleOnline);
       document.removeEventListener("visibilitychange", handleVisibility);
       clearInterval(interval);
     };
@@ -647,6 +818,158 @@ export const ClassroomFeedPage = () => {
     }
   };
 
+  const handleVotePoll = async (poll: ClassroomPoll, nextOptionIds: string[]) => {
+    if (!id) return;
+    const prevPoll = poll;
+    const wasSelected = new Set(poll.myOptionIds);
+    const nowSelected = new Set(nextOptionIds);
+
+    // Optimistic local calculation for instant 0ms response
+    const hadVotedBefore = poll.myOptionIds.length > 0;
+    const hasVotedAfter = nextOptionIds.length > 0;
+    const nextUniqueVoters = Math.max(
+      0,
+      poll.uniqueVotersCount + (hasVotedAfter ? 1 : 0) - (hadVotedBefore ? 1 : 0)
+    );
+
+    const nextOptionsRaw = poll.options.map((opt) => {
+      const prevHas = wasSelected.has(opt.id);
+      const nextHas = nowSelected.has(opt.id);
+      const delta = (nextHas ? 1 : 0) - (prevHas ? 1 : 0);
+      const nextCount =
+        poll.resultsHidden || opt.voteCount === null
+          ? null
+          : Math.max(0, opt.voteCount + delta);
+
+      let nextPreview = opt.previewVoters || [];
+      if (!poll.resultsHidden && currentUser?.id) {
+        if (nextHas && !prevHas) {
+          const withoutMe = nextPreview.filter((v) => v.id !== currentUser.id);
+          nextPreview = [
+            {
+              id: currentUser.id,
+              name: currentUser.name || "You",
+              avatarUrl: (currentUser as any).avatarUrl || null,
+              rollNumber: currentUser.rollNumber || null,
+            },
+            ...withoutMe,
+          ].slice(0, 3);
+        } else if (!nextHas && prevHas) {
+          nextPreview = nextPreview.filter((v) => v.id !== currentUser.id);
+        }
+      }
+
+      return {
+        ...opt,
+        voteCount: nextCount,
+        isSelected: nextHas,
+        previewVoters: nextPreview,
+      };
+    });
+
+    const totalVotes = nextOptionsRaw.reduce(
+      (sum, o) => sum + (o.voteCount ?? 0),
+      0
+    );
+    const optimisticPoll: ClassroomPoll = {
+      ...poll,
+      myOptionIds: nextOptionIds,
+      hasVoted: hasVotedAfter,
+      uniqueVotersCount: nextUniqueVoters,
+      totalVotesCount: poll.resultsHidden ? nextUniqueVoters : totalVotes,
+      options: nextOptionsRaw.map((o) => ({
+        ...o,
+        percentage:
+          o.voteCount === null
+            ? null
+            : totalVotes > 0
+              ? Math.round((o.voteCount / totalVotes) * 100)
+              : 0,
+      })),
+    };
+
+    inFlightPollIdsRef.current.add(poll.id);
+    upsertPollInFeed(optimisticPoll);
+
+    try {
+      const res = await api.post<ClassroomPoll>(
+        `/classrooms/${id}/polls/${poll.id}/vote`,
+        { optionIds: nextOptionIds },
+        { silent: true, skipToast: true }
+      );
+      if (res.data?.id) {
+        upsertPollInFeed(res.data);
+      }
+    } catch (error: any) {
+      upsertPollInFeed(prevPoll);
+      const status = error?.response?.status;
+      if (status === 409) {
+        toast.info("Poll is closed");
+        fetchFeed(false);
+      } else if (status === 403) {
+        toast.error(error?.response?.data?.message || "Vote locked");
+      } else {
+        toast.error(error?.response?.data?.message || "Could not record vote");
+      }
+    } finally {
+      inFlightPollIdsRef.current.delete(poll.id);
+    }
+  };
+
+  const handleStopPoll = async (poll: ClassroomPoll) => {
+    if (!id) return;
+    try {
+      const res = await api.post<ClassroomPoll>(
+        `/classrooms/${id}/polls/${poll.id}/stop`
+      );
+      if (res.data?.id) {
+        upsertPollInFeed(res.data);
+      }
+      hapticSuccess();
+      triggerDynamicHUD({
+        type: "success",
+        label: "Poll Stopped",
+        subtitle: "Final results published",
+        durationMs: 3600,
+      });
+    } catch (error: any) {
+      toast.error(error?.response?.data?.message || "Failed to stop poll");
+    }
+  };
+
+  const handleDeletePoll = async (poll: ClassroomPoll) => {
+    if (!id) return;
+    try {
+      await api.delete(`/classrooms/${id}/polls/${poll.id}`);
+      setFeed((prev) => {
+        if (!prev) return prev;
+        const nextFeed = {
+          ...prev,
+          polls: (prev.polls || []).filter((p) => p.id !== poll.id),
+        };
+        useCacheStore.getState().cacheClassroomFeed(id, nextFeed);
+        return nextFeed;
+      });
+      if (inspectingPollId === poll.id) {
+        setInspectingPollId(null);
+      }
+      hapticMedium();
+      toast.success("Poll deleted");
+    } catch (error: any) {
+      toast.error(error?.response?.data?.message || "Failed to delete poll");
+    }
+  };
+
+  const handlePollCreated = (newPoll: ClassroomPoll) => {
+    upsertPollInFeed(newPoll);
+    triggerDynamicHUD({
+      type: "plane",
+      label: newPoll.isPinned ? "Urgent Poll Pinned" : "Poll Published",
+      subtitle: newPoll.question.slice(0, 60),
+      durationMs: 3800,
+    });
+  };
+
   if (isLoading) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center min-h-[60vh] gap-3">
@@ -773,19 +1096,32 @@ export const ClassroomFeedPage = () => {
                   )}
                 </div>
 
-                <div className="flex items-center gap-2">
-                  {/* Post Notice Button (Enabled for CR or authorized members) */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  {/* Create Poll & Post Notice Buttons (Enabled for CR or authorized members) */}
                   {feed.canPost || feed.role === "admin" ? (
-                    <button 
-                      onClick={() => {
-                        hapticMedium();
-                        setShowCreateModal(true);
-                      }}
-                      className="inline-flex items-center gap-1.5 text-xs font-semibold bg-neutral-900 dark:bg-white text-white dark:text-black hover:bg-neutral-800 dark:hover:bg-neutral-100 px-4 py-2 rounded-xl transition-all shadow-xs active:scale-[0.98] cursor-pointer"
-                    >
-                      <Plus className="w-4 h-4" />
-                      <span>Post Broadcast</span>
-                    </button>
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          hapticMedium();
+                          setShowCreatePollModal(true);
+                        }}
+                        className="inline-flex items-center gap-1.5 text-xs font-semibold border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-[#0c0d0e] hover:bg-neutral-100 dark:hover:bg-[#16181d] text-neutral-900 dark:text-slate-100 px-3.5 py-2 rounded-xl transition-all shadow-xs active:scale-[0.98] cursor-pointer"
+                      >
+                        <BarChart3 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                        <span>New Poll</span>
+                      </button>
+                      <button 
+                        onClick={() => {
+                          hapticMedium();
+                          setShowCreateModal(true);
+                        }}
+                        className="inline-flex items-center gap-1.5 text-xs font-semibold bg-neutral-900 dark:bg-slate-50 text-slate-50 dark:text-neutral-950 hover:bg-neutral-800 dark:hover:bg-neutral-200 px-4 py-2 rounded-xl transition-all shadow-xs active:scale-[0.98] cursor-pointer"
+                      >
+                        <Plus className="w-4 h-4" />
+                        <span>Post Broadcast</span>
+                      </button>
+                    </>
                   ) : (
                     <div 
                       title="Broadcasting in this classroom is restricted to Class Representatives and approved members"
@@ -883,32 +1219,76 @@ export const ClassroomFeedPage = () => {
         </div>
       )}
 
-      {/* Announcements Stream */}
+      {/* Broadcasts & Polls Stream */}
       <div className="space-y-4">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
           <h2 className="text-xs font-mono uppercase tracking-widest text-neutral-500 dark:text-neutral-400 flex items-center gap-2">
             <Megaphone className="w-3.5 h-3.5 text-neutral-700 dark:text-neutral-300" />
-            Section Broadcast Stream ({feed.announcements.length})
+            Section Broadcast Stream ({feed.announcements.length + orderedPolls.length})
           </h2>
+
+          {orderedPolls.length > 0 && (
+            <div className="inline-flex items-center gap-1 p-1 rounded-xl bg-neutral-100 dark:bg-[#121318] border border-neutral-200 dark:border-neutral-800">
+              {(
+                [
+                  { id: "all", label: `All (${feed.announcements.length + orderedPolls.length})` },
+                  { id: "polls", label: `Polls (${orderedPolls.length})` },
+                  { id: "announcements", label: `Notices (${feed.announcements.length})` },
+                ] as const
+              ).map((tab) => {
+                const active = streamFilter === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => {
+                      hapticLight();
+                      setStreamFilter(tab.id);
+                    }}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer ${
+                      active
+                        ? "bg-white dark:bg-[#1e2028] text-neutral-900 dark:text-slate-100 shadow-2xs border border-neutral-200 dark:border-neutral-700"
+                        : "text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-slate-100 border border-transparent"
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
 
-        {orderedAnnouncements.length === 0 ? (
-          <div className="p-10 text-center bg-white dark:bg-[#08080a] border border-neutral-200 dark:border-white/10 rounded-2xl space-y-3">
-            <div className="w-10 h-10 rounded-xl bg-neutral-100 dark:bg-white/5 border border-neutral-200 dark:border-white/10 flex items-center justify-center text-neutral-600 dark:text-neutral-400 mx-auto">
+        {orderedStream.length === 0 ? (
+          <div className="p-10 text-center bg-white dark:bg-[#08080a] border border-neutral-200 dark:border-neutral-800 rounded-2xl space-y-3">
+            <div className="w-10 h-10 rounded-xl bg-neutral-100 dark:bg-[#141519] border border-neutral-200 dark:border-neutral-800 flex items-center justify-center text-neutral-600 dark:text-neutral-400 mx-auto">
               <BellRing className="w-5 h-5 opacity-60" />
             </div>
-            <h3 className="text-sm font-bold text-foreground">No broadcasts yet</h3>
-            <p className="text-xs text-muted-foreground max-w-sm mx-auto leading-relaxed">
-              When your Class Representative or faculty post timetable revisions, lab notices, or notes, they will appear here.
-            </p>
+            <h3 className="text-sm font-bold text-foreground">
+              {streamFilter === "polls" ? "No polls yet" : "No broadcasts yet"}
+            </h3>
           </div>
         ) : (
           <div className="space-y-3">
-            {orderedAnnouncements.map((ann) => {
+            {orderedStream.map((entry) => {
+              if (entry.kind === "poll") {
+                return (
+                  <PollCard
+                    key={entry.id}
+                    poll={entry.poll}
+                    nowMs={nowMs}
+                    onVote={handleVotePoll}
+                    onStop={handleStopPoll}
+                    onDelete={handleDeletePoll}
+                    onViewVotes={(p) => setInspectingPollId(p.id)}
+                  />
+                );
+              }
+              const ann = entry.announcement;
               const authorName = ann.createdBy?.name || ann.author?.name || "Section Representative";
               const isHigh = ann.importance === "high" || ann.isPinned;
               const isMed = ann.importance === "medium";
-              const ageMs = Date.now() - new Date(ann.createdAt).getTime();
+              const ageMs = nowMs - new Date(ann.createdAt).getTime();
               const isActivePin = Boolean(isHigh && ageMs < URGENT_PIN_DURATION_MS);
               const hoursLeft = Math.max(1, Math.ceil((URGENT_PIN_DURATION_MS - ageMs) / (60 * 60 * 1000)));
               const contentText = ann.content || ann.body || "";
@@ -1479,6 +1859,29 @@ export const ClassroomFeedPage = () => {
             });
             fetchFeed(false);
           }}
+        />
+      )}
+
+      {/* Create Classroom Poll Modal */}
+      {showCreatePollModal && id && (
+        <CreatePollModal
+          isOpen={showCreatePollModal}
+          classroomId={id}
+          onClose={() => setShowCreatePollModal(false)}
+          onCreated={handlePollCreated}
+        />
+      )}
+
+      {/* Poll Votes & Results Details Modal */}
+      {Boolean(inspectingPoll) && id && (
+        <PollVotesModal
+          isOpen={Boolean(inspectingPoll)}
+          classroomId={id}
+          poll={inspectingPoll}
+          nowMs={nowMs}
+          onClose={() => setInspectingPollId(null)}
+          onStopPoll={handleStopPoll}
+          onPollSynced={upsertPollInFeed}
         />
       )}
 

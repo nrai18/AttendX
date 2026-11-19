@@ -53,7 +53,6 @@ const GlowingRing = ({ percentage }: { percentage: number }) => {
         color={color}
         anchorX="center"
         anchorY="middle"
-        font="https://fonts.gstatic.com/s/inter/v12/UcCO3FwrK3iLTeHuS_fvQtMwCp50KnMw2boKoduKmMEVuLyfAZ9hjp-Ek-_EeA.woff"
       >
         {`${percentage}%`}
       </Text>
@@ -74,6 +73,8 @@ const COLORS = ['#74313A', '#D35C6D', '#EED3CF', '#7E2430', '#A94A57', '#C48189'
 
 export const ReportView: React.FC = () => {
   const navigate = useNavigate();
+  const navigateRef = React.useRef(navigate);
+  navigateRef.current = navigate;
   const { subjects, activeSemesterId, events } = useAttendanceStore();
   const [logs, setLogs] = useState<any[]>(() => {
     return useCacheStore.getState().all_logs || useAttendanceStore.getState().historyLogs || [];
@@ -85,11 +86,11 @@ export const ReportView: React.FC = () => {
 
   useEffect(() => {
     const unregister = useBackHandlerStore.getState().register(() => {
-      navigate('/settings', { replace: true });
+      navigateRef.current('/settings', { replace: true });
       return true;
     });
     return () => unregister();
-  }, [navigate]);
+  }, []);
 
   useEffect(() => {
     // Round 2 Contextual Permission Check: prompt for notification access when viewing weekly & monthly summary

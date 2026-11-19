@@ -1,6 +1,4 @@
 import "dotenv/config";
-import fs from "fs";
-import path from "path";
 import { MemoryMonitor } from "./utils/memoryMonitor";
 
 // Checkpoint 1: Base server boot
@@ -11,9 +9,9 @@ import { CustomMlCopilotService } from "./services/custom_ml_copilot.service";
 import { CronService } from "./services/cron.service";
 import "./lib/firebase";
 import { redisClient } from "./lib/redis";
-import { PushNotificationService } from "./services/push_notification.service";
 import { loadDeviceMapping } from "./utils/deviceMapper";
 import { FailureLogRecorder } from "./utils/failureLogRecorder";
+import { scheduleVersionWatcher } from "./utils/versionWatcher";
 
 process.on("unhandledRejection", (reason: any) => {
   FailureLogRecorder.recordError(reason, null, { context: "process.unhandledRejection" });
@@ -55,33 +53,8 @@ async function bootstrap() {
     });
   }
 
-  // Automatically broadcast push notifications when a new version is deployed
-  setTimeout(async () => {
-    try {
-      if (redisClient.status !== "ready") return;
-      let currentVersion = "4.4.0";
-      try {
-        const pkgPath = path.resolve(process.cwd(), "package.json");
-        if (fs.existsSync(pkgPath)) {
-          const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
-          if (pkg?.version) currentVersion = String(pkg.version);
-        }
-      } catch {}
-
-      // Use Redis SETNX to guarantee only ONE server instance sends the notification
-      const acquired = await redisClient.setnx(`notified_update_${currentVersion}`, "1").catch(() => 0);
-      if (acquired === 1) {
-        console.log(`[Version Watcher] New version ${currentVersion} detected! Broadcasting update notification...`);
-        await PushNotificationService.broadcastMessage(
-          `AttendX Update ${currentVersion} is Live! 🚀`,
-          "Tap to download the update and see what's new!",
-          { type: "app_update", version: currentVersion }
-        );
-      }
-    } catch (error) {
-      console.error("[Version Watcher] Failed to check or send update notification:", error);
-    }
-  }, 10000);
+  // Only announce releases in Render production after verifying the matching GitHub Release + .apk asset exist
+  scheduleVersionWatcher();
 }
 
 bootstrap().catch((err) => {

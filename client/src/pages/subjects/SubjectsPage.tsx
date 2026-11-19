@@ -1418,7 +1418,7 @@ export const SubjectsPage = () => {
     confirmDeleteToast({
       title: "Delete Subject",
       description:
-        "Are you sure you want to remove this subject? Past attendance will be safely preserved.",
+        "Are you sure you want to remove this subject? Its timetable slots and attendance logs will also be deleted.",
       itemName: subjectToDelete?.name || statToDelete?.name,
       confirmLabel: "Delete Subject",
       onConfirm: async () => {
@@ -1603,9 +1603,7 @@ export const SubjectsPage = () => {
         fetchSeqRef.current += 1;
         if (!id.startsWith("temp")) {
           try {
-            const delRes = await api.delete(
-              `/subjects/${id}?preserveHistory=true`,
-            );
+            const delRes = await api.delete(`/subjects/${id}`);
             if (!delRes?.data?._queued) {
               await Promise.all([
                 fetchData(),

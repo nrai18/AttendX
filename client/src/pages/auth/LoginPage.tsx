@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useNavigate, useLocation, Link } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { useConfigStore } from "../../stores/configStore";
@@ -22,6 +22,8 @@ interface LoginPageProps {
 
 export const LoginPage: React.FC<LoginPageProps> = ({ initialForgotPassword = false }) => {
   const navigate = useNavigate();
+  const navigateRef = useRef(navigate);
+  navigateRef.current = navigate;
   const location = useLocation();
   const setAuth = useAuthStore((state) => state.setAuth);
 
@@ -61,7 +63,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ initialForgotPassword = fa
       }
       const isAuth = isUserAuthenticated();
       if (isAuth) {
-        navigate("/settings", { replace: true });
+        navigateRef.current("/settings", { replace: true });
         return true;
       }
       if (forgotPasswordMode || isForgotPath) {
@@ -73,13 +75,13 @@ export const LoginPage: React.FC<LoginPageProps> = ({ initialForgotPassword = fa
         setNewPassword("");
         setConfirmPassword("");
         setError(null);
-        navigate("/login", { replace: true });
+        navigateRef.current("/login", { replace: true });
         return true;
       }
       return false;
     });
     return () => unregister();
-  }, [forgotPasswordMode, isForgotPath, loading, navigate]);
+  }, [forgotPasswordMode, isForgotPath, loading]);
   const [resetEmailSent, setResetEmailSent] = useState(false);
   const [resetToken, setResetToken] = useState("");
   const [otp, setOtp] = useState("");

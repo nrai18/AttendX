@@ -127,7 +127,7 @@ export const NativeUpdateSheet: React.FC<Props> = ({
               </button>
               <div className="flex items-center justify-center gap-1.5 text-[11px] text-slate-600 dark:text-zinc-400 font-mono">
                 <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                <span>SHA-256 Verified • Package Ready</span>
+                <span>Package Verified • Ready to Install</span>
               </div>
             </div>
           ) : phase === "installing" ? (

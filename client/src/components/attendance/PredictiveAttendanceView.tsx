@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   Sparkles,
   TrendingUp,
@@ -56,6 +56,8 @@ export const PredictiveAttendanceView: React.FC<PredictiveAttendanceViewProps> =
   compact = false,
 }) => {
   const navigate = useNavigate();
+  const navigateRef = useRef(navigate);
+  navigateRef.current = navigate;
   const user = useAuthStore((state) => state.user);
   const subjects = useAttendanceStore((state) => state.subjects) as unknown as SubjectStat[];
   const safeSubjects = Array.isArray(subjects) ? subjects : [];
@@ -224,13 +226,13 @@ export const PredictiveAttendanceView: React.FC<PredictiveAttendanceViewProps> =
         return true;
       }
       if (!compact) {
-        navigate("/subjects", { replace: true });
+        navigateRef.current("/subjects", { replace: true });
         return true;
       }
       return false;
     });
     return () => unregister();
-  }, [breakdownModalSubject, isCreateSemesterOpen, isSelectingDates, hasUnsavedBounds, simulationBounds, compact, navigate]);
+  }, [breakdownModalSubject, isCreateSemesterOpen, isSelectingDates, hasUnsavedBounds, simulationBounds, compact]);
 
   const openModal = (sub: any) => {
     let futureItems = [...(sub.futureBreakdown || [])];

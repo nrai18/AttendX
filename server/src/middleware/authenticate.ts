@@ -11,28 +11,60 @@ export type AuthenticatedRequest = Request & {
 
 const sessionPromises = new Map<string, Promise<boolean>>();
 const validSessions = new Map<string, { userId: string; expiresAt: number }>();
-const revokedSessions = new Set<string>();
+const revokedSessions = new Map<string, number>();
 const SESSION_CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes (revocations call invalidateSessionCache immediately)
+const REVOKED_SESSION_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours (well beyond access token lifetime)
+const MAX_SESSION_CACHE_ENTRIES = 5000;
+
+function pruneSessionCaches(now = Date.now()) {
+  if (validSessions.size > MAX_SESSION_CACHE_ENTRIES) {
+    for (const [sid, entry] of validSessions.entries()) {
+      if (entry.expiresAt <= now) {
+        validSessions.delete(sid);
+      }
+    }
+    while (validSessions.size > MAX_SESSION_CACHE_ENTRIES) {
+      const oldestKey = validSessions.keys().next().value;
+      if (!oldestKey) break;
+      validSessions.delete(oldestKey);
+    }
+  }
+  if (revokedSessions.size > MAX_SESSION_CACHE_ENTRIES) {
+    for (const [sid, expiresAt] of revokedSessions.entries()) {
+      if (expiresAt <= now) {
+        revokedSessions.delete(sid);
+      }
+    }
+    while (revokedSessions.size > MAX_SESSION_CACHE_ENTRIES) {
+      const oldestKey = revokedSessions.keys().next().value;
+      if (!oldestKey) break;
+      revokedSessions.delete(oldestKey);
+    }
+  }
+}
 
 export function clearSessionRevocation(sessionId: string) {
   revokedSessions.delete(sessionId);
 }
 
 export function invalidateSessionCache(sessionId?: string, userId?: string, keepSessionId?: string) {
+  const now = Date.now();
+  const revokedUntil = now + REVOKED_SESSION_TTL_MS;
   if (sessionId) {
     validSessions.delete(sessionId);
     sessionPromises.delete(sessionId);
-    revokedSessions.add(sessionId);
+    revokedSessions.set(sessionId, revokedUntil);
   }
   if (userId) {
     for (const [sid, entry] of validSessions.entries()) {
       if (entry.userId === userId && sid !== keepSessionId) {
         validSessions.delete(sid);
         sessionPromises.delete(sid);
-        revokedSessions.add(sid);
+        revokedSessions.set(sid, revokedUntil);
       }
     }
   }
+  pruneSessionCaches(now);
 }
 
 const revalidateSessionInBackground = (sid: string): Promise<boolean> => {
@@ -46,16 +78,19 @@ const revalidateSessionInBackground = (sid: string): Promise<boolean> => {
         where: { id: sid },
         select: { id: true, userId: true },
       });
+      const now = Date.now();
       if (!session) {
         validSessions.delete(sid);
-        revokedSessions.add(sid);
+        revokedSessions.set(sid, now + REVOKED_SESSION_TTL_MS);
+        pruneSessionCaches(now);
         return false;
       }
       revokedSessions.delete(sid);
       validSessions.set(sid, {
         userId: session.userId,
-        expiresAt: Date.now() + SESSION_CACHE_TTL_MS,
+        expiresAt: now + SESSION_CACHE_TTL_MS,
       });
+      pruneSessionCaches(now);
       return true;
     } catch (dbErr) {
       console.warn("[authenticate] Transient DB error checking session, allowing valid JWT:", (dbErr as any)?.message);
@@ -92,8 +127,12 @@ export const authenticate: RequestHandler = async (req, res, next) => {
 
     if (payload.sessionId) {
       const sid = payload.sessionId;
-      if (revokedSessions.has(sid)) {
-        return res.status(401).json({ message: "Session has been revoked" });
+      const revokedUntil = revokedSessions.get(sid);
+      if (revokedUntil !== undefined) {
+        if (revokedUntil > Date.now()) {
+          return res.status(401).json({ message: "Session has been revoked" });
+        }
+        revokedSessions.delete(sid);
       }
       const cached = validSessions.get(sid);
       if (cached) {
@@ -102,20 +141,17 @@ export const authenticate: RequestHandler = async (req, res, next) => {
           revalidateSessionInBackground(sid).catch(() => {});
         }
       } else {
-        // Cold session check with 650ms race cap so a slow DB handshake never stalls API calls for 30s
+        // Cold session check with 650ms race cap so a slow DB handshake never stalls API calls for 30s.
+        // Do NOT populate validSessions on timeout; let the in-flight DB check settle validSessions/revokedSessions.
+        let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
         const isSessionValid = await Promise.race([
           revalidateSessionInBackground(sid),
-          new Promise<boolean>((resolve) =>
-            setTimeout(() => {
-              // Optimistically cache for 60s while background DB check finishes
-              validSessions.set(sid, {
-                userId: payload.userId,
-                expiresAt: Date.now() + 60 * 1000,
-              });
-              resolve(true);
-            }, 650)
-          ),
-        ]);
+          new Promise<boolean>((resolve) => {
+            timeoutHandle = setTimeout(() => resolve(true), 650);
+          }),
+        ]).finally(() => {
+          if (timeoutHandle) clearTimeout(timeoutHandle);
+        });
         if (!isSessionValid) {
           return res.status(401).json({ message: "Session has been revoked" });
         }

@@ -46,6 +46,15 @@ router.post("/", authenticate, async (req, res) => {
         return res.status(403).json({ error: "Not a member of this classroom" });
       }
     }
+    if (subjectId) {
+      const ownedSubject = await prisma.subject.findFirst({
+        where: { id: subjectId, userId },
+        select: { id: true },
+      });
+      if (!ownedSubject) {
+        return res.status(403).json({ error: "Subject does not belong to user" });
+      }
+    }
     const d = new Date(deadline);
     const validDeadline = !isNaN(d.getTime()) ? d : new Date();
     const assignment = await prisma.assignment.create({
@@ -83,17 +92,35 @@ const updateHandler = async (req: any, res: any) => {
     }
 
     const { title, description, deadline, priority, subjectId } = req.body;
+    let parsedDeadline: Date | undefined;
+    if (deadline !== undefined) {
+      const d = new Date(deadline);
+      if (isNaN(d.getTime())) {
+        return res.status(400).json({ error: "Invalid deadline date" });
+      }
+      parsedDeadline = d;
+    }
+    if (subjectId !== undefined && subjectId !== null) {
+      const ownedSubject = await prisma.subject.findFirst({
+        where: { id: subjectId, userId },
+        select: { id: true },
+      });
+      if (!ownedSubject) {
+        return res.status(403).json({ error: "Subject does not belong to user" });
+      }
+    }
+
     const assignment = await prisma.assignment.update({
       where: { id },
       data: {
         ...(title !== undefined && { title }),
         ...(description !== undefined && { description }),
-        ...(deadline !== undefined && { deadline: new Date(deadline) }),
+        ...(parsedDeadline !== undefined && { deadline: parsedDeadline }),
         ...(priority !== undefined && { priority }),
         ...(subjectId !== undefined && { subjectId }),
       },
       include: {
-        completions: true,
+        completions: { where: { userId } },
         subject: true,
       },
     });
@@ -111,13 +138,22 @@ router.delete("/:id", authenticate, async (req, res) => {
   try {
     const id = req.params.id as string;
     const userId = (req as any).user.userId;
-    await prisma.assignmentCompletion.deleteMany({
-      where: { assignmentId: id },
-    });
-    const result = await prisma.assignment.deleteMany({
+    const existing = await prisma.assignment.findFirst({
       where: { id, userId },
+      select: { id: true },
     });
-    res.json({ success: true, count: result.count });
+    if (!existing) {
+      return res.status(404).json({ error: "Assignment not found" });
+    }
+    await prisma.$transaction([
+      prisma.assignmentCompletion.deleteMany({
+        where: { assignmentId: existing.id },
+      }),
+      prisma.assignment.delete({
+        where: { id: existing.id },
+      }),
+    ]);
+    res.json({ success: true, count: 1 });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: "Failed to delete assignment" });

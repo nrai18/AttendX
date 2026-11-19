@@ -5,14 +5,18 @@ import { CacheService } from "../services/cache.service";
 
 export class SubjectController {
   static async list(req: AuthenticatedRequest, res: Response) {
-    const semesterId = req.query.semesterId as string | undefined;
-    const userId = req.user!.userId;
-    const subjects = await CacheService.getOrSet(
-      userId,
-      `subjects:${semesterId || "all"}`,
-      () => SubjectService.listSubjects(userId, semesterId)
-    );
-    res.json(subjects);
+    try {
+      const semesterId = req.query.semesterId as string | undefined;
+      const userId = req.user!.userId;
+      const subjects = await CacheService.getOrSet(
+        userId,
+        `subjects:${semesterId || "all"}`,
+        () => SubjectService.listSubjects(userId, semesterId)
+      );
+      res.json(subjects);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || "Failed to list subjects" });
+    }
   }
 
   static async create(req: AuthenticatedRequest, res: Response) {
@@ -26,9 +30,14 @@ export class SubjectController {
   }
 
   static async update(req: AuthenticatedRequest, res: Response) {
-    const updated = await SubjectService.updateSubject(req.user!.userId, String(req.params.id), req.body);
-    await CacheService.invalidateUser(req.user!.userId);
-    res.json(updated);
+    try {
+      const updated = await SubjectService.updateSubject(req.user!.userId, String(req.params.id), req.body);
+      await CacheService.invalidateUser(req.user!.userId);
+      res.json(updated);
+    } catch (error: any) {
+      const status = error.message === "Subject not found" ? 404 : 400;
+      res.status(status).json({ error: error.message || "Failed to update subject" });
+    }
   }
 
   static async merge(req: AuthenticatedRequest, res: Response) {
@@ -46,9 +55,13 @@ export class SubjectController {
   }
 
   static async remove(req: AuthenticatedRequest, res: Response) {
-    const preserveHistory = req.query.preserveHistory !== "false";
-    await SubjectService.deleteSubject(req.user!.userId, String(req.params.id), preserveHistory);
-    await CacheService.invalidateUser(req.user!.userId);
-    res.json({ message: "Subject removed successfully", preservedHistory: preserveHistory });
+    try {
+      await SubjectService.deleteSubject(req.user!.userId, String(req.params.id));
+      await CacheService.invalidateUser(req.user!.userId);
+      // Attendance has a required FK to Subject with onDelete: Cascade, so deleting a subject removes its logs.
+      res.json({ message: "Subject removed successfully", preservedHistory: false });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || "Failed to remove subject" });
+    }
   }
 }

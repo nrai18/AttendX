@@ -22,6 +22,7 @@ import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.TimeZone;
 
 public class AttendXMessagingService extends MessagingService {
     private static final String TAG = "AttendXMessagingService";
@@ -82,13 +83,13 @@ public class AttendXMessagingService extends MessagingService {
 
                 String classroomId = data.get("classroomId");
                 if (classroomId == null) classroomId = data.get("classroom_id");
-                if (classroomId == null) classroomId = data.get("id");
 
                 if (classroomId != null && !classroomId.isEmpty()) {
                     JSONObject announcement = new JSONObject();
                     String id = data.get("announcementId");
+                    if (id == null) id = data.get("announcement_id");
                     if (id == null) id = data.get("id");
-                    if (id == null) id = "fcm-" + System.currentTimeMillis();
+                    if (id == null || id.equals(classroomId)) id = "fcm-" + System.currentTimeMillis();
                     announcement.put("id", id);
 
                     String title = data.get("title");
@@ -111,6 +112,7 @@ public class AttendXMessagingService extends MessagingService {
                     String createdAt = data.get("createdAt");
                     if (createdAt == null) {
                         SimpleDateFormat isoFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US);
+                        isoFormat.setTimeZone(TimeZone.getTimeZone("UTC"));
                         createdAt = isoFormat.format(new Date());
                     }
                     announcement.put("createdAt", createdAt);

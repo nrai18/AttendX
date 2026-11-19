@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Capacitor } from "@capacitor/core";
@@ -55,6 +55,9 @@ interface Classroom {
 
 export const ClassroomsPage = () => {
   const navigate = useNavigate();
+  const navigateRef = useRef(navigate);
+  navigateRef.current = navigate;
+  const handledJoinCodeRef = useRef<string | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
   const cachedClassrooms = useCacheStore.getState().classrooms;
   const [classrooms, setClassrooms] = useState<Classroom[]>(
@@ -94,7 +97,10 @@ export const ClassroomsPage = () => {
       if (!silent && classrooms.length === 0) {
         setIsLoading(true);
       }
-      const res = await api.get("/classrooms");
+      const res = await api.get("/classrooms", {
+        silent: silent,
+        skipToast: silent,
+      });
       const list = Array.isArray(res.data) ? res.data : [];
       setClassrooms(list);
       useCacheStore.getState().cacheClassrooms(list);
@@ -166,28 +172,46 @@ export const ClassroomsPage = () => {
 
   useEffect(() => {
     const joinParam = searchParams.get("join");
-    if (!joinParam) return;
+    if (!joinParam) {
+      handledJoinCodeRef.current = null;
+      return;
+    }
     const normalizedCode = joinParam.trim().toUpperCase().slice(0, 6);
+    if (!normalizedCode) {
+      const nextParams = new URLSearchParams(searchParams);
+      nextParams.delete("join");
+      setSearchParams(nextParams, { replace: true });
+      return;
+    }
+
+    // Prevent processing the same join code more than once across re-renders
+    if (handledJoinCodeRef.current === normalizedCode) return;
+
+    const existing = classrooms.find(
+      (c) => !c.isDeleted && c.joinCode?.toUpperCase() === normalizedCode
+    );
+
+    if (existing) {
+      handledJoinCodeRef.current = normalizedCode;
+      hapticLight();
+      toast.info(`Opening ${existing.name}`);
+      // Atomically replace /classrooms?join=CODE with /classrooms/:id (no competing setSearchParams call)
+      navigateRef.current(`/classrooms/${existing.id}`, { replace: true });
+      return;
+    }
+
+    // Cold-start race guard: wait for initial classroom fetch to settle before opening the Join modal
+    if (isLoading) return;
+
+    handledJoinCodeRef.current = normalizedCode;
     const nextParams = new URLSearchParams(searchParams);
     nextParams.delete("join");
     setSearchParams(nextParams, { replace: true });
-
-    if (normalizedCode) {
-      const existing = classrooms.find(
-        (c) => !c.isDeleted && c.joinCode?.toUpperCase() === normalizedCode
-      );
-      if (existing) {
-        hapticLight();
-        toast.info(`Opening ${existing.name}`);
-        navigate(`/classrooms/${existing.id}`);
-      } else {
-        hapticSelection();
-        setJoinCodeInput(normalizedCode);
-        setInlineJoinCode(normalizedCode);
-        setShowJoinModal(true);
-      }
-    }
-  }, [searchParams, classrooms, navigate, setSearchParams]);
+    hapticSelection();
+    setJoinCodeInput(normalizedCode);
+    setInlineJoinCode(normalizedCode);
+    setShowJoinModal(true);
+  }, [searchParams, classrooms, isLoading, setSearchParams]);
 
   useEffect(() => {
     const unregister = useBackHandlerStore.getState().register(() => {

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import {
@@ -18,6 +18,7 @@ import {
   PermissionService,
 } from "../../services/PermissionService";
 import { useScrollLock } from "../../hooks/useScrollLock";
+import { useBackHandlerStore } from "../../stores/backHandlerStore";
 import { hapticLight, hapticSuccess } from "../../utils/haptics";
 
 interface Props {
@@ -68,11 +69,42 @@ export const PermissionPromptModal: React.FC<Props> = ({ isOpen, onClose }) => {
     PermissionService.getCachedSnapshot(),
   );
   const [requestingKey, setRequestingKey] = useState<AppPermissionKey | null>(null);
+  const openedWithMissingRequiredRef = useRef(false);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
+  // Close modal cleanly on Android hardware back button
   useEffect(() => {
     if (!isOpen) return;
-    PermissionService.getSnapshot().then(setSnapshot);
-    const unsub = PermissionService.subscribe(setSnapshot);
+    const unregister = useBackHandlerStore.getState().register(() => {
+      onCloseRef.current();
+      return true;
+    });
+    return unregister;
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      openedWithMissingRequiredRef.current = false;
+      return;
+    }
+
+    const initialSnap = PermissionService.getCachedSnapshot();
+    openedWithMissingRequiredRef.current = PERMISSION_ITEMS.some(
+      (item) => item.required && !initialSnap[item.key],
+    );
+
+    let disposed = false;
+    PermissionService.getSnapshot().then((fresh) => {
+      if (disposed) return;
+      setSnapshot(fresh);
+      if (PERMISSION_ITEMS.some((item) => item.required && !fresh[item.key])) {
+        openedWithMissingRequiredRef.current = true;
+      }
+    });
+    const unsub = PermissionService.subscribe((next) => {
+      if (!disposed) setSnapshot(next);
+    });
 
     const refresh = () => {
       PermissionService.getSnapshot();
@@ -89,12 +121,17 @@ export const PermissionPromptModal: React.FC<Props> = ({ isOpen, onClose }) => {
           }),
         )
         .then((h) => {
-          appHandle = h;
+          if (disposed) {
+            h?.remove?.();
+          } else {
+            appHandle = h;
+          }
         })
         .catch(() => {});
     }
 
     return () => {
+      disposed = true;
       unsub();
       window.removeEventListener("focus", refresh);
       document.removeEventListener("visibilitychange", refresh);
@@ -108,14 +145,17 @@ export const PermissionPromptModal: React.FC<Props> = ({ isOpen, onClose }) => {
   const allRequiredGranted = missingRequired.length === 0;
 
   useEffect(() => {
-    if (isOpen && allRequiredGranted) {
+    // Only auto-dismiss if the modal opened with missing required permissions that were just satisfied.
+    // Prevents prematurely closing when the user manually opens it to enable optional DND access.
+    if (isOpen && allRequiredGranted && openedWithMissingRequiredRef.current) {
+      openedWithMissingRequiredRef.current = false;
       hapticSuccess();
       const timer = setTimeout(() => {
-        onClose();
+        onCloseRef.current();
       }, 900);
       return () => clearTimeout(timer);
     }
-  }, [isOpen, allRequiredGranted, onClose]);
+  }, [isOpen, allRequiredGranted]);
 
   const handleRequest = async (key: AppPermissionKey) => {
     hapticLight();

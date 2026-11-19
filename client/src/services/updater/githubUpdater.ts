@@ -1,5 +1,6 @@
 import { GitHubRelease, NativeUpdateInfo } from "./updateTypes";
 import { nativeUpdater } from "./nativeUpdater.ts";
+import { stripShaFromChangelog } from "../../components/updates/UpdateChangelog";
 
 const GITHUB_OWNER = import.meta.env.VITE_GITHUB_OWNER || "nrai18";
 const GITHUB_REPO = import.meta.env.VITE_GITHUB_REPO || "AttendX";
@@ -109,13 +110,17 @@ export class GitHubUpdater {
     );
     if (!apkAsset) return { info: null, status: "up-to-date" };
 
-    // Null-safe SHA-256 extraction
+    // Null-safe SHA-256 extraction for internal verification (stripped from UI changelog below)
     const bodyText = typeof release.body === "string" ? release.body : "";
     let sha256: string | undefined;
-    const shaMatch = bodyText.match(/sha256[:\s]+([a-fA-F0-9]{64})/i);
+    const shaMatch =
+      bodyText.match(/(?:sha[- ]?256|checksum)[^a-f0-9\n]{0,30}([a-fA-F0-9]{64})/i) ||
+      bodyText.match(/\b([a-fA-F0-9]{64})\b/);
     if (shaMatch) {
       sha256 = shaMatch[1].toLowerCase();
     }
+
+    const cleanChangelog = stripShaFromChangelog(bodyText);
 
     const releaseVersion = release.tag_name.replace(/^v/i, "").trim();
     const installedVersion = (appInfo.versionName || "").replace(/^v/i, "").trim();
@@ -134,7 +139,7 @@ export class GitHubUpdater {
         versionName: releaseVersion,
         releaseTitle: release.name || `AttendX ${release.tag_name}`,
         changelogMarkdown:
-          bodyText || "Performance improvements and maintenance fixes.",
+          cleanChangelog || "Performance improvements and maintenance fixes.",
         publishedAt: release.published_at,
         apkUrl: apkAsset.browser_download_url,
         apkSizeMb: Number((apkAsset.size / (1024 * 1024)).toFixed(1)),

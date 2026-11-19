@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { api } from '../lib/api';
+import { sanitizeDownloadUrl } from '../utils/url';
 
 interface ConfigState {
   wsUrl: string | null;
@@ -27,7 +28,7 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
           wsUrl: data.wsUrl,
           mlApiUrl: data.mlApiUrl,
           googleClientId: data.googleClientId,
-          appDownloadLink: data.appDownloadLink
+          appDownloadLink: sanitizeDownloadUrl(data.appDownloadLink)
         });
       } catch (err) {
         console.warn("[ConfigStore] Using fallback config due to network timeout/unreachable backend");

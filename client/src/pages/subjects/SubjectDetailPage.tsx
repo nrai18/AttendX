@@ -71,6 +71,8 @@ interface SubjectHeaderStats {
 export const SubjectDetailPage = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const navigateRef = useRef(navigate);
+  navigateRef.current = navigate;
 
   const isOverall = !id || id === "overall" || id === "all";
   const querySubject = isOverall ? "all" : id;
@@ -225,11 +227,11 @@ export const SubjectDetailPage = () => {
         handleDiscardEdits();
         return true;
       }
-      navigate("/subjects", { replace: true });
+      navigateRef.current("/subjects", { replace: true });
       return true;
     });
     return () => unregister();
-  }, [showStatusMenu, showSubjectMenu, showDateMenu, isEditMode, navigate]);
+  }, [showStatusMenu, showSubjectMenu, showDateMenu, isEditMode]);
 
   const overlayPendingLogsAndStats = (
     inputLogs: AttendanceLogItem[],

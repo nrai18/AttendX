@@ -6,6 +6,7 @@ import { useAuthStore } from "../../stores/authStore";
 import { useThemeStore } from "../../stores/themeStore";
 import { useBackHandlerStore } from "../../stores/backHandlerStore";
 import { useConfigStore } from "../../stores/configStore";
+import { sanitizeDownloadUrl } from "../../utils/url";
 import { AppDownloadBanner } from "../../components/marketing/AppDownloadBanner";
 
 export const LandingPage: React.FC = () => {
@@ -33,7 +34,9 @@ export const LandingPage: React.FC = () => {
   const [copiedLink, setCopiedLink] = useState(false);
 
   const dynamicDownloadLink = useConfigStore((state) => state.appDownloadLink);
-  const appDownloadUrl = dynamicDownloadLink || import.meta.env.VITE_APP_DOWNLOAD_LINK || "https://github.com/nrai18/AttendX/releases/latest/download/AttendX.apk";
+  const appDownloadUrl = sanitizeDownloadUrl(
+    dynamicDownloadLink || import.meta.env.VITE_APP_DOWNLOAD_LINK
+  );
 
   const getDynamicVersion = (url: string | null): string => {
     if (!url) return "Latest";

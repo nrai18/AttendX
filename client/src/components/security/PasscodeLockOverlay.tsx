@@ -3,7 +3,8 @@ import { createPortal } from "react-dom";
 import { Capacitor } from "@capacitor/core";
 import { Fingerprint, Lock, LogOut, ShieldCheck } from "lucide-react";
 import { useAppLockStore } from "../../stores/appLockStore";
-import { useAuthStore } from "../../stores/authStore";
+import { useAuthStore, isUserAuthenticated } from "../../stores/authStore";
+import { useBackHandlerStore } from "../../stores/backHandlerStore";
 import { biometricService } from "../../services/biometricService";
 import { PasscodeKeypad, PasscodePinBoxes } from "./PasscodeKeypad";
 import { useScrollLock } from "../../hooks/useScrollLock";
@@ -23,14 +24,26 @@ export const PasscodeLockOverlay: React.FC = () => {
   } = useAppLockStore();
   const { isAuthenticated, user, logout } = useAuthStore();
 
+  const isOffline = typeof navigator !== "undefined" && !navigator.onLine;
+  const hasSessionAccess = Boolean(
+    isAuthenticated || (isOffline && user?.id) || isUserAuthenticated(),
+  );
+
   const shouldShow = Boolean(
     Capacitor.isNativePlatform() &&
       _hasHydrated &&
-      isAuthenticated &&
+      hasSessionAccess &&
       isEnabled &&
       isLocked,
   );
   useScrollLock(shouldShow);
+
+  // Intercept Android hardware back while locked so routes/modals underneath cannot be interacted with
+  useEffect(() => {
+    if (!shouldShow) return;
+    const unregister = useBackHandlerStore.getState().register(() => true);
+    return unregister;
+  }, [shouldShow]);
 
   const [pin, setPin] = useState("");
   const [isError, setIsError] = useState(false);
@@ -57,6 +70,8 @@ export const PasscodeLockOverlay: React.FC = () => {
   }, [shouldShow, lockoutUntil]);
 
   const triggerBiometricUnlock = useCallback(async () => {
+    const activeLockout = useAppLockStore.getState().lockoutUntil;
+    if (activeLockout && Date.now() < activeLockout) return;
     if (!biometricService.isNativeSupported()) return;
     setBiometricPromptActive(true);
     try {
@@ -93,8 +108,12 @@ export const PasscodeLockOverlay: React.FC = () => {
       autoPromptedRef.current = false;
       return;
     }
-
     setStatusText("Enter your 4-digit passcode");
+  }, [shouldShow]);
+
+  useEffect(() => {
+    if (!shouldShow) return;
+
     let cancelled = false;
     biometricService.isAvailable().then((avail) => {
       if (cancelled) return;
@@ -124,13 +143,14 @@ export const PasscodeLockOverlay: React.FC = () => {
 
       if (next.length === 4) {
         setTimeout(() => {
-          const ok = verifyPin(next);
+          const ok = verifyPin(next, { deferUnlock: true });
           if (ok) {
             hapticSuccess();
             SoundFX.playPasscodeSuccessSound();
             setIsSuccess(true);
             setStatusText("Unlocked");
             setTimeout(() => {
+              unlockWithBiometric();
               setPin("");
               setIsSuccess(false);
             }, 150);
@@ -147,7 +167,7 @@ export const PasscodeLockOverlay: React.FC = () => {
         }, 120);
       }
     },
-    [cooldownSec, isSuccess, pin, verifyPin],
+    [cooldownSec, isSuccess, pin, unlockWithBiometric, verifyPin],
   );
 
   const handleBackspace = useCallback(() => {
@@ -237,8 +257,9 @@ export const PasscodeLockOverlay: React.FC = () => {
         {biometricAvailable && isFingerprintEnabled && (
           <button
             type="button"
+            disabled={cooldownSec > 0 || isSuccess}
             onClick={triggerBiometricUnlock}
-            className="mt-1 inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:underline cursor-pointer"
+            className="mt-1 inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:underline cursor-pointer disabled:opacity-40 disabled:pointer-events-none"
           >
             <Fingerprint className="w-4 h-4" />
             <span>Tap for Fingerprint Unlock</span>

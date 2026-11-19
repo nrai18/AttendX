@@ -49,24 +49,27 @@ export class DocumentController {
         return res.status(404).json({ message: 'Document not found' });
       }
 
+      const safeDisplayName = encodeURIComponent(String(doc.name || 'document').replace(/[\r\n]/g, ''));
+
       // Return database stored binary buffer with explicit Content-Length
       if (doc.fileData) {
         const binaryBuffer = Buffer.from(doc.fileData);
-        res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(doc.name)}"`);
+        res.setHeader('Content-Disposition', `attachment; filename="${safeDisplayName}"`);
         res.setHeader('Content-Type', doc.mimeType);
         res.setHeader('Content-Length', binaryBuffer.length);
         return res.end(binaryBuffer);
       }
 
-      // Fallback to disk storage (legacy)
-      const filename = doc.fileUrl.replace('/uploads/', '');
-      const filePath = path.join(process.cwd(), 'uploads', filename);
+      // Fallback to disk storage (legacy) with strict basename + directory containment check
+      const uploadsDir = path.resolve(process.cwd(), 'uploads');
+      const safeFilename = path.basename(String(doc.fileUrl || '').replace(/^\/+uploads\/+/, ''));
+      const filePath = path.resolve(uploadsDir, safeFilename);
 
-      if (!fs.existsSync(filePath)) {
+      if (!safeFilename || !filePath.startsWith(uploadsDir + path.sep) || !fs.existsSync(filePath)) {
         return res.status(404).json({ message: 'File not found on disk or database' });
       }
 
-      res.setHeader('Content-Disposition', `attachment; filename="${doc.name}"`);
+      res.setHeader('Content-Disposition', `attachment; filename="${safeDisplayName}"`);
       res.setHeader('Content-Type', doc.mimeType);
       
       const fileStream = fs.createReadStream(filePath);
@@ -92,15 +95,18 @@ export class DocumentController {
       await prisma.storedDocument.delete({ where: { id: (req.params.id as string) } });
       await CacheService.del(req.user.userId, 'documents:list').catch(() => {});
       
-      // Attempt to delete physical file if it's stored in /uploads
+      // Attempt to delete physical file if it's stored in /uploads (with strict path containment)
       if (doc.fileUrl.startsWith('/uploads/')) {
         try {
           const fsPromises = require('fs/promises');
-          const pathModule = require('path');
-          const filePath = pathModule.join(process.cwd(), doc.fileUrl);
-          await fsPromises.unlink(filePath).catch((e: any) => {
-            if (e.code !== 'ENOENT') console.error("Failed to delete physical file:", e);
-          });
+          const uploadsDir = path.resolve(process.cwd(), 'uploads');
+          const safeFilename = path.basename(doc.fileUrl.replace(/^\/+uploads\/+/, ''));
+          const filePath = path.resolve(uploadsDir, safeFilename);
+          if (safeFilename && filePath.startsWith(uploadsDir + path.sep)) {
+            await fsPromises.unlink(filePath).catch((e: any) => {
+              if (e.code !== 'ENOENT') console.error("Failed to delete physical file:", e);
+            });
+          }
         } catch (fileErr: any) {
           if (fileErr.code !== 'ENOENT') {
             console.error("Failed to delete physical file:", fileErr);

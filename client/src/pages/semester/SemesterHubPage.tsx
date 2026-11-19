@@ -189,6 +189,8 @@ const resolveInitialActiveSemester = (userObj: any): Semester | null => {
 
 export const SemesterHubPage = () => {
   const navigate = useNavigate();
+  const navigateRef = useRef(navigate);
+  navigateRef.current = navigate;
   const [searchParams, setSearchParams] = useSearchParams();
   const { tab: routeTab } = useParams<{ tab: string }>();
   const defaultTab = (routeTab || searchParams.get("tab") as any) || "timeline";
@@ -344,15 +346,15 @@ export const SemesterHubPage = () => {
       if (activeTab !== "timeline") {
         setActiveTab("timeline");
         if (routeTab || searchParams.get("tab")) {
-          navigate("/semester", { replace: true });
+          navigateRef.current("/semester", { replace: true });
         }
         return true;
       }
-      navigate("/subjects", { replace: true });
+      navigateRef.current("/subjects", { replace: true });
       return true;
     });
     return () => unregister();
-  }, [isTransitionModalOpen, isImportModalOpen, isAddEventOpen, isWizardOpen, isCreateSemesterOpen, activeTab, routeTab, searchParams, navigate, selectedMobileDate]);
+  }, [isTransitionModalOpen, isImportModalOpen, isAddEventOpen, isWizardOpen, isCreateSemesterOpen, activeTab, routeTab, searchParams, selectedMobileDate]);
 
   const nextEventId = React.useMemo(() => {
     const _today = startOfDay(new Date());

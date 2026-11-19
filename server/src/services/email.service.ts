@@ -1,5 +1,6 @@
 import { Resend } from 'resend';
 import jwt from 'jsonwebtoken';
+import { sanitizeDownloadUrl } from '../utils/url';
 
 let resendClient: Resend | null = null;
 function getResendClient(): Resend {
@@ -24,10 +25,7 @@ const RAW_APP_URL = (
 const APP_URL = RAW_APP_URL.replace(/^https?:\/\/attendx\.tech$/i, "https://www.attendx.tech");
 const PRIVACY_URL = `${APP_URL}/privacy`;
 const TERMS_URL = `${APP_URL}/terms`;
-const APP_DOWNLOAD_URL = (
-  process.env.APP_DOWNLOAD_LINK ||
-  "https://github.com/nrai18/AttendX/releases/latest/download/AttendX.apk"
-).trim();
+const APP_DOWNLOAD_URL = sanitizeDownloadUrl(process.env.APP_DOWNLOAD_LINK);
 const LOGO_URL = "https://www.attendx.tech/attendx_app_icon.png";
 const PADLOCK_URL = "https://www.attendx.tech/attendx_app_icon.png"; // Fallback to logo for padlock if not provided, or we can use the original
 const DEV_PHOTO_URL = "https://www.attendx.tech/developer-photo.jpg";

@@ -459,6 +459,22 @@ export class NotificationService {
             route: targetRoute || undefined,
           });
         } else if (
+          type === "classroom_poll_created" ||
+          type === "classroom_poll_closed"
+        ) {
+          window.dispatchEvent(
+            new CustomEvent("fcm_classroom_poll_updated", {
+              detail: { ...data, classroomId, type },
+            }),
+          );
+          triggerDynamicHUD({
+            type: type === "classroom_poll_closed" ? "success" : "plane",
+            label: title,
+            subtitle: body,
+            durationMs: 4500,
+            route: targetRoute || undefined,
+          });
+        } else if (
           type === "classroom_access_updated" ||
           type === "broadcast_permission_updated"
         ) {
@@ -579,6 +595,15 @@ export class NotificationService {
           }
           window.dispatchEvent(
             new CustomEvent("fcm_classroom_broadcast", {
+              detail: { ...data, classroomId, type },
+            }),
+          );
+        } else if (
+          type === "classroom_poll_created" ||
+          type === "classroom_poll_closed"
+        ) {
+          window.dispatchEvent(
+            new CustomEvent("fcm_classroom_poll_updated", {
               detail: { ...data, classroomId, type },
             }),
           );

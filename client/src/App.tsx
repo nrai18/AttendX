@@ -110,15 +110,20 @@ const RootRoute: React.FC = () => {
   return <LandingPage />;
 };
 
-const DEFAULT_APK_DOWNLOAD_URL = "https://github.com/nrai18/AttendX/releases/latest/download/AttendX.apk";
+import { DEFAULT_APK_DOWNLOAD_URL, sanitizeDownloadUrl } from "./utils/url";
 
 const getApkDownloadUrl = () =>
-  useConfigStore.getState().appDownloadLink ||
-  import.meta.env.VITE_APP_DOWNLOAD_LINK ||
-  DEFAULT_APK_DOWNLOAD_URL;
+  sanitizeDownloadUrl(
+    useConfigStore.getState().appDownloadLink || import.meta.env.VITE_APP_DOWNLOAD_LINK,
+    DEFAULT_APK_DOWNLOAD_URL
+  );
 
 const DownloadRedirect: React.FC = () => {
-  const downloadUrl = useConfigStore((state) => state.appDownloadLink) || import.meta.env.VITE_APP_DOWNLOAD_LINK || DEFAULT_APK_DOWNLOAD_URL;
+  const dynamicDownloadLink = useConfigStore((state) => state.appDownloadLink);
+  const downloadUrl = sanitizeDownloadUrl(
+    dynamicDownloadLink || import.meta.env.VITE_APP_DOWNLOAD_LINK,
+    DEFAULT_APK_DOWNLOAD_URL
+  );
   useEffect(() => {
     document.title = "Download AttendX Android App | IIIT Una Attendance Companion";
     window.location.replace(downloadUrl);
@@ -137,7 +142,21 @@ const DownloadRedirect: React.FC = () => {
   );
 };
 
-let lastHandledLaunchUrl: string | null = null;
+const LAUNCH_URL_SESSION_KEY = "attendx_last_handled_launch_url";
+let lastHandledLaunchUrl: string | null = (() => {
+  try {
+    return sessionStorage.getItem(LAUNCH_URL_SESSION_KEY);
+  } catch {
+    return null;
+  }
+})();
+
+const markLaunchUrlHandled = (url: string) => {
+  lastHandledLaunchUrl = url;
+  try {
+    sessionStorage.setItem(LAUNCH_URL_SESSION_KEY, url);
+  } catch {}
+};
 
 const DeepLinkHandler: React.FC = () => {
   const navigate = useNavigate();
@@ -157,7 +176,31 @@ const DeepLinkHandler: React.FC = () => {
           return;
         }
         if (pathname !== "/") {
-          navigateRef.current(`${pathname}${parsed.search}${parsed.hash}`, { replace: true });
+          let targetRoute = `${pathname}${parsed.search}${parsed.hash}`;
+
+          // If opening a classroom invite link (?join=CODE) and the user already belongs to
+          // that classroom in cache, route straight to /classrooms/:id (and no-op if already there)
+          // to avoid opening/reopening loops through /classrooms?join=CODE.
+          if (pathname === "/classrooms") {
+            const joinCode = parsed.searchParams.get("join")?.trim().toUpperCase().slice(0, 6);
+            if (joinCode) {
+              const cachedClassrooms = useCacheStore.getState().classrooms;
+              if (Array.isArray(cachedClassrooms)) {
+                const existing = cachedClassrooms.find(
+                  (c: any) => !c?.isDeleted && String(c?.joinCode || "").toUpperCase() === joinCode
+                );
+                if (existing?.id) {
+                  targetRoute = `/classrooms/${existing.id}`;
+                }
+              }
+            }
+          }
+
+          const currentRoute = `${window.location.pathname.replace(/\/+$/, "") || "/"}${window.location.search}${window.location.hash}`;
+          if (currentRoute === targetRoute) {
+            return;
+          }
+          navigateRef.current(targetRoute, { replace: true });
         }
       } catch (e) {
         console.error("Failed to parse deep link URL:", rawUrl, e);
@@ -167,7 +210,7 @@ const DeepLinkHandler: React.FC = () => {
     CapacitorApp.getLaunchUrl()
       .then((launchUrl) => {
         if (launchUrl?.url && launchUrl.url !== lastHandledLaunchUrl) {
-          lastHandledLaunchUrl = launchUrl.url;
+          markLaunchUrlHandled(launchUrl.url);
           routeIncomingUrl(launchUrl.url);
         }
       })
@@ -175,7 +218,7 @@ const DeepLinkHandler: React.FC = () => {
 
     const listenerPromise = CapacitorApp.addListener("appUrlOpen", (event) => {
       if (event?.url) {
-        lastHandledLaunchUrl = event.url;
+        markLaunchUrlHandled(event.url);
       }
       routeIncomingUrl(event.url);
     });

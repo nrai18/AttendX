@@ -97,7 +97,8 @@ app.use("/api/admin", adminRoutes);
 
 // Direct APK download redirect for email & deep links
 app.get(["/download", "/api/download"], (_req, res) => {
-  const apkUrl = process.env.APP_DOWNLOAD_LINK || "https://github.com/nrai18/AttendX/releases/latest/download/AttendX.apk";
+  const { sanitizeDownloadUrl } = require("./utils/url");
+  const apkUrl = sanitizeDownloadUrl(process.env.APP_DOWNLOAD_LINK);
   res.redirect(302, apkUrl);
 });
 

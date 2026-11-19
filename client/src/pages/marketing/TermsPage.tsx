@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { ArrowLeft, FileText, AlertTriangle, ShieldCheck, Scale, Mail } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { isUserAuthenticated } from '../../stores/authStore';
@@ -6,6 +6,8 @@ import { useBackHandlerStore } from '../../stores/backHandlerStore';
 
 export function TermsPage() {
   const navigate = useNavigate();
+  const navigateRef = useRef(navigate);
+  navigateRef.current = navigate;
 
   const handleBack = () => {
     const isAuth = isUserAuthenticated();
@@ -15,10 +17,10 @@ export function TermsPage() {
       window.history.state.idx > 0
     );
     if (hasInternalHistory) {
-      navigate(-1);
+      navigateRef.current(-1);
     } else {
       // Deterministic fallback for cold-boot or memory-evicted instances
-      navigate(isAuth ? "/settings" : "/", { replace: true });
+      navigateRef.current(isAuth ? "/settings" : "/", { replace: true });
     }
   };
 
@@ -28,7 +30,7 @@ export function TermsPage() {
       return true;
     });
     return unregister;
-  }, [navigate]);
+  }, []);
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-[#050505] text-slate-900 dark:text-slate-50 pb-24 selection:hidden">

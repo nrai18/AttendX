@@ -34,7 +34,7 @@ export interface AppLockState {
   setBiometricPromptActive: (active: boolean) => void;
   enablePasscode: (pin: string) => void;
   disablePasscode: () => void;
-  verifyPin: (pin: string) => boolean;
+  verifyPin: (pin: string, options?: { deferUnlock?: boolean }) => boolean;
   unlockWithBiometric: () => void;
   lockNow: () => void;
   setFingerprintEnabled: (enabled: boolean) => void;
@@ -89,10 +89,10 @@ export const useAppLockStore = create<AppLockState>()(
           lastBackgroundAt: null,
         }),
 
-      verifyPin: (pin) => {
+      verifyPin: (pin, options) => {
         const { isEnabled, pinHash, pinSalt, failedAttempts, lockoutUntil } = get();
         if (!isEnabled || !pinHash || !pinSalt) {
-          set({ isLocked: false });
+          set({ isLocked: false, lastBackgroundAt: null });
           return true;
         }
         if (lockoutUntil && Date.now() < lockoutUntil) {
@@ -100,11 +100,20 @@ export const useAppLockStore = create<AppLockState>()(
         }
         const computed = hashPin(pin, pinSalt);
         if (computed === pinHash) {
-          set({
-            isLocked: false,
-            failedAttempts: 0,
-            lockoutUntil: null,
-          });
+          if (options?.deferUnlock) {
+            set({
+              failedAttempts: 0,
+              lockoutUntil: null,
+              lastBackgroundAt: null,
+            });
+          } else {
+            set({
+              isLocked: false,
+              failedAttempts: 0,
+              lockoutUntil: null,
+              lastBackgroundAt: null,
+            });
+          }
           return true;
         }
         const nextFailed = failedAttempts + 1;
@@ -121,6 +130,7 @@ export const useAppLockStore = create<AppLockState>()(
           isLocked: false,
           failedAttempts: 0,
           lockoutUntil: null,
+          lastBackgroundAt: null,
         }),
 
       lockNow: () => {
@@ -150,7 +160,10 @@ export const useAppLockStore = create<AppLockState>()(
           return;
         }
         if (Date.now() - lastBackgroundAt >= autoLockTimeoutMs) {
-          set({ isLocked: true });
+          set({ isLocked: true, lastBackgroundAt: null });
+        } else {
+          // Clear stale background timestamp once resumed within timeout so subsequent focus events never re-lock mid-use
+          set({ lastBackgroundAt: null });
         }
       },
     }),

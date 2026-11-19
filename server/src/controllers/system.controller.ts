@@ -1,10 +1,11 @@
 import { Request, Response } from "express";
 import { BirthdayService } from "../services/birthday.service";
+import { sanitizeDownloadUrl } from "../utils/url";
 
 export class SystemController {
   static async getConfig(req: Request, res: Response) {
     return res.status(200).json({
-      appDownloadLink: process.env.APP_DOWNLOAD_LINK || "https://github.com/nrai18/AttendX/releases/latest/download/AttendX.apk",
+      appDownloadLink: sanitizeDownloadUrl(process.env.APP_DOWNLOAD_LINK),
       wsUrl: process.env.WS_URL || "wss://attendx-backend-fh6k.onrender.com/ws",
       mlApiUrl: process.env.ML_API_URL || "https://attendx-ml-server.onrender.com",
       googleClientId: process.env.GOOGLE_CLIENT_ID || "729387616931-qlajf1dss2qi1cta5pvc3dos03fh4coi.apps.googleusercontent.com"
@@ -13,10 +14,46 @@ export class SystemController {
 
   static async getUpdateManifest(req: Request, res: Response) {
     const manifest = {
-      appDownloadLink: process.env.APP_DOWNLOAD_LINK || "https://github.com/nrai18/AttendX/releases/latest/download/AttendX.apk",
-      latestVersion: "4.4.0",
-      title: "AttendX Vault: Passcode Lock, Native Biometrics & Session Chimes",
+      appDownloadLink: sanitizeDownloadUrl(process.env.APP_DOWNLOAD_LINK),
+      latestVersion: "4.4.1",
+      title: "Classroom Polls, Live Voter Stats & System Hardening",
       changelog: [
+        {
+          "version": "4.4.1",
+          "date": "Nov 20, 2026",
+          "title": "Classroom Polls, Deep-Link Stability & System Hardening",
+          "sections": [
+            {
+              "title": "Classroom Polls & System Hardening (v4.4.1)",
+              "items": [
+                {
+                  "icon": "📊",
+                  "text": "Classroom Polls (Stream Bars): Create Yes/No, Single-Answer, and Multiple-Answer polls inside Classrooms with live progress bars, voter avatar stacks, percentages, and crisp Light & Dark mode support."
+                },
+                {
+                  "icon": "⏱️",
+                  "text": "Urgent Pinned Deadlines & Author Stop Control: Set closing timers (15m, 1h, 3h, Tonight 11 PM, 24h, Custom) with urgent pinning, live 1-second countdowns, automatic vote locking on expiry, early Stop Poll controls for the poll creator or CR Admin, optional hidden results until closed, and vote-change locking."
+                },
+                {
+                  "icon": "👥",
+                  "text": "Live Voter Stats & Silent Background Polling: Any enrolled classmate can open View Votes to inspect turnout progress, filter by option, and search voters by name or roll number—synced silently in the background with zero error toasts on connection blips."
+                },
+                {
+                  "icon": "🔁",
+                  "text": "Classroom Invite Deep-Link Loop Fix: Eliminated the infinite open/reopen loop when opening ?join=CODE links for already-joined classrooms and fixed cold-start invite hydration races."
+                },
+                {
+                  "icon": "🔐",
+                  "text": "Passcode Vault & Permission Modal Reliability: Fixed mid-use stale auto-locks, enforced Passcode Vault on offline cold starts, blocked Android hardware Back behind the lock screen, disabled biometric prompts during lockout cooldown, and prevented premature modal dismissal during optional DND setup."
+                },
+                {
+                  "icon": "🛡️",
+                  "text": "Security, Updater & Android Stability Hardening: Hardened session revocation ownership & cache eviction, assignment completion IDOR checks, document download containment, enrolled-member broadcast permission diffs, fail-closed APK signature checks, Android 12–15 foreground service crash guards, UTC FCM timestamps, inclusive Peer Sync date ranges, offline 3D report rendering, and sanitized APK download URLs."
+                }
+              ]
+            }
+          ]
+        },
         {
           "version": "4.4.0",
           "date": "Nov 17, 2026",

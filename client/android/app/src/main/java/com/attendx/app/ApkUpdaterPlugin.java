@@ -371,7 +371,7 @@ public class ApkUpdaterPlugin extends Plugin {
             PackageManager pm = ctx.getPackageManager();
             @SuppressWarnings("deprecation")
             int sigFlag = Build.VERSION.SDK_INT >= Build.VERSION_CODES.P
-                    ? PackageManager.GET_SIGNING_CERTIFICATES
+                    ? (PackageManager.GET_SIGNING_CERTIFICATES | PackageManager.GET_SIGNATURES)
                     : PackageManager.GET_SIGNATURES;
 
             PackageInfo newApkInfo = pm.getPackageArchiveInfo(apkFile.getAbsolutePath(), sigFlag);
@@ -406,10 +406,10 @@ public class ApkUpdaterPlugin extends Plugin {
                 newVersionCode = newApkInfo.versionCode;
             }
 
-            if (newVersionCode <= currentVersionCode) {
+            if (newVersionCode < currentVersionCode) {
                 apkFile.delete();
                 call.reject("Incompatible update: APK versionCode (" + newVersionCode
-                        + ") is not greater than installed versionCode (" + currentVersionCode + ").");
+                        + ") is lower than installed versionCode (" + currentVersionCode + ").");
                 return;
             }
 
@@ -432,7 +432,10 @@ public class ApkUpdaterPlugin extends Plugin {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             SigningInfo si = info.signingInfo;
             if (si != null) {
-                return si.hasMultipleSigners() ? si.getApkContentsSigners() : si.getSigningCertificateHistory();
+                Signature[] sigs = si.hasMultipleSigners() ? si.getApkContentsSigners() : si.getSigningCertificateHistory();
+                if (sigs != null && sigs.length > 0) {
+                    return sigs;
+                }
             }
         }
         return info.signatures;
@@ -441,8 +444,9 @@ public class ApkUpdaterPlugin extends Plugin {
     private boolean hasMatchingSignature(PackageInfo installed, PackageInfo archive) {
         Signature[] installedSigs = extractSignatures(installed);
         Signature[] archiveSigs = extractSignatures(archive);
+        // Fail closed: reject unsigned, corrupted, or unverified archives
         if (installedSigs == null || installedSigs.length == 0 || archiveSigs == null || archiveSigs.length == 0) {
-            return true;
+            return false;
         }
         for (Signature a : installedSigs) {
             for (Signature b : archiveSigs) {

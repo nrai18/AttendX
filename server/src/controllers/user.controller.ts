@@ -10,6 +10,8 @@ export class UserController {
     try {
       const userId = req.user!.userId;
       await UserService.deleteAccount(userId);
+      const { invalidateSessionCache } = require("../middleware/authenticate");
+      invalidateSessionCache(undefined, userId);
       await CacheService.invalidateUser(userId);
       // Ensure the refresh token cookie is cleared if they delete themselves
       res.clearCookie("refreshToken", {
@@ -88,8 +90,8 @@ export class UserController {
 
       res.status(200).json(statusPayload);
     } catch (error: any) {
-      console.error("[UserController.getSessions] Failed to fetch user sessions:", error);
-      res.status(500).json({ message: error.message || "Failed to fetch user sessions" });
+      console.error("[UserController.getOnboardingStatus] Failed to fetch onboarding status:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch onboarding status" });
     }
   }
 
@@ -159,8 +161,8 @@ export class UserController {
         hasConfiguredSound: Boolean(soundConfigured),
       });
     } catch (error: any) {
-      console.error("[UserController.getSessions] Failed to fetch user sessions:", error);
-      res.status(500).json({ message: error.message || "Failed to fetch user sessions" });
+      console.error("[UserController.updateOnboardingStatus] Failed to update onboarding status:", error);
+      res.status(500).json({ message: error.message || "Failed to update onboarding status" });
     }
   }
 
@@ -297,17 +299,17 @@ export class UserController {
          try {
            const { AuthService } = require("../services/auth.service");
            const hashedRefresh = await AuthService.hashToken(refreshToken);
-                const tokenRecord = await prisma.refreshToken.findUnique({ where: { token: hashedRefresh } });
-           if (tokenRecord) {
+           const tokenRecord = await prisma.refreshToken.findUnique({ where: { token: hashedRefresh } });
+           if (tokenRecord && tokenRecord.userId === userId) {
              sessionIdToKeep = tokenRecord.id;
            }
          } catch(e) {}
       }
 
       if (!sessionIdToKeep) throw new Error("Current session missing");
+      const result = await UserService.revokeAllOtherSessions(userId, sessionIdToKeep);
       const { invalidateSessionCache } = require("../middleware/authenticate");
       invalidateSessionCache(undefined, userId, sessionIdToKeep);
-      const result = await UserService.revokeAllOtherSessions(userId, sessionIdToKeep);
       res.status(200).json(result);
     } catch (error: any) {
       console.error("[UserController.revokeAllOtherSessions] Failed to revoke sessions:", error);
@@ -319,9 +321,12 @@ export class UserController {
     try {
       const userId = req.user!.userId;
       const sessionId = req.params.sessionId as string;
+      const result = await UserService.revokeSession(userId, sessionId);
+      if (result.count === 0) {
+        return res.status(404).json({ message: "Session not found" });
+      }
       const { invalidateSessionCache } = require("../middleware/authenticate");
       invalidateSessionCache(sessionId);
-      const result = await UserService.revokeSession(userId, sessionId);
       res.status(200).json(result);
     } catch (error: any) {
       console.error("[UserController.revokeSession] Failed to revoke session:", error);

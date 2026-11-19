@@ -1,5 +1,6 @@
 import { Response } from "express";
 import { ClassroomService } from "../services/classroom.service";
+import { ClassroomPollService } from "../services/classroom_poll.service";
 import { AuthenticatedRequest } from "../middleware/authenticate";
 
 export class ClassroomController {
@@ -183,6 +184,87 @@ export class ClassroomController {
     } catch (error: any) {
       console.error("[ClassroomController] leaveClassroom error:", error);
       res.status(500).json({ message: error.message || "Failed to leave classroom" });
+    }
+  }
+
+  static async createPoll(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { id } = req.params;
+      const poll = await ClassroomPollService.createPoll(
+        req.user!.userId,
+        String(id),
+        req.body || {}
+      );
+      res.status(201).json(poll);
+    } catch (error: any) {
+      const status = error.status || 500;
+      res.status(status).json({ message: error.message || "Failed to create poll" });
+    }
+  }
+
+  static async castPollVote(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { id, pollId } = req.params;
+      const optionIds = Array.isArray(req.body?.optionIds)
+        ? req.body.optionIds
+        : typeof req.body?.optionId === "string"
+          ? [req.body.optionId]
+          : [];
+      const poll = await ClassroomPollService.castVote(
+        req.user!.userId,
+        String(id),
+        String(pollId),
+        optionIds
+      );
+      res.json(poll);
+    } catch (error: any) {
+      const status = error.status || 500;
+      res.status(status).json({ message: error.message || "Failed to submit vote" });
+    }
+  }
+
+  static async stopPoll(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { id, pollId } = req.params;
+      const poll = await ClassroomPollService.stopPoll(
+        req.user!.userId,
+        String(id),
+        String(pollId)
+      );
+      res.json(poll);
+    } catch (error: any) {
+      const status = error.status || 500;
+      res.status(status).json({ message: error.message || "Failed to stop poll" });
+    }
+  }
+
+  static async getPollVotes(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { id, pollId } = req.params;
+      const details = await ClassroomPollService.getPollVotes(
+        req.user!.userId,
+        String(id),
+        String(pollId)
+      );
+      res.json(details);
+    } catch (error: any) {
+      const status = error.status || 500;
+      res.status(status).json({ message: error.message || "Failed to fetch poll stats" });
+    }
+  }
+
+  static async deletePoll(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { id, pollId } = req.params;
+      const result = await ClassroomPollService.deletePoll(
+        req.user!.userId,
+        String(id),
+        String(pollId)
+      );
+      res.json(result);
+    } catch (error: any) {
+      const status = error.status || 500;
+      res.status(status).json({ message: error.message || "Failed to delete poll" });
     }
   }
 }

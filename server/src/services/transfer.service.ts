@@ -8,9 +8,22 @@ export class TransferService {
       dateRange?.startDate &&
       dateRange?.endDate
     );
-    const dateFilter = hasDateFilter
-      ? { gte: new Date(dateRange!.startDate), lte: new Date(dateRange!.endDate) }
-      : undefined;
+    const parseBoundaryDate = (raw: string, endOfDay: boolean): Date | null => {
+      const trimmed = String(raw || "").trim();
+      if (!trimmed) return null;
+      const isDateOnly = /^\d{4}-\d{2}-\d{2}$/.test(trimmed);
+      const d = isDateOnly
+        ? new Date(`${trimmed}${endOfDay ? "T23:59:59.999Z" : "T00:00:00.000Z"}`)
+        : new Date(trimmed);
+      return isNaN(d.getTime()) ? null : d;
+    };
+
+    const startBoundary = hasDateFilter ? parseBoundaryDate(dateRange!.startDate, false) : null;
+    const endBoundary = hasDateFilter ? parseBoundaryDate(dateRange!.endDate, true) : null;
+    const dateFilter =
+      startBoundary && endBoundary
+        ? { gte: startBoundary, lte: endBoundary }
+        : undefined;
 
     // Single parallel roundtrip for semester (+ subjects, slots, overrides), events, and attendance logs
     const [semesterData, allEvents, rawLogs] = await Promise.all([

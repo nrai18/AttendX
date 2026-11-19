@@ -11,6 +11,7 @@ import android.content.pm.ServiceInfo;
 import android.graphics.BitmapFactory;
 import android.os.Build;
 import android.os.IBinder;
+import android.util.Log;
 import androidx.core.app.NotificationCompat;
 import java.text.SimpleDateFormat;
 import java.util.Date;
@@ -29,9 +30,14 @@ public class RingerForegroundService extends Service {
         return null;
     }
 
+    private static final String TAG = "RingerForegroundService";
+
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        if (intent == null) return START_NOT_STICKY;
+        if (intent == null) {
+            stopSelf(startId);
+            return START_NOT_STICKY;
+        }
         String action = intent.getAction();
         if (ACTION_STOP_CLASS_MUTE.equals(action)) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
@@ -39,22 +45,31 @@ public class RingerForegroundService extends Service {
             } else {
                 stopForeground(true);
             }
-            stopSelf();
+            stopSelf(startId);
             return START_NOT_STICKY;
         }
         if (ACTION_START_CLASS_MUTE.equals(action)) {
             String className = intent.getStringExtra(EXTRA_CLASS_NAME);
             long unmuteEpoch = intent.getLongExtra(EXTRA_UNMUTE_EPOCH, 0L);
             Notification notification = buildNotification(this, className, unmuteEpoch);
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                // Compatible with Android 14+ foreground service types
-                startForeground(NOTIF_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
-            } else {
-                startForeground(NOTIF_ID, notification);
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                    // Compatible with Android 14+ foreground service types
+                    startForeground(NOTIF_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
+                } else {
+                    startForeground(NOTIF_ID, notification);
+                }
+            } catch (Exception e) {
+                // Prevent Android 12–15 ForegroundServiceStartNotAllowedException / DidNotStartInTime crashes
+                Log.w(TAG, "Unable to promote RingerForegroundService to foreground", e);
+                stopSelf(startId);
+                return START_NOT_STICKY;
             }
+            return START_NOT_STICKY;
         }
-        return START_STICKY;
-            }
+        stopSelf(startId);
+        return START_NOT_STICKY;
+    }
 
     @Override
     public void onDestroy() {

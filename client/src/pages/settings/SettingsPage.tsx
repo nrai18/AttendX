@@ -93,7 +93,7 @@ import { PermissionService } from "../../services/PermissionService";
 import { FrostedLockedLevel } from "../../components/ui/frosted-locked-level";
 
 export const SettingsPage: React.FC = () => {
-  const currentAppVersion = import.meta.env.VITE_APP_VERSION || "4.4.0";
+  const currentAppVersion = import.meta.env.VITE_APP_VERSION || "4.4.1";
   const location = useLocation();
   const deletedDocIdsRef = useRef<Set<string>>(new Set());
 

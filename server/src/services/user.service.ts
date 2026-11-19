@@ -356,15 +356,17 @@ export class UserService {
   }
 
   static async revokeSession(userId: string, sessionId: string) {
-    await prisma.refreshToken.deleteMany({ where: { userId, id: sessionId } });
-    CacheService.del(userId, "user:sessions").catch(() => {});
-    return { success: true };
+    const deleted = await prisma.refreshToken.deleteMany({ where: { userId, id: sessionId } });
+    if (deleted.count > 0) {
+      CacheService.del(userId, "user:sessions").catch(() => {});
+    }
+    return { success: deleted.count > 0, count: deleted.count };
   }
 
   static async revokeAllOtherSessions(userId: string, currentSessionId: string) {
-    await prisma.refreshToken.deleteMany({ where: { userId, id: { not: currentSessionId } } });
+    const deleted = await prisma.refreshToken.deleteMany({ where: { userId, id: { not: currentSessionId } } });
     CacheService.del(userId, "user:sessions").catch(() => {});
-    return { success: true };
+    return { success: true, count: deleted.count };
   }
 
   static async resetTimetable(userId: string) {

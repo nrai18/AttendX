@@ -19,6 +19,76 @@ function parseFormattedText(text: string) {
   });
 }
 
+/**
+ * Remove SHA-256 checksum blocks/lines (used internally by GitHubUpdater)
+ * so raw verification hashes never clutter the end-user NativeUpdateSheet UI.
+ */
+export function stripShaFromChangelog(markdown: string): string {
+  if (!markdown) return "";
+
+  // 1. Strip fenced code blocks containing a 64-char SHA-256 hex digest
+  const withoutShaFences = markdown.replace(/```[\s\S]*?```/g, (block) =>
+    /\b[a-f0-9]{64}\b/i.test(block) ? "" : block,
+  );
+
+  // 2. Filter individual lines carrying a 64-char hex digest or explicit checksum row
+  const rawLines = withoutShaFences.split("\n");
+  const filteredLines = rawLines.filter((line) => {
+    const t = line.trim();
+    if (!t) return true;
+    if (/\b[a-f0-9]{64}\b/i.test(t)) return false;
+    if (/^\|\s*(?:file|asset|artifact|package|name)\s*\|\s*(?:sha[- ]?256|checksum|hash)/i.test(t)) return false;
+    if (/^\|\s*AttendX\.apk\s*\|/i.test(t) && /sha|checksum|hash|[a-f0-9]{16,}/i.test(t)) return false;
+    if (/^(?:[-*•>]\s*)?(?:\*\*|__)?(?:apk\s+)?(?:sha[- ]?256(?:\s+checksum)?|checksum|verification\s+hash)(?:\*\*|__)?(?:\s*\([^)]+\))?\s*[:=]\s*`?$/i.test(t)) {
+      return false;
+    }
+    return true;
+  });
+
+  // 3. Remove empty table separator rows left behind after filtering checksum tables
+  const withoutOrphanTableSep = filteredLines.filter((line, i) => {
+    const t = line.trim();
+    if (/^\|[\s:-]+(?:\|[\s:-]+)+\|?$/.test(t)) {
+      const prev = (filteredLines[i - 1] || "").trim();
+      const next = (filteredLines[i + 1] || "").trim();
+      if (!prev.startsWith("|") || !next.startsWith("|")) return false;
+    }
+    return true;
+  });
+
+  // 4. Prune trailing/empty Verification/Checksum headers if no real content remains beneath them
+  const isVerificationHeader = (s: string) => {
+    const t = s.trim();
+    return (
+      (/^#{1,6}\s+/.test(t) && /\b(?:sha[- ]?256|checksums?|verification|integrity(?:\s+check)?)\b/i.test(t)) ||
+      /^(?:\*\*|__)?(?:sha[- ]?256(?:\s+checksum)?|checksums?|apk\s+verification)(?:\*\*|__)?:?\s*$/i.test(t)
+    );
+  };
+
+  const result: string[] = [];
+  for (let i = 0; i < withoutOrphanTableSep.length; i++) {
+    const cur = withoutOrphanTableSep[i];
+    if (isVerificationHeader(cur)) {
+      let hasBodyContent = false;
+      for (let j = i + 1; j < withoutOrphanTableSep.length; j++) {
+        const nextTrimmed = withoutOrphanTableSep[j].trim();
+        if (!nextTrimmed || nextTrimmed === "---" || nextTrimmed === "***") continue;
+        if (/^#{1,6}\s+/.test(nextTrimmed)) break;
+        hasBodyContent = true;
+        break;
+      }
+      if (!hasBodyContent) continue;
+    }
+    result.push(cur);
+  }
+
+  return result
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/(?:\n---\s*)+$/g, "")
+    .trim();
+}
+
 export const UpdateChangelog: React.FC<Props> = ({ markdown }) => {
   if (!markdown) return null;
 
@@ -30,10 +100,14 @@ export const UpdateChangelog: React.FC<Props> = ({ markdown }) => {
     .replace(/&#39;/g, "'")
     .replace(/&amp;/g, "&");
 
-  // Pre-process multiline or single-line <img> tags into clean markdown images
-  const normalized = unescaped.replace(/<img\s+[\s\S]*?src=["']([^"']+)["'][\s\S]*?>/gi, (_, src) => {
-    return `\n![Release Banner](${src})\n`;
-  });
+  // Pre-process multiline or single-line <img> tags into clean markdown images, then hide SHA keys
+  const normalized = stripShaFromChangelog(
+    unescaped.replace(/<img\s+[\s\S]*?src=["']([^"']+)["'][\s\S]*?>/gi, (_, src) => {
+      return `\n![Release Banner](${src})\n`;
+    }),
+  );
+
+  if (!normalized) return null;
 
   const lines = normalized.split("\n");
 

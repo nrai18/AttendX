@@ -23,6 +23,11 @@ router.get("/:id/members", ClassroomController.getClassroomMembers);
 router.patch("/:id", ClassroomController.updateClassroom);
 router.patch("/:id/permissions", ClassroomController.updateBroadcastPermissions);
 router.post("/:id/announcements", ClassroomController.createAnnouncement);
+router.post("/:id/polls", ClassroomController.createPoll);
+router.post("/:id/polls/:pollId/vote", ClassroomController.castPollVote);
+router.post("/:id/polls/:pollId/stop", ClassroomController.stopPoll);
+router.get("/:id/polls/:pollId/votes", ClassroomController.getPollVotes);
+router.delete("/:id/polls/:pollId", ClassroomController.deletePoll);
 router.delete("/:id/leave", ClassroomController.leaveClassroom);
 router.delete("/:id", ClassroomController.deleteClassroom);
 
