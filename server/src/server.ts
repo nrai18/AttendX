@@ -6,6 +6,7 @@ MemoryMonitor.log("Base Server Startup");
 
 import { startServer } from "./app";
 import { CustomMlCopilotService } from "./services/custom_ml_copilot.service";
+import { AuthService } from "./services/auth.service";
 import { CronService } from "./services/cron.service";
 import "./lib/firebase";
 import { redisClient } from "./lib/redis";
@@ -30,8 +31,9 @@ async function bootstrap() {
   // Attach graceful shutdown hooks
   MemoryMonitor.setupGracefulShutdown(server);
 
-  // Background non-blocking warmups (Gemini, DeviceMapper, Cron)
+  // Background non-blocking warmups (Gemini, Google OAuth JWKS, DeviceMapper, Cron)
   CustomMlCopilotService.warmup();
+  AuthService.warmupGoogleCerts();
   MemoryMonitor.log("Post-Gemini Warmup");
 
   CronService.init();

@@ -52,6 +52,23 @@ export class AuthController {
     }
   }
 
+  private static isTransientInfraError(error: any): boolean {
+    const code = String(error?.code || "").toUpperCase();
+    const msg = String(error?.message || "").toLowerCase();
+    return (
+      ["P1001", "P1002", "P1008", "P1017", "P2024", "ECONNRESET", "ETIMEDOUT", "ENOTFOUND", "EAI_AGAIN", "ECONNREFUSED", "UND_ERR_CONNECT_TIMEOUT"].includes(code) ||
+      msg.includes("can't reach database") ||
+      msg.includes("connection terminated") ||
+      msg.includes("timed out") ||
+      msg.includes("timeout") ||
+      msg.includes("fetch failed") ||
+      msg.includes("socket hang up") ||
+      msg.includes("econnreset") ||
+      msg.includes("network error") ||
+      msg.includes("getfederatedsignoncerts")
+    );
+  }
+
   static async login(req: Request, res: Response) {
     try {
       const email = String(req.body.email || "").toLowerCase().trim();
@@ -66,6 +83,11 @@ export class AuthController {
       setRefreshCookie(res, refreshToken);
       res.status(200).json({ user, accessToken, refreshToken });
     } catch (error: any) {
+      if (AuthController.isTransientInfraError(error)) {
+        console.warn("Login transient backend error:", error?.message || error);
+        res.setHeader("Retry-After", "2");
+        return res.status(503).json({ message: "Server is warming up, please retry in a moment.", transient: true });
+      }
       res.status(401).json({ message: error.message });
     }
   }
@@ -143,6 +165,13 @@ export class AuthController {
       res.status(200).json({ user, accessToken, refreshToken });
     } catch (error: any) {
       console.error("Google Native Auth Error:", error);
+      if (AuthController.isTransientInfraError(error)) {
+        res.setHeader("Retry-After", "2");
+        return res.status(503).json({
+          message: "Server is warming up or temporarily unreachable. Retrying...",
+          transient: true,
+        });
+      }
       res.status(401).json({ message: error.message || "Authentication failed" });
     }
   }

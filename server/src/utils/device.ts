@@ -5,6 +5,98 @@ const gpsLocationCache = new Map<string, { location: string; expiresAt: number }
 const ipLocationCache = new Map<string, { location: string; expiresAt: number }>();
 const GEO_CACHE_TTL_MS = 15 * 60 * 1000;
 
+export function getFastDeviceDetails(req: any) {
+  if (!req) return { userAgent: 'Unknown OS', ipAddress: null, location: 'Unknown Location', os: null, browser: null, deviceType: null };
+  const headers = req.headers || {};
+  const uaString = headers['user-agent'] || '';
+  const platformHeader = headers['x-attendx-platform'];
+  const osHeader = headers['x-attendx-os'];
+
+  const parser = new UAParser(uaString);
+  const result = parser.getResult();
+
+  let userAgent = 'Unknown OS';
+  if (platformHeader && osHeader && osHeader !== 'web') {
+    userAgent = `${platformHeader} (${osHeader})`;
+  } else if (uaString.includes('Capacitor') || uaString.includes('AttendX')) {
+    if (uaString.includes('Android')) userAgent = 'AttendX App (Android)';
+    else if (uaString.includes('iPhone') || uaString.includes('iPad')) userAgent = 'AttendX App (iOS)';
+    else userAgent = 'AttendX App';
+  } else if (result.browser.name) {
+    userAgent = result.browser.name + (result.os.name ? ' on ' + result.os.name : '');
+  } else if (result.os.name) {
+    userAgent = result.os.name;
+  }
+
+  const forwarded = headers['x-forwarded-for'];
+  const ipAddress = (typeof forwarded === 'string' ? forwarded.split(',')[0].trim() : req.ip) || null;
+  const timezone = headers['x-attendx-timezone'];
+
+  let location = 'Unknown Location';
+  const lat = headers['x-attendx-lat'];
+  const lon = headers['x-attendx-lon'];
+  if (lat && lon) {
+    const coordKey = `${parseFloat(String(lat)).toFixed(2)},${parseFloat(String(lon)).toFixed(2)}`;
+    const cachedGps = gpsLocationCache.get(coordKey);
+    if (cachedGps && cachedGps.expiresAt > Date.now()) {
+      location = cachedGps.location;
+    }
+  }
+  if (location === 'Unknown Location' && ipAddress) {
+    if (ipAddress === '127.0.0.1' || ipAddress === '::1' || ipAddress.startsWith('192.168.') || ipAddress.startsWith('10.') || ipAddress.startsWith('172.16.')) {
+      location = 'Local Network';
+    } else {
+      const cachedIp = ipLocationCache.get(ipAddress);
+      if (cachedIp && cachedIp.expiresAt > Date.now()) {
+        location = cachedIp.location;
+      }
+    }
+  }
+  if ((location === 'Unknown Location' || location === 'Local Network') && typeof timezone === 'string') {
+    location = timezone.split('/').reverse().join(', ').replace(/_/g, ' ');
+  }
+
+  let os: string | null = null;
+  let browser: string | null = null;
+  let deviceType: string | null = null;
+
+  const customBrowser = headers['x-attendx-browser'];
+  const hardwareModel = headers['x-attendx-hardware'];
+  const appVersion = headers['x-attendx-version'];
+  const realOsHeader = typeof headers['x-attendx-real-os'] === 'string' ? headers['x-attendx-real-os'].trim() : '';
+
+  if (platformHeader && osHeader && osHeader !== 'web') {
+    deviceType = String(platformHeader).toLowerCase().includes('mobile') ? 'mobile' : 'desktop';
+    os = String(osHeader).toLowerCase() === 'ios' ? 'iOS' : String(osHeader).charAt(0).toUpperCase() + String(osHeader).slice(1);
+    const versionStr = appVersion ? ` ${appVersion}` : '';
+
+    let finalDeviceString = (hardwareModel && hardwareModel !== 'Native Device') ? String(hardwareModel) : null;
+    if (hardwareModel && String(hardwareModel).includes('::')) {
+      try {
+        const [manufacturer, rawModel] = String(hardwareModel).split('::');
+        finalDeviceString = getMarketingName(rawModel, manufacturer);
+      } catch {}
+    }
+    if (!finalDeviceString || finalDeviceString === 'Native Device') {
+      if (result.device.vendor && result.device.model) {
+        finalDeviceString = `${result.device.vendor} ${result.device.model}`;
+      } else if (result.device.model) {
+        finalDeviceString = result.device.model;
+      }
+    }
+    browser = finalDeviceString ? `AttendX${versionStr} (${finalDeviceString})` : `AttendX Native App${versionStr}`;
+  } else {
+    deviceType = (realOsHeader === 'Windows' || realOsHeader === 'macOS' || realOsHeader === 'Linux') ? 'desktop' : (result.device.type || (uaString.includes('Mobile') ? 'mobile' : 'desktop'));
+    os = (realOsHeader === 'Windows' || realOsHeader === 'macOS' || realOsHeader === 'Linux') ? realOsHeader : (result.os.name || 'Unknown OS');
+    browser = customBrowser ? String(customBrowser) : (result.browser.name ? result.browser.name.replace(/^Mobile\s+/i, '') : 'Unknown Browser');
+    if ((realOsHeader === 'Windows' || realOsHeader === 'macOS' || realOsHeader === 'Linux') && browser) {
+      userAgent = `${browser} on ${realOsHeader}`;
+    }
+  }
+
+  return { userAgent, ipAddress, location, os, browser, deviceType };
+}
+
 export async function getDeviceDetails(req: any) {
   if (!req) return { userAgent: 'Unknown OS', ipAddress: null, location: null };
   const uaString = req.headers['user-agent'] || '';

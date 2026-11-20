@@ -2,6 +2,41 @@ import { Release } from "../components/settings/ChangelogModal";
 
 export const OFFLINE_CHANGELOG: Release[] = [
   {
+    version: "4.4.2",
+    date: "Nov 20, 2026",
+    sections: [
+      {
+        title: "Voice Mode Overhaul, ElevenLabs Streaming & Context Intelligence",
+        items: [
+          {
+            icon: "🎨",
+            text: "Light & Dark Mode Parity + Native Status Bar Sync: Portaled Voice Mode into document.body with theme-safe styling, synced Android status bar icon polarity on Light/Dark switches, upgraded the Voice Orb for visibility on both themes, and rebuilt the Voice Picker sheet with fixed header/footer framing so cards are never clipped.",
+          },
+          {
+            icon: "⚙️",
+            text: "Aligned Bottom Pill Controls: Fixed Settings gear icon overflow on compact screens by truncating Ask AttendX... cleanly inside the rounded bottom pill.",
+          },
+          {
+            icon: "🔊",
+            text: "ElevenLabs Streaming Restored on Android: Switched from unauthenticated audio URLs to authenticated POST /ai/tts with automatic JWT refresh, lossless native CapacitorHttp binary handling, tap-gesture audio unlock, and buffered MP3 Content-Length headers, plus a live Voice & Engine badge in the top bar.",
+          },
+          {
+            icon: "✨",
+            text: "Pure-White Spoken Text & Exact Cursor Sync: Synchronized word highlights directly to real audio playback time (and native onRangeStart on fallback) with punctuation weighting and full pure-white spoken words in Dark Mode (deep slate in Light Mode).",
+          },
+          {
+            icon: "🎙️",
+            text: "Continuous Microphone Stability: Removed partial-speech breakout cancellations, added silent 350ms Android speech recognizer recovery across short pauses within a 45s activity window, and prevented brief focus switches from closing Voice Mode.",
+          },
+          {
+            icon: "🧠",
+            text: "Deeper Copilot Context Awareness: Added full weekly timetable, today/tomorrow schedules, extra classes, assignments, active subject context, and recent attendance logs (with remarks) to Tier 3 AI prompts alongside multi-turn and active-subject pronoun follow-ups.",
+          },
+        ],
+      },
+    ],
+  },
+  {
     version: "4.4.1",
     date: "Nov 20, 2026",
     sections: [

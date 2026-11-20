@@ -817,14 +817,21 @@ const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'vo
       timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
     };
 
-    setMessages(prev => [...prev, userMessage]);
+    setMessages(prev => {
+      const next = [...prev, userMessage];
+      messagesRef.current = next;
+      return next;
+    });
     setInput("");
     setIsLoading(true);
 
     try {
       abortControllerRef.current = new AbortController();
-      const currentMsgList = messagesRef.current && messagesRef.current.length > 0 ? messagesRef.current : messages;
-      const history = currentMsgList.slice(-10).map(m => ({
+      // Exclude the just-appended userMessage from Prior Dialog History so history holds prior turns cleanly
+      const priorList = (messagesRef.current && messagesRef.current.length > 0 ? messagesRef.current : messages).filter(
+        (m) => m.id !== userMessage.id
+      );
+      const history = priorList.slice(-10).map(m => ({
         role: m.role,
         content: m.content
       }));
@@ -861,6 +868,11 @@ const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'vo
         typeof window !== "undefined" && window.matchMedia
           ? window.matchMedia("(prefers-color-scheme: dark)").matches
           : true;
+      const activeSearchParams = new URLSearchParams(location.search);
+      const activeSelectedSubjectId =
+        activeSearchParams.get("subjectId") ||
+        (location.pathname.startsWith("/subjects/") ? location.pathname.split("/")[2] : null);
+
       const fastLocalResult = evaluateClientFastPath({
         query,
         user,
@@ -876,6 +888,7 @@ const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'vo
         lastWorkingDay: endBoundsDate,
         semesterName: semesterMeta?.name,
         semesterEndDate: endBoundsDate,
+        selectedSubjectId: activeSelectedSubjectId,
         now: today,
         prefersDarkSystem,
       });
@@ -940,13 +953,17 @@ const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'vo
           simulation: fastLocalResult.simulation,
           semesterProjection: fastLocalResult.semesterProjection,
         };
-        setMessages((prev) => [...prev, botResponse]);
+        setMessages((prev) => {
+          const next = [...prev, botResponse];
+          messagesRef.current = next;
+          return next;
+        });
         setIsLoading(false);
         return fastLocalResult.reply;
       }
       // --- END CLIENT-SIDE 0ms FAST-PATH ---
 
-      const needsHistoryLogs = /\b(when was i|history|log|logs|past|last week|yesterday|marked on|absent on|present on|did i attend|did i miss|extra class)\b/i.test(query);
+      const needsHistoryLogs = /\b(when was i|history|log|logs|past|last week|yesterday|marked on|absent on|present on|did i attend|did i miss|extra class|drop|dropped|remark|reason)\b/i.test(query);
 
       const studentContext = {
         user_id: user?.id,
@@ -969,7 +986,7 @@ const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'vo
         total_classes: currentTotal,
         subjects: currentSubjects,
         timetable_slots: timetableSlots,
-        history_logs: needsHistoryLogs ? currentLogs.slice(0, 30) : [],
+        history_logs: currentLogs.slice(0, needsHistoryLogs ? 30 : 15),
         calendar_events: currentEvents
           .filter(e => {
             const evtType = String(e.eventType || e.type || "").toLowerCase();
@@ -1369,7 +1386,11 @@ const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'vo
         semesterProjection
       };
 
-      setMessages(prev => [...prev, botResponse]);
+      setMessages(prev => {
+        const next = [...prev, botResponse];
+        messagesRef.current = next;
+        return next;
+      });
       
       
 
@@ -1389,29 +1410,27 @@ const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'vo
         content: "I am currently offline or unable to reach the AI service. Please check your internet connection.",
         timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
       };
-      setMessages(prev => [...prev, errorMessage]);
+      setMessages(prev => {
+        const next = [...prev, errorMessage];
+        messagesRef.current = next;
+        return next;
+      });
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Stop all active listening when app is minimized/backgrounded
+  // Pause hands-free if app is minimized/backgrounded (VoiceModeOverlay handles pausing its own mic without abruptly closing)
   useEffect(() => {
     const listener = App.addListener('appStateChange', ({ isActive }) => {
       if (!isActive) {
         if (isHandsFreeRef.current) {
           stopHandsFreeMode("App backgrounded.");
         }
-        if (isVoiceOpen) {
-          setIsVoiceOpen(false);
-          NativeVoiceService.stopListening();
-          NativeVoiceService.stopSpeaking();
-          NativeVoiceService.stopContinuousLoop();
-        }
       }
     });
     return () => { listener.then(l => l.remove()); };
-  }, [isVoiceOpen]);
+  }, []);
 
   return (
     <>
@@ -1958,6 +1977,8 @@ const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'vo
                       <button
                         type="button"
                         onClick={async () => {
+                          // Unlock WebView HTML5 Audio synchronously inside tap gesture so ElevenLabs playback never throws NotAllowedError
+                          NativeVoiceService.unlockAudio();
                           try {
                             localStorage.setItem("onboarding_voice_mode", "true");
                             api.patch("/users/onboarding-status", { step: "voice_mode" }).catch(() => {});

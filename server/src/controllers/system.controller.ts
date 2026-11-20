@@ -15,9 +15,49 @@ export class SystemController {
   static async getUpdateManifest(req: Request, res: Response) {
     const manifest = {
       appDownloadLink: sanitizeDownloadUrl(process.env.APP_DOWNLOAD_LINK),
-      latestVersion: "4.4.1",
-      title: "Classroom Polls, Live Voter Stats & System Hardening",
+      latestVersion: "4.4.2",
+      title: "Voice Mode Overhaul, ElevenLabs Streaming & Context Intelligence",
       changelog: [
+        {
+          "version": "4.4.2",
+          "date": "Nov 20, 2026",
+          "title": "Voice Mode Overhaul, ElevenLabs Streaming & Context Intelligence",
+          "sections": [
+            {
+              "title": "Voice Mode, ElevenLabs & Context Intelligence (v4.4.2)",
+              "items": [
+                {
+                  "icon": "🎨",
+                  "text": "Light & Dark Mode Parity + Status Bar Sync: Portaled Voice Mode into document.body with theme-safe classes, synced Android status bar icons across Light and Dark modes, introduced a dual-theme Voice Orb, and rebuilt the Voice Picker sheet with fixed header/footer framing so cards are never clipped."
+                },
+                {
+                  "icon": "⚙️",
+                  "text": "Overflow-Proof Bottom Pill & Settings Alignment: Added single-line truncation to Ask AttendX... and compact spacing so the Settings gear icon sits neatly inside the pill on 360px+ phones."
+                },
+                {
+                  "icon": "🔊",
+                  "text": "ElevenLabs Streaming Restored on Android: Replaced unauthenticated audio URLs with authenticated POST /ai/tts supporting automatic JWT refresh, lossless native CapacitorHttp binary handling, tap-gesture audio unlock, buffered MP3 Content-Length headers, and a live Voice & Engine top-bar badge."
+                },
+                {
+                  "icon": "✨",
+                  "text": "Pure-White Spoken Text & Exact Cursor Sync: Synchronized word highlighting directly to real audio.currentTime / audio.duration (and native onRangeStart on fallback) with punctuation weighting and pure #FFFFFF spoken text in Dark Mode."
+                },
+                {
+                  "icon": "🎙️",
+                  "text": "Continuous Mic Reliability: Removed partial-speech breakout kills, added silent 350ms Android recognizer auto-restart within a 45s activity window, and kept Voice Mode open across brief focus interruptions."
+                },
+                {
+                  "icon": "🧠",
+                  "text": "Full Copilot Contextual Awareness: Injected weekly timetable, today/tomorrow schedules, extra classes, assignments, active subject context, and recent attendance logs with remarks into Tier 3 prompts, plus multi-turn and active-subject follow-ups across Client Tier 0 and Server Tier 1/2."
+                },
+                {
+                  "icon": "🔐",
+                  "text": "First-Try Mobile Google OAuth Reliability: Added silent Login/Signup server warm-up pings, deduplicated native GoogleSignIn initialization with logout credential cleanup, removed blocking mid-login GPS waits, added 45s cold-start timeout with automatic 3x idToken retry, singleton Google JWKS cert caching, background device reverse-geocoding, and HTTP 503 transient classification."
+                }
+              ]
+            }
+          ]
+        },
         {
           "version": "4.4.1",
           "date": "Nov 20, 2026",

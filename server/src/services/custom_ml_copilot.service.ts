@@ -3367,8 +3367,13 @@ export class CustomMlCopilotService {
 
     if (process.env.GEMINI_API_KEY) {
       try {
-        const needsOrdinance = /\b(policy|ordinance|regulation|rule|75%|55%|l grade|r grade|i grade|m grade|grade|cgpa|sgpa|credit|minor|honors|leave|medical|on-duty|od|hostel|ragging|mess|rebate|curfew|in-timing|10:00|9:30|malpractice|supplementary|exam|scholarship|debar)\b/i.test(query);
-        const relevantOrd = needsOrdinance ? this.searchOrdinance(query) : null;
+        const recentHistoryText = (context.history || [])
+          .slice(-2)
+          .map((m: any) => m.content || m.text || "")
+          .join(" ");
+        const normalizedForOrd = this.normalizeVoiceQuery(`${query} ${recentHistoryText}`);
+        const needsOrdinance = /\b(policy|ordinance|regulation|rule|75%|55%|l grade|r grade|i grade|m grade|grade|cgpa|sgpa|credit|minor|honors|leave|medical|on-duty|od|hostel|ragging|mess|rebate|curfew|in-timing|10:00|9:30|malpractice|supplementary|exam|scholarship|debar|condonation|relaxation)\b/i.test(normalizedForOrd);
+        const relevantOrd = needsOrdinance ? this.searchOrdinance(normalizedForOrd) : null;
         const ordContext = relevantOrd ? `[RELEVANT ORDINANCE]\nSection: ${relevantOrd.section}\nTitle: ${relevantOrd.title}\nText: ${relevantOrd.summary}` : "";
         const precomputedSimBlock = this.computeMultiDaySimulationBlock(query, generalCtx);
 

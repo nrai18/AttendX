@@ -7,6 +7,31 @@ import { CacheService } from "./cache.service";
 import jwt from "jsonwebtoken";
 
 export class AuthService {
+  private static googleOAuthClient: any = null;
+
+  private static getGoogleOAuthClient() {
+    if (!this.googleOAuthClient) {
+      const { OAuth2Client } = require("google-auth-library");
+      this.googleOAuthClient = new OAuth2Client();
+    }
+    return this.googleOAuthClient;
+  }
+
+  /**
+   * Non-blocking startup warmup that pre-fetches Google's public OAuth2 JWKS certificates
+   * into the singleton OAuth2Client cache so the first native Google login doesn't stall.
+   */
+  static async warmupGoogleCerts(): Promise<void> {
+    try {
+      const client = this.getGoogleOAuthClient();
+      if (typeof client.getFederatedSignonCertsAsync === "function") {
+        await client.getFederatedSignonCertsAsync();
+      }
+    } catch {
+      // Silent warmup failure — verifyIdToken will fetch on demand if offline at boot
+    }
+  }
+
   static async hashToken(token: string) {
     return crypto.createHash("sha256").update(token).digest("hex");
   }
@@ -53,8 +78,7 @@ export class AuthService {
   }
 
   static async googleNativeLogin(idToken: string, req?: any) {
-    const { OAuth2Client } = require("google-auth-library");
-    const client = new OAuth2Client();
+    const client = this.getGoogleOAuthClient();
 
     // SEC-01 FIX: NEVER read audience from the unverified token itself.
     // The audience MUST be a hardcoded list of client IDs we own.
@@ -69,10 +93,32 @@ export class AuthService {
       throw new Error("Server misconfiguration: No Google client IDs configured.");
     }
 
-    const ticket = await client.verifyIdToken({
-      idToken,
-      audience: trustedAudiences,
-    });
+    // Retry once on transient Google JWKS certificate fetch / socket failures
+    let ticket: any;
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        ticket = await client.verifyIdToken({
+          idToken,
+          audience: trustedAudiences,
+        });
+        break;
+      } catch (verifyErr: any) {
+        const msg = String(verifyErr?.message || "").toLowerCase();
+        const code = String(verifyErr?.code || "").toUpperCase();
+        const isTransientVerifyError =
+          ["ECONNRESET", "ETIMEDOUT", "ENOTFOUND", "EAI_AGAIN", "UND_ERR_CONNECT_TIMEOUT"].includes(code) ||
+          msg.includes("fetch failed") ||
+          msg.includes("socket hang up") ||
+          msg.includes("timed out") ||
+          msg.includes("timeout") ||
+          msg.includes("network");
+        if (!isTransientVerifyError || attempt === 2) {
+          throw verifyErr;
+        }
+        await new Promise((r) => setTimeout(r, 450));
+      }
+    }
+
     const payload = ticket.getPayload();
     if (!payload) throw new Error("Invalid Google token payload");
 
@@ -121,54 +167,83 @@ export class AuthService {
   }
 
   static async generateTokensForOAuth(user: any, req?: any) {
-    const { v4: uuidv4 } = require("uuid"); const sessionId = uuidv4(); const accessToken = generateAccessToken(user.id, user.role, sessionId);
+    const { v4: uuidv4 } = require("uuid");
+    const sessionId = uuidv4();
+    const accessToken = generateAccessToken(user.id, user.role, sessionId);
     const refreshToken = generateRefreshToken(user.id);
     const hashedRefresh = await this.hashToken(refreshToken);
 
-    
-    const { getDeviceDetails } = require("../utils/device");
-    const { userAgent, ipAddress, location, os, browser, deviceType } = await getDeviceDetails(req);
-    
-    let finalLocation = location;
-    if (!location || location === "Unknown Location" || location === "Local Network" || location.includes("Asia")) {
-      // New sessions do not have a prior location
-    }
-    
-    
-    // Check if this is a new device by looking for existing sessions with the same userAgent
-    const existingSession = await prisma.refreshToken.findFirst({
-      where: { userId: user.id, userAgent }
-    });
-    
-    if (!existingSession) {
-      const timeStr = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
-      const deviceName = `${browser} on ${os}`;
-      EmailService.sendNewDeviceLoginEmail(user.email, user.name, deviceName, timeStr);
-    }
+    const { getFastDeviceDetails, getDeviceDetails } = require("../utils/device");
+    // Fast (<1ms, zero network) local device/header parsing so login never blocks on Nominatim / ip-api
+    const fastDetails = getFastDeviceDetails(req);
 
-    // Auto-terminate inactive sessions on login
-    if (user.autoTerminateMonths) {
-      const cutoffDate = new Date();
-      cutoffDate.setMonth(cutoffDate.getMonth() - user.autoTerminateMonths);
-      await prisma.refreshToken.deleteMany({
-        where: { userId: user.id, lastActive: { lt: cutoffDate } }
-      });
-    }
+    // Snapshot request headers & IP before Express finalizes the HTTP response
+    const reqSnapshot = req
+      ? { headers: { ...(req.headers || {}) }, ip: req.ip }
+      : null;
 
     await prisma.refreshToken.create({
       data: {
-        id: sessionId, userId: user.id,
+        id: sessionId,
+        userId: user.id,
         token: hashedRefresh,
         expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-        userAgent,
-        ipAddress,
-        location,
-        os,
-        browser,
-        deviceType
+        userAgent: fastDetails.userAgent,
+        ipAddress: fastDetails.ipAddress,
+        location: fastDetails.location,
+        os: fastDetails.os,
+        browser: fastDetails.browser,
+        deviceType: fastDetails.deviceType,
       },
     });
     CacheService.del(user.id, "user:sessions").catch(() => {});
+
+    // Run external reverse-geocoding, new-device alert email, and inactive-session pruning asynchronously
+    // so mobile Google OAuth returns tokens immediately without multi-second external HTTP stalls.
+    (async () => {
+      try {
+        const existingSession = await prisma.refreshToken.findFirst({
+          where: {
+            userId: user.id,
+            userAgent: fastDetails.userAgent,
+            id: { not: sessionId },
+          },
+          select: { id: true },
+        });
+
+        if (!existingSession) {
+          const timeStr = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
+          const deviceName = `${fastDetails.browser || "App"} on ${fastDetails.os || "Device"}`;
+          EmailService.sendNewDeviceLoginEmail(user.email, user.name, deviceName, timeStr);
+        }
+
+        if (user.autoTerminateMonths) {
+          const cutoffDate = new Date();
+          cutoffDate.setMonth(cutoffDate.getMonth() - user.autoTerminateMonths);
+          await prisma.refreshToken.deleteMany({
+            where: { userId: user.id, lastActive: { lt: cutoffDate }, id: { not: sessionId } },
+          });
+        }
+
+        if (reqSnapshot) {
+          const enriched = await getDeviceDetails(reqSnapshot);
+          if (enriched?.location && enriched.location !== fastDetails.location && enriched.location !== "Unknown Location") {
+            await prisma.refreshToken.update({
+              where: { id: sessionId },
+              data: {
+                location: enriched.location,
+                os: enriched.os ?? fastDetails.os,
+                browser: enriched.browser ?? fastDetails.browser,
+                deviceType: enriched.deviceType ?? fastDetails.deviceType,
+              },
+            }).catch(() => {});
+            CacheService.del(user.id, "user:sessions").catch(() => {});
+          }
+        }
+      } catch {
+        // Never fail login over background enrichment
+      }
+    })();
 
     const { passwordHash, ...safeUser } = user;
     const userWithHasPassword = { ...safeUser, hasPassword: !!passwordHash };

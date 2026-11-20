@@ -1,31 +1,35 @@
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { useConfigStore } from "../../stores/configStore";
 import { ArrowLeft, Loader2, Sparkles } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "../../components/ui/card";
-import { api, API_BASE_URL } from "../../lib/api";
+import { API_BASE_URL } from "../../lib/api";
 import { useAuthStore } from "../../stores/authStore";
 import { Capacitor } from "@capacitor/core";
-import { GoogleSignIn } from "@capawesome/capacitor-google-sign-in";
 import { hapticMedium, hapticSuccess, hapticError } from "../../utils/haptics";
 import { SoundFX } from "../../utils/soundEffects";
+import {
+  ensureGoogleSignInInitialized,
+  getCachedLocationHeaders,
+  isGoogleSignInCanceledError,
+  signInWithNativeGoogle,
+  warmUpAuthServer,
+} from "../../utils/nativeGoogleAuth";
 
 export const SignupPage: React.FC = () => {
   const navigate = useNavigate();
   const setAuth = useAuthStore((state) => state.setAuth);
 
   const [loading, setLoading] = useState(false);
+  const [googleStatus, setGoogleStatus] = useState("Connecting to Google...");
   const [error, setError] = useState<string | null>(null);
-  const [geoCoords, setGeoCoords] = useState<{lat: number, lon: number} | null>(null);
 
   React.useEffect(() => {
-    // Initialize GoogleSignIn on native platforms
+    // Wake Render backend & pre-initialize GoogleSignIn while user is on Signup screen
+    warmUpAuthServer();
     if (Capacitor.isNativePlatform()) {
-      GoogleSignIn.initialize({
-        clientId: useConfigStore.getState().googleClientId || import.meta.env.VITE_GOOGLE_CLIENT_ID || '729387616931-qlajf1dss2qi1cta5pvc3dos03fh4coi.apps.googleusercontent.com', 
-      }).catch(console.error);
+      ensureGoogleSignInInitialized().catch(console.error);
     }
   }, []);
 
@@ -34,45 +38,44 @@ export const SignupPage: React.FC = () => {
     if (Capacitor.isNativePlatform()) {
       try {
         setLoading(true);
+        setGoogleStatus("Opening Google...");
         setError(null);
-        const result = await GoogleSignIn.signIn();
-        const loc = await fetchLocationOnDemand();
-        
-        // Send the idToken to our backend to generate our own JWT
-        const res = await api.post("/auth/google/native", { idToken: result.idToken }, {
-          headers: loc ? { 'x-attendx-lat': loc.lat, 'x-attendx-lon': loc.lon } : {}
-        });
-        
+        const authResult = await signInWithNativeGoogle((status) => setGoogleStatus(status));
+
         hapticSuccess();
         SoundFX.playLoginChimeSound();
-        setAuth(res.data.user, res.data.accessToken, res.data.refreshToken);
-        navigate("/today");
+        setAuth(authResult.user, authResult.accessToken, authResult.refreshToken);
+        let target = "/today";
+        try {
+          const saved = sessionStorage.getItem("post_login_redirect");
+          if (saved && saved.startsWith("/")) {
+            sessionStorage.removeItem("post_login_redirect");
+            target = saved;
+          }
+        } catch {}
+        navigate(target);
       } catch (err: any) {
         hapticError();
-        console.error("Native Google Login failed:", err);
-        if (err.message && !err.message.toLowerCase().includes("canceled")) {
-           setError("Google Sign-In failed.");
+        console.error("Native Google Signup failed:", err);
+        if (!isGoogleSignInCanceledError(err)) {
+          const isNetworkOrTimeout = !err?.response || err?.code === "ECONNABORTED" || err?.response?.status >= 500;
+          setError(
+            err?.response?.data?.message ||
+              (isNetworkOrTimeout
+                ? "Server is taking longer than usual to wake up. Tap Continue with Google to retry."
+                : err?.message || "Google Sign-In failed. Please try again.")
+          );
         }
       } finally {
         setLoading(false);
+        setGoogleStatus("Connecting to Google...");
       }
     } else {
-      const loc = await fetchLocationOnDemand();
-      window.location.href = `${API_BASE_URL}/auth/google` + (loc ? `?lat=${loc.lat}&lon=${loc.lon}` : "");
-    }
-  };
-
-  const fetchLocationOnDemand = async () => {
-    try {
-      const { Geolocation } = await import('@capacitor/geolocation');
-      if (Capacitor.isNativePlatform()) {
-        const hasPerms = await Geolocation.checkPermissions();
-        if (hasPerms.location !== 'granted') await Geolocation.requestPermissions();
-      }
-      const pos = await Geolocation.getCurrentPosition({ timeout: 15000, maximumAge: 300000, enableHighAccuracy: false });
-      return { lat: pos.coords.latitude, lon: pos.coords.longitude };
-    } catch (e) {
-      return null;
+      const cached = getCachedLocationHeaders();
+      const qs = cached["x-attendx-lat"] && cached["x-attendx-lon"]
+        ? `?lat=${cached["x-attendx-lat"]}&lon=${cached["x-attendx-lon"]}`
+        : "";
+      window.location.href = `${API_BASE_URL}/auth/google${qs}`;
     }
   };
 
@@ -131,7 +134,7 @@ export const SignupPage: React.FC = () => {
                     className="flex items-center justify-center gap-2"
                   >
                     <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
-                    <span>Connecting to Google...</span>
+                    <span>{googleStatus}</span>
                   </motion.div>
                 ) : (
                   <motion.div

@@ -54,8 +54,16 @@ router.post("/forgot-password", forgotPasswordLimiter, AuthController.forgotPass
 router.post("/validate-otp", otpVerifyLimiter, AuthController.validateOtp);
 router.post("/reset-password", otpVerifyLimiter, AuthController.resetPassword);
 
+const googleOAuthLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 45,
+  message: { message: "Too many Google sign-in attempts from this network, please wait a moment and try again." },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 // Google OAuth routes (Native Mobile)
-router.post("/google/native", loginLimiter, AuthController.googleNative);
+router.post("/google/native", googleOAuthLimiter, AuthController.googleNative);
 
 // Google OAuth routes
 import passport from "../middleware/passport";

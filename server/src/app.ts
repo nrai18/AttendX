@@ -45,6 +45,7 @@ app.use(
   cors({
     origin: true,
     credentials: true,
+    exposedHeaders: ["X-TTS-Provider"],
   })
 );
 app.use(MemoryMonitor.middleware());

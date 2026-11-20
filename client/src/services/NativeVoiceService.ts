@@ -28,6 +28,9 @@ export interface VoiceSpeakOptions {
   onEnd?: () => void;
   onError?: (err: any) => void;
   onDuration?: (durationMs: number) => void;
+  onProgress?: (currentTimeMs: number, durationMs: number) => void;
+  onWordCharIndex?: (charIndex: number) => void;
+  onProvider?: (provider: "elevenlabs" | "google-tts" | "native-tts") => void;
   autoResumeListening?: boolean;
   listenOptions?: VoiceListenOptions;
 }
@@ -83,11 +86,48 @@ export class NativeVoiceService {
   private static activeWebRecognition: any = null;
   private static startPromise: Promise<any> | null = null; // FE-H09 FIX: Promise lock for native plugin start
   private static currentAudio: HTMLAudioElement | null = null;
+  private static sharedAudio: HTMLAudioElement | null = null;
+  private static activeObjectUrl: string | null = null;
+  private static progressIntervalId: any = null;
   private static currentSessionId = 0;
   private static speakSessionId = 0;
   private static pendingStartPromise: Promise<any> | null = null;
   private static cooldownTimeoutId: any = null;
   private static ttsRangeListener: { remove: () => Promise<void> } | null = null;
+
+  /**
+   * Prime a reusable HTMLAudioElement synchronously inside a user tap gesture
+   * so Android WebView / mobile browsers never reject async ElevenLabs play() with NotAllowedError.
+   */
+  static unlockAudio(): void {
+    if (typeof window === "undefined" || typeof Audio === "undefined") return;
+    try {
+      if (!this.sharedAudio) {
+        this.sharedAudio = new Audio();
+        this.sharedAudio.preload = "auto";
+      }
+      if (!this.isSpeakingState && !this.currentAudio) {
+        const audio = this.sharedAudio;
+        audio.muted = true;
+        audio.src = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA";
+        const p = audio.play();
+        if (p && typeof p.then === "function") {
+          p.then(() => {
+            if (!this.isSpeakingState) {
+              audio.pause();
+            }
+            audio.muted = false;
+          }).catch(() => {
+            audio.muted = false;
+          });
+        } else {
+          audio.muted = false;
+        }
+      }
+    } catch {
+      // ignore unlock failures on non-media environments
+    }
+  }
 
   /**
    * Check whether speech recognition is currently active.
@@ -586,6 +626,7 @@ export class NativeVoiceService {
 
     const speakWithNativeFallback = async (): Promise<boolean> => {
       if (mySpeakId !== this.speakSessionId) return false;
+      options?.onProvider?.("native-tts");
       let startFallbackTimer: ReturnType<typeof setTimeout> | null = null;
       let finished = false;
       try {
@@ -594,12 +635,16 @@ export class NativeVoiceService {
           this.ttsRangeListener = null;
         }
         try {
-          this.ttsRangeListener = await TextToSpeech.addListener('onRangeStart', () => {
+          this.ttsRangeListener = await TextToSpeech.addListener('onRangeStart', (info: any) => {
+            if (mySpeakId !== this.speakSessionId) return;
             if (startFallbackTimer) {
               clearTimeout(startFallbackTimer);
               startFallbackTimer = null;
             }
             firePlaybackStart();
+            if (typeof info?.start === "number") {
+              options?.onWordCharIndex?.(info.start);
+            }
           });
         } catch {
           // Web or unsupported listener falls back to calibrated start timer
@@ -651,39 +696,187 @@ export class NativeVoiceService {
         return false;
       }
     };
-    
-    try {
-      let accessToken = useAuthStore.getState().accessToken || '';
 
-      let blobUrl = '';
+    try {
       const voiceId = prefElevenLabsVoiceId || 'hpp4J3VqNfWAUOO0d1Us';
-      
-      // Direct authenticated streaming GET URL for HTML5 Audio
-      blobUrl = `${api.defaults.baseURL}/ai/tts?text=${encodeURIComponent(cleanText)}&voiceId=${encodeURIComponent(voiceId)}&token=${encodeURIComponent(accessToken)}`;
-      
-      const audio = new Audio(blobUrl);
-      audio.preload = "auto";
-      this.currentAudio = audio;
-      
-      const syncAudioDuration = () => {
-        if (mySpeakId !== this.speakSessionId) return;
-        if (audio.duration && Number.isFinite(audio.duration) && audio.duration > 0 && options?.onDuration) {
-          options.onDuration(audio.duration * 1000);
+
+      const decodeBase64ToBlob = (b64: string, mimeType = "audio/mpeg"): Blob => {
+        const stripped = (b64.includes(",") ? b64.split(",")[1] : b64).replace(/\s+/g, "");
+        const bin = atob(stripped);
+        const bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        return new Blob([bytes], { type: mimeType });
+      };
+
+      const isJwtExpiringSoon = (token: string | null | undefined): boolean => {
+        if (!token) return true;
+        try {
+          const payloadB64 = token.split(".")[1]?.replace(/-/g, "+").replace(/_/g, "/");
+          if (!payloadB64) return true;
+          const payload = JSON.parse(atob(payloadB64));
+          return !payload?.exp || payload.exp * 1000 < Date.now() + 15000;
+        } catch {
+          return true;
         }
       };
-      audio.onloadedmetadata = syncAudioDuration;
-      audio.ondurationchange = syncAudioDuration;
+
+      const getHeaderIgnoreCase = (headers: Record<string, any> | undefined, name: string): string => {
+        if (!headers) return "";
+        const target = name.toLowerCase();
+        for (const key of Object.keys(headers)) {
+          if (key.toLowerCase() === target) return String(headers[key] ?? "");
+        }
+        return "";
+      };
+
+      let audioBlob: Blob;
+      let resolvedProvider: "elevenlabs" | "google-tts" = "elevenlabs";
+
+      if (Capacitor.isNativePlatform()) {
+        // On Android/iOS, CapacitorHttp's XHR patch omits responseType, corrupting raw binary XHR payloads.
+        // Call CapacitorHttp.post directly with explicit responseType: "blob" AND format: "json" so BOTH
+        // JSON-base64 responses and legacy raw audio/mpeg responses decode losslessly.
+        let token = useAuthStore.getState().accessToken;
+        if (isJwtExpiringSoon(token)) {
+          await api.get("/auth/me", { silent: true }).catch(() => {});
+          token = useAuthStore.getState().accessToken;
+        }
+
+        const ttsUrl = `${api.defaults.baseURL}/ai/tts`;
+        const executeNativeTts = async (bearer: string | null) =>
+          CapacitorHttp.post({
+            url: ttsUrl,
+            headers: {
+              "Content-Type": "application/json",
+              ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}),
+            },
+            data: { text: cleanText, voice_id: voiceId, format: "json" },
+            responseType: "blob",
+            connectTimeout: 15000,
+            readTimeout: 15000,
+          });
+
+        let nativeRes = await executeNativeTts(token);
+        if (nativeRes.status === 401) {
+          await api.get("/auth/me", { silent: true }).catch(() => {});
+          token = useAuthStore.getState().accessToken;
+          if (token) {
+            nativeRes = await executeNativeTts(token);
+          }
+        }
+
+        if (mySpeakId !== this.speakSessionId) return false;
+        if (nativeRes.status < 200 || nativeRes.status >= 300) {
+          throw new Error(`Native TTS HTTP ${nativeRes.status}`);
+        }
+
+        const headerProvider = getHeaderIgnoreCase(nativeRes.headers, "x-tts-provider").toLowerCase();
+        if (headerProvider === "google-tts") resolvedProvider = "google-tts";
+
+        const rawNativeData = nativeRes.data;
+        if (rawNativeData && typeof rawNativeData === "object" && typeof rawNativeData.audioBase64 === "string") {
+          if (String(rawNativeData.provider || "").toLowerCase() === "google-tts") {
+            resolvedProvider = "google-tts";
+          }
+          audioBlob = decodeBase64ToBlob(rawNativeData.audioBase64, rawNativeData.mimeType || "audio/mpeg");
+        } else if (typeof rawNativeData === "string" && rawNativeData.length > 0) {
+          audioBlob = decodeBase64ToBlob(rawNativeData, "audio/mpeg");
+        } else {
+          throw new Error("Empty native TTS audio payload");
+        }
+      } else {
+        // Web browser: Authenticated POST via Axios so expired JWTs auto-refresh via interceptor
+        const ttsRes = await api.post(
+          "/ai/tts",
+          { text: cleanText, voice_id: voiceId, format: "json" },
+          {
+            responseType: "blob",
+            silent: true,
+            timeout: 15000,
+          },
+        );
+
+        if (mySpeakId !== this.speakSessionId) return false;
+
+        const contentType = getHeaderIgnoreCase(ttsRes.headers as any, "content-type").toLowerCase();
+        const headerProvider = getHeaderIgnoreCase(ttsRes.headers as any, "x-tts-provider").toLowerCase();
+        if (headerProvider === "google-tts") resolvedProvider = "google-tts";
+
+        const rawData = ttsRes.data;
+        if (contentType.includes("application/json")) {
+          const jsonText = rawData instanceof Blob ? await rawData.text() : typeof rawData === "string" ? rawData : JSON.stringify(rawData);
+          const parsed = JSON.parse(jsonText);
+          if (!parsed?.audioBase64) throw new Error("Missing audioBase64 in JSON TTS payload");
+          if (String(parsed.provider || "").toLowerCase() === "google-tts") resolvedProvider = "google-tts";
+          audioBlob = decodeBase64ToBlob(parsed.audioBase64, parsed.mimeType || "audio/mpeg");
+        } else if (rawData instanceof Blob) {
+          audioBlob = rawData.type ? rawData : new Blob([rawData], { type: "audio/mpeg" });
+        } else if (rawData instanceof ArrayBuffer) {
+          audioBlob = new Blob([rawData], { type: "audio/mpeg" });
+        } else if (typeof rawData === "string" && rawData.length > 0) {
+          audioBlob = decodeBase64ToBlob(rawData, "audio/mpeg");
+        } else {
+          throw new Error("Empty or unsupported TTS audio payload");
+        }
+      }
+
+      if (audioBlob.size < 128) {
+        throw new Error(`TTS audio payload too small (${audioBlob.size} bytes)`);
+      }
+
+      options?.onProvider?.(resolvedProvider);
+
+      const blobUrl = URL.createObjectURL(audioBlob);
+      if (this.activeObjectUrl) {
+        try { URL.revokeObjectURL(this.activeObjectUrl); } catch {}
+      }
+      this.activeObjectUrl = blobUrl;
+
+      const audio = this.sharedAudio || new Audio();
+      this.sharedAudio = audio;
+      audio.muted = false;
+      audio.volume = options?.volume ?? 1.0;
+      audio.preload = "auto";
+      this.currentAudio = audio;
+
+      const clearProgressTimer = () => {
+        if (this.progressIntervalId) {
+          clearInterval(this.progressIntervalId);
+          this.progressIntervalId = null;
+        }
+      };
+
+      const syncAudioDuration = () => {
+        if (mySpeakId !== this.speakSessionId) return;
+        if (audio.duration && Number.isFinite(audio.duration) && audio.duration > 0) {
+          options?.onDuration?.(audio.duration * 1000);
+          options?.onProgress?.(audio.currentTime * 1000, audio.duration * 1000);
+        }
+      };
 
       const cleanupFile = () => {
-        if (blobUrl.startsWith('blob:')) URL.revokeObjectURL(blobUrl);
+        clearProgressTimer();
+        if (this.activeObjectUrl === blobUrl) {
+          try { URL.revokeObjectURL(blobUrl); } catch {}
+          this.activeObjectUrl = null;
+        }
       };
 
       const detachAudio = () => {
         audio.onloadedmetadata = null;
         audio.ondurationchange = null;
+        audio.ontimeupdate = null;
         audio.onplaying = null;
         audio.onended = null;
         audio.onerror = null;
+      };
+
+      audio.onloadedmetadata = syncAudioDuration;
+      audio.ondurationchange = syncAudioDuration;
+      audio.ontimeupdate = () => {
+        if (mySpeakId !== this.speakSessionId) return;
+        const durMs = audio.duration && Number.isFinite(audio.duration) ? audio.duration * 1000 : 0;
+        options?.onProgress?.(audio.currentTime * 1000, durMs);
       };
 
       audio.onended = async () => {
@@ -692,7 +885,7 @@ export class NativeVoiceService {
         if (this.currentAudio === audio) this.currentAudio = null;
         await handlePlaybackEnd();
       };
-      
+
       audio.onerror = async (e) => {
         detachAudio();
         cleanupFile();
@@ -702,16 +895,26 @@ export class NativeVoiceService {
         await speakWithNativeFallback();
       };
 
-      // Only trigger UI parser/start once ElevenLabs audio buffers finish and playback ACTUALLY begins
+      // Only trigger UI word parser once audio physically starts playing
       audio.onplaying = () => {
+        if (mySpeakId !== this.speakSessionId) return;
         syncAudioDuration();
         firePlaybackStart();
+        clearProgressTimer();
+        this.progressIntervalId = setInterval(() => {
+          if (mySpeakId !== this.speakSessionId || audio.paused || audio.ended) return;
+          const durMs = audio.duration && Number.isFinite(audio.duration) ? audio.duration * 1000 : 0;
+          options?.onProgress?.(audio.currentTime * 1000, durMs);
+        }, 50);
       };
+
+      audio.src = blobUrl;
+      audio.load();
       await audio.play();
       return true;
     } catch (err) {
       if (mySpeakId !== this.speakSessionId) return false;
-      console.error("ElevenLabs TTS error:", err);
+      console.warn("ElevenLabs TTS request/playback failed, falling back to native TTS:", err);
       return await speakWithNativeFallback();
     }
   }
@@ -725,6 +928,10 @@ export class NativeVoiceService {
       clearTimeout(this.cooldownTimeoutId);
       this.cooldownTimeoutId = null;
     }
+    if (this.progressIntervalId) {
+      clearInterval(this.progressIntervalId);
+      this.progressIntervalId = null;
+    }
     this.isSpeakingState = false;
     if (this.ttsRangeListener) {
       await this.ttsRangeListener.remove().catch(() => {});
@@ -737,6 +944,7 @@ export class NativeVoiceService {
         // Detach handlers BEFORE pausing/emptying src so aborted streams never trigger Google TTS fallback!
         audio.onloadedmetadata = null;
         audio.ondurationchange = null;
+        audio.ontimeupdate = null;
         audio.onplaying = null;
         audio.onended = null;
         audio.onerror = null;
@@ -746,6 +954,10 @@ export class NativeVoiceService {
       } catch {
         // ignore
       }
+    }
+    if (this.activeObjectUrl) {
+      try { URL.revokeObjectURL(this.activeObjectUrl); } catch {}
+      this.activeObjectUrl = null;
     }
     
     try {

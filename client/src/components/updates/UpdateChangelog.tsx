@@ -56,7 +56,9 @@ export function stripShaFromChangelog(markdown: string): string {
     return true;
   });
 
-  // 4. Prune trailing/empty Verification/Checksum headers if no real content remains beneath them
+  // 4. Strip Verification / Checksum sections completely from the in-app popup UI
+  //    (NativeUpdateSheet already shows version badge + "Package Verified" footer,
+  //     and GitHubUpdater parses SHA256 directly from the raw release body.)
   const isVerificationHeader = (s: string) => {
     const t = s.trim();
     return (
@@ -66,18 +68,20 @@ export function stripShaFromChangelog(markdown: string): string {
   };
 
   const result: string[] = [];
+  let skippingVerificationSection = false;
   for (let i = 0; i < withoutOrphanTableSep.length; i++) {
     const cur = withoutOrphanTableSep[i];
+    const trimmedCur = cur.trim();
     if (isVerificationHeader(cur)) {
-      let hasBodyContent = false;
-      for (let j = i + 1; j < withoutOrphanTableSep.length; j++) {
-        const nextTrimmed = withoutOrphanTableSep[j].trim();
-        if (!nextTrimmed || nextTrimmed === "---" || nextTrimmed === "***") continue;
-        if (/^#{1,6}\s+/.test(nextTrimmed)) break;
-        hasBodyContent = true;
-        break;
+      skippingVerificationSection = true;
+      continue;
+    }
+    if (skippingVerificationSection) {
+      if (/^#{1,6}\s+/.test(trimmedCur)) {
+        skippingVerificationSection = false;
+      } else {
+        continue;
       }
-      if (!hasBodyContent) continue;
     }
     result.push(cur);
   }
@@ -87,6 +91,32 @@ export function stripShaFromChangelog(markdown: string): string {
     .replace(/\n{3,}/g, "\n\n")
     .replace(/(?:\n---\s*)+$/g, "")
     .trim();
+}
+
+/**
+ * Condenses verbose GitHub Release bullets into a single bold headline for the in-app update sheet
+ * while keeping full detailed descriptions intact on GitHub Releases.
+ */
+export function condenseBulletHeadline(cleanText: string): string {
+  const trimmed = cleanText.trim();
+  if (!trimmed) return "";
+
+  // Pattern 1: Optional leading emoji + **Bold Heading:** verbose description...
+  const boldLeadMatch = trimmed.match(/^((?:[^\p{L}\p{N}*]+)?)\*\*([^*]+?)\*\*(?:\s*[:—–-]\s*.*|\s+.*)?$/u);
+  if (boldLeadMatch) {
+    const prefix = (boldLeadMatch[1] || "").trim();
+    const heading = boldLeadMatch[2].replace(/[:—–-]\s*$/, "").trim();
+    return prefix ? `${prefix} **${heading}**` : `**${heading}**`;
+  }
+
+  // Pattern 2: Plain "Emoji Heading: verbose description..."
+  const colonIdx = trimmed.indexOf(":");
+  if (colonIdx > 0 && colonIdx <= 85) {
+    const lead = trimmed.slice(0, colonIdx).trim();
+    if (lead) return `**${lead}**`;
+  }
+
+  return `**${trimmed}**`;
 }
 
 export const UpdateChangelog: React.FC<Props> = ({ markdown }) => {
@@ -158,17 +188,19 @@ export const UpdateChangelog: React.FC<Props> = ({ markdown }) => {
           );
         }
 
-        // 3. Bullet list items (- or *)
+        // 3. Bullet list items (- or *) — condensed to bold 1-line headings inside the app
         if (trimmed.startsWith("-") || trimmed.startsWith("*")) {
           const cleanText = trimmed.replace(/^[-*]\s*/, "");
+          const condensed = condenseBulletHeadline(cleanText);
+          if (!condensed) return null;
           return (
             <div
               key={idx}
-              className="p-3.5 rounded-2xl bg-white/60 dark:bg-white/[0.05] backdrop-blur-md border border-slate-900/10 dark:border-white/10 flex items-start gap-3 shadow-xs min-w-0"
+              className="py-2.5 px-3.5 rounded-2xl bg-white/60 dark:bg-white/[0.05] backdrop-blur-md border border-slate-900/10 dark:border-white/10 flex items-center gap-2.5 shadow-xs min-w-0"
             >
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 dark:bg-emerald-400 mt-1.5 shrink-0" />
-              <div className="flex-1 min-w-0 text-slate-800 dark:text-zinc-200 leading-relaxed font-normal break-words [overflow-wrap:anywhere]">
-                {parseFormattedText(cleanText)}
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 dark:bg-emerald-400 shrink-0" />
+              <div className="flex-1 min-w-0 text-slate-900 dark:text-slate-50 leading-snug break-words">
+                {parseFormattedText(condensed)}
               </div>
             </div>
           );

@@ -23,6 +23,15 @@ export interface Release {
   sections: ChangelogSection[];
 }
 
+function condenseChangelogItem(text: string): string {
+  const trimmed = String(text || "").trim();
+  const colonIdx = trimmed.indexOf(":");
+  if (colonIdx > 0 && colonIdx <= 85) {
+    return trimmed.slice(0, colonIdx).trim();
+  }
+  return trimmed;
+}
+
 export const ChangelogModal = ({
   isOpen,
   onClose,
@@ -109,9 +118,9 @@ export const ChangelogModal = ({
                         </h4>
                         <ul className="space-y-1.5 pl-2">
                           {section.items.map((item, k) => (
-                            <li key={k} className="text-sm text-foreground/80 flex items-start gap-2">
+                            <li key={k} className="text-sm text-foreground flex items-start gap-2 min-w-0">
                               <span className="shrink-0">{item.icon}</span>
-                              <span>{item.text}</span>
+                              <span className="font-semibold leading-snug break-words">{condenseChangelogItem(item.text)}</span>
                             </li>
                           ))}
                         </ul>

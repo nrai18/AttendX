@@ -96,6 +96,7 @@ export const useAuthStore = create<AuthState>()(
         import('./attendanceStore').then(({ useAttendanceStore }) => useAttendanceStore.getState().resetAttendanceStore()).catch(() => {});
         import('./assignmentStore').then(({ useAssignmentStore }) => useAssignmentStore.getState().resetAssignments()).catch(() => {});
         import('./appLockStore').then(({ useAppLockStore }) => useAppLockStore.getState().disablePasscode()).catch(() => {});
+        import('../utils/nativeGoogleAuth').then(({ signOutGoogleNative }) => signOutGoogleNative()).catch(() => {});
         if (wasAuthenticated) {
           import('../utils/soundEffects').then(({ SoundFX }) => SoundFX.playLogoutChimeSound()).catch(() => {});
         }

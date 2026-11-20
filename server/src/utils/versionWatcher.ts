@@ -51,7 +51,7 @@ export function isProductionVersionWatcherEnv(env: NodeJS.ProcessEnv = process.e
 /**
  * Read current backend package version cleanly regardless of CWD (server/ or repo root).
  */
-export function resolveServerPackageVersion(fallback = "4.4.1"): string {
+export function resolveServerPackageVersion(fallback = "4.4.2"): string {
   const candidates = [
     path.resolve(process.cwd(), "package.json"),
     path.resolve(__dirname, "../../package.json"),
@@ -72,8 +72,73 @@ export function resolveServerPackageVersion(fallback = "4.4.1"): string {
 }
 
 /**
- * Verify via GitHub Releases API that a non-draft, non-prerelease release
- * matching `version` is published and actually contains a downloadable `.apk` asset.
+ * Fallback verification via github.com release asset URL (unaffected by api.github.com
+ * 60 req/hr shared-IP rate limits on Render). Draft releases, missing tags, and releases
+ * without AttendX.apk all return 404; published releases with AttendX.apk return 302 to
+ * *.githubusercontent.com.
+ */
+async function verifyDirectReleaseApkHead(
+  owner: string,
+  repo: string,
+  tagCandidates: string[],
+  fetchImpl: typeof fetch
+): Promise<{ ok: true; apkAssetName: string; tagName: string } | { ok: false; reason: string }> {
+  let lastReason = "direct_apk_not_found";
+
+  for (const tag of tagCandidates) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
+    timeoutId.unref?.();
+
+    try {
+      const url = `https://github.com/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/releases/download/${encodeURIComponent(tag)}/AttendX.apk`;
+      const res = await fetchImpl(url, {
+        method: "HEAD",
+        redirect: "manual",
+        headers: {
+          "User-Agent": "AttendX-Server-VersionWatcher",
+        },
+        signal: controller.signal,
+      });
+
+      if (res.status === 200) {
+        return { ok: true, apkAssetName: "AttendX.apk", tagName: tag };
+      }
+
+      if (res.status === 301 || res.status === 302 || res.status === 303 || res.status === 307 || res.status === 308) {
+        const location = res.headers.get("location") || "";
+        try {
+          const parsedLoc = new URL(location);
+          if (parsedLoc.hostname === "githubusercontent.com" || parsedLoc.hostname.endsWith(".githubusercontent.com")) {
+            return { ok: true, apkAssetName: "AttendX.apk", tagName: tag };
+          }
+        } catch {
+          // Ignore invalid redirect locations
+        }
+        lastReason = `direct_apk_unexpected_redirect:${tag}`;
+        continue;
+      }
+
+      if (res.status === 404) {
+        lastReason = `direct_apk_404:${tag}`;
+        continue;
+      }
+
+      lastReason = `direct_apk_http_${res.status}`;
+    } catch (err: any) {
+      lastReason = err?.name === "AbortError" ? "direct_apk_timeout" : err?.message || "direct_apk_fetch_error";
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
+
+  return { ok: false, reason: lastReason };
+}
+
+/**
+ * Verify via GitHub Releases API (with rate-limit-immune github.com HEAD fallback)
+ * that a non-draft, non-prerelease release matching `version` is published and
+ * actually contains a downloadable `.apk` asset.
  */
 export async function verifyGitHubReleaseHasApk(
   version: string,
@@ -116,6 +181,11 @@ export async function verifyGitHubReleaseHasApk(
       if (res.status === 404) {
         lastReason = `release_tag_404:${tag}`;
         continue;
+      }
+      if (res.status === 403 || res.status === 429) {
+        // Shared cloud NAT IPs (e.g. Render) commonly hit GitHub's 60/hr unauthenticated API limit.
+        // Fall back to a direct HEAD probe against github.com/releases/download/<tag>/AttendX.apk.
+        return await verifyDirectReleaseApkHead(owner, repo, tagCandidates, fetchImpl);
       }
       if (!res.ok) {
         return { ok: false, reason: `github_http_${res.status}` };

@@ -135,20 +135,105 @@ export class AiChatService {
             .join("\n")
         : "None";
 
-    const needsHistoryLogs = /\b(when was i|history|log|logs|past|last\s+week|yesterday|marked\s+on|absent(?:\s+on)?|present(?:\s+on)?|did\s+i\s+attend|did\s+i\s+miss|attended|missed)\b/i.test(
-      normalizedQuery
-    );
-    const historyLogsSummary =
-      needsHistoryLogs && context.historyLogs && context.historyLogs.length > 0
-        ? context.historyLogs
-            .slice(-20)
-            .map((l: any) => {
-              const d = new Date(l.date);
-              if (isNaN(d.getTime())) return `Invalid Date: ${l.subject?.name || l.subjectName || "Subject"} - ${l.status}`;
-              return `${d.toISOString().split("T")[0]}: ${l.subject?.name || l.subjectName || "Subject"} - ${l.status}`;
+    const subjectNameById: Record<string, string> = {};
+    for (const s of context.subjects || []) {
+      if (s?.id) subjectNameById[s.id] = s.name || s.id;
+    }
+
+    const dayNames = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+    const slots = Array.isArray(context.timetable_slots) ? context.timetable_slots : [];
+    const groupedByDay: Record<number, any[]> = {};
+    for (const slot of slots) {
+      const dIdx = Number(slot.dayOfWeek);
+      if (!Number.isNaN(dIdx)) {
+        if (!groupedByDay[dIdx]) groupedByDay[dIdx] = [];
+        groupedByDay[dIdx].push(slot);
+      }
+    }
+    const formatDaySlots = (dIdx: number) =>
+      (groupedByDay[dIdx] || [])
+        .slice()
+        .sort((a, b) => String(a.startTime || "").localeCompare(String(b.startTime || "")))
+        .map((sl) => {
+          const sName = sl.subject?.name || subjectNameById[sl.subjectId] || sl.subjectId || "Class";
+          const roomStr = sl.room && sl.room !== "TBD" ? `, ${sl.room}` : "";
+          return `${sl.startTime}-${sl.endTime} ${sName} (${sl.type || sl.slotType || "Lecture"}${roomStr})`;
+        })
+        .join("; ");
+
+    const weeklyTimetableSummary =
+      slots.length > 0
+        ? dayNames
+            .map((dayName, idx) => {
+              const line = formatDaySlots(idx);
+              return line ? `- ${dayName}: ${line}` : null;
+            })
+            .filter(Boolean)
+            .join("\n")
+        : "No weekly timetable slots recorded";
+
+    const parsedLocal = context.localTime ? new Date(context.localTime) : new Date();
+    const validLocal = isNaN(parsedLocal.getTime()) ? new Date() : parsedLocal;
+    const todayDayIdx = (validLocal.getDay() + 6) % 7;
+    const tomorrowDayIdx = (todayDayIdx + 1) % 7;
+    const todayScheduleSummary = formatDaySlots(todayDayIdx) || "No classes scheduled";
+    const tomorrowScheduleSummary = formatDaySlots(tomorrowDayIdx) || "No classes scheduled";
+
+    const assignmentsList =
+      Array.isArray(context.assignments) && context.assignments.length > 0
+        ? context.assignments
+            .slice(0, 15)
+            .map((a: any) => {
+              const done = Array.isArray(a.completions) && a.completions.length > 0;
+              const due = a.deadline ? String(a.deadline).slice(0, 10) : "TBD";
+              const subName = a.subject?.name || (a.subjectId ? subjectNameById[a.subjectId] : "");
+              return `- ${a.title} [${done ? "Completed" : "Pending"}, Priority: ${a.priority || "medium"}, Due: ${due}${subName ? `, Subject: ${subName}` : ""}]`;
             })
             .join("\n")
-        : "Omitted (not needed for this query)";
+        : "No assignments recorded";
+
+    const extraClassesSummary =
+      Array.isArray(context.historyLogs) && context.historyLogs.length > 0
+        ? context.historyLogs
+            .filter((l: any) => l.isExtra)
+            .slice(-10)
+            .map((l: any) => {
+              const dStr = l.date ? String(l.date).slice(0, 10) : "TBD";
+              const sName = l.subject?.name || subjectNameById[l.subjectId] || l.subjectName || "Extra Class";
+              return `- ${dStr}${l.startTime ? ` ${l.startTime}` : ""}: ${sName} (${l.status || "scheduled"})`;
+            })
+            .join("\n")
+        : "";
+
+    const resolvedSelectedContext =
+      Array.isArray(context.selectedItems) && context.selectedItems.length > 0
+        ? context.selectedItems
+            .map((item: any) => {
+              if (item?.type === "subjectId" && subjectNameById[item.value]) {
+                return `Viewing Subject: ${subjectNameById[item.value]} (ID: ${item.value})`;
+              }
+              return `${item?.type || "item"}: ${item?.value ?? JSON.stringify(item)}`;
+            })
+            .join(", ")
+        : selectedItemsJson;
+
+    const needsHistoryLogs = /\b(when was i|history|log|logs|past|last\s+week|yesterday|marked\s+on|absent(?:\s+on)?|present(?:\s+on)?|did\s+i\s+attend|did\s+i\s+miss|attended|missed|drop|dropped|remark|reason|recent)\b/i.test(
+      normalizedQuery
+    );
+    const maxLogCount = needsHistoryLogs ? 25 : 12;
+    const historyLogsSummary =
+      context.historyLogs && context.historyLogs.length > 0
+        ? context.historyLogs
+            .slice(0, maxLogCount)
+            .map((l: any) => {
+              const d = new Date(l.date);
+              const datePart = isNaN(d.getTime()) ? "Unknown Date" : d.toISOString().split("T")[0];
+              const subPart = l.subject?.name || subjectNameById[l.subjectId] || l.subjectName || "Subject";
+              const remarkPart = l.remarks ? ` (Remark: "${l.remarks}")` : "";
+              return `${datePart}: ${subPart} - ${l.status}${remarkPart}`;
+            })
+            .join("\n")
+        : "No recent attendance logs available";
 
     return `[SYSTEM_IDENTITY]
 Role: AttendX AI Copilot & Offline Academic Advisor
@@ -176,11 +261,17 @@ Target Attendance: ${targetAttendance}%
 [CLIENT_SESSION_STATE]
 Local Timestamp: ${localTime}
 Current Screen/Route: ${currentRoute}
-Selected Item Context: ${selectedItemsJson}
+Selected Item Context: ${resolvedSelectedContext}
 Overall Attendance: ${overallPercentage}% (${totalAttended}/${totalClasses} classes)
+Today (${dayNames[todayDayIdx]}) Schedule: ${todayScheduleSummary}
+Tomorrow (${dayNames[tomorrowDayIdx]}) Schedule: ${tomorrowScheduleSummary}
+Weekly Timetable:
+${weeklyTimetableSummary}
+${extraClassesSummary ? `Upcoming / Logged Extra Classes:\n${extraClassesSummary}\n` : ""}Assignments:
+${assignmentsList}
 Subjects Enrolled:
 ${formattedSubjectsList}
-Recent Attendance Logs (Last 30):
+Recent Attendance Logs:
 ${historyLogsSummary}
 
 

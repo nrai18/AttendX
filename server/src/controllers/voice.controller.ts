@@ -10,6 +10,7 @@ export class VoiceController {
   static async synthesize(req: AuthenticatedRequest, res: Response) {
     const text = req.body.text || req.query.text;
     const voice_id = req.body.voice_id || req.query.voiceId || 'pNInz6obpgDQGcFmaJgB';
+    const responseFormat = String(req.body.format || req.query.format || '').toLowerCase();
 
     if (!text || typeof text !== 'string') {
       return res.status(400).json({ error: "Text is required" });
@@ -21,23 +22,46 @@ export class VoiceController {
       });
 
       const audioStream = await elevenlabs.textToSpeech.stream(
-        voice_id, 
+        voice_id,
         {
           text: text,
           modelId: 'eleven_turbo_v2_5',
-          outputFormat: 'mp3_44100_128', 
+          outputFormat: 'mp3_44100_128',
         }
       );
 
+      // Buffer stream chunks so Android WebView receives exact Content-Length & finite audio.duration
+      const chunks: Buffer[] = [];
+      for await (const chunk of audioStream) {
+        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      }
+      const finalAudio = Buffer.concat(chunks);
+      if (finalAudio.length === 0) {
+        throw new Error("ElevenLabs returned empty audio buffer");
+      }
+
+      if (responseFormat === 'json') {
+        res.set({
+          'Cache-Control': 'no-store',
+          'X-TTS-Provider': 'elevenlabs',
+          'Access-Control-Expose-Headers': 'X-TTS-Provider',
+        });
+        return res.status(200).json({
+          audioBase64: finalAudio.toString('base64'),
+          mimeType: 'audio/mpeg',
+          provider: 'elevenlabs',
+        });
+      }
+
       res.set({
         'Content-Type': 'audio/mpeg',
-        'Transfer-Encoding': 'chunked',
+        'Content-Length': finalAudio.length.toString(),
+        'Accept-Ranges': 'bytes',
+        'Cache-Control': 'no-store',
+        'X-TTS-Provider': 'elevenlabs',
+        'Access-Control-Expose-Headers': 'X-TTS-Provider',
       });
-
-      for await (const chunk of audioStream) {
-        res.write(chunk);
-      }
-      res.end();
+      res.status(200).send(finalAudio);
     } catch (error: any) {
       const isQuota = error?.statusCode === 401 ||
                       error?.body?.detail?.code === 'quota_exceeded' ||
@@ -56,10 +80,27 @@ export class VoiceController {
         
         const buffers = chunks.map(c => Buffer.from(c.base64, 'base64'));
         const finalBuffer = Buffer.concat(buffers);
+
+        if (responseFormat === 'json') {
+          res.set({
+            'Cache-Control': 'no-store',
+            'X-TTS-Provider': 'google-tts',
+            'Access-Control-Expose-Headers': 'X-TTS-Provider',
+          });
+          return res.status(200).json({
+            audioBase64: finalBuffer.toString('base64'),
+            mimeType: 'audio/mpeg',
+            provider: 'google-tts',
+          });
+        }
         
         res.set({
           'Content-Type': 'audio/mpeg',
           'Content-Length': finalBuffer.length.toString(),
+          'Accept-Ranges': 'bytes',
+          'Cache-Control': 'no-store',
+          'X-TTS-Provider': 'google-tts',
+          'Access-Control-Expose-Headers': 'X-TTS-Provider',
         });
         
         res.status(200).send(finalBuffer);

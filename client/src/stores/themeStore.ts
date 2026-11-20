@@ -1,5 +1,7 @@
 import { create } from "zustand";
 import { flushSync } from "react-dom";
+import { Capacitor } from "@capacitor/core";
+import { StatusBar, Style } from "@capacitor/status-bar";
 import { triggerDynamicHUD } from "../components/ui/dynamic-island-hud";
 
 export type ThemeMode = "light" | "dark";
@@ -30,6 +32,12 @@ export const applyThemeToDOM = (targetTheme: ThemeMode, withTransition: boolean 
     root.classList.remove("dark");
     root.classList.add("light");
     root.style.colorScheme = "light";
+  }
+
+  // Keep Android/iOS native status bar icons readable on both Light and Dark surfaces
+  if (Capacitor.isNativePlatform()) {
+    StatusBar.setStyle({ style: isDark ? Style.Dark : Style.Light }).catch(() => {});
+    StatusBar.setBackgroundColor({ color: isDark ? "#050508" : "#f8fafc" }).catch(() => {});
   }
 
   if (withTransition) {

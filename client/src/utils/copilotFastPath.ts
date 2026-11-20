@@ -43,6 +43,7 @@ export interface ClientFastPathInput {
   lastWorkingDay?: string | null;
   semesterName?: string | null;
   semesterEndDate?: string | null;
+  selectedSubjectId?: string | null;
   now?: Date;
   prefersDarkSystem?: boolean;
 }
@@ -2151,7 +2152,30 @@ export function evaluateClientFastPath(input: ClientFastPathInput): ClientFastPa
     const requestedTargetMatch = lower.match(/\b(?:reach|hit|get\s+to|achieve)\s+(\d{1,3})\s*%/i);
     const customTargetPct = requestedTargetMatch ? Math.min(99, Math.max(1, parseInt(requestedTargetMatch[1], 10))) : null;
 
-    const matchedSub = resolveSubjectMatch(lower, subjects);
+    const inferContextSubject = (): any | null => {
+      if (input.selectedSubjectId) {
+        const activeSub = subjects.find((s) => s.id === input.selectedSubjectId);
+        if (activeSub) return activeSub;
+      }
+      if (history && history.length > 0) {
+        const recent = [...history].reverse().slice(0, 3);
+        for (const msg of recent) {
+          const content = String(msg?.content || "");
+          // Skip full multi-subject breakdown responses so we don't blindly pick the first subject listed
+          if (/subject\s+breakdown/i.test(content)) continue;
+          const sub = resolveSubjectMatch(content, subjects);
+          if (sub) return sub;
+        }
+      }
+      return null;
+    };
+
+    const refersToRecentSubject =
+      /\b(?:in\s+(?:it|that|this|this\s+subject|that\s+subject)|for\s+(?:it|that|this)|there)\b/i.test(lower) ||
+      (/^(?:am\s+i\s+safe|how\s+many\s+(?:classes|lectures|bunks)\s+(?:can\s+i\s+(?:bunk|miss|skip)|do\s+i\s+need))$/i.test(lower) &&
+        Boolean(input.selectedSubjectId));
+
+    const matchedSub = resolveSubjectMatch(lower, subjects) || (refersToRecentSubject ? inferContextSubject() : null);
     if (matchedSub) {
       const att = Number(matchedSub.attended || 0);
       const tot = Number(matchedSub.total || 0);
@@ -2207,14 +2231,35 @@ export function evaluateClientFastPath(input: ClientFastPathInput): ClientFastPa
     };
   }
 
-  // 12. Single-Subject Simulation ("What if I miss 2 classes of DBMS?") (0ms)
-  const singleSimMatch = lower.match(
-    /^(?:what\s+(?:happens\s+)?if\s+i|if\s+i|simulate)\s+(miss(?:ing)?|skip(?:ping)?|bunk(?:ing)?|attend(?:ing)?)\s+(?:the\s+)?(?:next\s+)?(\d+)\s+(?:class(?:es)?|lectures?|sessions?|labs?)?\s*(?:of|in|for)?\s+(.+)$/i,
-  );
-  if (singleSimMatch && !/\b(week|month|semester|days|monday|tuesday|wednesday|thursday|friday)\b/i.test(singleSimMatch[3])) {
+  // 12. Single-Subject Simulation ("What if I miss 2 classes of DBMS?" or contextual "What if I miss 2 classes?") (0ms)
+  const singleSimMatch =
+    lower.match(
+      /^(?:what\s+(?:happens\s+)?if\s+i|if\s+i|simulate)\s+(miss(?:ing)?|skip(?:ping)?|bunk(?:ing)?|attend(?:ing)?)\s+(?:the\s+)?(?:next\s+)?(\d+)\s+(?:class(?:es)?|lectures?|sessions?|labs?)?\s*(?:of|in|for)?\s+(.+)$/i,
+    ) ||
+    lower.match(
+      /^(?:what\s+(?:happens\s+)?if\s+i|if\s+i|simulate)\s+(miss(?:ing)?|skip(?:ping)?|bunk(?:ing)?|attend(?:ing)?)\s+(?:the\s+)?(?:next\s+)?(\d+)\s*(?:more\s+)?(?:class(?:es)?|lectures?|sessions?|labs?)(?:\s+(?:of|in|for)\s+(?:it|that|this))?$/i,
+    );
+  const simTail = (singleSimMatch?.[3] || "").trim();
+  if (singleSimMatch && !/\b(week|month|semester|days|monday|tuesday|wednesday|thursday|friday)\b/i.test(simTail)) {
     const isMiss = /miss|skip|bunk/.test(singleSimMatch[1].toLowerCase());
     const count = Math.max(1, parseInt(singleSimMatch[2], 10));
-    const matchedSub = resolveSubjectMatch(singleSimMatch[3].trim(), subjects);
+    let matchedSub = simTail && !/^(?:it|that|this|more)$/.test(simTail) ? resolveSubjectMatch(simTail, subjects) : null;
+    if (!matchedSub) {
+      if (input.selectedSubjectId) {
+        matchedSub = subjects.find((s) => s.id === input.selectedSubjectId) || null;
+      }
+      if (!matchedSub && history && history.length > 0) {
+        for (const msg of [...history].reverse().slice(0, 3)) {
+          const content = String(msg?.content || "");
+          if (/subject\s+breakdown/i.test(content)) continue;
+          const histSub = resolveSubjectMatch(content, subjects);
+          if (histSub) {
+            matchedSub = histSub;
+            break;
+          }
+        }
+      }
+    }
     if (matchedSub) {
       const att = Number(matchedSub.attended || 0);
       const tot = Number(matchedSub.total || 0);
