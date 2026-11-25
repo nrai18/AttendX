@@ -34,6 +34,43 @@ export class UserController {
       res.status(404).json({ message: error.message });
     }
   }
+
+  static async getAvatarData(req: AuthenticatedRequest, res: Response) {
+    try {
+      const userId = req.user!.userId;
+      const user = await UserService.getProfile(userId);
+      const rawUrl = String(user?.avatarUrl || "").trim();
+      if (!rawUrl || rawUrl === "null") {
+        return res.status(404).json({ message: "No avatar configured" });
+      }
+      if (rawUrl.startsWith("data:image/")) {
+        return res.status(200).json({ dataUrl: rawUrl });
+      }
+      if (!/^https?:\/\//i.test(rawUrl)) {
+        return res.status(400).json({ message: "Unsupported avatar URL" });
+      }
+
+      const upstream = await fetch(rawUrl, {
+        headers: { "User-Agent": "AttendX-Avatar-Cache/1.0" },
+      });
+      if (!upstream.ok) {
+        return res.status(502).json({ message: "Failed to fetch upstream avatar" });
+      }
+      const contentType = upstream.headers.get("content-type") || "image/jpeg";
+      if (!contentType.startsWith("image/")) {
+        return res.status(400).json({ message: "Upstream resource is not an image" });
+      }
+      const arrayBuf = await upstream.arrayBuffer();
+      const buf = Buffer.from(arrayBuf);
+      if (buf.length === 0 || buf.length > 2 * 1024 * 1024) {
+        return res.status(413).json({ message: "Avatar payload size out of bounds" });
+      }
+      const dataUrl = `data:${contentType.split(";")[0]};base64,${buf.toString("base64")}`;
+      return res.status(200).json({ dataUrl });
+    } catch (error: any) {
+      return res.status(500).json({ message: error?.message || "Failed to cache avatar" });
+    }
+  }
   static async getOnboardingStatus(req: AuthenticatedRequest, res: Response) {
     try {
       const userId = req.user!.userId;

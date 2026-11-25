@@ -3,11 +3,81 @@ import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Upload, Mail, Lightbulb, Bug } from "lucide-react";
 import { toast } from "sonner";
-import { api, getRecentApiErrors } from "../../lib/api";
+import { api, getRecentApiErrors, detectRealHostOS } from "../../lib/api";
 import { getLogs, getErrorLogs } from "../../lib/logger";
 import { useAuthStore } from "../../stores/authStore";
 import { useHardwareBack } from "../../hooks/useHardwareBack";
 import { useScrollLock } from "../../hooks/useScrollLock";
+
+const SCREEN_LABELS: Record<string, string> = {
+  "/today": "Today's Agenda",
+  "/timetable": "Weekly Timetable",
+  "/calendar": "Academic Calendar",
+  "/subjects": "Subjects",
+  "/semester": "Semester Overview",
+  "/predictive": "Predictive Forecast",
+  "/report": "Attendance Reports",
+  "/reports": "Attendance Reports",
+  "/classrooms": "Classrooms",
+  "/assignments": "Assignments",
+  "/settings": "Settings",
+  "/wrap": "Semester Replay / Wrap",
+  "/replay": "Semester Replay / Wrap",
+  "/whats-new": "What's New",
+};
+
+function resolveWorkingLocation() {
+  if (typeof window === "undefined") {
+    return { pathname: "/", screen: "AttendX App", url: "" };
+  }
+  const pathname = window.location.pathname || "/";
+  const matchedKey = Object.keys(SCREEN_LABELS).find(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
+  );
+  return {
+    pathname,
+    search: window.location.search || "",
+    screen: matchedKey ? SCREEN_LABELS[matchedKey] : "AttendX Workspace",
+    url: window.location.href,
+    viewport: `${window.innerWidth}x${window.innerHeight}`,
+  };
+}
+
+function resolveLinkedDeviceSnapshot() {
+  if (typeof window === "undefined") return null;
+  const ua = navigator.userAgent || "";
+  const hostOs = detectRealHostOS() || "Unknown OS";
+  let currentCached: any = null;
+  try {
+    const raw = localStorage.getItem("attendx_cached_linked_devices");
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        currentCached = parsed.find((s: any) => s?.isCurrent) || parsed[0];
+      }
+    }
+  } catch {}
+
+  let gpsCoords: { lat?: number; lon?: number } | null = null;
+  try {
+    const rawCoords = sessionStorage.getItem("attendx_live_coords");
+    if (rawCoords) {
+      const p = JSON.parse(rawCoords);
+      if (p?.lat && p?.lon) gpsCoords = { lat: Number(p.lat), lon: Number(p.lon) };
+    }
+  } catch {}
+
+  return {
+    sessionId: currentCached?.id && currentCached.id !== "current-local-session" ? currentCached.id : null,
+    os: currentCached?.os || hostOs,
+    browser: currentCached?.browser || (/CriOS/i.test(ua) ? "Chrome" : "Web Browser"),
+    deviceType: currentCached?.deviceType || (/iPhone|iPad|Android|Mobile/i.test(ua) ? "mobile" : "desktop"),
+    deviceLocation: currentCached?.location || null,
+    appVersion: localStorage.getItem("app_version") || null,
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || null,
+    gpsCoords,
+  };
+}
 
 interface FeedbackModalProps {
   errorDetails?: any;
@@ -117,6 +187,8 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({
 
     try {
       setIsSubmitting(true);
+      const linkedDevice = resolveLinkedDeviceSnapshot();
+      const workingLocation = resolveWorkingLocation();
       let deviceLogs = null;
       if (tab === "issue" && attachLogs) {
         // Sanitize localStorage: strip sensitive JWT tokens, passwords, and private secrets
@@ -133,6 +205,8 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({
           userAgent: navigator.userAgent,
           platform: navigator.platform,
           url: window.location.href,
+          workingLocation,
+          linkedDevice,
           timestamp: new Date().toISOString(),
           errorDetails: errorDetails || null,
           recentErrors: getErrorLogs(), // Clean, focused ERROR and WARN logs
@@ -152,6 +226,8 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({
         email,
         attachLogs: tab === "issue" ? attachLogs : false,
         screenshot: tab === "issue" ? screenshot : null,
+        linkedDevice,
+        workingLocation,
         deviceLogs
       });
       toast.success("Feedback sent successfully. Thank you!");
@@ -369,6 +445,9 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({
               >
                 {isSubmitting ? "Sending..." : "Send feedback"}
               </button>
+              <p className="text-[11px] text-center text-muted-foreground">
+                Includes active screen location & linked device info to help reproduce bugs faster.
+              </p>
             </form>
           </motion.div>
         </div>

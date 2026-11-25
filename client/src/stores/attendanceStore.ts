@@ -59,6 +59,17 @@ interface AttendanceState {
   isLoading: boolean;
   simulationBounds: { startDate: string, endDate: string, missingBoundaries: boolean, hasCommencement: boolean, hasLastDay: boolean } | null;
   fetchStats: (background?: boolean) => Promise<void>;
+  syncSubjectStats: (
+    rawList: any[],
+    semesterId?: string | null,
+    bounds?: {
+      startDate: string;
+      endDate: string;
+      missingBoundaries: boolean;
+      hasCommencement: boolean;
+      hasLastDay: boolean;
+    } | null,
+  ) => void;
   invalidateInFlightStats: () => void;
   resetAttendanceStore: () => void;
   updateSimulationBoundaries: (startDate: string, endDate: string) => Promise<void>;
@@ -67,13 +78,21 @@ interface AttendanceState {
 let fetchStatsSeq = 0;
 let inFlightStatsPromise: Promise<void> | null = null;
 let lastStatsCompletedAt = 0;
+let needsFollowupStats = false;
 
 if (typeof window !== "undefined") {
-  window.addEventListener("attendance-updated", () => {
+  window.addEventListener("attendance-updated", (evt: any) => {
+    // Ignore passive read-sync broadcasts so in-flight /attendance/stats hydration never aborts itself on login
+    if (evt?.detail?.passive || evt?.detail?.source === "today-page" || evt?.detail?.source === "subjects-sync") {
+      return;
+    }
     fetchStatsSeq += 1;
     // Reset cache cooldown so subsequent fetchStats runs freshly without being blocked,
-    // while preserving any actively in-flight promise to prevent concurrent duplicate queries.
+    // while queuing one follow-up fetch if another call is currently in-flight.
     lastStatsCompletedAt = 0;
+    if (inFlightStatsPromise) {
+      needsFollowupStats = true;
+    }
   });
 }
 
@@ -212,11 +231,13 @@ export const useAttendanceStore = create<AttendanceState>()(
         fetchStatsSeq += 1;
         inFlightStatsPromise = null;
         lastStatsCompletedAt = 0;
+        needsFollowupStats = false;
       },
       resetAttendanceStore: () => {
         fetchStatsSeq += 1;
         inFlightStatsPromise = null;
         lastStatsCompletedAt = 0;
+        needsFollowupStats = false;
         const userTarget = useAuthStore.getState().user?.targetAttendance || 75;
         set({
           overallPercentage: 0,
@@ -231,6 +252,55 @@ export const useAttendanceStore = create<AttendanceState>()(
           simulationBounds: null,
           isLoading: false,
         });
+      },
+      syncSubjectStats: (rawList, semesterId, bounds) => {
+        if (!Array.isArray(rawList)) return;
+        const hasPendingMutations = useOfflineStore
+          .getState()
+          .queue.some(
+            (q: any) =>
+              q.url?.includes("/attendance/mark") ||
+              q.url?.includes("/attendance/mark-day"),
+          );
+        if (hasPendingMutations) return;
+        let attSum = 0;
+        let totSum = 0;
+        const mapped: SubjectStat[] = rawList.map((sub: any) => {
+          const att = Number(sub.attended) || 0;
+          const tot = Number(sub.total) || 0;
+          const missed =
+            typeof sub.missed === "number" && !isNaN(sub.missed)
+              ? sub.missed
+              : Math.max(0, tot - att);
+          const off = typeof sub.off === "number" && !isNaN(sub.off) ? sub.off : 0;
+          attSum += att;
+          totSum += tot;
+          const pct = tot > 0 ? (att / tot) * 100 : Number(sub.percentage) || 0;
+          return {
+            ...sub,
+            id: sub.id || sub.subjectId || "",
+            subjectId: sub.id || sub.subjectId || "",
+            name: sub.name || sub.subjectName || "Course",
+            code: sub.code || sub.subjectCode || "",
+            attended: att,
+            missed,
+            off,
+            total: tot,
+            percentage: Number(pct.toFixed(1)),
+          };
+        });
+        const overallPct = totSum > 0 ? (attSum / totSum) * 100 : 0;
+        lastStatsCompletedAt = Date.now();
+        set((prev) => ({
+          hasActiveSemester: Boolean(semesterId || prev.hasActiveSemester),
+          activeSemesterId: semesterId || prev.activeSemesterId,
+          subjects: mapped,
+          totalAttended: attSum,
+          totalClasses: totSum,
+          overallPercentage: overallPct,
+          ...(bounds ? { simulationBounds: bounds } : {}),
+          isLoading: false,
+        }));
       },
       fetchStats: async (background = false) => {
         if (inFlightStatsPromise) {
@@ -780,6 +850,12 @@ export const useAttendanceStore = create<AttendanceState>()(
           } finally {
             if (inFlightStatsPromise === runPromise) {
               inFlightStatsPromise = null;
+              if (needsFollowupStats) {
+                needsFollowupStats = false;
+                setTimeout(() => {
+                  get().fetchStats(true);
+                }, 0);
+              }
             }
           }
 

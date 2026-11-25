@@ -111,10 +111,21 @@ export const TimetablePage = () => {
   const [dayOfWeek, setDayOfWeek] = useState(activeTab);
   const [subjectId, setSubjectId] = useState("");
   const [startTime, setStartTime] = useState("09:00");
-  const [endTime, setEndTime] = useState("10:00");
+  const [endTime, setEndTime] = useState("09:50");
   const [room, setRoom] = useState("");
   const [slotType, setSlotType] = useState("lecture");
   const [isSubjectModalOpen, setIsSubjectModalOpen] = useState(false);
+
+  const computeSlotEndTime = (startStr: string, typeStr: string): string => {
+    const m = startStr.trim().match(/^(\d{1,2}):(\d{1,2})/);
+    if (!m) return endTime;
+    const h = parseInt(m[1], 10);
+    const min = parseInt(m[2], 10);
+    if (isNaN(h) || isNaN(min)) return endTime;
+    const addMins = /practical|lab/i.test(typeStr) ? 100 : 50;
+    const total = (h * 60 + min + addMins) % (24 * 60);
+    return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
+  };
 
   // Extra Class Form State
   const [isAddingExtra, setIsAddingExtra] = useState(false);
@@ -430,7 +441,7 @@ export const TimetablePage = () => {
   const resetForm = () => {
     setSubjectId("");
     setStartTime("09:00");
-    setEndTime("10:00");
+    setEndTime("09:50");
     setRoom("");
     setSlotType("lecture");
     setEditingSlotId(null);
@@ -788,7 +799,9 @@ export const TimetablePage = () => {
     try {
       const [patchRes, delRes] = await Promise.all([
         api.patch(`/timetable/slots/${first.id}`, { endTime: second.endTime }),
-        api.delete(`/timetable/slots/${second.id}`),
+        api.delete(`/timetable/slots/${second.id}`).catch((e: any) =>
+          e?.response?.status === 404 ? { data: { success: true } } : Promise.reject(e),
+        ),
       ]);
       const isQueued = Boolean(patchRes?.data?._queued || delRes?.data?._queued);
       const mergedSlots = slots
@@ -932,7 +945,14 @@ export const TimetablePage = () => {
       }
       window.dispatchEvent(new Event("timetable-updated"));
       window.dispatchEvent(new Event("attendance-updated"));
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.response?.status === 404) {
+        useCacheStore.getState().setCache("today", null);
+        useCacheStore.getState().setCache("insights", null);
+        window.dispatchEvent(new Event("timetable-updated"));
+        window.dispatchEvent(new Event("attendance-updated"));
+        return;
+      }
       console.error("Failed to delete slot(s):", error);
       toast.error("Failed to delete the selected lecture(s). Please try again.");
       setSlots(prevSlotsSnapshot);
@@ -1012,7 +1032,14 @@ export const TimetablePage = () => {
         window.dispatchEvent(new Event("timetable-updated"));
         setToastMessage("Timetable schedule cleared and archived successfully!");
         setTimeout(() => setToastMessage(null), 4000);
-      } catch (error) {
+      } catch (error: any) {
+        if (error?.response?.status === 404) {
+          useCacheStore.getState().setCache(`archived_timetables_${targetSemId}`, null);
+          useCacheStore.getState().setCache("archived_timetables", null);
+          window.dispatchEvent(new Event("attendance-updated"));
+          window.dispatchEvent(new Event("timetable-updated"));
+          return;
+        }
         console.error("Failed to clear timetable:", error);
         toast.error("Failed to clear timetable. Please try again.");
         fetchData();
@@ -1638,7 +1665,13 @@ export const TimetablePage = () => {
                 type="time"
                 required
                 value={startTime}
-                onChange={(e) => setStartTime(e.target.value)}
+                onChange={(e) => {
+                  const nextStart = e.target.value;
+                  setStartTime(nextStart);
+                  if (nextStart) {
+                    setEndTime(computeSlotEndTime(nextStart, slotType));
+                  }
+                }}
                 className="w-full bg-background border border-border rounded-xl px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 text-sm"
               />
             </div>
@@ -1656,7 +1689,11 @@ export const TimetablePage = () => {
               <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Type</label>
               <select
                 value={slotType}
-                onChange={(e) => setSlotType(e.target.value)}
+                onChange={(e) => {
+                  const nextType = e.target.value;
+                  setSlotType(nextType);
+                  setEndTime(computeSlotEndTime(startTime, nextType));
+                }}
                 className="w-full bg-background border border-border rounded-xl px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 text-sm"
               >
                 <option value="lecture" className="bg-white text-black dark:bg-[#0a0a0a] dark:text-white">Lecture</option>

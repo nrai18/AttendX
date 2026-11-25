@@ -4,6 +4,7 @@ import { BottomNav } from "./BottomNav";
 import { Sidebar } from "./Sidebar";
 import { TopBar } from "./TopBar";
 import { useAttendanceStore } from "../../stores/attendanceStore";
+import { useAuthStore } from "../../stores/authStore";
 import { AttendanceAnimationPopup } from "../common/AttendanceAnimationPopup";
 import { FloatingChatbot } from "../common/FloatingChatbot";
 import { NotificationService } from "../../services/NotificationService";
@@ -15,6 +16,7 @@ interface AppShellProps {
 
 export const AppShell: React.FC<AppShellProps> = ({ title, onAddClick }) => {
   const { fetchStats } = useAttendanceStore();
+  const userId = useAuthStore((state) => state.user?.id);
   const location = useLocation();
   const navigate = useNavigate();
   const navigateRef = useRef(navigate);
@@ -52,8 +54,8 @@ export const AppShell: React.FC<AppShellProps> = ({ title, onAddClick }) => {
 
   useEffect(() => {
     fetchStats();
-    const handleUpdate = () => {
-      fetchStats();
+    const handleUpdate = (evt?: any) => {
+      if (evt?.detail?.passive || evt?.detail?.source === "today-page" || evt?.detail?.source === "subjects-sync") return; fetchStats();
     };
     
     const handlePushRoute = (e: any) => {
@@ -65,7 +67,7 @@ export const AppShell: React.FC<AppShellProps> = ({ title, onAddClick }) => {
       }
     };
     
-    window.addEventListener("attendance-updated", handleUpdate);
+    window.addEventListener("attendance-updated", handleUpdate as EventListener);
     window.addEventListener("push_route", handlePushRoute);
     try {
       const pendingRoute = sessionStorage.getItem("pending_push_route");
@@ -78,7 +80,7 @@ export const AppShell: React.FC<AppShellProps> = ({ title, onAddClick }) => {
       window.removeEventListener("attendance-updated", handleUpdate);
       window.removeEventListener("push_route", handlePushRoute);
     };
-  }, [fetchStats]);
+  }, [fetchStats, userId]);
 
   const isReports = location.pathname.startsWith("/report");
   const isSubjects = location.pathname === "/subjects" || location.pathname.startsWith("/subjects/");
@@ -89,6 +91,7 @@ export const AppShell: React.FC<AppShellProps> = ({ title, onAddClick }) => {
   const isPredictive = location.pathname.startsWith("/predictive");
   const isCalendar = location.pathname.startsWith("/calendar");
   const isClassrooms = location.pathname.startsWith("/classrooms");
+  const isWrapOrWhatsNew = location.pathname.startsWith("/wrap") || location.pathname.startsWith("/replay") || location.pathname.startsWith("/whats-new");
 
   useLayoutEffect(() => {
     // Reset all dynamically applied page themes
@@ -114,7 +117,7 @@ export const AppShell: React.FC<AppShellProps> = ({ title, onAddClick }) => {
   }, [isSettings, isToday, isTimetable, isPredictive, isCalendar, isClassrooms]);
 
   return (
-    <div className={`min-h-screen ${isClassrooms ? "bg-white dark:bg-[#000000]" : isSemester ? "theme-peakpath bg-transparent" : isSettings ? "bg-transparent" : isReports ? "bg-[#FDF8F5] dark:bg-[#1A090C]" : "bg-transparent"} text-foreground flex flex-col md:flex-row antialiased ${isClassrooms ? "selection:bg-white selection:text-black" : isSettings || isSemester ? "selection:bg-primary text-primary-foreground" : "selection:bg-[#74313A] selection:text-white"}`}>
+    <div className={`min-h-screen ${isClassrooms ? "bg-white dark:bg-[#000000]" : isWrapOrWhatsNew ? "preserve-dark bg-[#0d0e0d] text-white" : isSemester ? "theme-peakpath bg-transparent" : isSettings ? "bg-transparent" : isReports ? "bg-[#FDF8F5] dark:bg-[#1A090C]" : "bg-transparent"} text-foreground flex flex-col md:flex-row antialiased ${isClassrooms ? "selection:bg-white selection:text-black" : isSettings || isSemester ? "selection:bg-primary text-primary-foreground" : "selection:bg-[#74313A] selection:text-white"}`}>
       {/* Sidebar for Desktop */}
       <Sidebar />
 

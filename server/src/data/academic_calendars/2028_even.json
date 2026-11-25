@@ -1,0 +1,88 @@
+{
+  "academicYear": "2027-28",
+  "semesterType": "even",
+  "year": 2028,
+  "events": [
+    {
+      "title": "Course Registration & Fee Payment Verification",
+      "startDate": "2028-01-10",
+      "endDate": "2028-01-10",
+      "eventType": "institute",
+      "allDay": true,
+      "semesters": [2, 4, 6, 8],
+      "description": "Course registration and verification for AY 2027-28 even semester"
+    },
+    {
+      "title": "Commencement of Classes",
+      "startDate": "2028-01-11",
+      "endDate": "2028-01-11",
+      "eventType": "institute",
+      "allDay": true,
+      "semesters": [2, 4, 6, 8],
+      "description": "Official start of even semester classes"
+    },
+    {
+      "title": "Mid Semester Exam (MSE)",
+      "startDate": "2028-03-13",
+      "endDate": "2028-03-17",
+      "eventType": "midsem",
+      "allDay": true,
+      "semesters": [2, 4, 6, 8],
+      "description": "Mid-semester theory examinations"
+    },
+    {
+      "title": "Mid Semester Break",
+      "startDate": "2028-03-20",
+      "endDate": "2028-03-24",
+      "eventType": "vacation",
+      "allDay": true,
+      "semesters": [2, 4, 6, 8],
+      "description": "Mid-semester spring break"
+    },
+    {
+      "title": "Last Teaching Day",
+      "startDate": "2028-05-05",
+      "endDate": "2028-05-05",
+      "eventType": "institute",
+      "allDay": true,
+      "semesters": [2, 4, 6, 8],
+      "description": "Last official teaching day of the even semester"
+    },
+    {
+      "title": "End Semester Theory Exam",
+      "startDate": "2028-05-08",
+      "endDate": "2028-05-15",
+      "eventType": "endsem",
+      "allDay": true,
+      "semesters": [2, 4, 6, 8],
+      "description": "Final end-semester theory examinations"
+    },
+    {
+      "title": "End Semester Lab Exam",
+      "startDate": "2028-05-17",
+      "endDate": "2028-05-24",
+      "eventType": "endsem",
+      "allDay": true,
+      "semesters": [2, 4, 6, 8],
+      "description": "Final practical and laboratory examinations"
+    },
+    {
+      "title": "Commencement of Student Vacation",
+      "startDate": "2028-05-29",
+      "endDate": "2028-07-16",
+      "eventType": "vacation",
+      "allDay": true,
+      "semesters": [2, 4, 6, 8],
+      "description": "Summer vacation for students"
+    },
+    {
+      "title": "Next Semester Commencement",
+      "startDate": "2028-07-17",
+      "endDate": "2028-07-17",
+      "eventType": "institute",
+      "allDay": true,
+      "semesters": [2, 4, 6, 8],
+      "description": "Commencement of AY 2028-29 odd semester classes"
+    }
+  ]
+}

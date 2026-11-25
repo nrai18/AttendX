@@ -304,6 +304,7 @@ export const SemesterHubPage = () => {
   const [isCreateSemesterOpen, setIsCreateSemesterOpen] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [isTransitionModalOpen, setIsTransitionModalOpen] = useState(false);
+  const [transitionStatus, setTransitionStatus] = useState<any>(null);
   const [isClearingDomino, setIsClearingDomino] = useState(false);
   const [dominoSnapshotEvents, setDominoSnapshotEvents] = useState<AppEvent[]>([]);
   const dyingSingleIdsRef = useRef<Set<string>>(new Set());
@@ -410,12 +411,16 @@ export const SemesterHubPage = () => {
         useAttendanceStore.getState().activeSemesterId ||
         null;
 
-      const [semRes, parallelEventsRes] = await Promise.all([
+      const [semRes, parallelEventsRes, trStatusRes] = await Promise.all([
         api.get("/semesters/active"),
         knownSemId && knownSemId !== "active-semester"
           ? api.get(`/events?semesterId=${knownSemId}`)
           : Promise.resolve(null),
+        api.get("/semesters/transition-status").catch(() => null),
       ]);
+      if (trStatusRes?.data?.hasActiveSemester) {
+        setTransitionStatus(trStatusRes.data);
+      }
       
       let nextSemester = null;
       let fetchedEvents: AppEvent[] = [];
@@ -1183,7 +1188,7 @@ export const SemesterHubPage = () => {
           </p>
         </div>
         
-        <div className="flex items-center gap-3 w-full md:w-auto overflow-x-auto pb-2 md:pb-0">
+        <div className="flex flex-wrap items-center gap-2.5 w-full md:w-auto md:justify-end">
           {events.length > 0 && (
             <div className="flex h-[42px] items-center justify-center shrink-0">
               <TimedUndoAction 
@@ -1208,7 +1213,7 @@ export const SemesterHubPage = () => {
           <button 
             onClick={() => setIsImportModalOpen(true)}
             disabled={!activeSemester}
-            className="flex-1 md:flex-none flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold bg-primary text-[#03110E] hover:bg-primary/90 transition-all disabled:opacity-50"
+            className="flex-1 md:flex-none flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold bg-primary text-[#03110E] hover:bg-primary/90 transition-all disabled:opacity-50 shrink-0"
           >
             <Sparkles className="w-4 h-4" />
             AI Import
@@ -1216,8 +1221,25 @@ export const SemesterHubPage = () => {
 
           {activeSemester && (
             <button
+              type="button"
+              onClick={() => navigate("/wrap")}
+              className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold bg-[#ffffff] hover:bg-emerald-50 text-[#064e3b] border border-emerald-600/35 shadow-sm dark:bg-[#1c1d1c] dark:hover:bg-[#2a2c2a] dark:text-[#ffffff] dark:border-white/15 transition-all cursor-pointer shrink-0"
+              title="Open Semester Replay / Wrap"
+            >
+              <Sparkles className="w-4 h-4 text-emerald-600 dark:text-[#b7f357]" />
+              <span>{(() => {
+                const ltd = events.find((e: any) => /last\s*(teaching|working)\s*day/i.test(e.title || ""));
+                if (!ltd) return "Replay";
+                const d = parseLocalDate(ltd.endDate || ltd.date);
+                d.setHours(23, 59, 59, 999);
+                return new Date() > d ? "Wrap" : "Replay";
+              })()}</span>
+            </button>
+          )}
+          {activeSemester && (
+            <button
               onClick={() => setIsTransitionModalOpen(true)}
-              className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold bg-amber-500/10 text-amber-500 hover:bg-amber-500/20 border border-amber-500/30 transition-all cursor-pointer"
+              className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold bg-amber-500/10 text-amber-500 hover:bg-amber-500/20 border border-amber-500/30 transition-all cursor-pointer shrink-0"
               title="Transition to next semester"
             >
               <GraduationCap className="w-4 h-4" />
@@ -1236,30 +1258,48 @@ export const SemesterHubPage = () => {
       {activeSemester && (() => {
         const end = new Date(activeSemester.endDate);
         end.setHours(23, 59, 59, 999);
-        return new Date() > end;
-      })() && (
-        <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-500 flex items-center justify-center shrink-0">
-              <GraduationCap className="w-5 h-5" />
+        const semEnded = new Date() > end;
+        if (!semEnded && !transitionStatus?.shouldShowBanner) return null;
+
+        const isAllDone = semEnded || transitionStatus?.transitionStage === "all_done";
+        const headline = isAllDone
+          ? `${activeSemester.name} Complete — Vacation Time!`
+          : transitionStatus?.stageTitle || `${activeSemester.name} Wrap Phase`;
+        const subtext = isAllDone
+          ? transitionStatus?.stageMessage ||
+            `All exams done! Your next semester starts on ${transitionStatus?.nextSemesterStartFormatted || "11 Jan"} — thanks!`
+          : transitionStatus?.stageSubtitle ||
+            "Regular classes have wrapped up — open Replay or inspect exam milestones.";
+
+        return (
+          <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-500 flex items-center justify-center shrink-0">
+                <GraduationCap className="w-5 h-5" />
+              </div>
+              <div>
+                <h4 className="text-sm font-bold text-foreground">{headline}</h4>
+                <p className="text-xs text-muted-foreground mt-0.5">{subtext}</p>
+              </div>
             </div>
-            <div>
-              <h4 className="text-sm font-bold text-foreground">
-                {activeSemester.name} Complete!
-              </h4>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Ready for your next semester? Tap to reset app data & pre-load official calendar.
-              </p>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => navigate("/wrap")}
+                className="px-3.5 py-2 rounded-xl bg-muted hover:bg-muted/80 text-foreground border border-border/70 text-xs font-bold transition-all cursor-pointer"
+              >
+                Open Wrap
+              </button>
+              <button
+                onClick={() => setIsTransitionModalOpen(true)}
+                className="px-4 py-2 rounded-xl bg-primary text-primary-foreground text-xs font-bold transition-all hover:bg-primary/90 shadow-sm cursor-pointer"
+              >
+                {isAllDone ? "Transition Now" : "Preview Transition"}
+              </button>
             </div>
           </div>
-          <button
-            onClick={() => setIsTransitionModalOpen(true)}
-            className="px-4 py-2 rounded-xl bg-primary text-primary-foreground text-xs font-bold transition-all hover:bg-primary/90 shadow-sm shrink-0 cursor-pointer"
-          >
-            Transition Now
-          </button>
-        </div>
-      )}
+        );
+      })()}
 
       {activeSemester || hasGlobalActiveSemester || events.length > 0 || isFetchingSemester ? (
         <div className="bg-card border border-border rounded-2xl p-6 flex flex-col md:flex-row md:items-center gap-6 shadow-xl">
@@ -2021,6 +2061,7 @@ export const SemesterHubPage = () => {
         isOpen={isTransitionModalOpen}
         onClose={() => setIsTransitionModalOpen(false)}
         onSuccess={fetchData}
+        initialStatus={transitionStatus}
       />
 
       {/* Mobile Day Agenda Bottom Sheet */}

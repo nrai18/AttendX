@@ -245,7 +245,7 @@ export const ReportView: React.FC = () => {
       <div className="w-full mx-auto space-y-8 pb-20">
         
         {/* Header */}
-        <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} className="flex items-center justify-between">
+        <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-4">
             <button onClick={() => navigate('/settings', { replace: true })} className="w-12 h-12 rounded-[16px] bg-white/60 dark:bg-black/20 backdrop-blur-md flex items-center justify-center hover:bg-white dark:hover:bg-black/40 transition-colors border border-white/40 dark:border-white/10 shadow-sm text-[#74313A] dark:text-[#EED3CF]">
               <ChevronLeft className="w-6 h-6" />
@@ -255,6 +255,13 @@ export const ReportView: React.FC = () => {
               <p className="text-sm font-medium opacity-70">Deep dive into your performance.</p>
             </div>
           </div>
+          <button
+            type="button"
+            onClick={() => navigate('/wrap')}
+            className="px-4 py-2.5 rounded-2xl bg-[#74313A] text-[#FDF8F5] dark:bg-[#EED3CF] dark:text-[#1A090C] text-xs font-bold shadow-sm hover:opacity-90 transition cursor-pointer shrink-0"
+          >
+            Play Semester Replay
+          </button>
         </motion.div>
 
         <motion.div variants={containerVariants} initial="hidden" animate="show" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

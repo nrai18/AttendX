@@ -236,6 +236,24 @@ export const useAssignmentStore = create<AssignmentState>()(
             })
             .catch(console.error);
         } catch (err: any) {
+          if (err?.response?.status === 404) {
+            // Already deleted on server: keep it removed locally & purge any stale queued actions for it
+            useOfflineStore.setState((state) => ({
+              queue: state.queue.filter(
+                (q) =>
+                  q.tempId !== id &&
+                  !q.url.includes(id) &&
+                  q.data?.assignmentId !== id,
+              ),
+            }));
+            import("../services/NotificationService")
+              .then((m) => {
+                m.NotificationService.cancelAssignmentReminders(id);
+                return m.NotificationService.scheduleAssignmentReminders();
+              })
+              .catch(() => {});
+            return;
+          }
           console.error("Failed to delete assignment", err);
           if (deletedItem) {
             const cur = get().assignments;
@@ -266,10 +284,12 @@ export const useAssignmentStore = create<AssignmentState>()(
           }),
         });
 
-        // 2. Fire backend toggle mutation (enqueued cleanly if offline)
+        // 2. Fire backend toggle mutation (enqueued cleanly if offline with explicit target state)
         let authoritativeCompleted = nextCompleted;
         try {
-          const res = await api.post(`/assignments/${id}/toggle`);
+          const res = await api.post(`/assignments/${id}/toggle`, {
+            completed: nextCompleted,
+          });
           if (res?.data && typeof res.data.completed === "boolean") {
             authoritativeCompleted = res.data.completed;
             set({

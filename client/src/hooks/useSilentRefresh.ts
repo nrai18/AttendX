@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useAuthStore } from "../stores/authStore";
 import { api } from "../lib/api";
+import { ensureLocalAvatarDataUrl } from "../utils/avatarCache";
 
 export function useSilentRefresh() {
   const setLoading = useAuthStore((state) => state.setLoading);
@@ -20,11 +21,15 @@ export function useSilentRefresh() {
         const res = await api.get("/users/me");
         if (isMounted && res.data) {
           const currentUser = useAuthStore.getState().user;
-          setUser({
+          const mergedUser = {
             ...currentUser,
             ...res.data,
             targetAttendance: res.data.targetAttendance ?? currentUser?.targetAttendance ?? 75,
-          });
+          };
+          setUser(mergedUser);
+          if (mergedUser.id && mergedUser.avatarUrl) {
+            ensureLocalAvatarDataUrl(mergedUser.id, mergedUser.avatarUrl).catch(() => {});
+          }
         }
       } catch (err) {
         // Dev user or offline fallback

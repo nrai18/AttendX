@@ -61,6 +61,8 @@
                 <action android:name="com.attendx.app.ACTION_AUTO_UNMUTE" />
                 <action android:name="com.attendx.app.ACTION_MANUAL_UNMUTE" />
                 <action android:name="com.attendx.app.ACTION_NOTIFICATION_DISMISSED" />
+                <action android:name="com.attendx.app.ACTION_SHOW_CLASS_REMINDER" />
+                <action android:name="com.attendx.app.ACTION_MUTE_FOR_CLASS" />
             </intent-filter>
         </receiver>
 

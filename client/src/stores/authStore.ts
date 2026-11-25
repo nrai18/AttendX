@@ -70,9 +70,18 @@ export const useAuthStore = create<AuthState>()(
         try {
           localStorage.removeItem('attendx_synced_fcm_token');
         } catch {}
+        import('./attendanceStore').then(({ useAttendanceStore }) => {
+          useAttendanceStore.getState().invalidateInFlightStats();
+          useAttendanceStore.getState().fetchStats(true);
+        }).catch(() => {});
         import('../services/NotificationService').then(({ NotificationService }) => {
           NotificationService.syncFcmToken().catch(() => {});
         });
+        if (user?.id && user?.avatarUrl) {
+          import('../utils/avatarCache').then(({ ensureLocalAvatarDataUrl }) => {
+            ensureLocalAvatarDataUrl(user.id, user.avatarUrl).catch(() => {});
+          }).catch(() => {});
+        }
       },
 
       logout: async (skipBackendCall = false, options?: { redirectTo?: string }) => {
@@ -93,9 +102,9 @@ export const useAuthStore = create<AuthState>()(
         import('./offlineStore').then(({ useOfflineStore }) => useOfflineStore.getState().clearQueue()).catch(() => {});
         import('./cacheStore').then(({ useCacheStore }) => useCacheStore.getState().clearCache()).catch(() => {});
         import('./notificationStore').then(({ useNotificationStore }) => useNotificationStore.getState().resetConfig()).catch(() => {});
-        import('./attendanceStore').then(({ useAttendanceStore }) => useAttendanceStore.getState().resetAttendanceStore()).catch(() => {});
         import('./assignmentStore').then(({ useAssignmentStore }) => useAssignmentStore.getState().resetAssignments()).catch(() => {});
         import('./appLockStore').then(({ useAppLockStore }) => useAppLockStore.getState().disablePasscode()).catch(() => {});
+        import('../utils/avatarCache').then(({ clearCachedAvatars }) => clearCachedAvatars()).catch(() => {});
         import('../utils/nativeGoogleAuth').then(({ signOutGoogleNative }) => signOutGoogleNative()).catch(() => {});
         if (wasAuthenticated) {
           import('../utils/soundEffects').then(({ SoundFX }) => SoundFX.playLogoutChimeSound()).catch(() => {});
@@ -118,9 +127,14 @@ export const useAuthStore = create<AuthState>()(
           'attendx_pending_mute_request'
         ];
         keysToRemove.forEach(k => {
-          Preferences.remove({ key: k }).catch(() => {});
           localStorage.removeItem(k);
         });
+        await Promise.allSettled([
+          ...keysToRemove.map((k) => Preferences.remove({ key: k }).catch(() => {})),
+          import('./attendanceStore')
+            .then(({ useAttendanceStore }) => useAttendanceStore.getState().resetAttendanceStore())
+            .catch(() => {}),
+        ]);
         try {
           sessionStorage.removeItem('attendx_settings_scroll');
         } catch (e) {}

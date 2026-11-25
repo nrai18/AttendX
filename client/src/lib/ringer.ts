@@ -13,6 +13,19 @@ export interface RingerPlugin {
   openAppSettings(): Promise<{ opened: boolean }>;
   testMuteNotification(): Promise<{ success: boolean }>;
   isMuteSessionActive(): Promise<{ active: boolean; unmuteEpochMs: number }>;
+  consumePendingLaunchRoute(): Promise<{ route?: string | null }>;
+  scheduleClassReminder(options: {
+    id: number;
+    title: string;
+    body: string;
+    largeBody?: string;
+    summaryText?: string;
+    className: string;
+    triggerAtMs: number;
+    endTimeMs: number;
+    autoDndIfPermitted?: boolean;
+  }): Promise<{ scheduled: boolean }>;
+  cancelAllClassReminders(): Promise<{ cancelled: boolean }>;
 }
 
 const RingerMode = registerPlugin<RingerPlugin>('RingerMode');
@@ -217,4 +230,41 @@ export const unmutePhone = async (): Promise<boolean> => {
     console.error('Failed to unmute phone:', err);
     return false;
   }
+};
+
+export const consumePendingLaunchRoute = async (): Promise<string | null> => {
+  if (Capacitor.getPlatform() !== 'android') return null;
+  try {
+    const res = await RingerMode.consumePendingLaunchRoute();
+    return res?.route && typeof res.route === 'string' ? res.route : null;
+  } catch {
+    return null;
+  }
+};
+
+export const scheduleNativeClassReminder = async (options: {
+  id: number;
+  title: string;
+  body: string;
+  largeBody?: string;
+  summaryText?: string;
+  className: string;
+  triggerAtMs: number;
+  endTimeMs: number;
+  autoDndIfPermitted?: boolean;
+}): Promise<boolean> => {
+  if (Capacitor.getPlatform() !== 'android') return false;
+  try {
+    const res = await RingerMode.scheduleClassReminder(options);
+    return !!res?.scheduled;
+  } catch {
+    return false;
+  }
+};
+
+export const cancelAllNativeClassReminders = async (): Promise<void> => {
+  if (Capacitor.getPlatform() !== 'android') return;
+  try {
+    await RingerMode.cancelAllClassReminders();
+  } catch {}
 };

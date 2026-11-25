@@ -5,7 +5,7 @@
   <p><i>Engineered for the Indian Institute of Information Technology (IIIT) Una & Modern Universities</i></p>
 
   <p>
-    <a href="https://github.com/nrai18/AttendX/releases/latest"><img src="https://img.shields.io/badge/version-4.4.0-00D2FF.svg?style=for-the-badge&logo=android" alt="Version 4.4.0" /></a>
+    <a href="https://github.com/nrai18/AttendX/releases/latest"><img src="https://img.shields.io/github/v/release/nrai18/AttendX?label=version&style=for-the-badge&logo=android&color=00D2FF" alt="Latest GitHub Release" /></a>
     <a href="https://attendx.tech"><img src="https://img.shields.io/badge/web-attendx.tech-6366F1.svg?style=for-the-badge&logo=googlechrome" alt="Web Portal" /></a>
     <a href="https://github.com/nrai18/AttendX/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-10B981.svg?style=for-the-badge" alt="License MIT" /></a>
     <img src="https://img.shields.io/badge/active_students-200%2B-F59E0B.svg?style=for-the-badge&logo=firebase" alt="200+ Active Students" />
@@ -137,7 +137,7 @@ AttendX features native, obsidian-acrylic Android Home Screen widgets built with
 
 ### 5. 🔐 AttendX Vault, Biometrics & Frosted-Glass Native APK Updater
 
-| AttendX Vault (`v4.4.0` Security Architecture) | Frosted Glass Native APK Updater (`Light & Dark`) |
+| AttendX Vault & Biometric Security | Frosted Glass Native APK Updater (`Light & Dark`) |
 | :---: | :---: |
 | <img src="assets/screenshots/v4_4_0_banner.jpg" width="460" alt="AttendX Vault Release Banner" /> | <img src="assets/screenshots/native_apk_updater.jpg" width="460" alt="Frosted Glass Native APK Updater Showcase" /> |
 | **Biometric + Salted SHA-256 Vault**<br/>Hardware Android `BiometricPrompt` fingerprint unlock paired with salted 4-digit PIN locks, `Immediate / 1m / 5m` background auto-locking, and TopBar quick-lock. | **Direct GitHub Releases APK Pipeline**<br/>Adaptive frosted-glass modal (`NativeUpdateSheet`) with live download progress, `SHA-256` integrity validation, and one-tap Android `PackageInstaller` handoff. |

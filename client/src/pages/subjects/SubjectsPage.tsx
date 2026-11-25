@@ -1316,6 +1316,11 @@ export const SubjectsPage = () => {
 
         if (hasAuthoritativeStats || validStats.length > 0) {
           setSubjectStats(validStats);
+          if (hasAuthoritativeStats) {
+            useAttendanceStore
+              .getState()
+              .syncSubjectStats(validStats, semester.id, statsData?.simulationBounds);
+          }
           setCache("subjects", {
             subjects: hasAuthoritativeSubjects
               ? validServer
@@ -1399,11 +1404,14 @@ export const SubjectsPage = () => {
   useEffect(() => {
     fetchData();
 
-    const handleUpdate = () => {
+    const handleUpdate = (evt?: any) => {
+      if (evt?.detail?.passive || evt?.detail?.source === "today-page" || evt?.detail?.source === "subjects-sync") {
+        return;
+      }
       fetchData();
     };
-    window.addEventListener("attendance-updated", handleUpdate);
-    return () => window.removeEventListener("attendance-updated", handleUpdate);
+    window.addEventListener("attendance-updated", handleUpdate as EventListener);
+    return () => window.removeEventListener("attendance-updated", handleUpdate as EventListener);
   }, []);
 
   const handleEdit = (subject: Subject) => {

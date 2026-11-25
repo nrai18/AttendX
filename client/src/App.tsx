@@ -32,6 +32,8 @@ import { useNativeUpdates } from "./hooks/useNativeUpdates";
 import { isVersionNewer } from "./services/updater/githubUpdater";
 import { nativeUpdater } from "./services/updater/nativeUpdater";
 import { OfflineLabPage } from "./pages/dev/OfflineLabPage";
+import { SemesterWrapPage } from "./pages/wrap/SemesterWrapPage";
+import { WhatsNewPage } from "./pages/updates/WhatsNewPage";
 import { useAppLockStore } from "./stores/appLockStore";
 import { PasscodeLockOverlay } from "./components/security/PasscodeLockOverlay";
 import { PermissionService } from "./services/PermissionService";
@@ -85,6 +87,22 @@ const PromoVideoPage = React.lazy(() =>
   import("./pages/promo/PromoVideoPage").then((m) => ({ default: m.PromoVideoPage }))
 );
 
+const normalizeVersionStr = (v?: string | null) =>
+  String(v || "").replace(/^v/i, "").trim();
+
+const shouldOpenPostUpdateWhatsNew = () => {
+  try {
+    const pending = normalizeVersionStr(localStorage.getItem("attendx_pending_whats_new"));
+    const seen = normalizeVersionStr(localStorage.getItem("attendx_seen_whats_new_version"));
+    const appVer = normalizeVersionStr(localStorage.getItem("app_version"));
+    // Only launch What's New once running the updated build (avoid firing early if user cancelled APK installer)
+    const versionMatchesInstalled = !Capacitor.isNativePlatform() || !appVer || pending === appVer;
+    return Boolean(pending && pending !== seen && versionMatchesInstalled);
+  } catch {
+    return false;
+  }
+};
+
 const RootRoute: React.FC = () => {
   const { isAuthenticated, user, isLoading, _hasHydrated } = useAuthStore();
   if (!Capacitor.isNativePlatform() && !_hasHydrated) return null; // Wait for zustand to read Capacitor Preferences
@@ -96,7 +114,7 @@ const RootRoute: React.FC = () => {
   const isAuthorized = isAuthenticated || (isOffline && hasCachedUser) || isUserAuthenticated();
 
   if (isAuthorized) {
-    let target = "/today";
+    let target = shouldOpenPostUpdateWhatsNew() ? "/whats-new" : "/today";
     try {
       const saved = sessionStorage.getItem("post_login_redirect");
       if (saved && saved.startsWith("/")) {
@@ -231,6 +249,68 @@ const DeepLinkHandler: React.FC = () => {
   return null;
 };
 
+const PostUpdateWhatsNewRedirect: React.FC = () => {
+  const { isAuthenticated, user, _hasHydrated } = useAuthStore();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [tick, setTick] = useState(0);
+
+  useEffect(() => {
+    const onReady = () => setTick((t) => t + 1);
+    window.addEventListener("attendx-whats-new-ready", onReady);
+    return () => window.removeEventListener("attendx-whats-new-ready", onReady);
+  }, []);
+
+  useEffect(() => {
+    const isOffline = typeof navigator !== "undefined" && !navigator.onLine;
+    const isAuthorized = isAuthenticated || (isOffline && Boolean(user?.id)) || isUserAuthenticated();
+    if (!isAuthorized || !_hasHydrated) return;
+    try {
+      if (sessionStorage.getItem("pending_push_route")) return;
+      if (shouldOpenPostUpdateWhatsNew() && location.pathname !== "/whats-new") {
+        navigate("/whats-new", { replace: true });
+      }
+    } catch {}
+  }, [isAuthenticated, user, _hasHydrated, location.pathname, navigate, tick]);
+
+  return null;
+};
+
+const NotificationRouteHandler: React.FC = () => {
+  const { isAuthenticated, user, _hasHydrated } = useAuthStore();
+  const navigate = useNavigate();
+  const navigateRef = useRef(navigate);
+  navigateRef.current = navigate;
+
+  useEffect(() => {
+    const isOffline = typeof navigator !== "undefined" && !navigator.onLine;
+    const isAuthorized = isAuthenticated || (isOffline && Boolean(user?.id)) || isUserAuthenticated();
+    if (!_hasHydrated || !isAuthorized) return;
+
+    const flushPendingRoute = (explicitRoute?: string) => {
+      try {
+        const route = explicitRoute || sessionStorage.getItem("pending_push_route");
+        if (route && route.startsWith("/")) {
+          sessionStorage.removeItem("pending_push_route");
+          const cur = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+          if (cur !== route) {
+            navigateRef.current(route);
+          }
+        }
+      } catch {}
+    };
+
+    flushPendingRoute();
+    const onPushRoute = (e: any) => {
+      if (e?.detail) flushPendingRoute(String(e.detail));
+    };
+    window.addEventListener("push_route", onPushRoute);
+    return () => window.removeEventListener("push_route", onPushRoute);
+  }, [isAuthenticated, user, _hasHydrated]);
+
+  return null;
+};
+
 import { App as CapacitorApp } from "@capacitor/app";
 import { CapacitorUpdater } from "@capgo/capacitor-updater";
 import { Capacitor } from "@capacitor/core";
@@ -259,12 +339,28 @@ export function App() {
     } = useNativeUpdates();
 
   // We want the Lottie splash screen to play on mobile devices (web and native)
-  // Only show it once per day, and bypass it for direct public deep-links (/privacy, /terms, /download)
+  // Only show it once per day, and bypass it for direct public deep-links or notification launches
   const [splashFinished, setSplashFinished] = useState(() => {
     const path = window.location.pathname.replace(/\/+$/, "");
-    if (path === "/privacy" || path === "/terms" || path === "/download" || path === "/forgot-password" || path === "/reset-password") {
+    if (
+      path === "/privacy" ||
+      path === "/terms" ||
+      path === "/download" ||
+      path === "/forgot-password" ||
+      path === "/reset-password" ||
+      path.startsWith("/classrooms/") ||
+      path === "/wrap" ||
+      path === "/replay" ||
+      path === "/whats-new"
+    ) {
       return true;
     }
+    try {
+      const qs = new URLSearchParams(window.location.search);
+      if (qs.has("join") || qs.has("promptSemesterTransition") || sessionStorage.getItem("pending_push_route")) {
+        return true;
+      }
+    } catch {}
     const lastSplashDate = localStorage.getItem("last_splash_date");
     const today = new Date().toDateString();
     return lastSplashDate === today;
@@ -276,39 +372,112 @@ export function App() {
   };
 
   useEffect(() => {
+    const onPushSkipSplash = () => {
+      localStorage.setItem("last_splash_date", new Date().toDateString());
+      setSplashFinished(true);
+    };
+    window.addEventListener("push_route", onPushSkipSplash);
+    return () => window.removeEventListener("push_route", onPushSkipSplash);
+  }, []);
+
+  useEffect(() => {
     const initServices = async () => {
+      // Launch fast path FIRST before any network requests so notification taps & share links route in <15ms
+      if (Capacitor.isNativePlatform()) {
+        try {
+          const { consumePendingLaunchRoute } = await import("./lib/ringer");
+          let pendingRoute = await consumePendingLaunchRoute();
+          if (!pendingRoute) {
+            const launchUrlRes = await CapacitorApp.getLaunchUrl().catch(() => null);
+            if (launchUrlRes?.url && launchUrlRes.url !== lastHandledLaunchUrl) {
+              try {
+                const parsed = new URL(launchUrlRes.url);
+                const pathname = parsed.pathname.replace(/\/+$/, "") || "/";
+                if (pathname !== "/" && pathname !== "/download") {
+                  pendingRoute = `${pathname}${parsed.search}${parsed.hash}`;
+                  if (pathname === "/classrooms") {
+                    const joinCode = parsed.searchParams.get("join")?.trim().toUpperCase().slice(0, 6);
+                    if (joinCode) {
+                      const cachedClassrooms = useCacheStore.getState().classrooms;
+                      if (Array.isArray(cachedClassrooms)) {
+                        const existing = cachedClassrooms.find(
+                          (c: any) => !c?.isDeleted && String(c?.joinCode || "").toUpperCase() === joinCode
+                        );
+                        if (existing?.id) {
+                          pendingRoute = `/classrooms/${existing.id}`;
+                        }
+                      }
+                    }
+                  }
+                  markLaunchUrlHandled(launchUrlRes.url);
+                }
+              } catch {}
+            }
+          }
+          if (pendingRoute && pendingRoute.startsWith("/")) {
+            try {
+              sessionStorage.setItem("pending_push_route", pendingRoute);
+            } catch {}
+            localStorage.setItem("last_splash_date", new Date().toDateString());
+            setSplashFinished(true);
+            window.dispatchEvent(new CustomEvent("push_route", { detail: pendingRoute }));
+          }
+        } catch {}
+        NotificationService.init().catch((e) =>
+          console.error("Failed to init NotificationService", e)
+        );
+      }
+
       if (Capacitor.isNativePlatform()) {
         try { await CapacitorUpdater.notifyAppReady(); } catch (e) {}
+        try {
+          const [info, currentBundle] = await Promise.all([
+            CapacitorApp.getInfo(),
+            CapacitorUpdater.current().catch(() => null),
+          ]);
+          const nativeVersion = normalizeVersionStr(info.version);
+          const localVer = normalizeVersionStr(localStorage.getItem("app_version") || "0.0.0") || "0.0.0";
+          const pendingWhatsNew = normalizeVersionStr(localStorage.getItem("attendx_pending_whats_new"));
+          const seenWhatsNew = normalizeVersionStr(localStorage.getItem("attendx_seen_whats_new_version"));
+          const isUpgraded = localVer !== "0.0.0" && isVersionNewer(nativeVersion, localVer);
+          if (isUpgraded) {
+            localStorage.setItem("attendx_pending_whats_new", nativeVersion);
+          }
+          if (localVer !== nativeVersion && nativeVersion) {
+            localStorage.setItem("app_version", nativeVersion);
+          }
+
+          // Only reset CapacitorUpdater if an actual stale custom bundle is active (never reload when already on "builtin" APK assets!)
+          const activeBundleId = (currentBundle as any)?.bundle?.id;
+          const isStaleCustomBundle = Boolean(activeBundleId && activeBundleId !== "builtin");
+          if (isStaleCustomBundle) {
+            try {
+              await CapacitorUpdater.reset();
+            } catch (e) {
+              console.error("CapacitorUpdater reset failed:", e);
+              window.location.reload();
+            }
+            return;
+          }
+
+          if (
+            (isUpgraded || (pendingWhatsNew && pendingWhatsNew === nativeVersion)) &&
+            seenWhatsNew !== nativeVersion
+          ) {
+            localStorage.setItem("last_splash_date", new Date().toDateString());
+            setSplashFinished(true);
+            window.dispatchEvent(new CustomEvent("attendx-whats-new-ready"));
+          }
+        } catch (e) {}
       }
       try { await useConfigStore.getState().fetchConfig(); } catch (e) {}
       try {
-        if (Capacitor.isNativePlatform()) {
+        if (!Capacitor.isNativePlatform()) {
           try {
-            const info = await CapacitorApp.getInfo();
-            const nativeVersion = info.version;
-            const localVer = localStorage.getItem("app_version") || "0.0.0";
-            if (localVer !== nativeVersion) {
-              localStorage.setItem("app_version", nativeVersion);
-            }
-            const currentBundle = await CapacitorUpdater.current().catch(() => null);
-            const activeBundleId = (currentBundle as any)?.bundle?.id;
-            const isStaleCustomBundle = Boolean(activeBundleId && activeBundleId !== "builtin");
-            if (isVersionNewer(nativeVersion, localVer) || isStaleCustomBundle) {
-              try {
-                await CapacitorUpdater.reset();
-              } catch (e) {
-                console.error("CapacitorUpdater reset failed:", e);
-                window.location.reload();
-              }
-              return;
-            }
-          } catch(e) {}
-        }
-
-        try {
-          await NotificationService.init();
-        } catch (e) {
-          console.error("Failed to init NotificationService", e);
+            await NotificationService.init();
+          } catch (e) {
+            console.error("Failed to init NotificationService", e);
+          }
         }
 
         try {
@@ -581,6 +750,8 @@ export function App() {
       {splashFinished && (
         <BrowserRouter>
           <DeepLinkHandler />
+          <NotificationRouteHandler />
+          <PostUpdateWhatsNewRedirect />
           <HardwareBackButtonHandler />
           <Routes>
             {/* Public Landing Page */}
@@ -644,6 +815,9 @@ export function App() {
               <Route path="/assignments" element={<AssignmentsPage />} />
               <Route path="/report" element={<ReportView />} />
               <Route path="/reports" element={<ReportView />} />
+              <Route path="/wrap" element={<SemesterWrapPage />} />
+              <Route path="/replay" element={<SemesterWrapPage />} />
+              <Route path="/whats-new" element={<WhatsNewPage />} />
               <Route path="/offline-lab" element={<OfflineLabPage />} />
               <Route path="*" element={<NotFoundPage />} />
             </Route>

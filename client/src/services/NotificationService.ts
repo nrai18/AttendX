@@ -460,7 +460,9 @@ export class NotificationService {
           });
         } else if (
           type === "classroom_poll_created" ||
-          type === "classroom_poll_closed"
+          type === "classroom_poll_closed" ||
+          type === "classroom_poll_stopped" ||
+          type === "classroom_poll"
         ) {
           window.dispatchEvent(
             new CustomEvent("fcm_classroom_poll_updated", {
@@ -468,7 +470,7 @@ export class NotificationService {
             }),
           );
           triggerDynamicHUD({
-            type: type === "classroom_poll_closed" ? "success" : "plane",
+            type: type === "classroom_poll_closed" || type === "classroom_poll_stopped" ? "success" : "plane",
             label: title,
             subtitle: body,
             durationMs: 4500,
@@ -600,7 +602,9 @@ export class NotificationService {
           );
         } else if (
           type === "classroom_poll_created" ||
-          type === "classroom_poll_closed"
+          type === "classroom_poll_closed" ||
+          type === "classroom_poll_stopped" ||
+          type === "classroom_poll"
         ) {
           window.dispatchEvent(
             new CustomEvent("fcm_classroom_poll_updated", {
@@ -833,7 +837,7 @@ export class NotificationService {
               {
                 id: "MUTE_ACTION",
                 title: "\uD83D\uDD15 Mute Phone for Class",
-                foreground: true,
+                foreground: false,
                 destructive: false,
               },
             ],
@@ -916,6 +920,10 @@ export class NotificationService {
 
     const navigateInApp = (url: string) => {
       try {
+        try {
+          sessionStorage.setItem("pending_push_route", url);
+        } catch {}
+        window.dispatchEvent(new CustomEvent("push_route", { detail: url }));
         if (window.location.pathname !== url) {
           window.history.pushState(null, "", url);
           window.dispatchEvent(new PopStateEvent("popstate"));
@@ -957,11 +965,12 @@ export class NotificationService {
                 return;
               }
               const id = Number(action.notification.id);
-              // Academic updates series (8800..8899)
-              if (
-                id >= ACADEMIC_UPDATES_START_ID &&
-                id <= ACADEMIC_UPDATES_END_ID
-              ) {
+              // Daily Academic Briefings (8800..8809) -> Today schedule; Weekly/Monthly (8810..8899) -> Reports
+              if (id >= ACADEMIC_UPDATES_START_ID && id <= 8809) {
+                navigateInApp("/today");
+                return;
+              }
+              if (id >= 8810 && id <= ACADEMIC_UPDATES_END_ID) {
                 navigateInApp("/report");
                 return;
               }
@@ -1175,19 +1184,47 @@ export class NotificationService {
         ? endObj.getTime()
         : actualStartTime.getTime() + 60 * 60 * 1000;
 
+      const reminderTitle =
+        type === "headsup"
+          ? `Upcoming (Heads Up): ${cleanTitle}`
+          : `Upcoming: ${cleanTitle}`;
+      const reminderBody = `Starts at ${timeStr} ${location ? `| ${location.trim()}` : ""}`;
+      const reminderLargeBody =
+        type === "headsup"
+          ? `\uD83D\uDCDA Class: ${cleanTitle}\n\u23F0 Time: ${timeStr} - ${endTimeStr || "TBD"}\n\uD83D\uDCCD Room: ${location ? location.trim() : "N/A"}\n\nHeads up: Your upcoming class starts soon. Tap below to mute your phone without opening AttendX.`
+          : `\uD83D\uDCDA Class: ${cleanTitle}\n\u23F0 Time: ${timeStr} - ${endTimeStr || "TBD"}\n\uD83D\uDCCD Room: ${location ? location.trim() : "N/A"}\n\nTap the action button below to silently mute your phone for this class without opening AttendX.`;
+
+      // On Android, schedule via native BroadcastReceiver AlarmManager so tapping Mute or
+      // engaging Auto-DND (when DND access is granted) NEVER opens the app.
+      if (Capacitor.getPlatform() === "android") {
+        let autoDndEnabled = true;
+        try {
+          const pref = localStorage.getItem("attendx_auto_dnd_if_granted");
+          if (pref === "false") autoDndEnabled = false;
+        } catch {}
+
+        const { scheduleNativeClassReminder } = await import("../lib/ringer");
+        const okNative = await scheduleNativeClassReminder({
+          id: notifId,
+          title: reminderTitle,
+          body: reminderBody,
+          largeBody: reminderLargeBody,
+          summaryText: "Class Reminder",
+          className: cleanTitle,
+          triggerAtMs: notifyTime.getTime(),
+          endTimeMs: calculatedEndMs,
+          autoDndIfPermitted: type !== "headsup" && autoDndEnabled,
+        });
+        if (okNative) return;
+      }
+
       await LocalNotifications.schedule({
         notifications: [
           {
             id: notifId,
-            title:
-              type === "headsup"
-                ? `Upcoming (Heads Up): ${cleanTitle}`
-                : `Upcoming: ${cleanTitle}`,
-            body: `Starts at ${timeStr} ${location ? `| ${location.trim()}` : ""}`,
-            largeBody:
-              type === "headsup"
-                ? `\uD83D\uDCDA Class: ${cleanTitle}\n\u23F0 Time: ${timeStr} - ${endTimeStr || "TBD"}\n\uD83D\uDCCD Room: ${location ? location.trim() : "N/A"}\n\nHeads up: Your upcoming class starts soon. Tap below to mute your phone for this class.`
-                : `\uD83D\uDCDA Class: ${cleanTitle}\n\u23F0 Time: ${timeStr} - ${endTimeStr || "TBD"}\n\uD83D\uDCCD Room: ${location ? location.trim() : "N/A"}\n\nTap the action button below to instantly mute your phone for the duration of this class.`,
+            title: reminderTitle,
+            body: reminderBody,
+            largeBody: reminderLargeBody,
             summaryText: "Class Reminder",
             smallIcon: "ic_stat_attendx",
             largeIcon: "attendx_notification_icon",
@@ -1416,13 +1453,23 @@ export class NotificationService {
         });
 
         const todayIso = formatLocalDate(new Date());
+        const tomorrowIso = formatLocalDate(addDays(new Date(), 1));
         const shouldRefreshStats =
           force ||
           useAttendanceStore.getState().subjects.length === 0 ||
           Date.now() - this.lastStatsSyncAt > 60_000;
-        const needsTodayAgenda = !useCacheStore.getState().today?.[todayIso]?.agenda;
+        const todayCacheEntry = useCacheStore.getState().today?.[todayIso];
+        const tomorrowCacheEntry = useCacheStore.getState().today?.[tomorrowIso];
+        const needsTodayAgenda =
+          force ||
+          !todayCacheEntry?.agenda ||
+          Date.now() - Number(todayCacheEntry?.syncedAt || 0) > 180_000;
+        const needsTomorrowAgenda =
+          force ||
+          !tomorrowCacheEntry?.agenda ||
+          Date.now() - Number(tomorrowCacheEntry?.syncedAt || 0) > 300_000;
 
-        const [ttSettled, evSettled, statsSettled, todaySettled] = await Promise.allSettled([
+        const [ttSettled, evSettled, statsSettled, todaySettled, tomorrowSettled] = await Promise.allSettled([
           api.get(`/timetable/${activeSem.id}`),
           api.get(`/events?semesterId=${activeSem.id}`),
           shouldRefreshStats
@@ -1430,6 +1477,9 @@ export class NotificationService {
             : Promise.resolve(null),
           needsTodayAgenda
             ? api.get(`/attendance/today?date=${todayIso}`)
+            : Promise.resolve(null),
+          needsTomorrowAgenda
+            ? api.get(`/attendance/today?date=${tomorrowIso}`)
             : Promise.resolve(null),
         ]);
 
@@ -1491,21 +1541,26 @@ export class NotificationService {
             });
           }
         }
-        if (
-          !hasPendingAttendanceOrSubjects &&
-          todaySettled.status === "fulfilled" &&
-          Array.isArray(todaySettled.value?.data)
-        ) {
-          const curTodayCache = useCacheStore.getState().today || {};
-          if (!curTodayCache[todayIso]?.agenda) {
-            useCacheStore.getState().setCache("today", {
-              ...curTodayCache,
-              [todayIso]: {
-                ...(curTodayCache[todayIso] || {}),
-                agenda: todaySettled.value.data,
-                activeSemester: activeSem,
-              },
-            });
+        if (!hasPendingAttendanceOrSubjects) {
+          const curTodayCache = { ...(useCacheStore.getState().today || {}) };
+          let updatedTodayCache = false;
+          const applyFetchedAgenda = (iso: string, settledRes: PromiseSettledResult<any>) => {
+            if (settledRes.status !== "fulfilled" || !settledRes.value?.data) return;
+            const raw = settledRes.value.data;
+            const agendaList = Array.isArray(raw) ? raw : Array.isArray(raw?.agenda) ? raw.agenda : null;
+            if (!agendaList) return;
+            curTodayCache[iso] = {
+              ...(curTodayCache[iso] || {}),
+              agenda: agendaList,
+              activeSemester: activeSem,
+              syncedAt: Date.now(),
+            };
+            updatedTodayCache = true;
+          };
+          applyFetchedAgenda(todayIso, todaySettled);
+          applyFetchedAgenda(tomorrowIso, tomorrowSettled);
+          if (updatedTodayCache) {
+            useCacheStore.getState().setCache("today", curTodayCache);
           }
         }
       } catch (e) {
@@ -1678,13 +1733,49 @@ export class NotificationService {
       // If both slots and events are completely empty, nothing to schedule
       if (slots.length === 0 && allEvents.length === 0) return;
 
+      // Purge any previously scheduled native class reminders + LocalNotifications before re-syncing
+      try {
+        const { cancelAllNativeClassReminders } = await import("../lib/ringer");
+        await cancelAllNativeClassReminders();
+      } catch {}
+
       const pending = await LocalNotifications.getPending();
-      const toCancel = pending.notifications.filter((n) =>
-        isManagedTimetableNotificationId(Number(n.id)),
+      const deterministicOffIds = new Set<number>();
+      for (let d = 0; d < 7; d++) {
+        const dayDate = addDays(startOfDay(new Date()), d);
+        const dayIso = formatLocalDate(dayDate);
+        const dayAgenda = useCacheStore.getState().today?.[dayIso]?.agenda;
+        if (Array.isArray(dayAgenda)) {
+          dayAgenda.forEach((item: any) => {
+            const st = String(item?.status || "").toLowerCase();
+            if (st === "off" || st === "cancelled") {
+              const sid = String(item?.id || "");
+              if (sid) {
+                deterministicOffIds.add(getNotificationIdForSlot(sid, dayIso, "standard"));
+                deterministicOffIds.add(getNotificationIdForSlot(sid, dayIso, "headsup"));
+              }
+            }
+          });
+        }
+        deterministicOffIds.add(getNotificationIdForSlot("eod", dayIso, "endofday"));
+      }
+      slots.forEach((s) => {
+        for (let d = 0; d < 7; d++) {
+          const dayIso = formatLocalDate(addDays(startOfDay(new Date()), d));
+          deterministicOffIds.add(getNotificationIdForSlot(String(s.id), dayIso, "standard"));
+          deterministicOffIds.add(getNotificationIdForSlot(String(s.id), dayIso, "headsup"));
+        }
+      });
+
+      const cancelIds = new Set<number>(
+        pending.notifications
+          .filter((n) => isManagedTimetableNotificationId(Number(n.id)))
+          .map((n) => Number(n.id)),
       );
-      if (toCancel.length > 0) {
+      deterministicOffIds.forEach((id) => cancelIds.add(id));
+      if (cancelIds.size > 0) {
         await LocalNotifications.cancel({
-          notifications: toCancel.map((n) => ({ id: Number(n.id) })),
+          notifications: Array.from(cancelIds).map((id) => ({ id })),
         });
       }
 
@@ -1698,10 +1789,12 @@ export class NotificationService {
           ? config.classReminderOffset
           : 10;
 
-      for (let i = 0; i < 14; i++) {
+      const eventHorizonDays = cutoffIso ? 30 : 14;
+      for (let i = 0; i < eventHorizonDays; i++) {
         const currentDay = addDays(today, i);
         const currentIso = formatLocalDate(currentDay);
         const isPastCutoff = Boolean(cutoffIso && currentIso > cutoffIso);
+        const isExtendedHorizon = i >= 14;
 
         // Note: Self Birthday notifications are dispatched as official FCM Push Notifications from the backend at 8:00 AM IST.
         // Local notification scheduling for Self Birthday is disabled to eliminate duplicate alerts.
@@ -1725,7 +1818,9 @@ export class NotificationService {
             !lowerTitle.includes("break") &&
             !lowerTitle.includes("vacation") &&
             (typeLower === "exam" ||
-              /\b(midsem|mid[\s-]?sem|midterm|mid[\s-]?term|endsem|end[\s-]?sem|exam)\b/i.test(
+              typeLower === "midsem" ||
+              typeLower === "endsem" ||
+              /\b(midsem|mid[\s-]?sem|midterm|mid[\s-]?term|endsem|end[\s-]?sem|exam|viva|practical\s+test|assessment\s+test)\b/i.test(
                 lowerTitle,
               ));
           const isBreakEvent =
@@ -1734,15 +1829,27 @@ export class NotificationService {
             !isRestricted &&
             (typeLower === "holiday" || lowerTitle.includes("holiday"));
 
+          // Beyond 14 days, only schedule exam alerts (especially after Last Working Day)
+          if (isExtendedHorizon && !isExamEvent) {
+            continue;
+          }
+
+          // After Last Teaching Day, suppress generic class-cancelling holiday noise and prioritize exam alerts
+          if (isPastCutoff && isClassOff && !isExamEvent && !isBreakEvent) {
+            // Still allow major holidays & exams; skip unrelated past-cutoff clutter if non-essential
+          }
+
           const eventCancelsClasses =
             isHolidayEvent || isExamEvent || isBreakEvent;
           let specialMessage = "You have an event today.";
-          if (isHolidayEvent) {
+          if (isExamEvent) {
+            specialMessage = isPastCutoff
+              ? "Regular classes have concluded. All the best for your exam today!"
+              : "All the best for your exams!";
+          } else if (isHolidayEvent) {
             specialMessage = "No classes scheduled! Enjoy your day off.";
           } else if (isRestricted) {
             specialMessage = "Restricted Holiday today.";
-          } else if (isExamEvent) {
-            specialMessage = "All the best for your exams!";
           } else if (isBreakEvent) {
             specialMessage = "Enjoy your vacation!";
           }
@@ -1769,7 +1876,8 @@ export class NotificationService {
             !isHolidayEvent &&
             !isRestricted &&
             !(e as any).isHoliday &&
-            !typeLower.includes("holiday")
+            !typeLower.includes("holiday") &&
+            !isExtendedHorizon
           ) {
             const notifyTime = setHours(currentDay, 9);
             if (notifyTime.getTime() > Date.now()) {
@@ -1807,11 +1915,73 @@ export class NotificationService {
             continue;
           }
 
-          // 2. Generic Event / Holiday Notification
+          // 2. Exam & Event / Holiday Notifications (Exams never mislabeled as Holidays)
+          const cleanHolidayName = (e.title || "Event").trim();
+          const baseHolidayId = getHolidayNotificationId(currentIso);
+
+          if (isExamEvent) {
+            const morningExamTime = setMinutes(setHours(currentDay, 8), 0);
+            if (morningExamTime.getTime() > Date.now()) {
+              const examNotifId =
+                HOLIDAY_NOTIF_START_ID +
+                (((baseHolidayId - HOLIDAY_NOTIF_START_ID) + eventNotifIndex) %
+                  5000);
+              notificationsToSchedule.push({
+                id: examNotifId,
+                title: `\uD83D\uDCDD Exam Today: ${cleanHolidayName}`,
+                body: specialMessage,
+                largeBody: `\uD83D\uDCDD ${cleanHolidayName}\n\n${specialMessage}`,
+                summaryText: "Exam Reminder",
+                smallIcon: "ic_stat_attendx",
+                largeIcon: "attendx_notification_icon",
+                iconColor: "#F43F5E",
+                channelId: "class_alerts",
+                extra: {
+                  type: "exam_reminder",
+                  scheduledDate: currentIso,
+                  route: "/semester/events",
+                },
+                schedule: { at: morningExamTime, allowWhileIdle: true },
+              });
+              scheduledCount++;
+              eventNotifIndex++;
+            }
+
+            // Evening-before prep reminder at 7:00 PM on exam start day or post-teaching day period
+            const isExamStartDay = isSameDay(parseLocalDate(e.date), currentDay);
+            if ((isPastCutoff || isExamStartDay) && i > 0) {
+              const eveTime = setMinutes(setHours(addDays(currentDay, -1), 19), 0);
+              if (eveTime.getTime() > Date.now()) {
+                const eveId =
+                  HOLIDAY_NOTIF_START_ID +
+                  (((baseHolidayId - HOLIDAY_NOTIF_START_ID) + 2500 + eventNotifIndex) %
+                    5000);
+                notificationsToSchedule.push({
+                  id: eveId,
+                  title: `\uD83D\uDCDD Exam Tomorrow: ${cleanHolidayName}`,
+                  body: "Classes are off — review notes, admit details, and get a good rest tonight.",
+                  largeBody: `\uD83D\uDCDD Upcoming Exam Tomorrow\n\n${cleanHolidayName} starts tomorrow (${currentIso}). Best of luck!`,
+                  summaryText: "Exam Prep Reminder",
+                  smallIcon: "ic_stat_attendx",
+                  largeIcon: "attendx_notification_icon",
+                  iconColor: "#F59E0B",
+                  channelId: "class_alerts",
+                  extra: {
+                    type: "exam_eve_reminder",
+                    scheduledDate: currentIso,
+                    route: "/semester/events",
+                  },
+                  schedule: { at: eveTime, allowWhileIdle: true },
+                });
+                scheduledCount++;
+                eventNotifIndex++;
+              }
+            }
+            continue;
+          }
+
           const notifyTime = setHours(currentDay, 8);
           if (notifyTime.getTime() > Date.now()) {
-            const cleanHolidayName = (e.title || "Event").trim();
-            const baseHolidayId = getHolidayNotificationId(currentIso);
             const notifId =
               HOLIDAY_NOTIF_START_ID +
               (((baseHolidayId - HOLIDAY_NOTIF_START_ID) + eventNotifIndex) %
@@ -1819,20 +1989,23 @@ export class NotificationService {
             notificationsToSchedule.push({
               id: notifId,
               title:
-                eventCancelsClasses ||
-                typeLower.includes("holiday") ||
-                lowerTitle.includes("holiday")
+                isHolidayEvent || isBreakEvent
                   ? "\ud83c\udf89 Holiday: " + cleanHolidayName
                   : "\ud83d\udcc6 Event: " + cleanHolidayName,
               body: specialMessage,
               largeBody: "\u2728 " + cleanHolidayName + "\n\n" + specialMessage,
-              summaryText: eventCancelsClasses
+              summaryText: isHolidayEvent || isBreakEvent
                 ? "Holiday Event"
                 : "Calendar Event",
               smallIcon: "ic_stat_attendx",
               largeIcon: "attendx_notification_icon",
-              iconColor: eventCancelsClasses ? "#10B981" : "#3B82F6",
+              iconColor: isHolidayEvent || isBreakEvent ? "#10B981" : "#3B82F6",
               channelId: "class_alerts",
+              extra: {
+                type: "calendar_event",
+                scheduledDate: currentIso,
+                route: "/semester/events",
+              },
               schedule: { at: notifyTime, allowWhileIdle: true },
             });
             scheduledCount++;
@@ -1852,14 +2025,22 @@ export class NotificationService {
         // Merge date-specific Extra Classes & Cancelled/OFF overrides when cached (TodayPage / Widget / Offline)
         const cachedAgenda = useCacheStore.getState().today?.[currentIso]?.agenda;
         const agendaList: any[] = Array.isArray(cachedAgenda) ? cachedAgenda : [];
-        const offOrCancelledIds = new Set(
-          agendaList
-            .filter((item) => {
-              const st = String(item?.status || "").toLowerCase();
-              return st === "off" || st === "cancelled";
-            })
-            .map((item) => String(item.id)),
+        const offItems = agendaList.filter((item) => {
+          const st = String(item?.status || "").toLowerCase();
+          return st === "off" || st === "cancelled";
+        });
+        const offOrCancelledIds = new Set(offItems.map((item) => String(item.id)));
+        const offOrCancelledKeys = new Set(
+          offItems.map(
+            (item) =>
+              `${item?.subject?.id || ""}_${String(item?.startTime || "").slice(0, 5)}`,
+          ),
         );
+        const isSlotMarkedOff = (s: any) =>
+          offOrCancelledIds.has(String(s.id)) ||
+          offOrCancelledKeys.has(
+            `${s?.subjectId || s?.subject?.id || ""}_${String(s?.startTime || "").slice(0, 5)}`,
+          );
         const extraDaySlots = agendaList
           .filter((item) => {
             const isExtraItem = Boolean(
@@ -1886,13 +2067,14 @@ export class NotificationService {
           }));
 
         const activeDaySlots = [
-          ...daySlots.filter((s) => !offOrCancelledIds.has(String(s.id))),
+          ...daySlots.filter((s) => !isSlotMarkedOff(s)),
           ...extraDaySlots,
         ].sort((a, b) =>
           String(a.startTime || "").localeCompare(String(b.startTime || "")),
         );
 
         let maxEndTimeObj: Date | null = null;
+        let maxScheduledReminderMs = 0;
 
         for (let j = 0; j < activeDaySlots.length; j++) {
           const slot = activeDaySlots[j];
@@ -1945,6 +2127,7 @@ export class NotificationService {
           const calculatedEndMs = resolvedEndObj.getTime();
           if (reminderOffset > -1) {
             if (headsUpTime && headsUpTime.getTime() > Date.now()) {
+              maxScheduledReminderMs = Math.max(maxScheduledReminderMs, headsUpTime.getTime());
               const headsUpId = getNotificationIdForSlot(
                 slotId,
                 currentIso,
@@ -1975,6 +2158,7 @@ export class NotificationService {
             }
 
             if (standardNotifyTime.getTime() > Date.now()) {
+              maxScheduledReminderMs = Math.max(maxScheduledReminderMs, standardNotifyTime.getTime());
               const standardId = getNotificationIdForSlot(
                 slotId,
                 currentIso,
@@ -2011,7 +2195,10 @@ export class NotificationService {
         }
 
         if (config?.endOfDaySummary && maxEndTimeObj && activeDaySlots.length > 0) {
-          if (maxEndTimeObj.getTime() > Date.now()) {
+          if (
+            maxEndTimeObj.getTime() > Date.now() &&
+            maxEndTimeObj.getTime() >= maxScheduledReminderMs
+          ) {
             let endOfDayTitle = "Done for the day!";
             let endOfDayBody = "All classes have ended. Enjoy your evening!";
             let endOfDayLargeBody =
@@ -2034,7 +2221,10 @@ export class NotificationService {
               tomorrowOff !== null ||
               tomorrowSlots.length === 0;
 
-            if (tomorrowOff) {
+            if (tomorrowPastCutoff && cutoffIso === currentIso) {
+              endOfDayLargeBody = "\uD83C\uDF93 Teaching classes for this semester have concluded! Wishing you the very best for your upcoming exams.";
+              endOfDayBody = "Teaching classes concluded for this semester. Best of luck for your exams!";
+            } else if (tomorrowOff) {
               if (tomorrowOff.isExam) {
                 endOfDayLargeBody = `\u2728 All classes for today have concluded. All the best for ${tomorrowOff.title} tomorrow!`;
                 endOfDayBody = `Classes ended. Best of luck for ${tomorrowOff.title} tomorrow!`;
@@ -2581,18 +2771,40 @@ export class NotificationService {
           title = `${dayLabel}: ${targetOff.title}`;
           body = `Regular classes suspended ${dayLabelLower} for ${targetOff.title}. All the best!`;
           largeBody = `📝 ${dayLabelPossessive} Briefing\n\n${dayLabel} has ${targetOff.title} scheduled. Regular classes are suspended — all the best!`;
+        } else if (isPastCutoff && !targetOff) {
+          // After Last Working Day: only alert about upcoming exams, never repetitive "Day Off" class spam
+          const upcomingExam = allEvents
+            .filter((e: any) => {
+              const t = String(e?.title || "").toLowerCase();
+              const ty = String(e?.type || e?.eventType || "").toLowerCase();
+              const isEx = !t.includes("break") && !t.includes("vacation") && (ty === "exam" || ty === "midsem" || ty === "endsem" || /\b(midsem|mid[\s-]?sem|endsem|end[\s-]?sem|exam|viva|practical\s+test|assessment\s+test)\b/i.test(t));
+              if (!isEx) return false;
+              const evStart = parseLocalDate(e.date);
+              const diffDays = Math.round((evStart.getTime() - startOfDay(targetDay).getTime()) / 86400000);
+              return diffDays >= 0 && diffDays <= 14;
+            })
+            .sort((a: any, b: any) => parseLocalDate(a.date).getTime() - parseLocalDate(b.date).getTime())[0];
+
+          if (!upcomingExam) {
+            continue;
+          }
+          const evStart = parseLocalDate(upcomingExam.date);
+          const daysToExam = Math.round((evStart.getTime() - startOfDay(targetDay).getTime()) / 86400000);
+          title = daysToExam === 0
+            ? `${dayLabel}: ${upcomingExam.title}`
+            : `📝 Exam in ${daysToExam} day${daysToExam === 1 ? "" : "s"}`;
+          body = daysToExam === 0
+            ? `Classes concluded — focus on ${upcomingExam.title}!`
+            : `Classes concluded — ${upcomingExam.title} begins in ${daysToExam} day${daysToExam === 1 ? "" : "s"}.`;
+          largeBody = `📝 Post-Teaching Exam Briefing\n\n${body}`;
         } else if (targetOff) {
           title = `${dayLabel}: ${targetOff.title}`;
           body = `No regular classes scheduled ${dayLabelLower} for ${targetOff.title}. Enjoy your day off!`;
           largeBody = `✨ ${dayLabelPossessive} Briefing\n\n${dayLabel} is ${targetOff.title}! No regular classes are scheduled. Enjoy your day!`;
-        } else if (isPastCutoff || !targetHasClasses) {
+        } else if (!targetHasClasses) {
           title = `${dayLabelPossessive} Briefing: Day Off`;
-          body = isPastCutoff
-            ? `Semester classes have concluded — no regular classes scheduled ${dayLabelLower}.`
-            : `No classes scheduled for ${dayLabelLower}. Take some time to relax or catch up on studies!`;
-          largeBody = isPastCutoff
-            ? `🎓 ${dayLabelPossessive} Briefing\n\nSemester classes have concluded. No regular classes are scheduled ${dayLabelLower}.`
-            : `🎒 ${dayLabelPossessive} Briefing\n\nYou have no classes scheduled for ${dayLabelLower}. Enjoy your day off or review your coursework!`;
+          body = `No classes scheduled for ${dayLabelLower}. Take some time to relax or catch up on studies!`;
+          largeBody = `🎒 ${dayLabelPossessive} Briefing\n\nYou have no classes scheduled for ${dayLabelLower}. Enjoy your day off or review your coursework!`;
         } else {
           title = `${dayLabelPossessive} Briefing`;
           body = `You have ${targetSlots.length} class${targetSlots.length === 1 ? "" : "es"} scheduled ${dayLabelLower}.`;
@@ -2609,6 +2821,12 @@ export class NotificationService {
           largeIcon: "attendx_notification_icon",
           iconColor: "#3B82F6",
           channelId: "academic_briefings",
+          extra: {
+            type: "morning_summary",
+            frequency: "daily",
+            route: "/today",
+            url: "/today",
+          },
           schedule: { at: notifyDate, allowWhileIdle: true },
         });
       }
@@ -2658,6 +2876,12 @@ export class NotificationService {
           largeIcon: "attendx_notification_icon",
           iconColor: "#8B5CF6",
           channelId: "academic_briefings",
+          extra: {
+            type: "weekly_summary",
+            frequency: "weekly",
+            route: "/report",
+            url: "/report",
+          },
           schedule: { at: notifyDate, allowWhileIdle: true },
         });
       }
@@ -2684,6 +2908,12 @@ export class NotificationService {
           largeIcon: "attendx_notification_icon",
           iconColor: "#EC4899",
           channelId: "academic_briefings",
+          extra: {
+            type: "monthly_summary",
+            frequency: "monthly",
+            route: "/report",
+            url: "/report",
+          },
           schedule: { at: notifyDate, allowWhileIdle: true },
         });
       }
@@ -2701,6 +2931,8 @@ export class NotificationService {
   static async cancelAll(): Promise<void> {
     if (!Capacitor.isNativePlatform()) return;
     try {
+      const { cancelAllNativeClassReminders } = await import("../lib/ringer");
+      await cancelAllNativeClassReminders();
       if (typeof LocalNotifications.cancelAll === "function") {
         await LocalNotifications.cancelAll();
       } else {
@@ -2769,6 +3001,12 @@ export class NotificationService {
             largeIcon: "attendx_notification_icon",
             iconColor: "#3B82F6",
             channelId: "academic_briefings",
+            extra: {
+              type: "monthly_summary",
+              frequency: "monthly",
+              route: "/report",
+              url: "/report",
+            },
             schedule: { at: new Date(Date.now() + 1000), allowWhileIdle: true },
           },
         ],

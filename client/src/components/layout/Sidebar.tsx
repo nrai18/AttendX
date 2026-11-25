@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { api } from "../../lib/api";
 import { useAuthStore } from "../../stores/authStore";
+import { useLocalAvatar } from "../../utils/avatarCache";
 import { cn } from "../../lib/utils";
 import { hapticSelection, hapticWarning } from "../../utils/haptics";
 
@@ -30,6 +31,7 @@ const navItems = [
 
 export const Sidebar: React.FC = () => {
   const user = useAuthStore((state) => state.user);
+  const localAvatarUrl = useLocalAvatar(user?.id, user?.avatarUrl);
   const logout = useAuthStore((state) => state.logout);
   const location = useLocation();
   const isReports = location.pathname.startsWith("/report");
@@ -40,6 +42,7 @@ export const Sidebar: React.FC = () => {
   const isPredictive = location.pathname.startsWith("/predictive");
   const isSubjects = location.pathname.startsWith("/subjects");
   const isClassrooms = location.pathname.startsWith("/classrooms");
+  const isWrapOrWhatsNew = location.pathname.startsWith("/wrap") || location.pathname.startsWith("/replay") || location.pathname.startsWith("/whats-new");
   
   const [isLoggingOut, setIsLoggingOut] = React.useState(false);
   const handleLogout = async () => {
@@ -48,19 +51,25 @@ export const Sidebar: React.FC = () => {
     await logout();
   };
 
-  const sidebarBg = isClassrooms
+  const sidebarBg = isWrapOrWhatsNew
+    ? "preserve-dark bg-[#0d0e0d] border-white/10"
+    : isClassrooms
     ? "bg-white dark:bg-[#000000] border-neutral-200 dark:border-white/[0.08]"
     : (isReports || isPredictive) 
     ? "bg-[#EED3CF]/80 dark:bg-[#1A090C]/80 border-[#EED3CF]/30 dark:border-[#74313A]/30" 
     : (isSemester || isSettings || isToday || isTimetable) 
     ? "bg-transparent border-border/30 backdrop-blur-xl" 
     : "bg-card border-border";
-  const textColor = isClassrooms
+  const textColor = isWrapOrWhatsNew
+    ? "text-white"
+    : isClassrooms
     ? "text-neutral-900 dark:text-white"
     : (isReports || isPredictive) 
     ? "text-[#111827] dark:text-[#FDF8F5]" 
     : "text-foreground";
-  const mutedTextColor = isClassrooms
+  const mutedTextColor = isWrapOrWhatsNew
+    ? "text-white/60"
+    : isClassrooms
     ? "text-neutral-500 dark:text-neutral-400"
     : (isReports || isPredictive) 
     ? "text-[#74313A]/60 dark:text-[#EED3CF]/60" 
@@ -89,6 +98,9 @@ export const Sidebar: React.FC = () => {
               to={item.path}
               onClick={() => hapticSelection()}
               className={({ isActive }) => {
+                if (isActive && isWrapOrWhatsNew) {
+                  return "flex items-center gap-3 px-3 py-2.5 rounded-xl font-semibold text-sm transition-all duration-200 bg-[#b7f357] text-[#111508] shadow-md";
+                }
                 if (isActive && isClassrooms) {
                   return "flex items-center gap-3 px-3 py-2.5 rounded-xl font-semibold text-sm transition-all duration-200 bg-neutral-900 text-white dark:bg-white dark:text-black shadow-md shadow-black/10 dark:shadow-white/10";
                 }
@@ -106,6 +118,8 @@ export const Sidebar: React.FC = () => {
                   "flex items-center gap-3 px-3 py-2.5 rounded-xl font-medium text-sm transition-all duration-200",
                   isActive
                     ? "bg-primary text-primary-foreground font-semibold shadow-md shadow-primary/20"
+                    : isWrapOrWhatsNew
+                    ? "text-white/65 hover:text-white hover:bg-white/10"
                     : isClassrooms
                     ? "text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white hover:bg-neutral-100 dark:hover:bg-white/5"
                     : (isReports || isPredictive)
@@ -124,24 +138,24 @@ export const Sidebar: React.FC = () => {
       </nav>
 
       {/* User Profile Card Footer */}
-      <div className={`pt-4 border-t ${isClassrooms ? "border-neutral-200 dark:border-white/[0.08]" : (isReports || isPredictive) ? "border-[#EED3CF]/30 dark:border-[#74313A]/30" : "border-border"}`}>
-        <div className={`flex items-center justify-between p-2 rounded-xl border group ${isClassrooms ? "bg-neutral-50 dark:bg-[#0c0d0e] border-neutral-200 dark:border-white/[0.08]" : (isReports || isPredictive) ? "bg-[#74313A]/5 dark:bg-[#EED3CF]/5 border-[#EED3CF]/30 dark:border-[#74313A]/30" : "bg-muted/40 border-border"}`}>
+      <div className={`pt-4 border-t ${isWrapOrWhatsNew ? "border-white/10" : isClassrooms ? "border-neutral-200 dark:border-white/[0.08]" : (isReports || isPredictive) ? "border-[#EED3CF]/30 dark:border-[#74313A]/30" : "border-border"}`}>
+        <div className={`flex items-center justify-between p-2 rounded-xl border group ${isWrapOrWhatsNew ? "bg-white/[0.06] border-white/10" : isClassrooms ? "bg-neutral-50 dark:bg-[#0c0d0e] border-neutral-200 dark:border-white/[0.08]" : (isReports || isPredictive) ? "bg-[#74313A]/5 dark:bg-[#EED3CF]/5 border-[#EED3CF]/30 dark:border-[#74313A]/30" : "bg-muted/40 border-border"}`}>
           <NavLink 
             to="/settings?action=edit-profile" 
             className="flex items-center gap-2.5 min-w-0 flex-1 hover:opacity-80 transition-opacity cursor-pointer"
           >
-            <div className={`w-8 h-8 avatar-circle rounded-full overflow-hidden flex items-center justify-center font-bold text-xs shrink-0 ${isClassrooms ? "bg-neutral-200 dark:bg-white/10 text-neutral-900 dark:text-white" : (isReports || isPredictive) ? "bg-[#74313A]/20 text-[#74313A] dark:bg-[#EED3CF]/20 dark:text-[#EED3CF]" : "bg-primary/20 text-primary"}`}>
-              {user?.avatarUrl && user?.avatarUrl !== "null" ? (<img src={user.avatarUrl} alt="Avatar" className="w-full h-full object-cover" referrerPolicy="no-referrer" onError={(e) => { e.currentTarget.src = "https://api.dicebear.com/7.x/notionists/svg?seed=" + encodeURIComponent(user?.name || "U"); }} />) : (user?.name?.[0] || "U")}
+            <div className={`w-8 h-8 avatar-circle rounded-full overflow-hidden flex items-center justify-center font-bold text-xs shrink-0 ${isWrapOrWhatsNew ? "bg-white/15 text-white" : isClassrooms ? "bg-neutral-200 dark:bg-white/10 text-neutral-900 dark:text-white" : (isReports || isPredictive) ? "bg-[#74313A]/20 text-[#74313A] dark:bg-[#EED3CF]/20 dark:text-[#EED3CF]" : "bg-primary/20 text-primary"}`}>
+              {localAvatarUrl ? (<img src={localAvatarUrl} alt="Avatar" className="w-full h-full object-cover" referrerPolicy="no-referrer" onError={(e) => { e.currentTarget.src = "https://api.dicebear.com/7.x/notionists/svg?seed=" + encodeURIComponent(user?.name || "U"); }} />) : (user?.name?.[0] || "U")}
             </div>
             <div className="min-w-0 flex-1">
-              <p className={`text-xs font-medium truncate transition-colors ${textColor} ${(isReports || isPredictive) ? "group-hover:text-[#74313A] dark:group-hover:text-[#EED3CF]" : "group-hover:text-primary"}`}>{user?.name}</p>
+              <p className={`text-xs font-medium truncate transition-colors ${textColor} ${isWrapOrWhatsNew ? "group-hover:text-[#b7f357]" : (isReports || isPredictive) ? "group-hover:text-[#74313A] dark:group-hover:text-[#EED3CF]" : "group-hover:text-primary"}`}>{user?.name}</p>
               <p className={`text-[10px] truncate ${mutedTextColor}`}>{user?.email}</p>
             </div>
           </NavLink>
           <button
             onClick={handleLogout}
             disabled={isLoggingOut}
-            className={`p-1.5 transition-colors cursor-pointer shrink-0 ml-1 disabled:opacity-50 active:scale-90 ${(isReports || isPredictive) ? "text-[#74313A]/60 dark:text-[#EED3CF]/60 hover:text-rose-600 dark:hover:text-rose-400" : "text-muted-foreground hover:text-rose-500"}`}
+            className={`p-1.5 transition-colors cursor-pointer shrink-0 ml-1 disabled:opacity-50 active:scale-90 ${isWrapOrWhatsNew ? "text-white/60 hover:text-rose-400" : (isReports || isPredictive) ? "text-[#74313A]/60 dark:text-[#EED3CF]/60 hover:text-rose-600 dark:hover:text-rose-400" : "text-muted-foreground hover:text-rose-500"}`}
             title="Log Out"
           >
             {isLoggingOut ? <Loader2 className="w-4 h-4 animate-spin" /> : <LogOut className="w-4 h-4" />}

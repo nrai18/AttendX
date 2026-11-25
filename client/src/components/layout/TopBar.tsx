@@ -60,14 +60,17 @@ export const TopBar: React.FC<TopBarProps> = ({
     await logout();
   };
   
-  const { overallPercentage, hasActiveSemester } = useAttendanceStore();
+  const { overallPercentage, hasActiveSemester, isLoading: attLoading, totalClasses, subjects } = useAttendanceStore();
   const targetPercentage = user?.targetAttendance ?? 75;
   const { theme, toggleTheme } = useThemeStore();
   const isPasscodeEnabled = useAppLockStore((state) => state.isEnabled);
   const lockNow = useAppLockStore((state) => state.lockNow);
+  const isWrapOrWhatsNew = location.pathname.startsWith("/wrap") || location.pathname.startsWith("/replay") || location.pathname.startsWith("/whats-new");
 
   // Route-specific styling
-  const headerBg = isClassrooms
+  const headerBg = isWrapOrWhatsNew
+    ? "preserve-dark bg-[#0d0e0d]/90 border-white/10"
+    : isClassrooms
     ? "bg-white/90 dark:bg-[#000000]/90 border-neutral-200 dark:border-white/[0.08]"
     : isReports || isPredictive 
     ? "bg-[#EED3CF]/80 dark:bg-[#1A090C]/80 border-[#74313A]/20 dark:border-[#EED3CF]/20" 
@@ -75,19 +78,23 @@ export const TopBar: React.FC<TopBarProps> = ({
     ? "bg-transparent border-border/30" 
     : "bg-background/80 border-border";
   const positionClass = "sticky top-0";
-  const textColor = isClassrooms ? "text-neutral-900 dark:text-white" : (isReports || isPredictive) ? "text-[#111827] dark:text-[#FDF8F5]" : isSubjects ? "text-foreground dark:text-white" : "text-foreground";
-  const mutedTextColor = isClassrooms ? "text-neutral-500 dark:text-neutral-400" : (isReports || isPredictive) ? "text-[#74313A]/60 dark:text-[#EED3CF]/60" : isSubjects ? "text-muted-foreground dark:text-white/80" : "text-muted-foreground";
-  const hoverBg = isClassrooms ? "hover:bg-neutral-100 dark:hover:bg-white/5" : (isReports || isPredictive) ? "hover:bg-[#74313A]/5 dark:hover:bg-[#EED3CF]/5" : "hover:bg-muted/80";
-  const hoverText = isClassrooms ? "hover:text-black dark:hover:text-white" : (isReports || isPredictive) ? "hover:text-[#74313A] dark:hover:text-[#EED3CF]" : isSubjects ? "hover:text-foreground dark:hover:text-white" : "hover:text-foreground";
+  const textColor = isWrapOrWhatsNew ? "text-white" : isClassrooms ? "text-neutral-900 dark:text-white" : (isReports || isPredictive) ? "text-[#111827] dark:text-[#FDF8F5]" : isSubjects ? "text-foreground dark:text-white" : "text-foreground";
+  const mutedTextColor = isWrapOrWhatsNew ? "text-white/65" : isClassrooms ? "text-neutral-500 dark:text-neutral-400" : (isReports || isPredictive) ? "text-[#74313A]/60 dark:text-[#EED3CF]/60" : isSubjects ? "text-muted-foreground dark:text-white/80" : "text-muted-foreground";
+  const hoverBg = isWrapOrWhatsNew ? "hover:bg-white/10" : isClassrooms ? "hover:bg-neutral-100 dark:hover:bg-white/5" : (isReports || isPredictive) ? "hover:bg-[#74313A]/5 dark:hover:bg-[#EED3CF]/5" : "hover:bg-muted/80";
+  const hoverText = isWrapOrWhatsNew ? "hover:text-white" : isClassrooms ? "hover:text-black dark:hover:text-white" : (isReports || isPredictive) ? "hover:text-[#74313A] dark:hover:text-[#EED3CF]" : isSubjects ? "hover:text-foreground dark:hover:text-white" : "hover:text-foreground";
 
   // Badge styling
-  const badgeBg = isClassrooms
+  const badgeBg = isWrapOrWhatsNew
+    ? "bg-white/[0.07] border-white/15"
+    : isClassrooms
     ? "bg-neutral-100 dark:bg-white/5 border-neutral-200 dark:border-white/[0.08]"
     : isReports 
     ? "bg-[#74313A]/5 dark:bg-[#EED3CF]/5 border-[#74313A]/10 dark:border-[#EED3CF]/10" 
     : "bg-muted/60 border-border";
   
-  const badgeGoodText = isReports 
+  const badgeGoodText = isWrapOrWhatsNew
+    ? "text-[#b7f357]"
+    : isReports 
     ? "text-[#74313A] dark:text-[#EED3CF]" 
     : "text-emerald-500 dark:text-emerald-400";
     
@@ -123,25 +130,35 @@ export const TopBar: React.FC<TopBarProps> = ({
             <div
               className={`flex items-center gap-1.5 border rounded-xl px-3 py-1.5 text-xs font-mono font-semibold ${badgeBg}`}
             >
-              <span
-                className={`font-bold ${overallPercentage >= targetPercentage ? badgeGoodText : badgeBadText}`}
-              >
-                {(overallPercentage ?? 0).toFixed(2)}%
-              </span>
+              {attLoading && totalClasses === 0 && subjects.length === 0 ? (
+                <span className={`font-bold animate-pulse ${mutedTextColor}`}>
+                  ··%
+                </span>
+              ) : (
+                <span
+                  className={`font-bold ${overallPercentage >= targetPercentage ? badgeGoodText : badgeBadText}`}
+                >
+                  {(overallPercentage ?? 0).toFixed(2)}%
+                </span>
+              )}
               <span
                 className={
-                  isReports || isPredictive
-                    ? "text-[#74313A]/20 dark:text-[#EED3CF]/20"
-                    : "text-muted-foreground/40"
+                  isWrapOrWhatsNew
+                    ? "text-white/25"
+                    : isReports || isPredictive
+                      ? "text-[#74313A]/20 dark:text-[#EED3CF]/20"
+                      : "text-muted-foreground/40"
                 }
               >
                 |
               </span>
               <span
                 className={
-                  isReports || isPredictive
-                    ? "text-[#74313A]/50 dark:text-[#EED3CF]/50"
-                    : "text-muted-foreground"
+                  isWrapOrWhatsNew
+                    ? "text-white/55"
+                    : isReports || isPredictive
+                      ? "text-[#74313A]/50 dark:text-[#EED3CF]/50"
+                      : "text-muted-foreground"
                 }
               >
                 {targetPercentage}%

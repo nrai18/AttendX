@@ -170,11 +170,22 @@ public class AttendXMessagingService extends MessagingService {
                         msgId = "attendx-fcm-" + System.currentTimeMillis();
                     }
                     launchIntent.putExtra("google.message_id", msgId);
+                    launchIntent.putExtra("attendx_from_notification", "true");
                     for (Map.Entry<String, String> entry : data.entrySet()) {
                         launchIntent.putExtra(entry.getKey(), entry.getValue());
                     }
+                    if (!data.containsKey("route") && !data.containsKey("url") && data.get("classroomId") != null) {
+                        launchIntent.putExtra("route", "/classrooms/" + data.get("classroomId"));
+                    }
 
-                    int reqCode = (data.get("announcementId") != null ? data.get("announcementId") : msgId).hashCode();
+                    String uniqueKey = data.get("pollId");
+                    if (uniqueKey == null || uniqueKey.isEmpty()) {
+                        uniqueKey = data.get("announcementId");
+                    }
+                    if (uniqueKey == null || uniqueKey.isEmpty()) {
+                        uniqueKey = msgId;
+                    }
+                    int reqCode = uniqueKey.hashCode();
                     int piFlags = PendingIntent.FLAG_UPDATE_CURRENT;
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                         piFlags |= PendingIntent.FLAG_IMMUTABLE;

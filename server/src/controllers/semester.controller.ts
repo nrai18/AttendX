@@ -1,5 +1,6 @@
 import { Response } from "express";
 import { SemesterService } from "../services/semester.service";
+import { WrapService } from "../services/wrap.service";
 import { AuthenticatedRequest } from "../middleware/authenticate";
 import { CacheService } from "../services/cache.service";
 
@@ -60,5 +61,30 @@ export class SemesterController {
     const userId = req.user!.userId;
     const sent = await SemesterService.sendSemesterEndNotification(userId);
     res.json({ success: sent, message: sent ? "Semester completion notification sent" : "No notification sent" });
+  }
+
+  static async getWrap(req: AuthenticatedRequest, res: Response) {
+    try {
+      const userId = req.user!.userId;
+      const semesterId = typeof req.query.semesterId === "string" ? req.query.semesterId : undefined;
+      const data = await WrapService.getWrapSummary(userId, semesterId);
+      if (!data) {
+        return res.status(404).json({ message: "No active semester found for Wrap." });
+      }
+      res.json(data);
+    } catch (error: any) {
+      res.status(500).json({ message: error?.message || "Failed to generate semester wrap." });
+    }
+  }
+
+  static async generateWrapAiCopy(req: AuthenticatedRequest, res: Response) {
+    try {
+      const userId = req.user!.userId;
+      const providedSnapshot = req.body?.snapshot;
+      const aiCopy = await WrapService.generateAiCopy(userId, providedSnapshot);
+      res.json(aiCopy);
+    } catch (error: any) {
+      res.status(500).json({ message: error?.message || "Failed to generate AI wrap copy." });
+    }
   }
 }

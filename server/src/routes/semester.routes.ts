@@ -9,6 +9,8 @@ router.use(authenticate);
 router.get("/", SemesterController.list);
 router.get("/active", SemesterController.getActive);
 router.get("/transition-status", SemesterController.getTransitionStatus);
+router.get("/wrap", SemesterController.getWrap);
+router.post("/wrap/ai-copy", SemesterController.generateWrapAiCopy);
 router.post("/transition", SemesterController.transition);
 router.post("/notify-transition", SemesterController.notifyTransition);
 router.post("/", SemesterController.create);

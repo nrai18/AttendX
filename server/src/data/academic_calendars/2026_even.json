@@ -1,0 +1,88 @@
+{
+  "academicYear": "2025-26",
+  "semesterType": "even",
+  "year": 2026,
+  "events": [
+    {
+      "title": "Course Registration & Fee Payment Verification",
+      "startDate": "2026-01-05",
+      "endDate": "2026-01-09",
+      "eventType": "institute",
+      "allDay": true,
+      "semesters": [2, 4, 6, 8],
+      "description": "Course registration and verification for all even semester students"
+    },
+    {
+      "title": "Commencement of Classes",
+      "startDate": "2026-01-12",
+      "endDate": "2026-01-12",
+      "eventType": "institute",
+      "allDay": true,
+      "semesters": [2, 4, 6, 8],
+      "description": "Official start of even semester classes (AY 2025-26)"
+    },
+    {
+      "title": "Mid Semester Exam (MSE)",
+      "startDate": "2026-03-09",
+      "endDate": "2026-03-13",
+      "eventType": "midsem",
+      "allDay": true,
+      "semesters": [2, 4, 6, 8],
+      "description": "Mid-semester theory examinations"
+    },
+    {
+      "title": "Mid Semester Break",
+      "startDate": "2026-03-16",
+      "endDate": "2026-03-20",
+      "eventType": "vacation",
+      "allDay": true,
+      "semesters": [2, 4, 6, 8],
+      "description": "Mid-semester spring break"
+    },
+    {
+      "title": "Last Teaching Day",
+      "startDate": "2026-05-04",
+      "endDate": "2026-05-04",
+      "eventType": "institute",
+      "allDay": true,
+      "semesters": [2, 4, 6, 8],
+      "description": "Last official teaching day of the even semester"
+    },
+    {
+      "title": "End Semester Theory Exam",
+      "startDate": "2026-05-08",
+      "endDate": "2026-05-16",
+      "eventType": "endsem",
+      "allDay": true,
+      "semesters": [2, 4, 6, 8],
+      "description": "Final end-semester theory examinations"
+    },
+    {
+      "title": "End Semester Lab Exam",
+      "startDate": "2026-05-18",
+      "endDate": "2026-05-23",
+      "eventType": "endsem",
+      "allDay": true,
+      "semesters": [2, 4, 6, 8],
+      "description": "Final practical and laboratory examinations"
+    },
+    {
+      "title": "Commencement of Student Vacation",
+      "startDate": "2026-05-25",
+      "endDate": "2026-07-12",
+      "eventType": "vacation",
+      "allDay": true,
+      "semesters": [2, 4, 6, 8],
+      "description": "Summer vacation for students"
+    },
+    {
+      "title": "Next Semester Commencement",
+      "startDate": "2026-07-14",
+      "endDate": "2026-07-14",
+      "eventType": "institute",
+      "allDay": true,
+      "semesters": [2, 4, 6, 8],
+      "description": "Commencement of AY 2026-27 odd semester classes"
+    }
+  ]
+}

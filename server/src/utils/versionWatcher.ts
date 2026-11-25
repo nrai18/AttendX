@@ -51,7 +51,7 @@ export function isProductionVersionWatcherEnv(env: NodeJS.ProcessEnv = process.e
 /**
  * Read current backend package version cleanly regardless of CWD (server/ or repo root).
  */
-export function resolveServerPackageVersion(fallback = "4.4.2"): string {
+export function resolveServerPackageVersion(fallback = "4.5.0"): string {
   const candidates = [
     path.resolve(process.cwd(), "package.json"),
     path.resolve(__dirname, "../../package.json"),

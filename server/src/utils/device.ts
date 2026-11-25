@@ -65,6 +65,17 @@ export function getFastDeviceDetails(req: any) {
   const appVersion = headers['x-attendx-version'];
   const realOsHeader = typeof headers['x-attendx-real-os'] === 'string' ? headers['x-attendx-real-os'].trim() : '';
 
+  const isIosUa = /iPhone|iPad|iPod|CriOS|FxiOS|EdgiOS|OPiOS/i.test(uaString);
+  const iosBrowserFromUa = /CriOS/i.test(uaString)
+    ? 'Chrome'
+    : /FxiOS/i.test(uaString)
+      ? 'Firefox'
+      : /EdgiOS/i.test(uaString)
+        ? 'Microsoft Edge'
+        : /OPiOS/i.test(uaString)
+          ? 'Opera'
+          : null;
+
   if (platformHeader && osHeader && osHeader !== 'web') {
     deviceType = String(platformHeader).toLowerCase().includes('mobile') ? 'mobile' : 'desktop';
     os = String(osHeader).toLowerCase() === 'ios' ? 'iOS' : String(osHeader).charAt(0).toUpperCase() + String(osHeader).slice(1);
@@ -85,11 +96,17 @@ export function getFastDeviceDetails(req: any) {
       }
     }
     browser = finalDeviceString ? `AttendX${versionStr} (${finalDeviceString})` : `AttendX Native App${versionStr}`;
+  } else if (isIosUa || realOsHeader === 'iOS') {
+    deviceType = /iPad/i.test(uaString) ? 'tablet' : 'mobile';
+    os = 'iOS';
+    browser = iosBrowserFromUa || (customBrowser ? String(customBrowser) : (result.browser.name ? result.browser.name.replace(/^Mobile\s+/i, '') : 'Safari'));
+    userAgent = `${browser} on iOS`;
   } else {
-    deviceType = (realOsHeader === 'Windows' || realOsHeader === 'macOS' || realOsHeader === 'Linux') ? 'desktop' : (result.device.type || (uaString.includes('Mobile') ? 'mobile' : 'desktop'));
-    os = (realOsHeader === 'Windows' || realOsHeader === 'macOS' || realOsHeader === 'Linux') ? realOsHeader : (result.os.name || 'Unknown OS');
+    const validDesktopRealOs = realOsHeader === 'Windows' || realOsHeader === 'macOS' || realOsHeader === 'Linux';
+    deviceType = validDesktopRealOs ? 'desktop' : (result.device.type || (uaString.includes('Mobile') ? 'mobile' : 'desktop'));
+    os = validDesktopRealOs ? realOsHeader : (result.os.name || 'Unknown OS');
     browser = customBrowser ? String(customBrowser) : (result.browser.name ? result.browser.name.replace(/^Mobile\s+/i, '') : 'Unknown Browser');
-    if ((realOsHeader === 'Windows' || realOsHeader === 'macOS' || realOsHeader === 'Linux') && browser) {
+    if (validDesktopRealOs && browser) {
       userAgent = `${browser} on ${realOsHeader}`;
     }
   }
@@ -249,17 +266,22 @@ export async function getDeviceDetails(req: any) {
      
      browser = finalDeviceString ? `AttendX${versionStr} (${finalDeviceString})` : `AttendX Native App${versionStr}`;
   } else {
-    // Web Browser (Laptop or Mobile Web)
-    deviceType = (realOsHeader === 'Windows' || realOsHeader === 'macOS' || realOsHeader === 'Linux') ? 'desktop' : (result.device.type || (uaString.includes('Mobile') ? 'mobile' : 'desktop'));
-    os = (realOsHeader === 'Windows' || realOsHeader === 'macOS' || realOsHeader === 'Linux') ? realOsHeader : (result.os.name || 'Unknown OS');
+    // Guard iOS / iPadOS browsers (CriOS, FxiOS, EdgiOS) from macOS desktop misdetection
+    const isIosBrowserUa = /iPhone|iPad|iPod|CriOS|FxiOS|EdgiOS|OPiOS/i.test(uaString) || realOsHeader === 'iOS';
+    const validDesktopRealOs = !isIosBrowserUa && (realOsHeader === 'Windows' || realOsHeader === 'macOS' || realOsHeader === 'Linux');
+    deviceType = isIosBrowserUa ? (/iPad/i.test(uaString) ? 'tablet' : 'mobile') : validDesktopRealOs ? 'desktop' : (result.device.type || (uaString.includes('Mobile') ? 'mobile' : 'desktop'));
+    os = isIosBrowserUa ? 'iOS' : validDesktopRealOs ? realOsHeader : (result.os.name || 'Unknown OS');
     
     // Prioritize the precise Client Hints browser name (e.g. 'Brave', 'Microsoft Edge') over spoofed UA string
     if (customBrowser) {
        browser = customBrowser;
     } else {
-       browser = result.browser.name ? result.browser.name.replace(/^Mobile\s+/i, '') : 'Unknown Browser';
+       const iosUaBr = /CriOS/i.test(uaString) ? 'Chrome' : /FxiOS/i.test(uaString) ? 'Firefox' : /EdgiOS/i.test(uaString) ? 'Microsoft Edge' : /OPiOS/i.test(uaString) ? 'Opera' : null;
+       browser = iosUaBr || (result.browser.name ? result.browser.name.replace(/^Mobile\s+/i, '') : (isIosBrowserUa ? 'Safari' : 'Unknown Browser'));
     }
-    if ((realOsHeader === 'Windows' || realOsHeader === 'macOS' || realOsHeader === 'Linux') && browser) {
+    if (isIosBrowserUa && browser) {
+       userAgent = `${browser} on iOS`;
+    } else if (validDesktopRealOs && browser) {
        userAgent = `${browser} on ${realOsHeader}`;
     }
   }

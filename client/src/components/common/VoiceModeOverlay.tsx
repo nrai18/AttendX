@@ -213,16 +213,16 @@ const AnimatedVoiceOrb = React.memo(({ uiState }: { uiState: string }) => {
         transition={{ repeat: Infinity, duration: uiState === "SPEAKING" ? 1.5 : 2, ease: "easeInOut" }}
         className={`absolute w-60 h-60 sm:w-64 sm:h-64 rounded-full bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] transform-gpu dark:mix-blend-screen ${
           uiState === "LISTENING"
-            ? "from-slate-900/20 via-slate-500/10 to-transparent dark:from-white/40 dark:via-white/10 dark:to-transparent"
+            ? "from-emerald-400/35 via-teal-400/15 to-transparent dark:from-white/40 dark:via-white/10 dark:to-transparent"
             : uiState === "SPEAKING"
             ? "from-rose-500/35 via-pink-400/15 to-transparent dark:from-pink-500/50 dark:via-pink-500/10 dark:to-transparent"
             : uiState === "PROCESSING"
-            ? "from-cyan-500/30 via-sky-400/10 to-transparent dark:from-cyan-500/35 dark:via-cyan-500/10 dark:to-transparent"
-            : "from-slate-400/20 via-slate-300/5 to-transparent dark:from-white/15 dark:to-transparent"
+            ? "from-sky-500/35 via-indigo-400/15 to-transparent dark:from-cyan-500/35 dark:via-cyan-500/10 dark:to-transparent"
+            : "from-indigo-400/20 via-sky-300/10 to-transparent dark:from-white/15 dark:to-transparent"
         }`}
       />
 
-      {/* Core Solid Orb */}
+      {/* Core Luminous Orb */}
       <motion.div
         animate={{
           scale: uiState === "LISTENING" ? [1, 1.05, 1] : uiState === "SPEAKING" ? [1, 1.12, 0.96, 1.05, 1] : uiState === "PROCESSING" ? [1, 1.06, 1] : [1, 1.02, 1],
@@ -230,12 +230,12 @@ const AnimatedVoiceOrb = React.memo(({ uiState }: { uiState: string }) => {
         transition={{ repeat: Infinity, duration: uiState === "SPEAKING" ? 1.2 : 2, ease: "easeInOut" }}
         className={`relative z-10 w-36 h-36 sm:w-44 sm:h-44 rounded-full shadow-2xl transition-colors duration-500 transform-gpu bg-gradient-to-tr ${
           uiState === "LISTENING"
-            ? "from-slate-800 via-slate-900 to-slate-700 shadow-slate-900/30 dark:from-zinc-100 dark:via-white dark:to-white dark:shadow-white/40"
+            ? "from-emerald-500 via-teal-400 to-sky-400 shadow-emerald-500/35 dark:from-zinc-100 dark:via-white dark:to-white dark:shadow-white/40"
             : uiState === "SPEAKING"
-            ? "from-rose-500 via-pink-500 to-rose-300 shadow-rose-500/40 dark:from-pink-300 dark:via-rose-400 dark:to-white dark:shadow-pink-500/50"
+            ? "from-rose-500 via-pink-500 to-amber-300 shadow-rose-500/40 dark:from-pink-300 dark:via-rose-400 dark:to-white dark:shadow-pink-500/50"
             : uiState === "PROCESSING"
-            ? "from-sky-500 via-cyan-500 to-cyan-300 shadow-cyan-500/35 dark:from-cyan-100 dark:to-cyan-300 dark:shadow-cyan-500/40"
-            : "from-slate-400 to-slate-500 shadow-slate-400/30 dark:from-zinc-600 dark:to-zinc-500 dark:shadow-white/15"
+            ? "from-indigo-500 via-sky-500 to-cyan-300 shadow-sky-500/35 dark:from-cyan-100 dark:to-cyan-300 dark:shadow-cyan-500/40"
+            : "from-slate-300 via-slate-200 to-white shadow-slate-400/30 dark:from-zinc-600 dark:to-zinc-500 dark:shadow-white/15"
         }`}
       />
     </div>
@@ -269,6 +269,15 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
   const showVoiceSettingsRef = useRef(false);
   const autoRestartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastActivityAtRef = useRef<number>(Date.now());
+  const pendingActionMsgIdRef = useRef<string | undefined>(pendingActionMsgId);
+  const onConfirmPendingActionRef = useRef(onConfirmPendingAction);
+  const onCancelPendingActionRef = useRef(onCancelPendingAction);
+
+  useEffect(() => {
+    pendingActionMsgIdRef.current = pendingActionMsgId;
+    onConfirmPendingActionRef.current = onConfirmPendingAction;
+    onCancelPendingActionRef.current = onCancelPendingAction;
+  }, [pendingActionMsgId, onConfirmPendingAction, onCancelPendingAction]);
 
   const cleanedResponseText = useMemo(() => {
     return NativeVoiceService.cleanTextForSpeech(lastResponse);
@@ -575,6 +584,14 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
         }
         setTranscript(text);
         transcriptRef.current = text;
+        if (pendingActionMsgIdRef.current) {
+          const clean = text.trim().toLowerCase().replace(/[.,!?]/g, "");
+          if (/^(yes|yeah|yep|confirm|do it|proceed|sure|ok|okay|yes please|sure do it|yeah do it)$/.test(clean) ||
+              /^(no|nope|cancel|abort|stop|don't|do not|no thanks)$/.test(clean)) {
+            handleProcessVoiceInput();
+            return;
+          }
+        }
         resetSilenceTimeout();
       }
     },
@@ -593,6 +610,14 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
         }
         setTranscript(text);
         transcriptRef.current = text;
+        if (pendingActionMsgIdRef.current) {
+          const clean = text.trim().toLowerCase().replace(/[.,!?]/g, "");
+          if (/\b(yes|yeah|yep|confirm|do it|execute|proceed|sure|ok|okay)\b/.test(clean) ||
+              /\b(no|nope|cancel|abort|stop|don't|do not)\b/.test(clean)) {
+            handleProcessVoiceInput();
+            return;
+          }
+        }
         resetSilenceTimeout();
       }
     },
@@ -894,20 +919,23 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
     setAudioDurationMs(0);
     setNativeCharIndex(-1);
 
-    if (pendingActionMsgId) {
-      const cleanQuery = query.trim().toLowerCase().replace(/[.,!]/g, '');
-      const isConfirming = /(yes|yeah|yep|do it|confirm|execute|sure|ok|okay|yes please|sure do it|yeah do it|yes yes do it|proceed)/.test(cleanQuery);
-      const isCanceling = /(no|nope|cancel|abort|stop|don't|do not|no thanks|no do not cancel)/.test(cleanQuery);
+    const activePendingId = pendingActionMsgIdRef.current;
+    if (activePendingId) {
+      const cleanQuery = query.trim().toLowerCase().replace(/[.,!?]/g, '');
+      const isConfirming = /\b(yes|yeah|yep|do it|confirm|execute|sure|ok|okay|yes please|sure do it|yeah do it|yes yes do it|proceed)\b/.test(cleanQuery);
+      const isCanceling = /\b(no|nope|cancel|abort|stop|don't|do not|no thanks|no do not cancel)\b/.test(cleanQuery);
 
       if (isConfirming) {
-        onConfirmPendingAction?.(pendingActionMsgId);
+        pendingActionMsgIdRef.current = undefined;
+        onConfirmPendingActionRef.current?.(activePendingId);
         setTranscript("");
         transcriptRef.current = "";
         setProcessingLabel("Preparing voice...");
         await handleSpeakText("Action confirmed.", currentTurn);
         return;
       } else if (isCanceling) {
-        onCancelPendingAction?.(pendingActionMsgId);
+        pendingActionMsgIdRef.current = undefined;
+        onCancelPendingActionRef.current?.(activePendingId);
         setTranscript("");
         transcriptRef.current = "";
         setProcessingLabel("Preparing voice...");
@@ -1294,7 +1322,7 @@ export const VoiceModeOverlay: React.FC<VoiceModeOverlayProps> = ({
                 aria-label={uiState === "LISTENING" ? "Mute Microphone" : "Unmute Microphone"}
                 className={`flex items-center justify-center w-11 h-11 sm:w-12 sm:h-12 shrink-0 rounded-full transition-colors cursor-pointer ${
                   uiState === "LISTENING"
-                    ? "bg-slate-900 dark:bg-[#FFFFFF] ring-2 ring-rose-500/35 shadow-lg"
+                    ? "bg-rose-50 border border-rose-300 dark:border-transparent dark:bg-[#FFFFFF] ring-2 ring-rose-500/35 shadow-lg"
                     : "bg-slate-200 hover:bg-slate-300 dark:bg-zinc-800 dark:hover:bg-zinc-700"
                 }`}
                 title={uiState === "LISTENING" ? "Mute Microphone" : "Unmute Microphone"}

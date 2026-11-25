@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { api } from "../../lib/api";
 import { useScrollLock } from "../../hooks/useScrollLock";
@@ -32,6 +33,13 @@ interface TransitionStatus {
   isSemesterEnded?: boolean;
   isTeachingEnded?: boolean;
   lastTeachingDate?: string | null;
+  transitionStage?: string;
+  stageTitle?: string;
+  stageSubtitle?: string;
+  stageMessage?: string;
+  shouldShowBanner?: boolean;
+  shouldPromptTransition?: boolean;
+  nextSemesterStartFormatted?: string;
   nextSemester?: {
     semesterNumber: number;
     yearNumber: number;
@@ -58,6 +66,7 @@ export const SemesterTransitionModal: React.FC<SemesterTransitionModalProps> = (
   initialStatus
 }) => {
   useScrollLock(isOpen);
+  const navigate = useNavigate();
   const [loadingStatus, setLoadingStatus] = useState(!initialStatus);
   const [status, setStatus] = useState<TransitionStatus | null>(initialStatus || null);
 
@@ -227,10 +236,18 @@ export const SemesterTransitionModal: React.FC<SemesterTransitionModalProps> = (
             </div>
             <div className="min-w-0">
               <h2 className="text-lg font-bold text-foreground tracking-tight truncate">
-                Semester Complete!
+                {status?.transitionStage === "all_done"
+                  ? "All Exams Done — Vacation!"
+                  : status?.transitionStage === "labs_remaining"
+                    ? "End-Sem Done · Labs Left"
+                    : status?.transitionStage === "exams_remaining"
+                      ? "Classes Done · Exams Left"
+                      : "Semester Complete!"}
               </h2>
               <p className="text-xs text-muted-foreground mt-0.5 truncate">
-                Reset app data & begin your next semester
+                {status?.nextSemesterStartFormatted
+                  ? `Next semester starts on ${status.nextSemesterStartFormatted} — thanks!`
+                  : "Reset app data & begin your next semester"}
               </p>
             </div>
           </div>
@@ -280,6 +297,33 @@ export const SemesterTransitionModal: React.FC<SemesterTransitionModalProps> = (
                   {error}
                 </div>
               )}
+
+              {status?.stageMessage && (
+                <div className="p-3.5 rounded-2xl bg-emerald-50 dark:bg-emerald-500/15 border border-emerald-200 dark:border-emerald-500/30 text-xs leading-relaxed text-emerald-900 dark:text-emerald-200 font-semibold">
+                  {status.stageMessage}
+                </div>
+              )}
+
+              {/* Pre-Wipe Semester Wrap Reminder */}
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  navigate("/wrap");
+                }}
+                className="preserve-dark w-full p-3 rounded-2xl bg-[#1a1d17] hover:bg-[#23271e] border border-[#b7f357]/30 text-left flex items-center justify-between gap-3 transition cursor-pointer"
+              >
+                <div className="min-w-0">
+                  <p className="text-xs font-bold text-white flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-[#b7f357] shrink-0" />
+                    <span>Save your {status?.activeSemester?.name || "Semester"} Wrap first</span>
+                  </p>
+                  <p className="text-[11px] text-zinc-400 mt-0.5 truncate">
+                    Replay stats & export a Share Card before resetting logs.
+                  </p>
+                </div>
+                <ArrowRight className="w-4 h-4 text-[#b7f357] shrink-0" />
+              </button>
 
               {/* Form Inputs */}
               <div className="space-y-4">

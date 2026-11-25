@@ -557,7 +557,7 @@ export const ClassroomsPage = () => {
               hapticMedium();
               setShowCreateModal(true);
             }}
-            className="flex-1 lg:flex-none inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-neutral-900 dark:bg-white text-white dark:text-black hover:bg-neutral-800 dark:hover:bg-neutral-100 text-xs font-semibold tracking-wide transition-all shadow-xs active:scale-[0.98] shrink-0 whitespace-nowrap"
+            className="preserve-dark flex-1 lg:flex-none inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-neutral-900 dark:bg-white text-white dark:text-black hover:bg-neutral-800 dark:hover:bg-neutral-100 text-xs font-semibold tracking-wide transition-all shadow-xs active:scale-[0.98] shrink-0 whitespace-nowrap cursor-pointer"
           >
             <Plus className="w-4 h-4" />
             Create Hub
@@ -608,7 +608,7 @@ export const ClassroomsPage = () => {
                     type="submit"
                     disabled={isSubmitting || inlineJoinCode.trim().length === 0}
                     onClick={() => hapticMedium()}
-                    className="px-4 py-2.5 rounded-xl bg-neutral-900 dark:bg-white text-white dark:text-black hover:bg-neutral-800 dark:hover:bg-neutral-100 disabled:opacity-40 disabled:cursor-not-allowed text-xs font-semibold tracking-wide transition-all inline-flex items-center gap-1.5 shrink-0"
+                    className="preserve-dark px-4 py-2.5 rounded-xl bg-neutral-900 dark:bg-white text-white dark:text-black hover:bg-neutral-800 dark:hover:bg-neutral-100 disabled:opacity-40 disabled:cursor-not-allowed text-xs font-semibold tracking-wide transition-all inline-flex items-center gap-1.5 shrink-0 cursor-pointer"
                   >
                     {isSubmitting ? (
                       <Loader2 className="w-3.5 h-3.5 animate-spin" />

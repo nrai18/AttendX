@@ -1,6 +1,7 @@
 import { prisma } from "../lib/prisma";
 import { CacheService } from "./cache.service";
 import { TemplateEventService } from "./template_event.service";
+import { AcademicTemplateService } from "./academic_template.service";
 import { PushNotificationService } from "./push_notification.service";
 
 export class SemesterService {
@@ -285,27 +286,159 @@ export class SemesterService {
         : `${nextYear}-12-31`;
     }
 
-    const lastTeachingEvent = await prisma.event.findFirst({
-      where: {
-        userId,
-        semesterId: activeSemester.id,
-        title: { contains: "Last Teaching Day", mode: "insensitive" }
-      }
+    const allSemEvents = await prisma.event.findMany({
+      where: { userId, semesterId: activeSemester.id },
+      orderBy: { date: "asc" },
     });
 
-    const today = new Date();
+    const toIso = (dt: Date | string) => new Date(dt).toISOString().split("T")[0];
+    const istNow = new Date(Date.now() + 330 * 60 * 1000);
+    const todayIso = istNow.toISOString().split("T")[0];
+
+    const lastTeachingEvent = allSemEvents.find((e) =>
+      /last\s*(teaching|working)\s*day/i.test(e.title)
+    );
+
+    const semStartIso = toIso(activeSemester.startDate);
     const semEnd = new Date(activeSemester.endDate);
     semEnd.setHours(23, 59, 59, 999);
-    const isSemesterEnded = today > semEnd;
+    const semEndIso = toIso(activeSemester.endDate);
+    const isSemesterEnded = todayIso > semEndIso;
 
     let isTeachingEnded = isSemesterEnded;
     let lastTeachingDate: string | null = null;
     if (lastTeachingEvent) {
-      const lDate = new Date(lastTeachingEvent.endDate || lastTeachingEvent.date);
-      lastTeachingDate = lDate.toISOString().split('T')[0];
-      const lDateEnd = new Date(lDate);
-      lDateEnd.setHours(23, 59, 59, 999);
-      isTeachingEnded = today > lDateEnd;
+      lastTeachingDate = toIso(lastTeachingEvent.endDate || lastTeachingEvent.date);
+      isTeachingEnded = todayIso > lastTeachingDate;
+    }
+
+    // Extract End-Sem Theory, Lab Exam, Vacation & Next Sem Commencement milestones
+    const theoryExamEvents = allSemEvents.filter(
+      (e) =>
+        !/lab|practical|demo|mid\s*sem|supplementary/i.test(e.title) &&
+        (/end\s*sem(?:ester)?\s*(?:theory|exam)/i.test(e.title) || e.eventType === "endsem")
+    );
+    const labExamEvents = allSemEvents.filter(
+      (e) =>
+        !/demo|mid/i.test(e.title) &&
+        (/end\s*sem(?:ester)?\s*lab|lab\s*exam|practical.*exam/i.test(e.title) ||
+          (e.eventType === "lab_exam" && (!lastTeachingDate || toIso(e.date) >= lastTeachingDate)))
+    );
+    const vacationEvents = allSemEvents.filter((e) => {
+      const eIso = toIso(e.date);
+      const afterTeaching = lastTeachingDate ? eIso >= lastTeachingDate : eIso >= semStartIso;
+      return (
+        afterTeaching &&
+        (e.eventType === "vacation" ||
+          /commencement\s*of\s*student\s*vacation|winter\s*vacation|summer\s*vacation/i.test(e.title))
+      );
+    });
+    const nextSemStartEvt = allSemEvents.find((e) =>
+      /next\s*semester\s*commencement/i.test(e.title)
+    );
+    if (nextSemStartEvt) {
+      suggestedStartDate = toIso(nextSemStartEvt.date);
+    } else {
+      // Check latest backend Academic Calendar override for next semester start if available
+      try {
+        const nextCal = await AcademicTemplateService.getAcademicCalendar({
+          year: nextYear,
+          semesterType: nextSemesterType,
+          semesterNumber: nextSemNum,
+        });
+        const commence = nextCal.events.find((e) =>
+          /commencement\s*of\s*classes/i.test(e.title)
+        );
+        if (commence?.startDate) {
+          suggestedStartDate = commence.startDate;
+        }
+      } catch {}
+    }
+
+    const theoryExamStartDate =
+      theoryExamEvents.length > 0 ? toIso(theoryExamEvents[0].date) : null;
+    const theoryExamEndDate =
+      theoryExamEvents.length > 0
+        ? theoryExamEvents
+            .map((e) => toIso(e.endDate || e.date))
+            .sort()
+            .slice(-1)[0]
+        : null;
+    const labExamStartDate =
+      labExamEvents.length > 0 ? toIso(labExamEvents[0].date) : null;
+    const lastLabExamDate =
+      labExamEvents.length > 0
+        ? labExamEvents
+            .map((e) => toIso(e.endDate || e.date))
+            .sort()
+            .slice(-1)[0]
+        : null;
+    const vacationStartDate =
+      vacationEvents.length > 0 ? toIso(vacationEvents[0].date) : null;
+
+    const formatShortDate = (iso: string | null) => {
+      if (!iso) return "";
+      const dt = new Date(`${iso}T00:00:00Z`);
+      if (isNaN(dt.getTime())) return iso;
+      return dt.toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
+    };
+    const nextSemesterStartFormatted = formatShortDate(suggestedStartDate);
+
+    let transitionStage:
+      | "teaching"
+      | "final_days"
+      | "exams_remaining"
+      | "labs_remaining"
+      | "all_done" = "teaching";
+    let stageTitle = "Semester in Progress";
+    let stageSubtitle = "Classes and attendance logs are active.";
+    let stageMessage = "";
+    let shouldShowBanner = false;
+    let shouldPromptTransition = false;
+
+    const pastLabExams = Boolean(lastLabExamDate && todayIso > lastLabExamDate);
+    const inVacation = Boolean(vacationStartDate && todayIso >= vacationStartDate);
+    const pastAllKnownExams = Boolean(
+      !lastLabExamDate && theoryExamEndDate && todayIso > theoryExamEndDate
+    );
+
+    if (isSemesterEnded || pastLabExams || inVacation || pastAllKnownExams) {
+      transitionStage = "all_done";
+      shouldShowBanner = true;
+      shouldPromptTransition = true;
+      stageTitle = "All Exams Complete — Vacation Has Begun!";
+      stageSubtitle = `Next semester (${nextSemesterName}) starts on ${nextSemesterStartFormatted}.`;
+      stageMessage = `Your exams & labs are officially done! Your next semester starts on ${nextSemesterStartFormatted} — thanks for riding with AttendX!`;
+    } else if (theoryExamEndDate && todayIso > theoryExamEndDate) {
+      transitionStage = "labs_remaining";
+      shouldShowBanner = true;
+      stageTitle = "End-Sem Theory Done — Just Lab Exams Remaining";
+      stageSubtitle = lastLabExamDate
+        ? `Practical evaluations wrap up by ${formatShortDate(lastLabExamDate)}. Next sem starts ${nextSemesterStartFormatted}.`
+        : `Final lab exams remain. Next sem starts ${nextSemesterStartFormatted}.`;
+      stageMessage = stageSubtitle;
+    } else if (lastTeachingDate && todayIso >= lastTeachingDate) {
+      transitionStage = "exams_remaining";
+      shouldShowBanner = true;
+      stageTitle =
+        todayIso === lastTeachingDate
+          ? "Last Teaching Day Today — Exams Ahead"
+          : "Teaching Concluded — Just Exams Remaining";
+      stageSubtitle = theoryExamEndDate
+        ? `Classes are done! End-Sem Exams run through ${formatShortDate(theoryExamEndDate)}${lastLabExamDate ? ` · Labs end ${formatShortDate(lastLabExamDate)}` : ""}.`
+        : "Regular lectures have ended — just exams remain!";
+      stageMessage = stageSubtitle;
+    } else if (lastTeachingDate) {
+      const diffMs =
+        new Date(`${lastTeachingDate}T00:00:00Z`).getTime() -
+        new Date(`${todayIso}T00:00:00Z`).getTime();
+      const daysLeft = Math.round(diffMs / 86400000);
+      if (daysLeft >= 1 && daysLeft <= 7) {
+        transitionStage = "final_days";
+        stageTitle = `${daysLeft} Teaching Day${daysLeft === 1 ? "" : "s"} Left`;
+        stageSubtitle = `Approaching Last Teaching Day (${formatShortDate(lastTeachingDate)}). Replay card ready anytime.`;
+        stageMessage = stageSubtitle;
+      }
     }
 
     return {
@@ -316,6 +449,18 @@ export class SemesterService {
       isSemesterEnded,
       isTeachingEnded,
       lastTeachingDate,
+      transitionStage,
+      stageTitle,
+      stageSubtitle,
+      stageMessage,
+      shouldShowBanner,
+      shouldPromptTransition,
+      theoryExamStartDate,
+      theoryExamEndDate,
+      labExamStartDate,
+      lastLabExamDate,
+      vacationStartDate,
+      nextSemesterStartFormatted,
       nextSemester: {
         semesterNumber: nextSemNum,
         yearNumber: nextYearNum,
@@ -324,8 +469,9 @@ export class SemesterService {
         semesterType: nextSemesterType,
         year: nextYear,
         suggestedStartDate,
-        suggestedEndDate
-      }
+        suggestedEndDate,
+        formattedStartDate: nextSemesterStartFormatted,
+      },
     };
   }
 
@@ -379,13 +525,14 @@ export class SemesterService {
 
     // 3. Auto-sync calendar and holidays asynchronously / non-blocking so the transition completes sub-second
     if (data.autoSyncCalendar !== false || data.autoSyncHolidays !== false) {
-      TemplateEventService.syncToSemester({
+      AcademicTemplateService.syncToSemester({
         userId,
         semesterId: newSemester.id,
         syncHolidayList: data.autoSyncHolidays !== false,
         syncAcademicCalendar: data.autoSyncCalendar !== false,
         semesterNumber: data.semesterNumber,
-        year: new Date(data.startDate).getFullYear()
+        year: new Date(data.startDate).getFullYear(),
+        rewriteExisting: true,
       }).catch((err) => {
         console.error("[SemesterService] Auto-sync failed in background during transition:", err);
       });

@@ -2,6 +2,37 @@ import { Release } from "../components/settings/ChangelogModal";
 
 export const OFFLINE_CHANGELOG: Release[] = [
   {
+    version: "4.5.0",
+    date: "Nov 25, 2026",
+    sections: [
+      {
+        title: "Semester Replay, Auto-DND & Smart Transitions",
+        items: [
+          {
+            icon: "🎞️",
+            text: "Semester Wrap & Dynamic Story Replay: BitChord-inspired Replay with dynamic per-data slides, WYSIWYG Card Theme PNG sharing, procedural Web Audio engine, and Settings Account entry.",
+          },
+          {
+            icon: "🔕",
+            text: "Zero-Launch Background DND & Instant Notification Routing: Class reminders mute silently without opening the app when DND access is granted, and notification taps route immediately.",
+          },
+          {
+            icon: "🎓",
+            text: "Date-Aware Milestones & Backend Calendars: Tracks Teaching -> Exams -> Labs -> Vacation dynamically across calendar navigation with auto-transition prompts and editable 2026–2028 calendars.",
+          },
+          {
+            icon: "🔄",
+            text: "Canonical Attendance Sync & Light/Dark Contrast Parity: Syncs TopBar, Forecast, and Subjects immediately on login and isolates Light Mode overrides from dark Replay & Transition surfaces.",
+          },
+          {
+            icon: "🍎",
+            text: "iOS Session Fix, Exam Briefings & Feedback Diagnostics: Resolves iOS Chrome macOS tagging, switches post-teaching notifications to exam prep, and bundles self-hosted fonts offline.",
+          },
+        ],
+      },
+    ],
+  },
+  {
     version: "4.4.2",
     date: "Nov 20, 2026",
     sections: [

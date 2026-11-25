@@ -248,13 +248,25 @@ export class UserService {
       });
 
       return sessions.map((s: any) => {
-        let { os, browser, deviceType, location } = s;
+        let { os, browser, deviceType, location, userAgent } = s;
 
         // Normalize stale "web" os value stored in old sessions
         if (os === 'web') {
           os = 'Browser';
           browser = 'Browser';
           deviceType = 'desktop';
+        }
+
+        // Heal previously misclassified iOS Chrome/Safari sessions stored as macOS
+        if (
+          typeof userAgent === 'string' &&
+          /iPhone|iPad|iPod|CriOS|FxiOS|EdgiOS|OPiOS/i.test(userAgent)
+        ) {
+          os = 'iOS';
+          deviceType = /iPad/i.test(userAgent) ? 'tablet' : 'mobile';
+          if (/CriOS/i.test(userAgent)) browser = 'Chrome';
+          else if (/FxiOS/i.test(userAgent)) browser = 'Firefox';
+          else if (/EdgiOS/i.test(userAgent)) browser = 'Microsoft Edge';
         }
 
         // Normalize stale "Unknown OS" or null
@@ -284,9 +296,12 @@ export class UserService {
       const currentIdx = sessionsList.findIndex((s: any) => s.id === sessionId);
       const currentSession = currentIdx !== -1 ? sessionsList[currentIdx] : null;
       const hasGpsHeaders = Boolean(req.headers?.["x-attendx-lat"] && req.headers?.["x-attendx-lon"]);
+      const uaHeader = String(req.headers?.["user-agent"] || "");
+      const isIosRequest = /iPhone|iPad|iPod|CriOS|FxiOS|EdgiOS|OPiOS/i.test(uaHeader);
       const realOsHeader = typeof req.headers?.["x-attendx-real-os"] === "string" ? req.headers["x-attendx-real-os"].trim() : "";
       const osOutOfSync = Boolean(
         currentSession &&
+        !isIosRequest &&
         (realOsHeader === "Windows" || realOsHeader === "macOS" || realOsHeader === "Linux") &&
         currentSession.os !== realOsHeader
       );

@@ -5,6 +5,7 @@ import { authenticate } from "../middleware/authenticate";
 const router = Router();
 
 router.get("/me", authenticate, UserController.getMe);
+router.get("/me/avatar-data", authenticate, UserController.getAvatarData);
 router.patch("/me", authenticate, UserController.updateMe);
 router.put("/me", authenticate, UserController.updateMe);
 router.delete("/me", authenticate, UserController.deleteAccount);

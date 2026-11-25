@@ -769,9 +769,9 @@ const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'vo
     setSpeakingId(null);
 
     // Voice/Text Confirmation Intercept for Pending Actions
-    const cleanQuery = query.trim().toLowerCase().replace(/[.,!]/g, '');
-    const isConfirming = /(yes|yeah|yep|do it|confirm|execute|sure|ok|okay|yes please|sure do it|yeah do it|yes yes do it|proceed)/.test(cleanQuery);
-    const isCanceling = /(no|nope|cancel|abort|stop|don't|do not|no thanks|no do not cancel)/.test(cleanQuery);
+    const cleanQuery = query.trim().toLowerCase().replace(/[.,!?]/g, '');
+    const isConfirming = /\b(yes|yeah|yep|do it|confirm|execute|sure|ok|okay|yes please|sure do it|yeah do it|yes yes do it|proceed)\b/.test(cleanQuery);
+    const isCanceling = /\b(no|nope|cancel|abort|stop|don't|do not|no thanks|no do not cancel)\b/.test(cleanQuery);
 
     if (isConfirming || isCanceling) {
       const lastAssistantMsg = messagesRef.current.slice().reverse().find(m => m.role === 'assistant');
@@ -1149,13 +1149,17 @@ const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'vo
           await api.post("/subjects", action.payload);
           refresh = true;
         } else if (action.type === 'REMOVE_SUBJECT') {
-          await api.delete(`/subjects/${action.payload.subjectId}`);
+          await api.delete(`/subjects/${action.payload.subjectId}`).catch((e: any) => {
+            if (e?.response?.status !== 404) throw e;
+          });
           refresh = true;
         } else if (action.type === 'UPDATE_SUBJECT') {
           await api.patch(`/subjects/${action.payload.subjectId}`, action.payload.updates);
           refresh = true;
         } else if (action.type === 'DROP_SUBJECT_FROM_TIMETABLE') {
-          await api.delete(`/timetable/semester/${action.payload.semesterId}/subject/${action.payload.subjectId}/slots`);
+          await api.delete(`/timetable/semester/${action.payload.semesterId}/subject/${action.payload.subjectId}/slots`).catch((e: any) => {
+            if (e?.response?.status !== 404) throw e;
+          });
           refresh = true;
         } else if (action.type === 'SHARE_APP') {
           let appLink = "https://www.attendx.tech"; try { const res = await api.get("/system/config"); if (res.data && res.data.appDownloadLink) appLink = res.data.appDownloadLink; } catch (e) {}
@@ -1241,7 +1245,9 @@ const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'vo
             targetSlotId = slot.id;
           }
           if (targetSlotId) {
-            await api.delete(`/timetable/slots/${targetSlotId}`);
+            await api.delete(`/timetable/slots/${targetSlotId}`).catch((e: any) => {
+              if (e?.response?.status !== 404) throw e;
+            });
             refresh = true;
           } else {
             console.error("Could not find timetable slot to remove.");
@@ -1310,11 +1316,11 @@ const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'vo
           await useAssignmentStore.getState().fetchAssignments();
         } else if (action.type === 'DELETE_ASSIGNMENT') {
           if (action.payload.assignmentId) {
-             await api.delete(`/assignments/${action.payload.assignmentId}`);
+             await useAssignmentStore.getState().deleteAssignment(action.payload.assignmentId);
           } else if (action.payload.title) {
              const assignments = useAssignmentStore.getState().assignments;
              const target = assignments.find(a => a.title.toLowerCase().includes(action.payload.title.toLowerCase()));
-             if (target) await api.delete(`/assignments/${target.id}`);
+             if (target) await useAssignmentStore.getState().deleteAssignment(target.id);
           }
           await useAssignmentStore.getState().fetchAssignments();
         }
@@ -1469,9 +1475,11 @@ const handleSendMessage = async (textToSend?: string, inputMethod?: 'text' | 'vo
               </span>
             </div>
             <span className="font-bold tracking-wide">AttendX AI</span>
-            <span className="hidden sm:inline-block text-[10px] px-1.5 py-0.5 rounded-md font-mono border border-current opacity-70">
-              Ctrl+/
-            </span>
+            {!Capacitor.isNativePlatform() && (
+              <span className="hidden lg:[@media(hover:hover)_and_(pointer:fine)]:inline-block text-[10px] px-1.5 py-0.5 rounded-md font-mono border border-current opacity-70">
+                Ctrl+/
+              </span>
+            )}
           </motion.button>
         </motion.div>
       )}

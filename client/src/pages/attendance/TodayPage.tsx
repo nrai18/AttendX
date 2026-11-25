@@ -777,6 +777,7 @@ export const TodayPage = () => {
   const [isCreateSemesterOpen, setIsCreateSemesterOpen] = useState(false);
   const [isTransitionModalOpen, setIsTransitionModalOpen] = useState(false);
   const [transitionStatus, setTransitionStatus] = useState<any>(null);
+  const [dismissedReplayBannerKey, setDismissedReplayBannerKey] = useState<string | null>(null);
   const [glidingExtraId, setGlidingExtraId] = useState<string | null>(null);
   const [dyingExtras, setDyingExtras] = useState<
     Array<{ item: AgendaItem; index: number }>
@@ -2499,7 +2500,7 @@ export const TodayPage = () => {
         fetchStats();
         window.dispatchEvent(
           new CustomEvent("attendance-updated", {
-            detail: { source: "today-page" },
+            detail: { source: "today-page", passive: true },
           }),
         );
         window.dispatchEvent(
@@ -2609,7 +2610,20 @@ export const TodayPage = () => {
           const now = new Date();
           const hasPromptParam =
             searchParams.get("promptSemesterTransition") === "true";
-          const shouldPrompt = hasPromptParam || now > semEndDate;
+
+          let fetchedTrStatus: any = null;
+          try {
+            const trRes = await api.get("/semesters/transition-status", { signal });
+            if (trRes?.data?.hasActiveSemester) {
+              fetchedTrStatus = trRes.data;
+              setTransitionStatus(trRes.data);
+            }
+          } catch {}
+
+          const shouldPrompt =
+            hasPromptParam ||
+            now > semEndDate ||
+            Boolean(fetchedTrStatus?.shouldPromptTransition);
           if (shouldPrompt) {
             const dismissed = sessionStorage.getItem(
               `attendx_dismissed_transition_${semData.id}`,
@@ -2855,11 +2869,28 @@ export const TodayPage = () => {
             todayStatus: nextTodayStatus,
             activeSemester: semData || null,
             onboarding: nextOnboarding,
+            syncedAt: Date.now(),
           },
         });
+        if (
+          reqDate >= format(new Date(), "yyyy-MM-dd") &&
+          agendaRef.current.some(
+            (item) =>
+              item.status === "off" ||
+              (item.status as any) === "cancelled" ||
+              item.isExtra ||
+              item.type === "override",
+          )
+        ) {
+          import("../../services/NotificationService")
+            .then(({ NotificationService }) =>
+              NotificationService.autoScheduleFromTimetable(),
+            )
+            .catch(() => {});
+        }
         window.dispatchEvent(
           new CustomEvent("attendance-updated", {
-            detail: { source: "today-page" },
+            detail: { source: "today-page", passive: true },
           }),
         );
       } catch (error: any) {
@@ -3792,7 +3823,7 @@ export const TodayPage = () => {
         console.warn("Failed to mark attendance (handled by api offline interceptor):", error);
         window.dispatchEvent(
           new CustomEvent("attendance-updated", {
-            detail: { source: "today-page" },
+            detail: { source: "today-page", passive: true },
           }),
         );
       }
@@ -4222,6 +4253,210 @@ export const TodayPage = () => {
             </div>
 
             <div className="flex flex-col gap-6 mb-2">
+              {/* Transition Milestone Strip + Month-End / Final-Days Replay Prompt */}
+              {isSemesterActive && (() => {
+                const rawTr = transitionStatus;
+                const fmtShort = (iso?: string | null) => {
+                  if (!iso) return "";
+                  const dt = new Date(`${String(iso).slice(0, 10)}T00:00:00Z`);
+                  if (isNaN(dt.getTime())) return String(iso);
+                  return dt.toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
+                };
+
+                const tr = (() => {
+                  if (!rawTr) return null;
+                  const viewIso = targetDateStr;
+                  const semEndIso = rawTr.activeSemester?.endDate
+                    ? String(rawTr.activeSemester.endDate).slice(0, 10)
+                    : null;
+                  const ltd = rawTr.lastTeachingDate ? String(rawTr.lastTeachingDate).slice(0, 10) : null;
+                  const thStart = rawTr.theoryExamStartDate ? String(rawTr.theoryExamStartDate).slice(0, 10) : null;
+                  const thEnd = rawTr.theoryExamEndDate ? String(rawTr.theoryExamEndDate).slice(0, 10) : null;
+                  const labEnd = rawTr.lastLabExamDate ? String(rawTr.lastLabExamDate).slice(0, 10) : null;
+                  const vacStart = rawTr.vacationStartDate ? String(rawTr.vacationStartDate).slice(0, 10) : null;
+                  const nextFmt = rawTr.nextSemesterStartFormatted || "Next Sem";
+
+                  const isSemEndedOnView = Boolean(semEndIso && viewIso > semEndIso);
+                  const pastLabsOnView = Boolean(labEnd && viewIso > labEnd);
+                  const inVacOnView = Boolean(vacStart && viewIso >= vacStart);
+                  const pastAllExamsOnView = Boolean(!labEnd && thEnd && viewIso > thEnd);
+                  const isTeachingEndedOnView = isSemEndedOnView || Boolean(ltd && viewIso > ltd);
+
+                  if (isSemEndedOnView || pastLabsOnView || inVacOnView || pastAllExamsOnView) {
+                    return {
+                      ...rawTr,
+                      transitionStage: "all_done",
+                      isTeachingEnded: true,
+                      shouldShowBanner: true,
+                      stageTitle: "All Exams Complete — Vacation Has Begun!",
+                      stageMessage: `Your exams & labs are officially done! Next semester starts on ${nextFmt}.`,
+                    };
+                  }
+                  if (thEnd && viewIso > thEnd) {
+                    return {
+                      ...rawTr,
+                      transitionStage: "labs_remaining",
+                      isTeachingEnded: true,
+                      shouldShowBanner: true,
+                      stageTitle: "End-Sem Theory Done — Just Lab Exams Remaining",
+                      stageMessage: labEnd
+                        ? `Practical evaluations wrap up by ${fmtShort(labEnd)}. Next sem starts ${nextFmt}.`
+                        : `Final lab exams remain. Next sem starts ${nextFmt}.`,
+                    };
+                  }
+                  if (ltd && viewIso >= ltd) {
+                    const isExactLtd = viewIso === ltd;
+                    const stageTitle = isExactLtd
+                      ? "Last Teaching Day Today — Exams Ahead"
+                      : thStart && viewIso < thStart
+                        ? `Teaching Ended ${fmtShort(ltd)} — Exams Start ${fmtShort(thStart)}`
+                        : thStart && viewIso >= thStart
+                          ? `End-Sem Exams Underway — Teaching Ended ${fmtShort(ltd)}`
+                          : `Teaching Concluded (${fmtShort(ltd)}) — Exams Remaining`;
+                    const examWindow = thEnd
+                      ? `End-Sem Exams run through ${fmtShort(thEnd)}${labEnd ? ` · Labs end ${fmtShort(labEnd)}` : ""}.`
+                      : "Regular lectures have ended — just exams remain!";
+                    return {
+                      ...rawTr,
+                      transitionStage: "exams_remaining",
+                      isTeachingEnded: isTeachingEndedOnView,
+                      shouldShowBanner: true,
+                      stageTitle,
+                      stageMessage: isExactLtd
+                        ? `Classes are done! ${examWindow}`
+                        : `Regular classes concluded on ${fmtShort(ltd)}! ${examWindow}`,
+                    };
+                  }
+                  // Viewed date is BEFORE Last Teaching Day (e.g. browsing < to earlier classes)
+                  return {
+                    ...rawTr,
+                    transitionStage: "teaching",
+                    isTeachingEnded: false,
+                    shouldShowBanner: false,
+                  };
+                })();
+
+                const showTrBanner = Boolean(tr?.shouldShowBanner);
+
+                const viewDateObj = new Date(`${targetDateStr}T00:00:00`);
+                const yr = viewDateObj.getFullYear();
+                const mo = viewDateObj.getMonth();
+                const dom = viewDateObj.getDate();
+                const dim = new Date(yr, mo + 1, 0).getDate();
+                const isMonthEnd = dom >= dim - 1 || dom === 1;
+                const isSemClosing =
+                  tr?.transitionStage === "final_days" ||
+                  tr?.transitionStage === "exams_remaining" ||
+                  tr?.transitionStage === "labs_remaining" ||
+                  tr?.transitionStage === "all_done";
+
+                const replayKey = isSemClosing
+                  ? `sem_final_${activeSemester?.id || "cur"}_${tr?.transitionStage}`
+                  : isMonthEnd
+                    ? `month_${yr}_${mo}`
+                    : "";
+                const hasAttendanceLogsForWrap =
+                  overallPercentage > 0 ||
+                  (useAttendanceStore.getState().totalClasses || 0) > 0 ||
+                  (useAttendanceStore.getState().totalAttended || 0) > 0 ||
+                  agenda.some((a) => {
+                    const s = String(a.status || "").toLowerCase();
+                    return Boolean(s && s !== "not_marked" && s !== "future" && s !== "clear");
+                  });
+                let alreadyDismissed = !replayKey || !hasAttendanceLogsForWrap || dismissedReplayBannerKey === replayKey;
+                if (!alreadyDismissed && replayKey) {
+                  try {
+                    alreadyDismissed = localStorage.getItem(`attendx_dismissed_replay_${replayKey}`) === "1";
+                  } catch {}
+                }
+
+                return (
+                  <div className="space-y-2.5">
+                    {showTrBanner && tr && (
+                      <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-left">
+                        <div className="flex items-start sm:items-center gap-3 min-w-0">
+                          <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-500 flex items-center justify-center shrink-0">
+                            <GraduationCap className="w-4 h-4" />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-xs sm:text-sm font-bold text-foreground leading-snug">
+                              {tr.stageTitle}
+                            </p>
+                            <p className="text-[11px] sm:text-xs text-muted-foreground leading-snug mt-0.5">
+                              {tr.stageMessage || tr.stageSubtitle}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => navigate("/wrap")}
+                            className="px-3.5 py-1.5 rounded-xl bg-[#ffffff] hover:bg-amber-50 text-[#78350f] border border-amber-500/40 dark:bg-amber-500/20 dark:hover:bg-amber-500/30 dark:text-[#fde68a] dark:border-amber-400/35 text-[11px] font-bold cursor-pointer shadow-xs transition"
+                          >
+                            {tr.isTeachingEnded ? "Open Wrap" : "Replay"}
+                          </button>
+                          {tr.transitionStage === "all_done" && (
+                            <button
+                              type="button"
+                              onClick={() => setIsTransitionModalOpen(true)}
+                              className="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-[#ffffff] dark:bg-amber-500 dark:text-[#111508] dark:hover:bg-amber-400 text-[11px] font-bold cursor-pointer transition"
+                            >
+                              Start {tr.nextSemester?.formattedStartDate || "Next Sem"}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {!alreadyDismissed && replayKey && (
+                      <div className="rounded-2xl border border-emerald-600/25 dark:border-white/15 bg-[#ffffff]/95 dark:bg-[#161914] p-3.5 flex items-center justify-between gap-3 text-left shadow-sm transition-colors">
+                        <button
+                          type="button"
+                          onClick={() => navigate("/wrap")}
+                          className="flex items-center gap-3 min-w-0 flex-1 text-left cursor-pointer"
+                        >
+                          <div className="w-9 h-9 rounded-xl bg-[#d1fae5] text-[#059669] dark:bg-[#b7f357]/20 dark:text-[#b7f357] flex items-center justify-center shrink-0">
+                            <Sparkles className="w-4 h-4" />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-xs sm:text-sm font-bold text-[#0f172a] dark:text-[#ffffff] leading-tight truncate">
+                              {isSemClosing
+                                ? "End-of-Semester Replay Ready"
+                                : `${viewDateObj.toLocaleDateString("en-US", { month: "short" })} Month-End Replay Ready`}
+                            </p>
+                            <p className="text-[11px] text-[#047857] dark:text-[#d9f99d] truncate mt-0.5">
+                              Tap to play animated cards, streaks & missed extra class stats
+                            </p>
+                          </div>
+                        </button>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => navigate("/wrap")}
+                            className="px-3.5 py-1.5 rounded-xl bg-[#059669] hover:bg-[#047857] text-[#ffffff] dark:bg-[#b7f357] dark:hover:brightness-95 dark:text-[#111508] text-[11px] font-bold cursor-pointer shadow-xs transition"
+                          >
+                            Play
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              try {
+                                localStorage.setItem(`attendx_dismissed_replay_${replayKey}`, "1");
+                              } catch {}
+                              setDismissedReplayBannerKey(replayKey);
+                            }}
+                            className="p-1.5 rounded-lg text-[#64748b] hover:text-[#0f172a] hover:bg-black/5 dark:text-white/60 dark:hover:text-[#ffffff] dark:hover:bg-white/10 cursor-pointer transition"
+                            aria-label="Dismiss replay prompt"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
               {/* Row 1: Header and Date Picker */}
               <div className="flex flex-col items-center justify-center text-center">
                 {isBirthday && (
@@ -4358,7 +4593,7 @@ export const TodayPage = () => {
                   useAnimationPopupStore.getState().closeAnimation();
                   setShowGreetingOverlay(true);
                 }}
-                className={`p-4 rounded-2xl border shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-all cursor-pointer hover:opacity-95 active:scale-[0.99] ${(() => {
+                className={`p-4 rounded-2xl border shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-3 transition-all cursor-pointer hover:opacity-95 active:scale-[0.99] ${(() => {
                   const evTitle = (activeEvent.title || "").toLowerCase();
                   const evType = (activeEvent.eventType || "").toLowerCase();
                   const isBreak =
@@ -4383,7 +4618,7 @@ export const TodayPage = () => {
                   return "bg-amber-500/10 border-amber-500/30";
                 })()}`}
               >
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 min-w-0 flex-1">
                   <div className="w-10 h-10 rounded-xl bg-foreground/10 border border-foreground/20 flex items-center justify-center text-xl shadow-xs shrink-0 overflow-hidden">
                     {(() => {
                       const { animType } = getHolidayAnimation(activeEvent);
@@ -4415,21 +4650,21 @@ export const TodayPage = () => {
                         : "🎉";
                     })()}
                   </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-md bg-foreground/10 border border-foreground/20 text-foreground">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-md bg-foreground/10 border border-foreground/20 text-foreground whitespace-nowrap shrink-0">
                         {activeEvent.eventType || "Special"} Event
                       </span>
-                      <span className="text-xs font-semibold text-primary">
+                      <span className="text-xs font-semibold text-primary shrink-0">
                         Today
                       </span>
                     </div>
-                    <h3 className="text-base font-extrabold text-foreground mt-0.5">
+                    <h3 className="text-base font-extrabold text-foreground mt-0.5 leading-snug">
                       {activeEvent.title}
                     </h3>
                   </div>
                 </div>
-                <div className="text-xs font-medium text-muted-foreground">
+                <div className="text-xs font-medium text-muted-foreground leading-relaxed lg:max-w-[300px] lg:text-right shrink-0">
                   📌 Event highlighted for today. Use{" "}
                   <span className="font-bold text-foreground">
                     Mark Full Day
@@ -4763,32 +4998,63 @@ export const TodayPage = () => {
 
         {/* Contextual Remark Modal */}
         {selectedRemarkItem && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-in fade-in duration-200">
-            <div className="bg-card border border-border/80 rounded-3xl p-4 sm:p-6 w-full max-w-md shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
-              <h3 className="text-lg font-bold text-foreground flex items-center gap-2">
-                <MessageSquare className="w-5 h-5 text-primary shrink-0" />
-                <span>Log Class Remark / Reason</span>
-              </h3>
-              <p className="text-xs text-muted-foreground">
+          <div
+            className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4 bg-white/50 dark:bg-black/60 backdrop-blur-md animate-in fade-in duration-200 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))]"
+            onClick={() => setSelectedRemarkItem(null)}
+          >
+            <div
+              className="bg-white/90 dark:bg-card/90 backdrop-blur-2xl border border-slate-900/10 dark:border-border/80 rounded-3xl p-4 sm:p-6 w-full max-w-md shadow-2xl space-y-4 max-h-[85vh] overflow-y-auto"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="text-lg font-bold text-foreground flex items-center gap-2">
+                  <MessageSquare className="w-5 h-5 text-primary shrink-0" />
+                  <span>Log Class Remark / Reason</span>
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setSelectedRemarkItem(null)}
+                  className="w-8 h-8 rounded-full bg-muted/80 hover:bg-muted text-foreground flex items-center justify-center border border-border/60 transition-colors cursor-pointer shrink-0"
+                  aria-label="Close"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <p className="text-xs text-muted-foreground leading-relaxed">
                 Logging status{" "}
-                <span className="font-bold uppercase text-primary">
+                <span
+                  className={`font-bold uppercase ${
+                    selectedRemarkItem.status === "absent"
+                      ? "text-rose-500"
+                      : selectedRemarkItem.status === "off" ||
+                          selectedRemarkItem.status === "cancelled"
+                        ? "text-amber-500"
+                        : "text-emerald-500"
+                  }`}
+                >
                   {selectedRemarkItem.status}
                 </span>{" "}
                 for{" "}
                 <span className="font-semibold text-foreground">
                   {selectedRemarkItem.item.subject?.name || "Unknown Subject"}
                 </span>
-                . Tag why you missed, if class was cancelled, or if it was a
-                bunk.
+                .{" "}
+                {selectedRemarkItem.status === "present"
+                  ? "Add a quick note for this session (e.g. proxy, extra class, or guest lecture)."
+                  : selectedRemarkItem.status === "off" ||
+                      selectedRemarkItem.status === "cancelled"
+                    ? "Note why the class was marked off or cancelled."
+                    : "Tag why you missed, if class was cancelled, or if it was a bunk."}
               </p>
               <div>
-                <label className="text-xs font-semibold text-muted-foreground mb-1 block">
+                <label className="text-xs font-semibold text-muted-foreground mb-1.5 block">
                   Remark / Reason
                 </label>
                 <input
                   type="text"
                   value={remarkInput}
                   onChange={(e) => setRemarkInput(e.target.value)}
+                  placeholder="Enter a remark or pick a tag below..."
                   className="w-full px-3.5 py-2.5 bg-muted/50 border border-border rounded-xl text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary/50 transition-all"
                   autoFocus
                 />
@@ -4811,7 +5077,7 @@ export const TodayPage = () => {
                   )}
                 </div>
               </div>
-              <div className="flex items-center justify-between gap-2 pt-2 border-t border-border/40">
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-border/40">
                 <div className="flex items-center gap-2">
                   <button
                     type="button"

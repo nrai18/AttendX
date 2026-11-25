@@ -262,19 +262,21 @@ const SESSIONS_CACHE_KEY = "attendx_cached_linked_devices";
 function createLocalFallbackSession(): Session {
   const os = detectRealHostOS();
   const ua = typeof navigator !== "undefined" ? navigator.userAgent : "";
+  const isIosUa = /CriOS|FxiOS|EdgiOS|OPiOS|iPhone|iPad|iPod/i.test(ua) || os === "iOS";
   let browser = "Google Chrome";
-  if (ua.includes("Firefox")) browser = "Mozilla Firefox";
-  else if (ua.includes("Edg")) browser = "Microsoft Edge";
-  else if (ua.includes("Safari") && !ua.includes("Chrome")) browser = "Apple Safari";
+  if (ua.includes("CriOS")) browser = "Google Chrome";
+  else if (ua.includes("FxiOS") || ua.includes("Firefox")) browser = "Mozilla Firefox";
+  else if (ua.includes("EdgiOS") || ua.includes("Edg")) browser = "Microsoft Edge";
   else if (ua.includes("Brave")) browser = "Brave Browser";
+  else if (ua.includes("Safari") && !ua.includes("Chrome") && !ua.includes("CriOS")) browser = "Apple Safari";
 
   return {
     id: "current-local-session",
     userAgent: ua || null,
     ipAddress: "127.0.0.1",
     location: "This device",
-    deviceType: /Android|iPhone|iPad/i.test(ua) ? "mobile" : "desktop",
-    os: os,
+    deviceType: /iPad/i.test(ua) ? "tablet" : (isIosUa || /Android|Mobile/i.test(ua)) ? "mobile" : "desktop",
+    os: isIosUa ? "iOS" : os,
     browser: browser,
     lastActive: new Date().toISOString(),
     createdAt: new Date().toISOString(),
@@ -370,7 +372,9 @@ export const LinkedDevicesModal: React.FC<LinkedDevicesProps> = ({ isOpen, onClo
     sessions[0] ||
     createLocalFallbackSession();
   const realHostOS = detectRealHostOS();
-  const currentSession = rawCurrentSession && (realHostOS === "Windows" || realHostOS === "macOS" || realHostOS === "Linux") && !String(rawCurrentSession.browser || "").startsWith("AttendX")
+  const rawSessionUa = String(rawCurrentSession?.userAgent || (typeof navigator !== "undefined" ? navigator.userAgent : ""));
+  const isRawIosSession = /iPhone|iPad|iPod|CriOS|FxiOS|EdgiOS|OPiOS/i.test(rawSessionUa) || String(rawCurrentSession?.os || "").toLowerCase().includes("ios");
+  const currentSession = rawCurrentSession && !isRawIosSession && (realHostOS === "Windows" || realHostOS === "macOS" || realHostOS === "Linux") && !String(rawCurrentSession.browser || "").startsWith("AttendX")
     ? {
         ...rawCurrentSession,
         os: realHostOS,

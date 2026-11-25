@@ -15,9 +15,41 @@ export class SystemController {
   static async getUpdateManifest(req: Request, res: Response) {
     const manifest = {
       appDownloadLink: sanitizeDownloadUrl(process.env.APP_DOWNLOAD_LINK),
-      latestVersion: "4.4.2",
-      title: "Voice Mode Overhaul, ElevenLabs Streaming & Context Intelligence",
+      latestVersion: "4.5.0",
+      title: "Semester Replay, Auto-DND & Smart Calendar Transitions",
       changelog: [
+        {
+          "version": "4.5.0",
+          "date": "Nov 25, 2026",
+          "title": "Semester Replay, Auto-DND & Smart Calendar Transitions",
+          "sections": [
+            {
+              "title": "Release Highlights (v4.5.0)",
+              "items": [
+                {
+                  "icon": "🎞️",
+                  "text": "Semester Wrap & Dynamic Story Replay: BitChord-inspired Replay with dynamic per-data slides, WYSIWYG on-device PNG card themes, studio Web Audio engine, and Settings Account access."
+                },
+                {
+                  "icon": "🔕",
+                  "text": "Zero-Launch Background DND & Instant Notification Routing: Class reminders mute silently without opening the app when DND is granted, and notification taps route straight to target screens."
+                },
+                {
+                  "icon": "🎓",
+                  "text": "Date-Aware Milestone Transitions & Backend Calendars: Tracks Teaching -> Exams -> Labs -> Vacation dynamically across dates with next-semester prompts and editable 2026–2028 calendars."
+                },
+                {
+                  "icon": "🔄",
+                  "text": "Canonical Attendance Sync & Light/Dark Contrast Parity: Keeps TopBar, Forecast, and Subjects strictly in sync on login and guards dark Replay/Whats-New surfaces in Light Mode."
+                },
+                {
+                  "icon": "🍎",
+                  "text": "iOS Session Fix, Exam Briefings & Device Feedback Context: Fixes CriOS/iPadOS macOS misdetection, switches post-teaching alerts to exam countdowns, and attaches session metadata on feedback."
+                }
+              ]
+            }
+          ]
+        },
         {
           "version": "4.4.2",
           "date": "Nov 20, 2026",

@@ -22,6 +22,15 @@ public class RingerAlarmReceiver extends BroadcastReceiver {
     public static final String ACTION_AUTO_UNMUTE = "com.attendx.app.ACTION_AUTO_UNMUTE";
     public static final String ACTION_MANUAL_UNMUTE = "com.attendx.app.ACTION_MANUAL_UNMUTE";
     public static final String ACTION_NOTIFICATION_DISMISSED = "com.attendx.app.ACTION_NOTIFICATION_DISMISSED";
+    public static final String ACTION_SHOW_CLASS_REMINDER = "com.attendx.app.ACTION_SHOW_CLASS_REMINDER";
+    public static final String ACTION_MUTE_FOR_CLASS = "com.attendx.app.ACTION_MUTE_FOR_CLASS";
+
+    public static final String EXTRA_NOTIF_ID = "extra_notif_id";
+    public static final String EXTRA_REMINDER_TITLE = "extra_reminder_title";
+    public static final String EXTRA_REMINDER_BODY = "extra_reminder_body";
+    public static final String EXTRA_REMINDER_LARGE_BODY = "extra_reminder_large_body";
+    public static final String EXTRA_REMINDER_SUMMARY = "extra_reminder_summary";
+    public static final String EXTRA_AUTO_DND = "extra_auto_dnd";
 
     private static final String TAG = "RingerAlarmReceiver";
     public static final int PINNED_MUTE_NOTIF_ID = 7001;
@@ -43,6 +52,16 @@ public class RingerAlarmReceiver extends BroadcastReceiver {
 
         if (ACTION_MANUAL_UNMUTE.equals(action)) {
             handleManualUnmute(context);
+            return;
+        }
+
+        if (ACTION_SHOW_CLASS_REMINDER.equals(action)) {
+            handleShowClassReminder(context, intent);
+            return;
+        }
+
+        if (ACTION_MUTE_FOR_CLASS.equals(action)) {
+            handleMuteForClass(context, intent);
             return;
         }
 
@@ -135,6 +154,138 @@ public class RingerAlarmReceiver extends BroadcastReceiver {
         }
     }
 
+    private void handleShowClassReminder(Context context, Intent intent) {
+        int notifId = intent.getIntExtra(EXTRA_NOTIF_ID, (int) (System.currentTimeMillis() % 100000));
+        String title = intent.getStringExtra(EXTRA_REMINDER_TITLE);
+        String body = intent.getStringExtra(EXTRA_REMINDER_BODY);
+        String largeBody = intent.getStringExtra(EXTRA_REMINDER_LARGE_BODY);
+        String summaryText = intent.getStringExtra(EXTRA_REMINDER_SUMMARY);
+        String className = intent.getStringExtra(RingerForegroundService.EXTRA_CLASS_NAME);
+        long endTimeMs = intent.getLongExtra(RingerForegroundService.EXTRA_UNMUTE_EPOCH, System.currentTimeMillis() + 60L * 60L * 1000L);
+        boolean autoDnd = intent.getBooleanExtra(EXTRA_AUTO_DND, true);
+
+        if (title == null || title.isEmpty()) title = "Upcoming Class";
+        if (body == null) body = "";
+        if (largeBody == null || largeBody.isEmpty()) largeBody = body;
+        if (summaryText == null || summaryText.isEmpty()) summaryText = "Class Reminder";
+        if (className == null || className.trim().isEmpty()) className = "Class";
+
+        NotificationManager nm = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+        if (nm == null) return;
+
+        // If DND access is granted and autoDnd is enabled, engage DND silently in background without opening the app
+        boolean autoMutedNow = false;
+        if (autoDnd && endTimeMs > System.currentTimeMillis()) {
+            try {
+                boolean hasDndPolicy = Build.VERSION.SDK_INT < Build.VERSION_CODES.M || nm.isNotificationPolicyAccessGranted();
+                if (hasDndPolicy) {
+                    autoMutedNow = RingerPlugin.engageSilentModeNative(context, endTimeMs, className);
+                }
+            } catch (Exception e) {
+                Log.w(TAG, "Background auto-DND check failed", e);
+            }
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationChannel channel = nm.getNotificationChannel(CHANNEL_ID_ALERTS);
+            if (channel == null) {
+                channel = new NotificationChannel(CHANNEL_ID_ALERTS, "Class Reminders", NotificationManager.IMPORTANCE_HIGH);
+                nm.createNotificationChannel(channel);
+            }
+        }
+
+        int piFlags = PendingIntent.FLAG_UPDATE_CURRENT;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            piFlags |= PendingIntent.FLAG_IMMUTABLE;
+        }
+
+        // Body tap opens MainActivity directly to /today
+        Intent tapIntent = new Intent(context, MainActivity.class);
+        tapIntent.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        tapIntent.putExtra("route", "/today");
+        tapIntent.putExtra("type", "class_reminder");
+        PendingIntent tapPendingIntent = PendingIntent.getActivity(context, notifId, tapIntent, piFlags);
+
+        // Clean up stored alarm metadata once fired
+        try {
+            SharedPreferences remPrefs = context.getSharedPreferences(RingerPlugin.PREFS_CLASS_REMINDERS, Context.MODE_PRIVATE);
+            remPrefs.edit().remove(String.valueOf(notifId)).apply();
+        } catch (Exception ignored) {}
+
+        Bitmap largeIcon = BitmapFactory.decodeResource(context.getResources(), R.drawable.attendx_notification_icon);
+        NotificationCompat.Builder builder = new NotificationCompat.Builder(context, CHANNEL_ID_ALERTS)
+            .setSmallIcon(R.drawable.ic_stat_attendx)
+            .setLargeIcon(largeIcon)
+            .setContentTitle(title)
+            .setContentText(autoMutedNow ? (body + " · Auto-DND On") : body)
+            .setSubText(summaryText)
+            .setStyle(new NotificationCompat.BigTextStyle().bigText(largeBody))
+            .setColor(0xFF6366F1)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
+            .setContentIntent(tapPendingIntent);
+
+        if (!autoMutedNow && endTimeMs > System.currentTimeMillis()) {
+            // Broadcast action button -> engages DND in background WITHOUT opening MainActivity
+            Intent muteIntent = new Intent(context, RingerAlarmReceiver.class);
+            muteIntent.setAction(ACTION_MUTE_FOR_CLASS);
+            muteIntent.putExtra(EXTRA_NOTIF_ID, notifId);
+            muteIntent.putExtra(RingerForegroundService.EXTRA_CLASS_NAME, className);
+            muteIntent.putExtra(RingerForegroundService.EXTRA_UNMUTE_EPOCH, endTimeMs);
+            PendingIntent mutePendingIntent = PendingIntent.getBroadcast(context, notifId + 500000, muteIntent, piFlags);
+            builder.addAction(R.drawable.ic_stat_attendx, "\uD83D\uDD15 Mute Phone for Class", mutePendingIntent);
+        }
+
+        nm.notify(notifId, builder.build());
+    }
+
+    private void handleMuteForClass(Context context, Intent intent) {
+        int notifId = intent.getIntExtra(EXTRA_NOTIF_ID, 0);
+        String className = intent.getStringExtra(RingerForegroundService.EXTRA_CLASS_NAME);
+        long unmuteEpochMs = intent.getLongExtra(RingerForegroundService.EXTRA_UNMUTE_EPOCH, System.currentTimeMillis() + 60L * 60L * 1000L);
+        if (unmuteEpochMs <= System.currentTimeMillis()) {
+            unmuteEpochMs = System.currentTimeMillis() + 60L * 60L * 1000L;
+        }
+        if (className == null || className.trim().isEmpty()) {
+            className = "Class";
+        }
+
+        NotificationManager nm = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+        if (nm != null && notifId != 0) {
+            nm.cancel(notifId);
+        }
+
+        boolean muted = RingerPlugin.engageSilentModeNative(context, unmuteEpochMs, className);
+        if (!muted && nm != null) {
+            // DND access not granted: do NOT jump-scare open the app; post a settings prompt notification instead
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                NotificationChannel sysChannel = nm.getNotificationChannel("system_alerts");
+                if (sysChannel == null) {
+                    sysChannel = new NotificationChannel("system_alerts", "System Alerts", NotificationManager.IMPORTANCE_HIGH);
+                    nm.createNotificationChannel(sysChannel);
+                }
+            }
+            int piFlags = PendingIntent.FLAG_UPDATE_CURRENT;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                piFlags |= PendingIntent.FLAG_IMMUTABLE;
+            }
+            Intent dndSettingsIntent = new Intent(android.provider.Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS);
+            dndSettingsIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            PendingIntent settingsPi = PendingIntent.getActivity(context, 7002, dndSettingsIntent, piFlags);
+            Bitmap largeIcon = BitmapFactory.decodeResource(context.getResources(), R.drawable.attendx_notification_icon);
+            NotificationCompat.Builder warn = new NotificationCompat.Builder(context, "system_alerts")
+                .setSmallIcon(R.drawable.ic_stat_attendx)
+                .setLargeIcon(largeIcon)
+                .setContentTitle("DND Permission Required")
+                .setContentText("Tap to grant Do Not Disturb access so AttendX can mute your phone silently in background.")
+                .setColor(0xFFF59E0B)
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setAutoCancel(true)
+                .setContentIntent(settingsPi);
+            nm.notify(7002, warn.build());
+        }
+    }
+
     private void handleNotificationDismissed(Context context) {
         Log.d(TAG, "Pinned notification dismissed by user gesture. Checking if class is still active...");
         try {
@@ -184,6 +335,35 @@ public class RingerAlarmReceiver extends BroadcastReceiver {
                 Log.d(TAG, "Unmute time expired while device was powered off. Restoring ringer now.");
                 handleAutoUnmute(context);
             }
+
+            // Reschedule pending native class reminder alarms across reboot
+            try {
+                SharedPreferences remPrefs = context.getSharedPreferences(RingerPlugin.PREFS_CLASS_REMINDERS, Context.MODE_PRIVATE);
+                java.util.Map<String, ?> allRem = remPrefs.getAll();
+                long nowMs = System.currentTimeMillis();
+                for (java.util.Map.Entry<String, ?> entry : allRem.entrySet()) {
+                    try {
+                        org.json.JSONObject item = new org.json.JSONObject(String.valueOf(entry.getValue()));
+                        long trig = item.optLong("triggerAtMs", 0L);
+                        if (trig > nowMs) {
+                            RingerPlugin.scheduleClassReminderAlarm(
+                                context,
+                                item.optInt("id"),
+                                item.optString("title", "Upcoming Class"),
+                                item.optString("body", ""),
+                                item.optString("largeBody", ""),
+                                item.optString("summaryText", "Class Reminder"),
+                                item.optString("className", "Class"),
+                                trig,
+                                item.optLong("endTimeMs", trig + 3600000L),
+                                item.optBoolean("autoDndIfPermitted", true)
+                            );
+                        } else {
+                            remPrefs.edit().remove(entry.getKey()).apply();
+                        }
+                    } catch (Exception ignored) {}
+                }
+            } catch (Exception ignored) {}
         } catch (Exception e) {
             Log.e(TAG, "Error handling boot completed", e);
         } finally {

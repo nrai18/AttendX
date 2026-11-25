@@ -29,7 +29,8 @@ public class RingerPlugin extends Plugin {
     public static final String KEY_UNMUTE_EPOCH = "unmute_epoch_ms";
     public static final String KEY_CLASS_NAME = "class_name";
 
-        public static final String KEY_HAS_SAVED_STATE = "has_saved_state";
+    public static final String PREFS_CLASS_REMINDERS = "attendx_class_reminders";
+    public static final String KEY_HAS_SAVED_STATE = "has_saved_state";
     public static final String KEY_PREV_INTERRUPTION_FILTER = "prev_interruption_filter";
     public static final String KEY_PREV_RINGER_MODE = "prev_ringer_mode";
     public static final String KEY_PREV_RING_VOL = "prev_ring_vol";
@@ -208,6 +209,244 @@ public class RingerPlugin extends Plugin {
     }
 
     @PluginMethod
+    public void consumePendingLaunchRoute(PluginCall call) {
+        Context context = getContext();
+        SharedPreferences prefs = context.getSharedPreferences(MainActivity.PREFS_LAUNCH, Context.MODE_PRIVATE);
+        String route = prefs.getString(MainActivity.KEY_PENDING_ROUTE, null);
+        long ts = prefs.getLong(MainActivity.KEY_PENDING_ROUTE_TS, 0L);
+        if (route != null && !route.isEmpty()) {
+            prefs.edit().remove(MainActivity.KEY_PENDING_ROUTE).remove(MainActivity.KEY_PENDING_ROUTE_TS).apply();
+            // Expire stale pending routes older than 30 seconds
+            if (ts > 0L && (System.currentTimeMillis() - ts) > 30000L) {
+                route = null;
+            }
+        }
+        JSObject ret = new JSObject();
+        ret.put("route", route);
+        call.resolve(ret);
+    }
+
+    @PluginMethod
+    public void scheduleClassReminder(PluginCall call) {
+        Context context = getContext();
+        int notifId = call.getInt("id", 0);
+        String title = call.getString("title", "Upcoming Class");
+        String body = call.getString("body", "");
+        String largeBody = call.getString("largeBody", body);
+        String summaryText = call.getString("summaryText", "Class Reminder");
+        String className = call.getString("className", "Class");
+        Double triggerAtDouble = call.getDouble("triggerAtMs");
+        Double endTimeDouble = call.getDouble("endTimeMs");
+        boolean autoDnd = Boolean.TRUE.equals(call.getBoolean("autoDndIfPermitted", false));
+
+        long triggerAtMs = triggerAtDouble != null ? triggerAtDouble.longValue() : 0L;
+        long endTimeMs = endTimeDouble != null ? endTimeDouble.longValue() : (triggerAtMs + 60L * 60L * 1000L);
+
+        if (notifId == 0 || triggerAtMs <= System.currentTimeMillis()) {
+            JSObject ret = new JSObject();
+            ret.put("scheduled", false);
+            call.resolve(ret);
+            return;
+        }
+
+        try {
+            org.json.JSONObject item = new org.json.JSONObject();
+            item.put("id", notifId);
+            item.put("title", title);
+            item.put("body", body);
+            item.put("largeBody", largeBody);
+            item.put("summaryText", summaryText);
+            item.put("className", className);
+            item.put("triggerAtMs", triggerAtMs);
+            item.put("endTimeMs", endTimeMs);
+            item.put("autoDndIfPermitted", autoDnd);
+
+            SharedPreferences prefs = context.getSharedPreferences(PREFS_CLASS_REMINDERS, Context.MODE_PRIVATE);
+            prefs.edit().putString(String.valueOf(notifId), item.toString()).apply();
+
+            scheduleClassReminderAlarm(context, notifId, title, body, largeBody, summaryText, className, triggerAtMs, endTimeMs, autoDnd);
+
+            JSObject ret = new JSObject();
+            ret.put("scheduled", true);
+            call.resolve(ret);
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to schedule native class reminder", e);
+            call.reject("SCHEDULE_CLASS_REMINDER_FAILED", e);
+        }
+    }
+
+    @PluginMethod
+    public void cancelAllClassReminders(PluginCall call) {
+        cancelAllClassReminderAlarms(getContext());
+        JSObject ret = new JSObject();
+        ret.put("cancelled", true);
+        call.resolve(ret);
+    }
+
+    public static void scheduleClassReminderAlarm(
+        Context context,
+        int notifId,
+        String title,
+        String body,
+        String largeBody,
+        String summaryText,
+        String className,
+        long triggerAtMs,
+        long endTimeMs,
+        boolean autoDnd
+    ) {
+        AlarmManager am = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
+        if (am == null || triggerAtMs <= System.currentTimeMillis()) return;
+
+        Intent showIntent = new Intent(context, RingerAlarmReceiver.class);
+        showIntent.setAction(RingerAlarmReceiver.ACTION_SHOW_CLASS_REMINDER);
+        showIntent.putExtra(RingerAlarmReceiver.EXTRA_NOTIF_ID, notifId);
+        showIntent.putExtra(RingerAlarmReceiver.EXTRA_REMINDER_TITLE, title);
+        showIntent.putExtra(RingerAlarmReceiver.EXTRA_REMINDER_BODY, body);
+        showIntent.putExtra(RingerAlarmReceiver.EXTRA_REMINDER_LARGE_BODY, largeBody);
+        showIntent.putExtra(RingerAlarmReceiver.EXTRA_REMINDER_SUMMARY, summaryText);
+        showIntent.putExtra(RingerForegroundService.EXTRA_CLASS_NAME, className);
+        showIntent.putExtra(RingerForegroundService.EXTRA_UNMUTE_EPOCH, endTimeMs);
+        showIntent.putExtra(RingerAlarmReceiver.EXTRA_AUTO_DND, autoDnd);
+
+        int flags = PendingIntent.FLAG_UPDATE_CURRENT;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            flags |= PendingIntent.FLAG_IMMUTABLE;
+        }
+        PendingIntent pi = PendingIntent.getBroadcast(context, notifId, showIntent, flags);
+
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !am.canScheduleExactAlarms()) {
+                am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMs, pi);
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMs, pi);
+            } else {
+                am.setExact(AlarmManager.RTC_WAKEUP, triggerAtMs, pi);
+            }
+        } catch (SecurityException se) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMs, pi);
+            } else {
+                am.set(AlarmManager.RTC_WAKEUP, triggerAtMs, pi);
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "Failed to schedule reminder alarm id=" + notifId, e);
+        }
+    }
+
+    public static void cancelAllClassReminderAlarms(Context context) {
+        try {
+            AlarmManager am = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
+            NotificationManager nm = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+            SharedPreferences prefs = context.getSharedPreferences(PREFS_CLASS_REMINDERS, Context.MODE_PRIVATE);
+            java.util.Map<String, ?> all = prefs.getAll();
+            int flags = PendingIntent.FLAG_NO_CREATE;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                flags |= PendingIntent.FLAG_IMMUTABLE;
+            }
+            for (String key : all.keySet()) {
+                try {
+                    int notifId = Integer.parseInt(key);
+                    Intent showIntent = new Intent(context, RingerAlarmReceiver.class);
+                    showIntent.setAction(RingerAlarmReceiver.ACTION_SHOW_CLASS_REMINDER);
+                    PendingIntent pi = PendingIntent.getBroadcast(context, notifId, showIntent, flags);
+                    if (pi != null && am != null) {
+                        am.cancel(pi);
+                        pi.cancel();
+                    }
+                    if (nm != null) {
+                        nm.cancel(notifId);
+                    }
+                } catch (Exception ignored) {}
+            }
+            prefs.edit().clear().apply();
+        } catch (Exception e) {
+            Log.w(TAG, "Failed clearing native class reminders", e);
+        }
+    }
+
+    /**
+     * Reusable native silent/DND activation that runs cleanly from background BroadcastReceivers
+     * without launching MainActivity or prompting system UI. Returns false only if DND access is missing.
+     */
+    public static boolean engageSilentModeNative(Context context, long unmuteEpochMs, String className) {
+        AudioManager audioManager = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
+        NotificationManager notificationManager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+
+        boolean hasDndPolicy = Build.VERSION.SDK_INT < Build.VERSION_CODES.M
+            || (notificationManager != null && notificationManager.isNotificationPolicyAccessGranted());
+        if (!hasDndPolicy) {
+            return false;
+        }
+
+        RingerForegroundService.ensureSilentChannel(context);
+        SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+        SharedPreferences.Editor editor = prefs.edit();
+
+        // Save original state once so re-muting doesn't overwrite it with SILENT / 0
+        if (!prefs.getBoolean(KEY_HAS_SAVED_STATE, false)) {
+            editor.putBoolean(KEY_HAS_SAVED_STATE, true);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && notificationManager != null) {
+                editor.putInt(KEY_PREV_INTERRUPTION_FILTER, notificationManager.getCurrentInterruptionFilter());
+            }
+            if (audioManager != null) {
+                editor.putInt(KEY_PREV_RINGER_MODE, audioManager.getRingerMode());
+                editor.putInt(KEY_PREV_RING_VOL, audioManager.getStreamVolume(AudioManager.STREAM_RING));
+                editor.putInt(KEY_PREV_NOTIF_VOL, audioManager.getStreamVolume(AudioManager.STREAM_NOTIFICATION));
+                editor.putInt(KEY_PREV_SYSTEM_VOL, audioManager.getStreamVolume(AudioManager.STREAM_SYSTEM));
+            }
+        }
+        String cleanClassName = (className != null && !className.trim().isEmpty()) ? className.trim() : "Class";
+        if (unmuteEpochMs > System.currentTimeMillis()) {
+            editor.putLong(KEY_UNMUTE_EPOCH, unmuteEpochMs);
+            editor.putString(KEY_CLASS_NAME, cleanClassName);
+        }
+        editor.apply();
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && notificationManager != null) {
+            try {
+                notificationManager.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_PRIORITY);
+                Log.d(TAG, "DND interruption filter engaged (PRIORITY) in background.");
+            } catch (Exception e) {
+                Log.w(TAG, "Could not engage INTERRUPTION_FILTER_PRIORITY", e);
+            }
+        }
+        if (audioManager != null) {
+            try {
+                audioManager.setRingerMode(AudioManager.RINGER_MODE_SILENT);
+            } catch (Exception e) {
+                Log.w(TAG, "Could not set RINGER_MODE_SILENT", e);
+            }
+            try {
+                audioManager.setStreamVolume(AudioManager.STREAM_RING, 0, 0);
+                audioManager.setStreamVolume(AudioManager.STREAM_NOTIFICATION, 0, 0);
+                audioManager.setStreamVolume(AudioManager.STREAM_SYSTEM, 0, 0);
+            } catch (Exception e) {
+                Log.w(TAG, "Could not set streams to 0 volume", e);
+            }
+        }
+        if (unmuteEpochMs > System.currentTimeMillis()) {
+            scheduleNativeUnmuteAlarm(context, unmuteEpochMs, false);
+
+            Intent serviceIntent = new Intent(context, RingerForegroundService.class);
+            serviceIntent.setAction(RingerForegroundService.ACTION_START_CLASS_MUTE);
+            serviceIntent.putExtra(RingerForegroundService.EXTRA_CLASS_NAME, cleanClassName);
+            serviceIntent.putExtra(RingerForegroundService.EXTRA_UNMUTE_EPOCH, unmuteEpochMs);
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    context.startForegroundService(serviceIntent);
+                } else {
+                    context.startService(serviceIntent);
+                }
+            } catch (Exception fgsEx) {
+                Log.w(TAG, "Foreground service start blocked from background; posting pinned notification fallback", fgsEx);
+                RingerAlarmReceiver.showPinnedMuteNotification(context, cleanClassName, unmuteEpochMs);
+            }
+        }
+        return true;
+    }
+
+    @PluginMethod
     public void testMuteNotification(PluginCall call) {
         Context context = getContext();
         RingerForegroundService.ensureSilentChannel(context);
@@ -241,7 +480,7 @@ public class RingerPlugin extends Plugin {
         AudioManager audioManager = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
         NotificationManager notificationManager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
 
-                // Android 6.0+ DND Permission Check (only block & prompt when muting, not when unmuting/reconciling)
+        // Android 6.0+ DND Permission Check (only block & prompt when muting, not when unmuting/reconciling)
         boolean hasDndPolicy = Build.VERSION.SDK_INT < Build.VERSION_CODES.M
             || (notificationManager != null && notificationManager.isNotificationPolicyAccessGranted());
         if ("silent".equalsIgnoreCase(mode) && !hasDndPolicy) {
@@ -250,72 +489,14 @@ public class RingerPlugin extends Plugin {
             return;
         }
 
-                if ("silent".equalsIgnoreCase(mode)) {
-            RingerForegroundService.ensureSilentChannel(context);
-            SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
-            SharedPreferences.Editor editor = prefs.edit();
-
-            // Save original state once so re-muting doesn't overwrite it with SILENT / 0
-            if (!prefs.getBoolean(KEY_HAS_SAVED_STATE, false)) {
-                editor.putBoolean(KEY_HAS_SAVED_STATE, true);
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && notificationManager != null) {
-                    editor.putInt(KEY_PREV_INTERRUPTION_FILTER, notificationManager.getCurrentInterruptionFilter());
-                }
-                if (audioManager != null) {
-                    editor.putInt(KEY_PREV_RINGER_MODE, audioManager.getRingerMode());
-                    editor.putInt(KEY_PREV_RING_VOL, audioManager.getStreamVolume(AudioManager.STREAM_RING));
-                    editor.putInt(KEY_PREV_NOTIF_VOL, audioManager.getStreamVolume(AudioManager.STREAM_NOTIFICATION));
-                    editor.putInt(KEY_PREV_SYSTEM_VOL, audioManager.getStreamVolume(AudioManager.STREAM_SYSTEM));
-                }
+        if ("silent".equalsIgnoreCase(mode)) {
+            boolean engaged = engageSilentModeNative(context, unmuteEpochMs, className);
+            if (!engaged) {
+                openDndPermissionSettings(context);
+                call.reject("DND_PERMISSION_REQUIRED");
+                return;
             }
-            if (unmuteEpochMs > System.currentTimeMillis()) {
-                editor.putLong(KEY_UNMUTE_EPOCH, unmuteEpochMs);
-                editor.putString(KEY_CLASS_NAME, className);
-            }
-            editor.apply();
-
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && notificationManager != null && hasDndPolicy) {
-                try {
-                    notificationManager.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_PRIORITY);
-                    Log.d(TAG, "DND interruption filter engaged (PRIORITY).");
-                } catch (Exception e) {
-                    Log.w(TAG, "Could not engage INTERRUPTION_FILTER_PRIORITY", e);
-                }
-            }
-            if (audioManager != null) {
-                try {
-                    audioManager.setRingerMode(AudioManager.RINGER_MODE_SILENT);
-                } catch (Exception e) {
-                    Log.w(TAG, "Could not set RINGER_MODE_SILENT", e);
-                }
-                try {
-                    audioManager.setStreamVolume(AudioManager.STREAM_RING, 0, 0);
-                    audioManager.setStreamVolume(AudioManager.STREAM_NOTIFICATION, 0, 0);
-                    audioManager.setStreamVolume(AudioManager.STREAM_SYSTEM, 0, 0);
-                } catch (Exception e) {
-                    Log.w(TAG, "Could not set streams to 0 volume", e);
-                }
-            }
-            if (unmuteEpochMs > System.currentTimeMillis()) {
-                // Schedule unmute alarm FIRST so phone never stays muted if FGS is blocked
-                scheduleNativeUnmuteAlarm(context, unmuteEpochMs, true);
-
-                Intent serviceIntent = new Intent(context, RingerForegroundService.class);
-                serviceIntent.setAction(RingerForegroundService.ACTION_START_CLASS_MUTE);
-                serviceIntent.putExtra(RingerForegroundService.EXTRA_CLASS_NAME, className);
-                serviceIntent.putExtra(RingerForegroundService.EXTRA_UNMUTE_EPOCH, unmuteEpochMs);
-                try {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        context.startForegroundService(serviceIntent);
-                    } else {
-                        context.startService(serviceIntent);
-                    }
-                } catch (Exception fgsEx) {
-                    Log.w(TAG, "Foreground service start blocked from background; posting pinned notification fallback", fgsEx);
-                    RingerAlarmReceiver.showPinnedMuteNotification(context, className, unmuteEpochMs);
-                }
-            }
-                    } else if ("vibrate".equalsIgnoreCase(mode)) {
+        } else if ("vibrate".equalsIgnoreCase(mode)) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && notificationManager != null && hasDndPolicy) {
                 try {
                     notificationManager.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_ALL);

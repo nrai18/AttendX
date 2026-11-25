@@ -940,7 +940,9 @@ export const ClassroomFeedPage = () => {
   const handleDeletePoll = async (poll: ClassroomPoll) => {
     if (!id) return;
     try {
-      await api.delete(`/classrooms/${id}/polls/${poll.id}`);
+      await api.delete(`/classrooms/${id}/polls/${poll.id}`).catch((err: any) => {
+        if (err?.response?.status !== 404) throw err;
+      });
       setFeed((prev) => {
         if (!prev) return prev;
         const nextFeed = {

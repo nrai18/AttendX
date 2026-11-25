@@ -7,7 +7,7 @@
 
 @theme {
   --font-sans:
-    "Inter", ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji",
+    "Geist", "Inter", ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji",
     "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
 
   --color-border: hsl(var(--border));
@@ -136,18 +136,12 @@
     color: #0f172a;
   }
 
-  /* Light Mode Structural Surface Card Overrides */
-  html.light .bg-\[\#050508\],
-  html.light .bg-\[\#050508\]\/80,
-  html.light .bg-\[\#070810\] {
+  /* Light Mode Structural Surface Card Overrides (opt-out with .preserve-dark for intentionally dark surfaces) */
+  html.light :is(.bg-\[\#050508\], .bg-\[\#050508\]\/80, .bg-\[\#070810\]):not(.preserve-dark):not(.preserve-dark *) {
     background-color: #f8fafc !important;
   }
 
-  html.light .bg-\[\#0c0d12\],
-  html.light .bg-\[\#0c0d12\]\/90,
-  html.light .bg-\[\#0c0d12\]\/80,
-  html.light .bg-\[\#0e0f19\],
-  html.light .bg-\[\#12131f\] {
+  html.light :is(.bg-\[\#0c0d12\], .bg-\[\#0c0d12\]\/90, .bg-\[\#0c0d12\]\/80, .bg-\[\#0e0f19\], .bg-\[\#12131f\]):not(.preserve-dark):not(.preserve-dark *) {
     background-color: #ffffff !important;
     border-color: #e2e8f0 !important;
     box-shadow:
@@ -155,44 +149,32 @@
       0 2px 6px -1px rgba(15, 23, 42, 0.02) !important;
   }
 
-  html.light .bg-black\/40,
-  html.light .bg-black\/50,
-  html.light .bg-black\/60,
-  html.light .bg-black\/80 {
+  html.light :is(.bg-black\/40, .bg-black\/50, .bg-black\/60, .bg-black\/80):not(.preserve-dark):not(.preserve-dark *) {
     background-color: #f1f5f9 !important;
     color: #0f172a !important;
   }
 
-  html.light .bg-white\/5,
-  html.light .bg-white\/10 {
+  html.light :is(.bg-white\/5, .bg-white\/10):not(.preserve-dark):not(.preserve-dark *) {
     background-color: #f1f5f9 !important;
   }
 
-  html.light .border-white\/5,
-  html.light .border-white\/10,
-  html.light .border-white\/15,
-  html.light .border-white\/20 {
+  html.light :is(.border-white\/5, .border-white\/10, .border-white\/15, .border-white\/20):not(.preserve-dark):not(.preserve-dark *) {
     border-color: #e2e8f0 !important;
   }
 
-  html.light .text-white {
+  html.light :is(.text-white):not(.preserve-dark):not(.preserve-dark *) {
     color: #0f172a !important;
   }
 
-  html.light .text-white\/90,
-  html.light .text-white\/85,
-  html.light .text-white\/80 {
+  html.light :is(.text-white\/90, .text-white\/85, .text-white\/80):not(.preserve-dark):not(.preserve-dark *) {
     color: #1e293b !important;
   }
 
-  html.light .text-white\/70,
-  html.light .text-white\/60 {
+  html.light :is(.text-white\/70, .text-white\/60):not(.preserve-dark):not(.preserve-dark *) {
     color: #334155 !important;
   }
 
-  html.light .text-white\/50,
-  html.light .text-white\/40,
-  html.light .text-white\/30 {
+  html.light :is(.text-white\/50, .text-white\/40, .text-white\/30):not(.preserve-dark):not(.preserve-dark *) {
     color: #64748b !important;
   }
 
@@ -222,83 +204,66 @@
     color: #ffffff !important;
   }
 
-  /* Light Theme Vibrant Text Colors (Vivid & Crisp Contrast) */
-  html.light .text-indigo-400,
-  html.light .text-indigo-500 {
+  /* Light Theme Vibrant Text Colors (Vivid & Crisp Contrast, opt-out for .preserve-dark) */
+  html.light :is(.text-indigo-400, .text-indigo-500):not(.preserve-dark):not(.preserve-dark *) {
     color: #4f46e5 !important;
   }
-  html.light .text-blue-400,
-  html.light .text-blue-500 {
+  html.light :is(.text-blue-400, .text-blue-500):not(.preserve-dark):not(.preserve-dark *) {
     color: #2563eb !important;
   }
-  html.light .text-emerald-400,
-  html.light .text-emerald-500 {
+  html.light :is(.text-emerald-400, .text-emerald-500):not(.preserve-dark):not(.preserve-dark *) {
     color: #16a34a !important;
   }
-  html.light .text-rose-400,
-  html.light .text-rose-500 {
+  html.light :is(.text-rose-400, .text-rose-500):not(.preserve-dark):not(.preserve-dark *) {
     color: #e11d48 !important;
   }
-  html.light .text-amber-400,
-  html.light .text-amber-500,
-  html.light .text-yellow-400 {
+  html.light :is(.text-amber-400, .text-amber-500, .text-yellow-400):not(.preserve-dark):not(.preserve-dark *) {
     color: #d97706 !important;
   }
-  html.light .text-purple-400,
-  html.light .text-purple-500,
-  html.light .text-violet-400 {
+  html.light :is(.text-purple-400, .text-purple-500, .text-violet-400):not(.preserve-dark):not(.preserve-dark *) {
     color: #9333ea !important;
   }
 
-  /* Light Theme Badge / Alert Box Styling */
-  html.light .bg-indigo-950\/20,
-  html.light .bg-indigo-500\/10 {
+  /* Light Theme Badge / Alert Box Styling (opt-out for intentionally dark .preserve-dark cards) */
+  html.light :is(.bg-indigo-950\/20, .bg-indigo-500\/10):not(.preserve-dark):not(.preserve-dark *) {
     background-color: #e0e7ff !important;
   }
-  html.light .border-indigo-500\/30,
-  html.light .border-indigo-500\/20 {
+  html.light :is(.border-indigo-500\/30, .border-indigo-500\/20):not(.preserve-dark):not(.preserve-dark *) {
     border-color: #a5b4fc !important;
   }
 
-  html.light .bg-rose-950\/20,
-  html.light .bg-rose-500\/10 {
+  html.light :is(.bg-rose-950\/20, .bg-rose-500\/10):not(.preserve-dark):not(.preserve-dark *) {
     background-color: #ffe4e6 !important;
   }
-  html.light .border-rose-500\/30,
-  html.light .border-rose-500\/20 {
+  html.light :is(.border-rose-500\/30, .border-rose-500\/20):not(.preserve-dark):not(.preserve-dark *) {
     border-color: #fca5a5 !important;
   }
 
-  html.light .bg-emerald-950\/20,
-  html.light .bg-emerald-500\/10 {
+  html.light :is(.bg-emerald-950\/20, .bg-emerald-500\/10):not(.preserve-dark):not(.preserve-dark *) {
     background-color: #dcfce7 !important;
   }
-  html.light .border-emerald-500\/30,
-  html.light .border-emerald-500\/20 {
+  html.light :is(.border-emerald-500\/30, .border-emerald-500\/20):not(.preserve-dark):not(.preserve-dark *) {
     border-color: #86efac !important;
   }
 
-  html.light .bg-amber-950\/20,
-  html.light .bg-amber-500\/10,
-  html.light .bg-yellow-500\/10 {
+  html.light :is(.bg-amber-950\/20, .bg-amber-500\/10, .bg-yellow-500\/10):not(.preserve-dark):not(.preserve-dark *) {
     background-color: #fef3c7 !important;
   }
-  html.light .border-amber-500\/30,
-  html.light .border-amber-500\/20 {
+  html.light :is(.border-amber-500\/30, .border-amber-500\/20):not(.preserve-dark):not(.preserve-dark *) {
     border-color: #fde047 !important;
   }
 
-  html.light .bg-blue-500\/10 {
+  html.light .bg-blue-500\/10:not(.preserve-dark):not(.preserve-dark *) {
     background-color: #dbeafe !important;
   }
-  html.light .border-blue-500\/20 {
+  html.light .border-blue-500\/20:not(.preserve-dark):not(.preserve-dark *) {
     border-color: #93c5fd !important;
   }
 
-  html.light .bg-purple-500\/10 {
+  html.light .bg-purple-500\/10:not(.preserve-dark):not(.preserve-dark *) {
     background-color: #f3e8ff !important;
   }
-  html.light .border-purple-500\/20 {
+  html.light .border-purple-500\/20:not(.preserve-dark):not(.preserve-dark *) {
     border-color: #d8b4fe !important;
   }
 
@@ -952,15 +917,15 @@ html.light body.theme-classrooms-black {
   border-color: var(--ts-border) !important;
 }
 
-.theme-terrascape *:not(.bottom-nav-shell):not(.bottom-nav-shell *) {
+.theme-terrascape *:not(.bottom-nav-shell):not(.bottom-nav-shell *):not(.preserve-dark):not(.preserve-dark *) {
   border-color: var(--ts-border) !important;
 }
 
-.theme-terrascape .bg-card,
-.theme-terrascape .bg-card\/60,
-.theme-terrascape .bg-card\/40,
-.theme-terrascape .bg-card\/80,
-.theme-terrascape .bg-card\/90 {
+.theme-terrascape .bg-card:not(.preserve-dark):not(.preserve-dark *),
+.theme-terrascape .bg-card\/60:not(.preserve-dark):not(.preserve-dark *),
+.theme-terrascape .bg-card\/40:not(.preserve-dark):not(.preserve-dark *),
+.theme-terrascape .bg-card\/80:not(.preserve-dark):not(.preserve-dark *),
+.theme-terrascape .bg-card\/90:not(.preserve-dark):not(.preserve-dark *) {
   background-color: var(--ts-surface) !important;
   border-color: var(--ts-border) !important;
   box-shadow: none !important;
@@ -968,32 +933,32 @@ html.light body.theme-classrooms-black {
   backdrop-filter: blur(12px) !important;
 }
 
-.theme-terrascape .bg-white\/5,
-.theme-terrascape .bg-white\/10 {
+.theme-terrascape .bg-white\/5:not(.preserve-dark):not(.preserve-dark *),
+.theme-terrascape .bg-white\/10:not(.preserve-dark):not(.preserve-dark *) {
   background-color: var(--ts-surface) !important;
 }
 
-.theme-terrascape .text-foreground,
-.theme-terrascape .text-white {
+.theme-terrascape .text-foreground:not(.preserve-dark):not(.preserve-dark *),
+.theme-terrascape .text-white:not(.preserve-dark):not(.preserve-dark *) {
   color: var(--ts-text-primary) !important;
 }
 
-.theme-terrascape .text-muted-foreground,
-.theme-terrascape .text-white\/80 {
+.theme-terrascape .text-muted-foreground:not(.preserve-dark):not(.preserve-dark *),
+.theme-terrascape .text-white\/80:not(.preserve-dark):not(.preserve-dark *) {
   color: var(--ts-text-secondary) !important;
 }
 
-.theme-terrascape .border-border\/50,
-.theme-terrascape .border-white\/10,
-.theme-terrascape .border-white\/20 {
+.theme-terrascape .border-border\/50:not(.preserve-dark):not(.preserve-dark *),
+.theme-terrascape .border-white\/10:not(.preserve-dark):not(.preserve-dark *),
+.theme-terrascape .border-white\/20:not(.preserve-dark):not(.preserve-dark *) {
   border-color: var(--ts-border) !important;
 }
 
 /* Suppress the vibrant colored backgrounds from the old AI slop */
-.theme-terrascape .bg-emerald-500\/10,
-.theme-terrascape .bg-rose-500\/10,
-.theme-terrascape .bg-amber-500\/10,
-.theme-terrascape .bg-purple-500\/10 {
+.theme-terrascape .bg-emerald-500\/10:not(.preserve-dark):not(.preserve-dark *),
+.theme-terrascape .bg-rose-500\/10:not(.preserve-dark):not(.preserve-dark *),
+.theme-terrascape .bg-amber-500\/10:not(.preserve-dark):not(.preserve-dark *),
+.theme-terrascape .bg-purple-500\/10:not(.preserve-dark):not(.preserve-dark *) {
   background-color: var(--ts-surface) !important;
   border-color: var(--ts-border) !important;
 }

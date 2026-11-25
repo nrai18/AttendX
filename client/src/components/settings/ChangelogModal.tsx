@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
+import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, History } from "lucide-react";
+import { X, History, Sparkles } from "lucide-react";
 import { useHardwareBack } from "../../hooks/useHardwareBack";
 import { useScrollLock } from "../../hooks/useScrollLock";
 import { OFFLINE_CHANGELOG } from "../../constants/offlineChangelog";
@@ -41,6 +42,7 @@ export const ChangelogModal = ({
   onClose: () => void;
   releases?: Release[];
 }) => {
+  const navigate = useNavigate();
   useHardwareBack(isOpen, onClose);
   useScrollLock(isOpen);
 
@@ -79,12 +81,25 @@ export const ChangelogModal = ({
                   <p className="text-xs text-muted-foreground">What's new in AttendX</p>
                 </div>
               </div>
-              <button
-                onClick={onClose}
-                className="w-8 h-8 rounded-full bg-muted/50 hover:bg-muted flex items-center justify-center transition-colors text-muted-foreground hover:text-foreground cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    navigate("/whats-new");
+                  }}
+                  className="px-3 py-1.5 rounded-xl bg-primary/15 hover:bg-primary/25 text-primary border border-primary/25 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>What's New</span>
+                </button>
+                <button
+                  onClick={onClose}
+                  className="w-8 h-8 rounded-full bg-muted/50 hover:bg-muted flex items-center justify-center transition-colors text-muted-foreground hover:text-foreground cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
 
             <div className="p-4 md:p-6 overflow-y-auto space-y-8 pb-20 bg-background text-foreground overscroll-contain">

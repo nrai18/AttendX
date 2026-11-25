@@ -137,7 +137,22 @@ export function detectRealHostOS(): string {
       cachedRealHostOS = p === "ios" ? "iOS" : "Android";
       return cachedRealHostOS;
     }
+    const ua = typeof navigator !== "undefined" ? (navigator.userAgent || "") : "";
     const navPlat = typeof navigator !== "undefined" ? (navigator.platform || "") : "";
+    const touchPoints = typeof navigator !== "undefined" ? (navigator.maxTouchPoints || 0) : 0;
+
+    // Detect iOS / iPadOS (including CriOS / FxiOS / EdgiOS & iPadOS desktop-mode MacIntel+touch) BEFORE macOS WebGL check
+    if (
+      /CriOS|FxiOS|EdgiOS|OPiOS|iPhone|iPad|iPod/i.test(ua) ||
+      (/Mac/i.test(navPlat) && touchPoints > 1)
+    ) {
+      cachedRealHostOS = "iOS";
+      return cachedRealHostOS;
+    }
+    if (/Android/i.test(ua)) {
+      cachedRealHostOS = "Android";
+      return cachedRealHostOS;
+    }
     if (/Win/i.test(navPlat)) {
       cachedRealHostOS = "Windows";
       return cachedRealHostOS;
@@ -156,13 +171,13 @@ export function detectRealHostOS(): string {
           cachedRealHostOS = "Windows";
           return cachedRealHostOS;
         }
-        if (/Apple M\d|Apple GPU|Intel.*OpenGL Engine/i.test(renderer) && !/Adreno|Mali|PowerVR/i.test(renderer)) {
+        if (/Apple M\d|Apple GPU|Intel.*OpenGL Engine/i.test(renderer) && !/Adreno|Mali|PowerVR/i.test(renderer) && touchPoints <= 1) {
           cachedRealHostOS = "macOS";
           return cachedRealHostOS;
         }
       }
     }
-    if (/Linux x86_64/i.test(navPlat) && !/Android/i.test(navigator.userAgent || "")) {
+    if (/Linux x86_64/i.test(navPlat) && !/Android/i.test(ua)) {
       cachedRealHostOS = "Linux";
       return cachedRealHostOS;
     }
@@ -224,6 +239,11 @@ api.interceptors.request.use(
       const brands = navigator.userAgentData.brands;
       const nonChromium = brands.find((b: any) => b.brand !== 'Chromium' && !b.brand.includes('Not'));
       browserName = nonChromium ? nonChromium.brand : (brands[0]?.brand || "");
+    } else if (typeof navigator !== "undefined" && navigator.userAgent) {
+      const ua = navigator.userAgent;
+      if (/CriOS/i.test(ua)) browserName = "Google Chrome";
+      else if (/FxiOS/i.test(ua)) browserName = "Firefox";
+      else if (/EdgiOS/i.test(ua)) browserName = "Microsoft Edge";
     }
     if (browserName) config.headers['X-Attendx-Browser'] = browserName;
 

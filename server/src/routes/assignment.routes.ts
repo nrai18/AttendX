@@ -185,19 +185,44 @@ const toggleHandler = async (req: any, res: any) => {
       return res.status(404).json({ error: "Assignment not found" });
     }
 
+    const hasExplicitState = typeof req.body?.completed === "boolean";
+    const desiredCompleted = hasExplicitState ? Boolean(req.body.completed) : null;
+
+    if (desiredCompleted === false) {
+      await prisma.assignmentCompletion.deleteMany({
+        where: { assignmentId, userId },
+      });
+      return res.json({ completed: false });
+    }
+
+    if (desiredCompleted === true) {
+      try {
+        await prisma.assignmentCompletion.create({
+          data: { assignmentId, userId },
+        });
+      } catch (e: any) {
+        if (e?.code !== "P2002") throw e;
+      }
+      return res.json({ completed: true });
+    }
+
     const existing = await prisma.assignmentCompletion.findUnique({
       where: { assignmentId_userId: { assignmentId, userId } },
     });
 
     if (existing) {
-      await prisma.assignmentCompletion.delete({
+      await prisma.assignmentCompletion.deleteMany({
         where: { id: existing.id },
       });
       res.json({ completed: false });
     } else {
-      await prisma.assignmentCompletion.create({
-        data: { assignmentId, userId },
-      });
+      try {
+        await prisma.assignmentCompletion.create({
+          data: { assignmentId, userId },
+        });
+      } catch (e: any) {
+        if (e?.code !== "P2002") throw e;
+      }
       res.json({ completed: true });
     }
   } catch (error) {

@@ -5,17 +5,60 @@ import { prisma } from "../lib/prisma";
 import crypto from "crypto";
 import { FailureLogRecorder } from "../utils/failureLogRecorder";
 import { EmailService } from "../services/email.service";
+import { getFastDeviceDetails } from "../utils/device";
 
 export class SupportController {
   static async submitFeedback(req: AuthenticatedRequest, res: Response) {
     try {
-      const { type, issue, frequency, description, email, attachLogs, screenshot, deviceLogs } = req.body;
+      const { type, issue, frequency, description, email, attachLogs, screenshot, deviceLogs, linkedDevice, workingLocation } = req.body;
       const userId = req.user!.userId;
+      const sessionId = (req.user as any)?.sessionId;
+
+      const fastDevice = getFastDeviceDetails(req);
+      let linkedSessionRecord: any = null;
+      try {
+        if (sessionId) {
+          linkedSessionRecord = await prisma.refreshToken.findFirst({
+            where: { id: sessionId, userId },
+            select: {
+              id: true,
+              os: true,
+              browser: true,
+              deviceType: true,
+              location: true,
+              ipAddress: true,
+              userAgent: true,
+              lastActive: true,
+            },
+          });
+        } else {
+          linkedSessionRecord = await prisma.refreshToken.findFirst({
+            where: { userId, expiresAt: { gt: new Date() } },
+            orderBy: { lastActive: "desc" },
+            select: {
+              id: true,
+              os: true,
+              browser: true,
+              deviceType: true,
+              location: true,
+              ipAddress: true,
+              userAgent: true,
+              lastActive: true,
+            },
+          });
+        }
+      } catch {}
 
       // Extract recent server errors for diagnostics
       const recentServerLogs = FailureLogRecorder.getRecentLogs({ userId, email, limit: 30 });
       const enrichedDeviceLogs = {
         ...(deviceLogs || {}),
+        linkedDevice: {
+          ...(linkedDevice || {}),
+          serverDetected: fastDevice,
+          activeSession: linkedSessionRecord,
+        },
+        workingLocation: workingLocation || null,
         recentServerErrors: recentServerLogs.slice(0, 10),
         submittedAt: new Date().toISOString()
       };

@@ -53,6 +53,7 @@ import {
   ListFilter,
   RotateCcw,
   Sparkles,
+  Play,
   Share2,
   Star,
   Users,
@@ -93,7 +94,7 @@ import { PermissionService } from "../../services/PermissionService";
 import { FrostedLockedLevel } from "../../components/ui/frosted-locked-level";
 
 export const SettingsPage: React.FC = () => {
-  const currentAppVersion = import.meta.env.VITE_APP_VERSION || "4.4.1";
+  const currentAppVersion = import.meta.env.VITE_APP_VERSION || "4.5.0";
   const location = useLocation();
   const deletedDocIdsRef = useRef<Set<string>>(new Set());
 
@@ -666,6 +667,13 @@ export const SettingsPage: React.FC = () => {
   const [notifyEvent, setNotifyEvent] = useState(true);
   const [notifyBirthday, setNotifyBirthday] = useState(true);
   const [dndAccessGranted, setDndAccessGranted] = useState<boolean>(false);
+  const [autoDndIfGranted, setAutoDndIfGranted] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem("attendx_auto_dnd_if_granted") !== "false";
+    } catch {
+      return true;
+    }
+  });
   const [hasNotifPermission, setHasNotifPermission] = useState<boolean>(true);
   const [hasExactAlarmPermission, setHasExactAlarmPermission] = useState<boolean>(true);
 
@@ -2192,6 +2200,37 @@ export const SettingsPage: React.FC = () => {
                 </button>
               </>
             )}
+            <div className="h-px bg-border/50" />
+            <button
+              type="button"
+              onClick={() => {
+                recordScroll();
+                hapticSelection();
+                navigate("/wrap");
+              }}
+              className="w-full p-4 flex items-center justify-between gap-3 hover:bg-muted/30 transition-colors cursor-pointer"
+            >
+              <div className="flex items-center gap-3 min-w-0 flex-1">
+                <div className="bg-emerald-500/10 dark:bg-[#b7f357]/15 p-2.5 rounded-xl text-emerald-600 dark:text-[#b7f357] shrink-0">
+                  <Sparkles className="w-5 h-5" />
+                </div>
+                <div className="text-left min-w-0">
+                  <span className="text-sm font-semibold text-foreground block truncate">
+                    Semester Replay
+                  </span>
+                  <span className="text-xs text-muted-foreground block mt-0.5 truncate">
+                    Interactive story cards, stats &amp; shareable wrap
+                  </span>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-full bg-emerald-600 text-[#ffffff] border border-emerald-700/20 shadow-xs dark:bg-[#b7f357] dark:text-[#111508] dark:border-[#b7f357]/40">
+                  <Play className="w-3 h-3 fill-current" />
+                  <span>Open</span>
+                </span>
+                <ChevronRight className="w-4 h-4 text-muted-foreground" />
+              </div>
+            </button>
           </div>
         </div>
 
@@ -2578,11 +2617,11 @@ export const SettingsPage: React.FC = () => {
             >
               <div className="w-full flex flex-col gap-4">
               <div className="flex flex-col gap-1">
-                <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white leading-normal">
                   Class Reminders
                 </h3>
                 <div className="flex items-center justify-between flex-wrap gap-2">
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                  <p className="text-xs leading-normal text-slate-500 dark:text-slate-400">
                     Time before class
                   </p>
                   {!hasNotifPermission && (
@@ -2623,10 +2662,10 @@ export const SettingsPage: React.FC = () => {
 
               <div className={`flex items-center justify-between gap-3 mt-2 transition-opacity ${notifConfig.classReminderOffset === -1 ? "opacity-60" : ""}`}>
                 <div className="flex flex-col gap-0.5 min-w-0">
-                  <span className="text-sm font-semibold text-slate-900 dark:text-white">
+                  <span className="text-sm font-semibold leading-normal text-slate-900 dark:text-white">
                     Show Location
                   </span>
-                  <span className="text-xs text-slate-500 dark:text-slate-400">
+                  <span className="text-xs leading-normal py-[1px] text-slate-500 dark:text-slate-400">
                     {notifConfig.classReminderOffset === -1
                       ? "Requires Class Reminders (5–15 min) above"
                       : "Include room in notifications"}
@@ -2648,10 +2687,10 @@ export const SettingsPage: React.FC = () => {
 
               <div className={`flex items-center justify-between gap-3 mt-2 transition-opacity ${notifConfig.classReminderOffset === -1 ? "opacity-60" : ""}`}>
                 <div className="flex flex-col gap-0.5 min-w-0">
-                  <span className="text-sm font-semibold text-foreground">
+                  <span className="text-sm font-semibold leading-normal text-foreground">
                     Next Class Heads-up
                   </span>
-                  <span className="text-xs text-muted-foreground">
+                  <span className="text-xs leading-normal py-[1px] text-muted-foreground">
                     {notifConfig.classReminderOffset === -1
                       ? "Requires Class Reminders (5–15 min) above"
                       : "Notify when current class ends"}
@@ -2675,10 +2714,10 @@ export const SettingsPage: React.FC = () => {
 
               <div className="flex items-center justify-between gap-3 mt-2">
                 <div className="flex flex-col gap-0.5 min-w-0">
-                  <span className="text-sm font-semibold text-foreground">
+                  <span className="text-sm font-semibold leading-normal text-foreground">
                     End of Day Summary
                   </span>
-                  <span className="text-xs text-muted-foreground">
+                  <span className="text-xs leading-normal py-[1px] text-muted-foreground">
                     {notifConfig.classReminderOffset === -1
                       ? "Active independently after your final class"
                       : "Get a 'Done for the day' alert"}
@@ -2757,6 +2796,50 @@ export const SettingsPage: React.FC = () => {
                   </button>
                 )}
               </div>
+
+              {dndAccessGranted && (
+                <div className="flex items-center justify-between gap-3 pt-3 border-t border-border/40">
+                  <div className="flex flex-col gap-0.5 min-w-0">
+                    <span className="text-sm font-semibold text-foreground">
+                      Auto-DND on Class Start
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      Enters silent DND in background when class starts — never opens AttendX
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={autoDndIfGranted}
+                    onClick={() => {
+                      const next = !autoDndIfGranted;
+                      setAutoDndIfGranted(next);
+                      try {
+                        localStorage.setItem("attendx_auto_dnd_if_granted", next ? "true" : "false");
+                      } catch {}
+                      hapticSelection();
+                      NotificationService.autoScheduleFromTimetable();
+                      triggerDynamicHUD({
+                        type: next ? "success" : "moon",
+                        label: next ? "Auto-DND Enabled" : "Manual Mute Action Only",
+                        subtitle: next
+                          ? "Phone will enter DND silently at class reminders"
+                          : "Use 'Mute Phone for Class' button in notification",
+                        durationMs: 3200,
+                      });
+                    }}
+                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out ${
+                      autoDndIfGranted ? "bg-emerald-500" : "bg-muted-foreground/30"
+                    }`}
+                  >
+                    <span
+                      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                        autoDndIfGranted ? "translate-x-5" : "translate-x-0"
+                      }`}
+                    />
+                  </button>
+                </div>
+              )}
           </div>
         </div>
 

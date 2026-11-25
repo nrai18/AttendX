@@ -4,6 +4,7 @@ import { AuthenticatedRequest } from "../middleware/authenticate";
 import { CalendarRagService } from "../services/calendar_rag.service";
 import { CacheService } from "../services/cache.service";
 import { TemplateEventService } from "../services/template_event.service";
+import { AcademicTemplateService } from "../services/academic_template.service";
 import { prisma } from "../lib/prisma";
 
 export class EventController {
@@ -46,7 +47,7 @@ export class EventController {
         const { prisma } = require("../lib/prisma");
         const semester = await prisma.semester.findUnique({ where: { id: semesterId } });
         const semYear = semester ? new Date(semester.startDate).getFullYear() : new Date().getFullYear();
-        const holidayData = TemplateEventService.getHolidays(semYear);
+        const holidayData = await AcademicTemplateService.getHolidayList(semYear);
         const allHolidays = [...holidayData.fixedHolidays, ...holidayData.restrictedHolidays];
 
         events.forEach(group => {
@@ -177,7 +178,7 @@ export class EventController {
   static async getTemplateHolidays(req: AuthenticatedRequest, res: Response) {
     try {
       const year = req.query.year ? parseInt(req.query.year as string) : new Date().getFullYear();
-      const data = TemplateEventService.getHolidays(year);
+      const data = await AcademicTemplateService.getHolidayList(year);
       res.json(data);
     } catch (error) {
       console.error("Failed to get template holidays:", error);
@@ -189,9 +190,16 @@ export class EventController {
     try {
       const semesterNumber = req.query.semesterNumber ? parseInt(req.query.semesterNumber as string) : undefined;
       const year = req.query.year ? parseInt(req.query.year as string) : undefined;
+      const semesterType = req.query.semesterType as "even" | "odd" | undefined;
       const startDate = req.query.startDate as string | undefined;
       const endDate = req.query.endDate as string | undefined;
-      const data = TemplateEventService.getAcademicCalendar({ semesterNumber, year, startDate, endDate });
+      const data = await AcademicTemplateService.getAcademicCalendar({
+        semesterNumber,
+        year,
+        semesterType,
+        startDate,
+        endDate,
+      });
       res.json(data);
     } catch (error) {
       console.error("Failed to get template academic calendar:", error);
@@ -200,18 +208,19 @@ export class EventController {
   }
 
   static async syncTemplates(req: AuthenticatedRequest, res: Response) {
-    const { semesterId, syncHolidayList, syncAcademicCalendar, year, semesterNumber } = req.body;
+    const { semesterId, syncHolidayList, syncAcademicCalendar, year, semesterNumber, rewriteExisting } = req.body;
     if (!semesterId) {
       return res.status(400).json({ error: "Missing semesterId" });
     }
     try {
-      const result = await TemplateEventService.syncToSemester({
+      const result = await AcademicTemplateService.syncToSemester({
         userId: req.user!.userId,
         semesterId,
         syncHolidayList: syncHolidayList !== false,
         syncAcademicCalendar: syncAcademicCalendar === true,
         year: year ? parseInt(year) : undefined,
-        semesterNumber: semesterNumber ? parseInt(semesterNumber) : undefined
+        semesterNumber: semesterNumber ? parseInt(semesterNumber) : undefined,
+        rewriteExisting: rewriteExisting !== false,
       });
       await CacheService.invalidateUser(req.user!.userId);
       res.json({ message: `Successfully synced ${result.syncedCount} events`, ...result });

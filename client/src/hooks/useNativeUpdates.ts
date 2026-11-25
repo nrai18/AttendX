@@ -163,6 +163,14 @@ export function useNativeUpdates() {
     setErrorMessage(null);
     try {
       setPhase("installing");
+      if (updateInfo?.versionName) {
+        try {
+          const cleanVer = String(updateInfo.versionName).replace(/^v/i, "").trim();
+          if (cleanVer) {
+            localStorage.setItem("attendx_pending_whats_new", cleanVer);
+          }
+        } catch {}
+      }
       const res = await nativeUpdater.installApk(verifiedPath);
       if (res?.permissionRequired) {
         setPhase("verified");

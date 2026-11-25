@@ -1611,7 +1611,9 @@ export class CustomMlCopilotService {
 
     let navTarget: { path: string; title: string } | null = null;
 
-    if (/^(?:(?:exam|semester|holiday|academic|event|upcoming)\s+)?countdowns?$|^countdown(?:\s+timers?)?$/i.test(strippedNav)) {
+    if (/^(?:(?:semester|mid[\s-]?semester|end[\s-]?sem|my)\s+)?(?:wrap|replay|wrapped|year\s+in\s+review)$/i.test(strippedNav)) {
+      navTarget = { path: "/wrap", title: "Semester Replay / Wrap" };
+    } else if (/^(?:(?:exam|semester|holiday|academic|event|upcoming)\s+)?countdowns?$|^countdown(?:\s+timers?)?$/i.test(strippedNav)) {
       navTarget = { path: "/semester/countdowns", title: "Semester Countdowns" };
     } else if (/^(?:(?:semester|academic|upcoming|college)\s+)?holidays?$|^holiday\s+list$/i.test(strippedNav) && !/^list\b/i.test(lower)) {
       navTarget = { path: "/semester/holidays", title: "Semester Holidays" };
@@ -3588,7 +3590,7 @@ ${ordContext}`;
       
       // Strict Path Validation for NAVIGATE actions to prevent external redirects / XSS
       if (raw.type === "NAVIGATE" && raw.payload?.path) {
-        const allowedPaths = ["/today", "/calendar", "/timetable", "/subjects", "/semester", "/predictive", "/report", "/reports", "/settings", "/assignments", "/peer-sync", "/classrooms"];
+        const allowedPaths = ["/today", "/calendar", "/timetable", "/subjects", "/semester", "/predictive", "/report", "/reports", "/settings", "/assignments", "/peer-sync", "/classrooms", "/wrap", "/replay", "/whats-new"];
         if (raw.payload.path === "/reports") raw.payload.path = "/report";
         const isAllowed = allowedPaths.some(p => raw.payload.path === p || raw.payload.path.startsWith(`${p}/`));
         if (!isAllowed) {
@@ -4162,7 +4164,9 @@ ${ordContext}`;
 
     let navTarget: { path: string; title: string } | null = null;
 
-    if (/^(?:(?:exam|semester|holiday|academic|event|upcoming)\s+)?countdowns?$|^countdown(?:\s+timers?)?$/i.test(strippedNav)) {
+    if (/^(?:(?:semester|mid[\s-]?semester|end[\s-]?sem|my)\s+)?(?:wrap|replay|wrapped|year\s+in\s+review)$/i.test(strippedNav)) {
+      navTarget = { path: "/wrap", title: "Semester Replay / Wrap" };
+    } else if (/^(?:(?:exam|semester|holiday|academic|event|upcoming)\s+)?countdowns?$|^countdown(?:\s+timers?)?$/i.test(strippedNav)) {
       navTarget = { path: "/semester/countdowns", title: "Semester Countdowns" };
     } else if (/^(?:(?:semester|academic|upcoming|college)\s+)?holidays?$|^holiday\s+list$/i.test(strippedNav)) {
       navTarget = { path: "/semester/holidays", title: "Semester Holidays" };

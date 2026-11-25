@@ -4,6 +4,7 @@ import { AuthenticatedRequest } from "../middleware/authenticate";
 import { CacheService } from "../services/cache.service";
 import { PredictiveRagService } from "../services/predictive_rag.service";
 import { redisClient } from "../lib/redis";
+import { prisma } from "../lib/prisma";
 
 export class AttendanceController {
   static async getTodayAgenda(req: AuthenticatedRequest, res: Response) {
@@ -92,15 +93,24 @@ export class AttendanceController {
 
   static async getSubjectStats(req: AuthenticatedRequest, res: Response) {
     const { semesterId, force } = req.query;
-    const cacheKey = `stats:${semesterId || 'default'}`;
+    const requestedSemId = typeof semesterId === "string" && semesterId.trim() ? semesterId.trim() : undefined;
+    let resolvedSemId = requestedSemId;
+    if (!resolvedSemId) {
+      const activeSem = await CacheService.getOrSet(req.user!.userId, "semesters:active", () =>
+        prisma.semester.findFirst({ where: { userId: req.user!.userId, isActive: true } })
+      );
+      resolvedSemId = activeSem?.id;
+    }
+    const cacheKey = `stats:${resolvedSemId || "default"}`;
     if (force === "true") {
       await CacheService.del(req.user!.userId, cacheKey);
+      await CacheService.del(req.user!.userId, "stats:default");
       await CacheService.invalidateUser(req.user!.userId);
     }
     const stats = await CacheService.getOrSet(
       req.user!.userId,
       cacheKey,
-      () => AttendanceService.getSubjectStats(req.user!.userId, semesterId as string | undefined)
+      () => AttendanceService.getSubjectStats(req.user!.userId, resolvedSemId)
     );
     res.json(stats);
   }

@@ -620,3 +620,20 @@ model Feedback {
 
   user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
+
+
+model AcademicTemplate {
+  id           String   @id @default(uuid())
+  kind         String   // "holiday_list" | "academic_calendar"
+  key          String   @unique // "2026" | "2027" | "2028" | "2026_even" | ... | "2028_odd"
+  year         Int
+  semesterType String?  // "even" | "odd" | null
+  payload      Json     @db.JsonB
+  version      Int      @default(1)
+  updatedBy    String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([kind, year])
+  @@map("academic_templates")
+}

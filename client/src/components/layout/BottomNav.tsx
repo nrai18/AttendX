@@ -109,6 +109,7 @@ export const BottomNav: React.FC = () => {
   const isSemester = location.pathname.startsWith("/semester");
   const isPredictive = location.pathname.startsWith("/predictive");
   const isClassrooms = location.pathname.startsWith("/classrooms");
+  const isWrapOrWhatsNew = location.pathname.startsWith("/wrap") || location.pathname.startsWith("/replay") || location.pathname.startsWith("/whats-new");
 
   const activeNavItems = useMemo(() => {
     if (isSemester) return [...navItems, dynamicSpecialItems.semester];
@@ -278,7 +279,9 @@ export const BottomNav: React.FC = () => {
   };
 
   const navBg =
-    isClassrooms
+    isWrapOrWhatsNew
+      ? "preserve-dark bg-[#0d0e0d]/95 border-white/15"
+      : isClassrooms
       ? "bg-white/95 dark:bg-[#08080a]/95 border-neutral-200 dark:border-white/10"
       : isReports || isPredictive
       ? "bg-[#EED3CF]/80 dark:bg-[#1A090C]/85 border-[#EED3CF]/40 dark:border-[#74313A]/40"

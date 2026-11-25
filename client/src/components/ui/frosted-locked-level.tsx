@@ -38,19 +38,19 @@ export const FrostedLockedLevel: React.FC<FrostedLockedLevelProps> = ({
 
   return (
     <div
-      className={`relative rounded-2xl overflow-hidden transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+      className={`relative rounded-2xl ${isLocked || showUnlockBurst ? "overflow-hidden" : ""} transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${
         showUnlockBurst
           ? "ring-2 ring-emerald-500/60 shadow-[0_0_28px_-4px_rgba(16,185,129,0.4)]"
           : ""
       } ${className}`}
     >
-      {/* Underlying interactive card smoothly transitions from frosted/desaturated -> vivid/unlocked */}
+      {/* Underlying interactive card smoothly transitions from frosted/desaturated -> vivid/unlocked without keeping permanent GPU filter/transform layers when unlocked (preserves crisp LCD text rendering) */}
       <div
         aria-hidden={isLocked}
-        className={`transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] origin-center ${
+        className={`transition-opacity duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${
           isLocked
-            ? "grayscale-[88%] opacity-35 scale-[0.985] blur-[1px] pointer-events-none select-none"
-            : "grayscale-0 opacity-100 scale-100 blur-0"
+            ? "grayscale-[88%] opacity-35 scale-[0.985] blur-[1px] pointer-events-none select-none origin-center"
+            : "opacity-100"
         }`}
       >
         {children}

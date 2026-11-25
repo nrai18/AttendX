@@ -12,4 +12,12 @@ router.get("/feedbacks", AdminController.getFeedbackLogs);
 router.get("/feedbacks/:id/logs", AdminController.downloadDecryptedLog);
 router.post("/broadcast", AdminController.broadcastNotification);
 
+// Academic Calendars & Holiday Lists (2026, 2027, 2028 Even/Odd) Management
+router.get("/templates", AdminController.listAcademicTemplates);
+router.get("/templates/holidays/:year", AdminController.getHolidayTemplate);
+router.put("/templates/holidays/:year", AdminController.updateHolidayTemplate);
+router.get("/templates/calendars/:year/:semesterType", AdminController.getAcademicCalendarTemplate);
+router.put("/templates/calendars/:year/:semesterType", AdminController.updateAcademicCalendarTemplate);
+router.post("/templates/propagate", AdminController.propagateAcademicTemplates);
+
 export default router;

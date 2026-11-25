@@ -309,9 +309,12 @@ export class PushNotificationService {
       const isAnnouncement =
         msgType === 'classroom_announcement' ||
         msgType === 'classroom_broadcast' ||
-        msgType === 'announcement';
+        msgType === 'announcement' ||
+        msgType === 'classroom_poll_created' ||
+        msgType === 'classroom_poll_closed' ||
+        msgType === 'classroom_poll_stopped';
 
-      const uniqueTag = `classroom_${classroomId}_${data?.announcementId || data?.id || msgType || 'update'}_${Date.now()}`;
+      const uniqueTag = `classroom_${classroomId}_${data?.announcementId || data?.pollId || data?.id || msgType || 'update'}_${Date.now()}`;
       const BATCH_SIZE = 500;
       for (let i = 0; i < tokens.length; i += BATCH_SIZE) {
         const batch = tokens.slice(i, i + BATCH_SIZE);

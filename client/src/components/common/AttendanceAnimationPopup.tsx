@@ -48,7 +48,7 @@ export const AttendanceAnimationPopup: React.FC = () => {
     <AnimatePresence>
       {isOpen && type && (
         <div
-          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 cursor-pointer select-none"
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-white/45 dark:bg-black/75 backdrop-blur-md cursor-pointer select-none"
           onClick={closeAnimation}
         >
           <motion.div
