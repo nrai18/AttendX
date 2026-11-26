@@ -421,15 +421,14 @@ export const CalendarPage = () => {
         return isSuspended && !isRestricted;
       });
 
-      const hasArchivedSlotForSubjectOnDay = (subId: string) =>
-        allSlots.some((s: any) => {
-          if (!s.validUntil || (s.subjectId !== subId && s.subject?.id !== subId)) return false;
-          const fromKey = s.validFrom
-            ? String(s.validFrom).slice(0, 10)
-            : "0000-00-00";
-          const untilKey = String(s.validUntil).slice(0, 10);
-          return fromKey <= dateStr && untilKey >= dateStr;
-        });
+      const hasArchivedSlotsOnDate = allSlots.some((s: any) => {
+        if (!s.validUntil) return false;
+        const fromKey = s.validFrom
+          ? String(s.validFrom).slice(0, 10)
+          : "0000-00-00";
+        const untilKey = String(s.validUntil).slice(0, 10);
+        return fromKey <= dateStr && untilKey >= dateStr;
+      });
 
       const rawDaySlots = (isPastTeachingDay || isBeforeSemester || isClassSuspendedByEvent)
         ? []
@@ -439,11 +438,10 @@ export const CalendarPage = () => {
               ? String(s.validFrom).slice(0, 10)
               : "0000-00-00";
             if (fromKey > dateStr) return false;
-            const subId = s.subjectId || s.subject?.id;
             if (s.validUntil) {
               const untilKey = String(s.validUntil).slice(0, 10);
               if (untilKey < dateStr) return false;
-            } else if (subId && hasArchivedSlotForSubjectOnDay(subId)) {
+            } else if (hasArchivedSlotsOnDate) {
               return false;
             }
             return true;
@@ -1136,6 +1134,80 @@ export const CalendarPage = () => {
         if (!d.days) d.days = {};
         if (!d.details) d.details = {};
         const todayStr = format(new Date(), "yyyy-MM-dd");
+
+        // Self-heal any server response that leaked active-timetable `unmarked-` slots onto archived-timetable dates
+        const ttCache = useCacheStore.getState().timetable;
+        const activeTtSlots: any[] = Array.isArray(ttCache) ? ttCache : ttCache?.slots || [];
+        const archivedTtVersions: any[] =
+          (!Array.isArray(ttCache) && ttCache?.archivedSlots) ||
+          useCacheStore.getState().archived_timetables ||
+          [];
+        const archivedTtSlots: any[] = archivedTtVersions.flatMap((v: any) =>
+          v?.isCurrent ? [] : v?.slots || [],
+        );
+        const activeSlotIds = new Set(
+          activeTtSlots
+            .filter((s: any) => !s.validUntil)
+            .map((s: any) => String(s.id)),
+        );
+        if (archivedTtSlots.length > 0 && activeSlotIds.size > 0) {
+          Object.keys(d.details).forEach((dateStr) => {
+            if (!dateStr.startsWith(monthStr)) return;
+            const hasArchivedOnDate = archivedTtSlots.some((s: any) => {
+              if (!s.validUntil) return false;
+              const fromKey = s.validFrom ? String(s.validFrom).slice(0, 10) : "0000-00-00";
+              const untilKey = String(s.validUntil).slice(0, 10);
+              return fromKey <= dateStr && untilKey >= dateStr;
+            });
+            if (!hasArchivedOnDate) return;
+            const origList: any[] = d.details[dateStr] || [];
+            const filtered = origList.filter((item: any) => {
+              const itemId = String(item?.id || "");
+              const st = String(item?.status || "").toLowerCase();
+              if (
+                itemId.startsWith("unmarked-") &&
+                (st === "not_marked" || st === "future")
+              ) {
+                const suffix = `-${dateStr}`;
+                const slotId = itemId.endsWith(suffix)
+                  ? itemId.slice("unmarked-".length, itemId.length - suffix.length)
+                  : "";
+                if (slotId && activeSlotIds.has(slotId)) {
+                  return false;
+                }
+              }
+              return true;
+            });
+            if (filtered.length !== origList.length) {
+              d.details[dateStr] = filtered;
+              const marked = filtered.filter((a: any) => {
+                const st = String(a.status || "").toLowerCase();
+                return st && st !== "not_marked" && st !== "future" && st !== "clear";
+              });
+              if (filtered.length === 0) {
+                d.days[dateStr] = "off";
+              } else if (marked.length === filtered.length) {
+                const hasAtt = marked.some((a: any) => ["present", "attended", "medical", "od"].includes(String(a.status).toLowerCase()));
+                const hasMiss = marked.some((a: any) => ["absent", "missed"].includes(String(a.status).toLowerCase()));
+                const allOff = marked.every((a: any) => ["off", "cancelled"].includes(String(a.status).toLowerCase()));
+                d.days[dateStr] =
+                  hasAtt && hasMiss
+                    ? "mixed"
+                    : hasAtt
+                      ? "attended"
+                      : hasMiss
+                        ? "missed"
+                        : allOff
+                          ? "off"
+                          : dateStr > todayStr
+                            ? "future"
+                            : "not_marked";
+              } else {
+                d.days[dateStr] = dateStr > todayStr ? "future" : "not_marked";
+              }
+            }
+          });
+        }
 
         // Merge todayState entries for this month
         datesWithTodayData.forEach((dateStr) => {

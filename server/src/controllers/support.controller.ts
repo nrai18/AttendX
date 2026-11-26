@@ -105,13 +105,36 @@ export class SupportController {
 
       // Dispatch official feedback confirmation email receipt in background
       if (email) {
+        const rawHardware = typeof req.headers["x-attendx-hardware"] === "string" ? req.headers["x-attendx-hardware"].replace("::", " ").trim() : "";
+        const mobileName =
+          linkedDevice?.deviceName ||
+          rawHardware ||
+          [linkedSessionRecord?.browser, linkedSessionRecord?.os].filter(Boolean).join(" on ") ||
+          [fastDevice?.browser, fastDevice?.os].filter(Boolean).join(" on ") ||
+          null;
+        const resolvedLocation =
+          workingLocation?.label ||
+          workingLocation?.city ||
+          (typeof workingLocation === "string" ? workingLocation : null) ||
+          linkedSessionRecord?.location ||
+          (fastDevice?.location && fastDevice.location !== "Unknown Location" ? fastDevice.location : null) ||
+          null;
+        const appVersion =
+          (typeof req.headers["x-attendx-version"] === "string" && req.headers["x-attendx-version"].trim()) ||
+          linkedDevice?.appVersion ||
+          deviceLogs?.appVersion ||
+          null;
+
         prisma.user.findUnique({ where: { id: userId }, select: { name: true } })
           .then((u) => {
             const userName = u?.name || "Student";
             EmailService.sendFeedbackReceipt(email, userName, {
               type,
               issue: issue || type,
-              description
+              description,
+              mobileName,
+              location: resolvedLocation,
+              appVersion,
             }).catch((err) => console.error("Failed to send feedback receipt email:", err));
           })
           .catch((err) => console.error("Failed to look up user for feedback email:", err));

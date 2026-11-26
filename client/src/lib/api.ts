@@ -1,5 +1,5 @@
 import axios, { type AxiosRequestConfig, type AxiosResponse } from "axios";
-import { useAuthStore } from "../stores/authStore";
+import { useAuthStore, getAuthEpoch } from "../stores/authStore";
 import { useOfflineStore } from "../stores/offlineStore";
 import { useCacheStore } from "../stores/cacheStore";
 
@@ -270,7 +270,10 @@ api.interceptors.request.use(
       return config;
     }
 
+    const requestEpoch = getAuthEpoch();
+    (config as any)._authEpoch = requestEpoch;
     let token = useAuthStore.getState().accessToken;
+    (config as any)._authToken = token;
 
     const isOffline = typeof navigator !== 'undefined' && !navigator.onLine;
 
@@ -297,7 +300,10 @@ api.interceptors.request.use(
           processQueue(error, null);
           const isNetworkError = !error.response || error.response.status === 0 || error.response.status >= 500 || error.code === 'ECONNABORTED' || error.message === 'Network Error' || (error.message && error.message.toLowerCase().includes('timeout'));
           const isOfflineNow = typeof navigator !== 'undefined' && !navigator.onLine;
-          if (!isNetworkError && !isOfflineNow) {
+          if (getAuthEpoch() !== requestEpoch) {
+            // A fresh login (e.g. Google Sign-In) succeeded while refresh was in flight — use the new token!
+            token = useAuthStore.getState().accessToken;
+          } else if (!isNetworkError && !isOfflineNow) {
             useAuthStore.getState().logout(false, { redirectTo: "/login?retry=1" });
             token = null;
           }
@@ -312,12 +318,13 @@ api.interceptors.request.use(
           });
           
         } catch (error) {
-          token = null;
+          token = getAuthEpoch() !== requestEpoch ? useAuthStore.getState().accessToken : null;
         }
       }
     }
 
     if (token) {
+      (config as any)._authToken = token;
       config.headers.Authorization = `Bearer ${token}`;
     }
     return config;
@@ -371,13 +378,29 @@ api.interceptors.response.use(
 
     const originalRequest = error.config;
 
-    // Avoid infinite loop on auth endpoints
+    // Avoid infinite loop on auth endpoints or background logout cleanup requests
     if (
       error.response?.status === 401 &&
       !originalRequest._retry &&
+      !(originalRequest as any)._skipAuthRefresh &&
       !originalRequest.url?.includes("/auth/") &&
       !originalRequest.url?.includes("/health")
     ) {
+      const latestAccessToken = useAuthStore.getState().accessToken;
+      if (
+        (originalRequest as any)._authEpoch !== undefined &&
+        (originalRequest as any)._authEpoch !== getAuthEpoch() &&
+        latestAccessToken &&
+        !isTokenExpired(latestAccessToken) &&
+        latestAccessToken !== (originalRequest as any)._authToken
+      ) {
+        originalRequest._retry = true;
+        (originalRequest as any)._authEpoch = getAuthEpoch();
+        (originalRequest as any)._authToken = latestAccessToken;
+        originalRequest.headers.Authorization = `Bearer ${latestAccessToken}`;
+        return api(originalRequest);
+      }
+
       if (typeof navigator !== 'undefined' && !navigator.onLine) {
         // If offline and it's a mutation, allow it to fall through to the offline queue
         if (['post', 'put', 'delete', 'patch'].includes(originalRequest.method?.toLowerCase())) {
@@ -401,6 +424,7 @@ api.interceptors.response.use(
 
       originalRequest._retry = true;
       isRefreshing = true;
+      const refreshStartEpoch = getAuthEpoch();
 
       try {
         let response;
@@ -429,7 +453,12 @@ api.interceptors.response.use(
         processQueue(refreshError, null);
         const isNetworkError = !refreshError.response || refreshError.response.status === 0 || refreshError.response.status >= 500 || refreshError.code === 'ECONNABORTED' || refreshError.message === 'Network Error' || (refreshError.message && refreshError.message.toLowerCase().includes('timeout'));
         const isOfflineNow = typeof navigator !== 'undefined' && !navigator.onLine;
-        if (!isNetworkError && !isOfflineNow) {
+        const freshTokenAfterLogin = useAuthStore.getState().accessToken;
+        if (getAuthEpoch() !== refreshStartEpoch && freshTokenAfterLogin && !isTokenExpired(freshTokenAfterLogin)) {
+          originalRequest.headers.Authorization = `Bearer ${freshTokenAfterLogin}`;
+          return api(originalRequest);
+        }
+        if (!isNetworkError && !isOfflineNow && getAuthEpoch() === refreshStartEpoch) {
           useAuthStore.getState().logout(false, { redirectTo: "/login?retry=1" });
         }
         // If offline and it's a mutation, allow it to fall through to the offline queue

@@ -40,6 +40,9 @@ interface AuthState {
 
 
 
+let authEpoch = 0;
+export const getAuthEpoch = () => authEpoch;
+
 export const useAuthStore = create<AuthState>()(
   persist(
     (set, get) => ({
@@ -55,6 +58,7 @@ export const useAuthStore = create<AuthState>()(
       setRefreshToken: (refreshToken) => set({ refreshToken }),
 
       setAuth: (user, accessToken, refreshToken) => {
+        authEpoch += 1;
         set((state: any) => ({
           user,
           accessToken,
@@ -85,6 +89,7 @@ export const useAuthStore = create<AuthState>()(
       },
 
       logout: async (skipBackendCall = false, options?: { redirectTo?: string }) => {
+        authEpoch += 1;
         const wasAuthenticated = get().isAuthenticated;
         const currentRefreshToken = get().refreshToken;
 
@@ -92,8 +97,8 @@ export const useAuthStore = create<AuthState>()(
           // Fire backend session & FCM token cleanup non-blockingly with a 2.5s cap so logout never hangs
           Promise.race([
             Promise.allSettled([
-              api.patch('/users/me', { fcmToken: null }),
-              api.post('/auth/logout', { refreshToken: currentRefreshToken }),
+              api.patch('/users/me', { fcmToken: null }, { _skipAuthRefresh: true } as any),
+              api.post('/auth/logout', { refreshToken: currentRefreshToken }, { _skipAuthRefresh: true } as any),
             ]),
             new Promise((resolve) => setTimeout(resolve, 2500)),
           ]).catch(() => {});

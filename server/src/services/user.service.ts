@@ -305,6 +305,18 @@ export class UserService {
         (realOsHeader === "Windows" || realOsHeader === "macOS" || realOsHeader === "Linux") &&
         currentSession.os !== realOsHeader
       );
+      const appVersionHeader =
+        typeof req.headers?.["x-attendx-version"] === "string"
+          ? req.headers["x-attendx-version"].trim()
+          : "";
+      const versionOutOfSync = Boolean(
+        currentSession &&
+        appVersionHeader &&
+        appVersionHeader !== "Unknown" &&
+        typeof currentSession.browser === "string" &&
+        currentSession.browser.includes("AttendX") &&
+        !currentSession.browser.includes(appVersionHeader)
+      );
       const forwarded = req.headers?.["x-forwarded-for"];
       const reqIp = (typeof forwarded === "string" ? forwarded.split(",")[0].trim() : req.ip) || null;
       const isPrivateOrLocalIp =
@@ -316,7 +328,7 @@ export class UserService {
         reqIp.startsWith("172.16.");
       const ipChanged = Boolean(!isPrivateOrLocalIp && currentSession && reqIp !== currentSession.ipAddress);
 
-      if (hasGpsHeaders || ipChanged || osOutOfSync || (currentSession && !currentSession.location && !isPrivateOrLocalIp)) {
+      if (hasGpsHeaders || ipChanged || osOutOfSync || versionOutOfSync || (currentSession && !currentSession.location && !isPrivateOrLocalIp)) {
         try {
           const { getDeviceDetails } = require("../utils/device");
           const fresh = await getDeviceDetails(req);
@@ -330,10 +342,16 @@ export class UserService {
           const nextLoc = isValidLoc ? freshLoc : currentSession?.location;
           const nextOs = osOutOfSync ? realOsHeader : currentSession?.os;
           const nextDeviceType = osOutOfSync ? "desktop" : currentSession?.deviceType;
-          const nextBrowser = osOutOfSync && fresh?.browser ? fresh.browser : currentSession?.browser;
-          const nextUa = osOutOfSync && fresh?.userAgent ? fresh.userAgent : currentSession?.userAgent;
+          const nextBrowser =
+            (osOutOfSync || versionOutOfSync) && fresh?.browser
+              ? fresh.browser
+              : currentSession?.browser;
+          const nextUa =
+            (osOutOfSync || versionOutOfSync) && fresh?.userAgent
+              ? fresh.userAgent
+              : currentSession?.userAgent;
 
-          if (currentSession && (nextLoc !== currentSession.location || osOutOfSync)) {
+          if (currentSession && (nextLoc !== currentSession.location || osOutOfSync || versionOutOfSync)) {
             sessionsList[currentIdx] = {
               ...currentSession,
               location: nextLoc,

@@ -44,9 +44,34 @@ export class AiController {
     }
 
     try {
+      const { getFastDeviceDetails } = require("../utils/device");
+      const fastDevice = getFastDeviceDetails(req);
+      const rawHardware =
+        typeof req.headers["x-attendx-hardware"] === "string"
+          ? req.headers["x-attendx-hardware"].replace("::", " ").trim()
+          : "";
+      const appVersionHeader =
+        typeof req.headers["x-attendx-version"] === "string"
+          ? req.headers["x-attendx-version"].trim()
+          : "";
+
       const enrichedContext = {
         ...(student_context || {}),
         user_id: student_context?.user_id || userId,
+        session_id: (req.user as any)?.sessionId || student_context?.session_id,
+        device_meta: {
+          mobileName:
+            rawHardware ||
+            [fastDevice?.browser, fastDevice?.os].filter(Boolean).join(" on ") ||
+            null,
+          appVersion: appVersionHeader && appVersionHeader !== "Unknown" ? appVersionHeader : (student_context?.appVersion || null),
+          location:
+            fastDevice?.location && fastDevice.location !== "Unknown Location"
+              ? fastDevice.location
+              : null,
+          os: fastDevice?.os || null,
+          browser: fastDevice?.browser || null,
+        },
       };
 
       const payload = {

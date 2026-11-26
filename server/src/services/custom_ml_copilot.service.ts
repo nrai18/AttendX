@@ -123,6 +123,14 @@ export interface CopilotContext {
   userEmail?: string;
   userBirthday?: string;
   appVersion?: string;
+  sessionId?: string;
+  deviceMeta?: {
+    mobileName?: string | null;
+    appVersion?: string | null;
+    location?: string | null;
+    os?: string | null;
+    browser?: string | null;
+  };
   activeSemesterId?: string;
   semesterName?: string;
   startDate?: string;
@@ -337,6 +345,80 @@ export class CustomMlCopilotService {
     }
     this.isWarmedUp = true;
     console.log(`[CustomMlCopilotService] Warmup completed. Gemini 3.8-Flash intent router initialized with ${this.ordinances.length} ordinances.`);
+  }
+
+  /**
+   * Persists a feedback ticket with linked device, location, and app version diagnostics,
+   * and dispatches the confirmation email receipt with those details attached.
+   */
+  private static async dispatchFeedbackTicket(
+    context: CopilotContext,
+    feedbackData: { type: string; issue: string; description: string },
+  ): Promise<void> {
+    const userEmail = context.userEmail || "";
+    const userName = context.userName || "Student";
+
+    let sessionRecord: any = null;
+    if (context.userId) {
+      try {
+        sessionRecord = context.sessionId
+          ? await prisma.refreshToken.findFirst({
+              where: { id: context.sessionId, userId: context.userId },
+              select: { os: true, browser: true, deviceType: true, location: true, ipAddress: true, userAgent: true },
+            })
+          : await prisma.refreshToken.findFirst({
+              where: { userId: context.userId, expiresAt: { gt: new Date() } },
+              orderBy: { lastActive: "desc" },
+              select: { os: true, browser: true, deviceType: true, location: true, ipAddress: true, userAgent: true },
+            });
+      } catch {}
+    }
+
+    const mobileName =
+      context.deviceMeta?.mobileName ||
+      [sessionRecord?.browser || context.deviceMeta?.browser, sessionRecord?.os || context.deviceMeta?.os]
+        .filter(Boolean)
+        .join(" on ") ||
+      null;
+    const location =
+      (sessionRecord?.location && sessionRecord.location !== "Unknown Location" ? sessionRecord.location : null) ||
+      context.deviceMeta?.location ||
+      null;
+    const appVersion = context.deviceMeta?.appVersion || context.appVersion || null;
+
+    if (context.userId) {
+      await (prisma as any).feedback.create({
+        data: {
+          userId: context.userId,
+          type: feedbackData.type,
+          issue: feedbackData.issue,
+          frequency: "once",
+          description: feedbackData.description,
+          email: userEmail || "anonymous@attendx.tech",
+          deviceLogs: {
+            linkedDevice: {
+              mobileName,
+              activeSession: sessionRecord,
+            },
+            workingLocation: {
+              location,
+              route: context.currentRoute || null,
+            },
+            appVersion,
+            submittedAt: new Date().toISOString(),
+          },
+        },
+      });
+    }
+
+    if (userEmail) {
+      await EmailService.sendFeedbackReceipt(userEmail, userName, {
+        ...feedbackData,
+        mobileName,
+        location,
+        appVersion,
+      });
+    }
   }
 
   /**
@@ -2584,26 +2666,10 @@ export class CustomMlCopilotService {
         description: query.trim(),
       };
 
-      // 1. Non-blocking ticket creation in DB
-      if (context.userId) {
-        (prisma as any).feedback.create({
-          data: {
-            userId: context.userId,
-            type: feedbackData.type,
-            issue: feedbackData.issue,
-            frequency: "once",
-            description: feedbackData.description,
-            email: userEmail || "anonymous@attendx.tech",
-          },
-        }).catch((dbErr: any) => console.error("[CustomMlCopilotService] Failed to store fast-path feedback in DB:", dbErr));
-      }
-
-      // 2. Non-blocking confirmation receipt email dispatch (Resend)
-      if (userEmail) {
-        EmailService.sendFeedbackReceipt(userEmail, userName, feedbackData).catch((mailErr: any) =>
-          console.error("[CustomMlCopilotService] Failed to send feedback receipt email:", mailErr)
-        );
-      }
+      // 1 & 2. Non-blocking ticket creation in DB + confirmation receipt email with device/location/version context
+      this.dispatchFeedbackTicket(context, feedbackData).catch((err) =>
+        console.error("[CustomMlCopilotService] Failed to dispatch fast-path feedback ticket:", err)
+      );
 
       const action = this.createAction(
         "SUBMIT_FEEDBACK",
@@ -3659,30 +3725,9 @@ ${ordContext}`;
         issue: parsed.feedback?.issue || "Copilot User Feedback",
       };
 
-      if (context.userId) {
-        try {
-          await (prisma as any).feedback.create({
-            data: {
-              userId: context.userId,
-              type: feedbackData.type,
-              issue: feedbackData.issue,
-              frequency: "once",
-              description: feedbackData.description,
-              email: userEmail || "anonymous@attendx.tech",
-            },
-          });
-        } catch (dbErr) {
-          console.error("[CustomMlCopilotService] Failed to store feedback in database:", dbErr);
-        }
-      }
-
-      if (userEmail) {
-        try {
-          EmailService.sendFeedbackReceipt(userEmail, userName, feedbackData).catch(console.error);
-        } catch (mailErr) {
-          console.error("[CustomMlCopilotService] Failed to send feedback receipt email:", mailErr);
-        }
-      }
+      await this.dispatchFeedbackTicket(context, feedbackData).catch((err) =>
+        console.error("[CustomMlCopilotService] Failed to dispatch feedback ticket:", err)
+      );
 
       if (!validatedActions.some((a) => a.type === "SUBMIT_FEEDBACK")) {
         validatedActions.push(
@@ -4108,30 +4153,9 @@ ${ordContext}`;
         issue: "User Feedback submitted via AI Copilot",
       };
 
-      if (context.userId) {
-        try {
-          await (prisma as any).feedback.create({
-            data: {
-              userId: context.userId,
-              type: feedbackData.type,
-              issue: feedbackData.issue,
-              frequency: "once",
-              description: feedbackData.description,
-              email: userEmail || "anonymous@attendx.tech",
-            },
-          });
-        } catch (dbErr) {
-          console.error("[CustomMlCopilotService] Error saving feedback in fallback:", dbErr);
-        }
-      }
-
-      if (userEmail) {
-        try {
-          EmailService.sendFeedbackReceipt(userEmail, userName, feedbackData).catch(console.error);
-        } catch (mailErr) {
-          console.error("[CustomMlCopilotService] Error sending feedback email in fallback:", mailErr);
-        }
-      }
+      await this.dispatchFeedbackTicket(context, feedbackData).catch((err) =>
+        console.error("[CustomMlCopilotService] Error dispatching fallback feedback ticket:", err)
+      );
 
       const action = this.createAction(
         "SUBMIT_FEEDBACK",

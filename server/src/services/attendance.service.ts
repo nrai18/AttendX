@@ -1621,13 +1621,12 @@ export class AttendanceService {
       const isBeforeSemester = dStart < semStartDate;
       const isPastTeachingDay = (lastTeachingDateEnd && dEnd > lastTeachingDateEnd) || dEnd > semEndDate;
 
-      const hasArchivedSlotForSubjectOnDay = (subId: string) =>
-        regularSlots.some((s) => {
-          if (!s.validUntil || s.subjectId !== subId) return false;
-          const fromKey = AttendanceService.toDbLocalIso(s.validFrom);
-          const untilKey = AttendanceService.toDbLocalIso(s.validUntil);
-          return fromKey <= dateKey && untilKey >= dateKey;
-        });
+      const hasArchivedSlotsOnDate = regularSlots.some((s) => {
+        if (!s.validUntil) return false;
+        const fromKey = AttendanceService.toDbLocalIso(s.validFrom);
+        const untilKey = AttendanceService.toDbLocalIso(s.validUntil);
+        return fromKey <= dateKey && untilKey >= dateKey;
+      });
 
       const rawDaySlots =
         isPastTeachingDay || isBeforeSemester || isGlobalOff
@@ -1639,8 +1638,8 @@ export class AttendanceService {
               if (s.validUntil) {
                 const untilDateKey = AttendanceService.toDbLocalIso(s.validUntil);
                 if (untilDateKey < dateKey) return false; // Already archived before this calendar date began
-              } else if (hasArchivedSlotForSubjectOnDay(s.subjectId)) {
-                return false;
+              } else if (hasArchivedSlotsOnDate) {
+                return false; // Block newer active timetable slots from leaking into archived timetable dates
               }
               return true;
             });

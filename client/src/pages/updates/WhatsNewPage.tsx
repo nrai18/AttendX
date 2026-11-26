@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Sparkles, Play, ArrowRight, CheckCircle2 } from "lucide-react";
-import { useAuthStore } from "../../stores/authStore";
+import { useAuthStore, isUserAuthenticated } from "../../stores/authStore";
 import { useBackHandlerStore } from "../../stores/backHandlerStore";
 import { buildOfflineWrapSnapshot } from "../../utils/wrapEngine";
 import { useLocalAvatar } from "../../utils/avatarCache";
@@ -32,7 +32,11 @@ export const WhatsNewPage: React.FC = () => {
     }, 3500);
     return () => {
       window.clearTimeout(seenTimer);
-      if (Date.now() - mountedAtRef.current >= 1200 && window.location.pathname !== "/") {
+      if (
+        Date.now() - mountedAtRef.current >= 1200 &&
+        window.location.pathname !== "/" &&
+        isUserAuthenticated()
+      ) {
         acknowledgeWhatsNew();
       }
     };

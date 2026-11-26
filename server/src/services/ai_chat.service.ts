@@ -334,7 +334,13 @@ ${formattedHistory}
       userName: effectiveContext.user_name || effectiveContext.userName || "Student",
       userEmail: effectiveContext.user_email || effectiveContext.userEmail,
       userBirthday: effectiveContext.user_birthday || effectiveContext.userBirthday,
-      appVersion: effectiveContext.app_version || effectiveContext.appVersion || "4.0.0",
+      appVersion:
+        effectiveContext.device_meta?.appVersion ||
+        effectiveContext.app_version ||
+        effectiveContext.appVersion ||
+        "4.0.0",
+      sessionId: effectiveContext.session_id || effectiveContext.sessionId,
+      deviceMeta: effectiveContext.device_meta || effectiveContext.deviceMeta,
       activeSemesterId: effectiveContext.active_semester_id || effectiveContext.activeSemesterId || null,
       semesterName: effectiveContext.active_semester_name || effectiveContext.semester_name || effectiveContext.semesterName,
       startDate: effectiveContext.active_semester_start_date || effectiveContext.startDate,

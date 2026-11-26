@@ -1272,11 +1272,38 @@ export class EmailService {
     });
   }
 
-  static async sendFeedbackReceipt(email: string, name: string, feedback: { type: string; description: string; issue?: string }): Promise<{ success: boolean; data?: any; error?: any }> {
+  static async sendFeedbackReceipt(
+    email: string,
+    name: string,
+    feedback: {
+      type: string;
+      description: string;
+      issue?: string;
+      mobileName?: string | null;
+      location?: string | null;
+      appVersion?: string | null;
+    }
+  ): Promise<{ success: boolean; data?: any; error?: any }> {
     const safeName = escapeHtml(name);
     const safeType = escapeHtml(feedback.type || "AttendX");
     const safeDesc = escapeHtml(feedback.description);
     const safeIssue = escapeHtml(feedback.issue || feedback.type || 'Submission');
+    const safeMobile = feedback.mobileName ? escapeHtml(feedback.mobileName) : "";
+    const safeLocation = feedback.location ? escapeHtml(feedback.location) : "";
+    const safeVersion = feedback.appVersion ? escapeHtml(feedback.appVersion) : "";
+    const hasMeta = Boolean(safeMobile || safeLocation || safeVersion);
+    const metaRowsHtml = hasMeta
+      ? `
+            <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px 16px; margin: 16px 0; font-size: 13px; color: #4b5563;">
+              <div style="font-weight: 700; color: #111827; margin-bottom: 6px; text-transform: uppercase; font-size: 11px; letter-spacing: 0.05em;">Attached Device Context</div>
+              ${safeMobile ? `<div style="margin: 2px 0;"><strong>Device:</strong> ${safeMobile}</div>` : ""}
+              ${safeLocation ? `<div style="margin: 2px 0;"><strong>Location:</strong> ${safeLocation}</div>` : ""}
+              ${safeVersion ? `<div style="margin: 2px 0;"><strong>App Version:</strong> ${safeVersion}</div>` : ""}
+            </div>`
+      : "";
+    const metaText = hasMeta
+      ? `\n\nAttached Device Context:\n${safeMobile ? `- Device: ${safeMobile}\n` : ""}${safeLocation ? `- Location: ${safeLocation}\n` : ""}${safeVersion ? `- App Version: ${safeVersion}\n` : ""}`
+      : "";
 
     const html = `
       <!DOCTYPE html>
@@ -1303,7 +1330,7 @@ export class EmailService {
             <p>Thank you for submitting your feedback regarding <strong>${safeType}</strong>.</p>
             <div class="quote">
               <p style="margin: 0; font-style: italic;">"${safeDesc}"</p>
-            </div>
+            </div>${metaRowsHtml}
             <p>Our engineering team has received your submission and is actively reviewing it. Your input helps us make AttendX better for everyone.</p>
             <p>Best regards,<br/>Naman Rai & The AttendX Team</p>
           </div>
@@ -1326,7 +1353,7 @@ export class EmailService {
       to: email,
       subject: `AttendX Feedback Received: ${safeIssue}`,
       html,
-      text: `Feedback Received\n\nHi ${safeName},\n\nWe received your ${safeType}:\n"${safeDesc}"\n\nOur team is reviewing it. Thank you!`
+      text: `Feedback Received\n\nHi ${safeName},\n\nWe received your ${safeType}:\n"${safeDesc}"${metaText}\n\nOur team is reviewing it. Thank you!`
     });
   }
 
